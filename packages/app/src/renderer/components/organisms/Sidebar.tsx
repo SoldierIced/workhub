@@ -18,7 +18,6 @@ import { UsageCard } from './UsageCard'
 
 export interface SidebarProps {
   route: Route
-  navItems: NavItem[]
   sessionsItem: NavItem
   onNavigate: (route: Route) => void
   profiles: Profile[]
@@ -85,7 +84,7 @@ function NavButton({
   )
 }
 
-/** Workhub 1's sidebar: profile switcher, navigation, sessions and folders, usage at the bottom. */
+/** The sidebar: profile switcher, sessions and folders, usage at the bottom (the screens are in the top bar). */
 export function Sidebar(props: SidebarProps) {
   const { t, tn } = useI18n()
   const platform = usePlatform()
@@ -118,13 +117,8 @@ export function Sidebar(props: SidebarProps) {
       <div className="shrink-0 px-3">
         <ProfileSwitcher profiles={props.profiles} activeId={props.activeProfileId} onSelect={props.onSelectProfile} onManage={props.onManageProfiles} />
       </div>
-      <nav aria-label={t('sidebar.navigation')} className="mt-3 flex shrink-0 flex-col gap-0.5 px-3">
-        {props.navItems.map((item) => (
-          <NavButton key={item.route} item={item} active={props.route === item.route} onNavigate={props.onNavigate} />
-        ))}
-      </nav>
-      <div className="mt-1 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        <div className="mx-2.5 my-2 h-px bg-border" aria-hidden />
+      {/* The other screens live in the top bar (TopNav); the sidebar goes straight to the sessions. */}
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         <NavButton
           item={props.sessionsItem}
           active={props.route === 'sessions' && !props.selectedSessionId}

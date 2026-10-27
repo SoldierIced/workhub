@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { AgentIcon } from '../atoms/AgentIcon'
 import { ChevronDown, Plus, Settings } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
@@ -11,23 +12,25 @@ import { IconButton } from '../atoms/IconButton'
 import { Kbd } from '../atoms/Kbd'
 
 export interface ToolbarProps {
-  title: string
+  /** The screens (TopNav), on the left. */
+  nav: ReactNode
   agents: EffectiveAgent[]
   onNewSession: (agentKey?: string) => void
   onOpenSettings: () => void
 }
 
 /**
- * The window's top bar over the content: it drags the window; on Windows and Linux the native
+ * The window's top bar over the content: the screens on the left, a new session and Settings on
+ * the right. It drags the window; on Windows and Linux the native
  * window controls are drawn over its right end (titleBarOverlay), so it leaves room for them.
  */
-export function Toolbar({ title, agents, onNewSession, onOpenSettings }: ToolbarProps) {
+export function Toolbar({ nav, agents, onNewSession, onOpenSettings }: ToolbarProps) {
   const { t } = useI18n()
   const platform = usePlatform()
   return (
     <header className={cn('drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border px-4', platform !== 'mac' && 'pr-36')}>
-      <span className="truncate text-base font-semibold text-text">{title}</span>
-      <div className="ml-auto flex items-center gap-1.5">
+      {nav}
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <div className="flex items-center rounded-md shadow-sm">
           <button
             type="button"

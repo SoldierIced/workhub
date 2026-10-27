@@ -119,6 +119,13 @@ export const es: Record<keyof typeof en, string> = {
   'usage.running.one': '{count} abierta',
   'usage.running.other': '{count} abiertas',
 
+  'topNav.label': 'Pantallas',
+  'topNav.history': 'Historial',
+  'topNav.slackUnread.one': '{count} hilo de Slack con respuestas nuevas',
+  'topNav.slackUnread.other': '{count} hilos de Slack con respuestas nuevas',
+  'topNav.prsToReview.one': '{count} pull request espera tu revisión',
+  'topNav.prsToReview.other': '{count} pull requests esperan tu revisión',
+  'topNav.health': 'Salud: {state}',
   'toolbar.newSession': 'Nueva sesión',
   'toolbar.chooseAgent': 'Elegir el agente para una sesión nueva',
   'toolbar.newSessionWith': 'Nueva sesión con',

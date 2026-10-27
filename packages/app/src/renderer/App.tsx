@@ -4,6 +4,7 @@ import type { SessionView, WorkspaceFolder } from '@shared/api'
 import { Button, TooltipProvider } from './components/atoms'
 import { Dialog, ToastProvider, useToast } from './components/molecules'
 import { NewSessionDialog, Sidebar, Toolbar } from './components/organisms'
+import { TopNav } from './components/organisms/TopNav'
 import { dropOnSessionsTitle, isWorking, SessionList } from './components/organisms/SessionList'
 import { RenameSessionDialog } from './components/organisms/RenameSessionDialog'
 import { ResumeSheet } from './components/organisms/ResumeSheet'
@@ -357,13 +358,10 @@ function Shell() {
     if (r.ok) await refreshConfig()
   }
 
-  const title = t(ROUTE_LABEL[route])
-
   return (
     <div className="flex h-full">
       <Sidebar
         route={route}
-        navItems={navItems}
         sessionsItem={SESSIONS_ITEM}
         onNavigate={navigate}
         profiles={profiles}
@@ -396,7 +394,7 @@ function Shell() {
         usage={usageGroups(sessions, accountUsage)}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-bg">
-        <Toolbar title={title} agents={agents} onNewSession={(key) => newSession(null, key)} onOpenSettings={() => openSettings()} />
+        <Toolbar nav={<TopNav items={navItems} route={route} onNavigate={navigate} profileId={activeProfileId} />} agents={agents} onNewSession={(key) => newSession(null, key)} onOpenSettings={() => openSettings()} />
         <main className="relative min-h-0 flex-1">
           {/* Sessions stay mounted so terminals and chats survive a visit to another screen. */}
           <div className={route === 'sessions' ? 'relative h-full' : 'hidden'}>
