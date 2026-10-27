@@ -9,6 +9,7 @@ import {
   EMPTY_SESSION_GROUPS,
   groupOf,
   migrateConfig,
+  MIGRATIONS,
   moveBy,
   moveGroupBy,
   moveGroupOnto,
@@ -236,7 +237,7 @@ describe('attention', () => {
 
 describe('config version 3', () => {
   it('migrates a version 2 document unchanged, with the notification switches on', () => {
-    const migrated = migrateConfig({ version: 2, profiles: [{ id: 'acme', name: 'Acme' }] })
+    const migrated = migrateConfig({ version: 2, profiles: [{ id: 'acme', name: 'Acme' }] }, MIGRATIONS, 3)
     expect(migrated).toEqual({ version: 3, profiles: [{ id: 'acme', name: 'Acme' }] })
     const parsed = parseConfig({ version: 2, options: { claudePlanUsage: true } })
     expect(parsed.version).toBe(CONFIG_VERSION)

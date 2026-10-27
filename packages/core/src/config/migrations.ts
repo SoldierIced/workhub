@@ -15,7 +15,10 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // 2 -> 3: sidebar session groups (`sessionGroups`) and the notification switches in `options`.
   // Both are optional and default, so the document is unchanged; the bump keeps an older Workhub
   // from loading the file and dropping the groups on its next save.
-  2: (raw) => raw
+  2: (raw) => raw,
+  // 3 -> 4 (P6a, chat watcher and automations): `chatWatcher` and `automations`. Both are optional
+  // and default, so the document is unchanged; the bump keeps an older Workhub from dropping them.
+  3: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {
