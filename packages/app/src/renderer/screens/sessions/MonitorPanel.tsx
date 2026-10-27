@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { formatTokens } from '../../lib/home'
 import type { SessionData } from '../../store'
+import { SlackThreadsSection } from './SlackThreadsSection'
 
 const FIELD_LABEL: Record<MonitorField, MessageKey> = {
   title: 'monitor.title',
@@ -189,6 +190,7 @@ export function MonitorPanel({ data }: { data: SessionData }) {
           ))}
         </ListSection>
       )}
+      <SlackThreadsSection view={v} />
     </aside>
   )
 }

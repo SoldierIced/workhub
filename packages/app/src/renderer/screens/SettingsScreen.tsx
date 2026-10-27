@@ -25,7 +25,7 @@ import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { HealthSettings } from './HealthSettings'
-import { SlackSettings } from './SlackSettings'
+import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
 import { TrackerSettings } from './TrackerSettings'
 import { UpdatesSettings } from './UpdatesSettings'
@@ -610,6 +610,9 @@ function ProfilesSection({ snap, run }: SectionProps) {
                 <Switch checked={form.modules[m]} onChange={(on) => setForm({ ...form, modules: { ...form.modules, [m]: on } })} />
               </SwitchRow>
             ))}
+          </FieldGroup>
+          <FieldGroup legend={t('nav.slack')}>
+            <SlackArchiveField value={form.slackArchiveMinutes} onChange={(minutes) => setForm({ ...form, slackArchiveMinutes: minutes })} />
           </FieldGroup>
         </>
       }

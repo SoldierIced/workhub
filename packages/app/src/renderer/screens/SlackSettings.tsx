@@ -1,6 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
+  DEFAULT_THREAD_ARCHIVE_MINUTES,
+  MIN_THREAD_ARCHIVE_MINUTES,
   MIN_WATCH_INTERVAL_MINUTES,
   type ChatWatcherSettings,
   type Result,
@@ -15,6 +17,26 @@ import { useI18n } from '../i18n/I18nProvider'
 type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 
 const DAYS = [1, 2, 3, 4, 5, 6, 0]
+
+/** Settings → Profiles: "archive Slack threads after N minutes without activity". */
+export function SlackArchiveField({ value, onChange }: { value: number | undefined; onChange: (minutes: number | undefined) => void }) {
+  const { t } = useI18n()
+  return (
+    <Field label={t('slack.archiveAfter')} hint={t('slack.archiveAfterHint')}>
+      <Input
+        type="number"
+        min={MIN_THREAD_ARCHIVE_MINUTES}
+        step={1}
+        className="w-28"
+        value={value ?? DEFAULT_THREAD_ARCHIVE_MINUTES}
+        onChange={(e) => {
+          const n = Math.floor(Number(e.target.value))
+          onChange(Number.isFinite(n) ? Math.max(MIN_THREAD_ARCHIVE_MINUTES, n) : undefined)
+        }}
+      />
+    </Field>
+  )
+}
 
 /** Settings → Slack: what the watcher reads, when, with which account, and the tracking hook per account. */
 export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {

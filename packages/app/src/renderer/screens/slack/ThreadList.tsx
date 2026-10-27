@@ -1,5 +1,5 @@
-import { ExternalLink, MessageSquareReply, RotateCcw, SquareArrowOutUpRight, Trash2, X } from 'lucide-react'
-import { hasUnread, lastActivity, type TrackedThread } from '@workhub/core'
+import { Archive, ChevronRight, ExternalLink, MessageSquareReply, RotateCcw, SquareArrowOutUpRight, Trash2, X } from 'lucide-react'
+import { archivedThreadIds, hasUnread, threadActivity, type TrackedThread } from '@workhub/core'
 import { Badge, IconButton, Switch } from '../../components/atoms'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
@@ -11,15 +11,35 @@ export interface ThreadActions {
   compact?: boolean
 }
 
-/** The threads of one session, the most recently active first. */
-export function ThreadGroup({ threads, me, now, actions }: { threads: TrackedThread[]; me: string; now: number; actions: ThreadActions }) {
-  const byActivity = [...threads].sort((a, b) => lastActivity(b) - lastActivity(a))
+/** Active threads first; the archived ones (quiet past the profile's threshold) fold into "Archived (n)". */
+export function ThreadGroup({ threads, me, archiveMinutes, now, actions }: { threads: TrackedThread[]; me: string; archiveMinutes: number; now: number; actions: ThreadActions }) {
+  const { t } = useI18n()
+  const archived = archivedThreadIds(threads, now, archiveMinutes)
+  const byActivity = [...threads].sort((a, b) => threadActivity(b) - threadActivity(a))
+  const active = byActivity.filter((th) => !archived.has(th.id))
+  const folded = byActivity.filter((th) => archived.has(th.id))
   return (
-    <ul className="flex flex-col gap-1">
-      {byActivity.map((th) => (
-        <ThreadRow key={th.id} thread={th} me={me} now={now} actions={actions} />
-      ))}
-    </ul>
+    <div className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-1">
+        {active.map((th) => (
+          <ThreadRow key={th.id} thread={th} me={me} now={now} actions={actions} />
+        ))}
+      </ul>
+      {folded.length > 0 && (
+        <details className="group opacity-60 hover:opacity-100" data-testid="archived-threads">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-sm text-muted select-none hover:text-text">
+            <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" aria-hidden />
+            <Archive className="size-3.5" aria-hidden />
+            {t('slack.archived', { count: folded.length })}
+          </summary>
+          <ul className="mt-1 flex flex-col gap-1">
+            {folded.map((th) => (
+              <ThreadRow key={th.id} thread={th} me={me} now={now} actions={actions} />
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   )
 }
 
@@ -39,7 +59,7 @@ function ThreadRow({ thread: th, me, now, actions }: { thread: TrackedThread; me
       </div>
       <div className="mt-0.5 flex items-center gap-2 text-xs text-subtle">
         <span className="truncate">{last ? `${last.user}: ${last.text}` : t('slack.noReplies')}</span>
-        <span className="ml-auto shrink-0">{relativeTime(lastActivity(th), now, locale)}</span>
+        <span className="ml-auto shrink-0">{relativeTime(threadActivity(th), now, locale)}</span>
       </div>
       {!actions.compact && (
         <div className="mt-1.5 flex items-center gap-1">

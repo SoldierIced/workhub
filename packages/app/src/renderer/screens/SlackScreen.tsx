@@ -1,6 +1,6 @@
 import { MessageSquare, Play, Plus, Settings } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { hasUnread, plainText, sessionIdentity, type Profile, type TrackedThread } from '@workhub/core'
+import { hasUnread, plainText, sessionIdentity, threadArchiveMinutes, type Profile, type TrackedThread } from '@workhub/core'
 import type { SlackSnapshot } from '@shared/chat-api'
 import { Badge, Button, Input, Spinner } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, useToast } from '../components/molecules'
@@ -103,7 +103,7 @@ export function SlackScreen({ profile, sessions, onOpenSession, onOpenSettings }
                 </Button>
               </form>
               {snap.threads.length === 0 && <p className="text-sm text-subtle">{t('slack.noThreads')}</p>}
-              <ThreadsBySession snap={snap} sessions={sessions} now={now} onOpen={(th) => void openOwner(th)} />
+              <ThreadsBySession snap={snap} sessions={sessions} archiveMinutes={threadArchiveMinutes(profile)} now={now} onOpen={(th) => void openOwner(th)} />
             </CardBody>
           </Card>
           <div className="flex flex-col gap-4">
@@ -126,7 +126,7 @@ function StatusLine({ snap, now }: { snap: SlackSnapshot; now: number }) {
 }
 
 /** One group per owning session (its sidebar label), then the threads with no session. */
-function ThreadsBySession({ snap, sessions, now, onOpen }: { snap: SlackSnapshot; sessions: SessionData[]; now: number; onOpen: (th: TrackedThread) => void }) {
+function ThreadsBySession({ snap, sessions, archiveMinutes, now, onOpen }: { snap: SlackSnapshot; sessions: SessionData[]; archiveMinutes: number; now: number; onOpen: (th: TrackedThread) => void }) {
   const { t } = useI18n()
   const groups = new Map<string, TrackedThread[]>()
   for (const th of snap.threads) groups.set(th.owner ?? '', [...(groups.get(th.owner ?? '') ?? []), th])
@@ -142,7 +142,7 @@ function ThreadsBySession({ snap, sessions, now, onOpen }: { snap: SlackSnapshot
         .map(([owner, threads]) => (
           <section key={owner || 'none'} aria-label={labelOf(owner)} data-testid="thread-group">
             <h3 className="mb-1.5 text-sm font-semibold text-muted">{labelOf(owner)}</h3>
-            <ThreadGroup threads={threads} me={snap.me} now={now} actions={{ onOpenSession: onOpen }} />
+            <ThreadGroup threads={threads} me={snap.me} archiveMinutes={archiveMinutes} now={now} actions={{ onOpenSession: onOpen }} />
           </section>
         ))}
     </>

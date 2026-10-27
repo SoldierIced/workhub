@@ -170,7 +170,8 @@ const profile = z.object({
   agentIds: z.array(id).optional(),
   modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
   folders: z.array(z.string().min(1)).optional(),
-  health: healthSettings.optional()
+  health: healthSettings.optional(),
+  slackArchiveMinutes: z.number().int().min(1).optional()
 })
 
 const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string() })
