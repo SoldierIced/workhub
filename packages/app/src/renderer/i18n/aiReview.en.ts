@@ -2,7 +2,6 @@
 export const aiReviewEn = {
   'aiReview.button': 'Review before PR',
   'aiReview.buttonHint': 'A reviewer agent reads this branch against its base in one exhaustive pass and sends the findings here',
-  'aiReview.started': 'AI review started on {branch}',
   'aiReview.blocked.disabled': 'AI review is off for this profile (Settings → Profiles).',
   'aiReview.blocked.notRepo': 'This session\'s folder is not a git repository.',
   'aiReview.blocked.detached': 'HEAD is detached: check out a branch to review it.',

@@ -149,7 +149,6 @@ export const setupEn = {
   'voice.shortcutNote': 'Stop speaking: {keys}',
   'voice.session.on': 'Stop reading replies aloud',
   'voice.session.off': 'Read replies aloud',
-  'voice.session.stopNow': 'Stop speaking',
   // Notifications master switch
   'notify.master': 'Show notifications',
   'notify.masterHint': 'The master switch: off silences every notification below, whatever their own switches say.',

@@ -2,13 +2,14 @@
  * The menu bar popover (macOS, Windows): the same state as the native tray menu, shaped for a
  * small window instead of a list of menu items. It mirrors Workhub 1's menu bar panel: a header
  * with a summary and quick buttons, the sessions that need the user, the other open sessions,
- * usage bars per agent account, pull requests, Health, Slack, recent notifications and a footer.
+ * usage bars per agent account, pull requests, automations, Health, Slack, recent notifications and a footer.
  * Pure data: the renderer words it, the main process positions the window (popover-position.ts).
  */
 import { statusLevel, type StatusLevel } from '../domain/attention'
 import type { SessionState } from '../domain/session'
 import type { HealthState } from '../health/types'
-import { TRAY_ROUTES, trayAttention, type TrayAction, type TraySession, type TrayRoute, type TraySlackHealth, type TrayState } from './menu'
+import type { AutomationHealth } from '../automations/engine'
+import { TRAY_ROUTES, trayAttention, type TrayAction, type TrayAutomation, type TraySession, type TrayRoute, type TraySlackHealth, type TrayState } from './menu'
 
 export type TrayTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 
@@ -38,6 +39,10 @@ export interface TrayPopoverUsageAccount {
   windows: TrayPopoverUsageWindow[]
 }
 
+export interface TrayPopoverAutomation extends TrayAutomation {
+  tone: TrayTone
+}
+
 export interface TrayPopoverView {
   appName: string
   summary: { open: number; running: number; attention: number }
@@ -52,6 +57,8 @@ export interface TrayPopoverView {
   usage: TrayPopoverUsageAccount[]
   pullRequests: { toReview: number; mine: number } | null
   prEvents: { profileId: string; url: string; title: string }[]
+  /** Enabled automations, running and failing ones first. */
+  automations: TrayPopoverAutomation[]
   health: { state: HealthState | null; degraded: string[]; tone: TrayTone } | null
   slack: { health: TraySlackHealth; open: number; unread: number; error?: string; tone: TrayTone } | null
   notifications: { id: string; title: string; at?: number }[]
@@ -70,6 +77,10 @@ export function usageTone(percent: number): TrayTone {
   if (percent >= 75) return 'warning'
   return 'success'
 }
+
+const AUTOMATION_TONE: Record<AutomationHealth, TrayTone> = { off: 'neutral', idle: 'success', waiting: 'warning', paused: 'neutral', failing: 'danger', running: 'info' }
+const AUTOMATION_ORDER: AutomationHealth[] = ['failing', 'running', 'waiting', 'paused', 'idle', 'off']
+export const TRAY_POPOVER_AUTOMATION_LIMIT = 5
 
 const HEALTH_TONE: Record<HealthState, TrayTone> = { healthy: 'success', degraded: 'warning', blind: 'neutral', unreachable: 'danger' }
 const SLACK_TONE: Record<TraySlackHealth, TrayTone> = { off: 'neutral', watching: 'success', checking: 'info', paused: 'neutral', failing: 'danger' }
@@ -124,6 +135,11 @@ export function buildTrayPopover(state: TrayState, now = Date.now()): TrayPopove
     }),
     pullRequests: state.pullRequests ? { ...state.pullRequests } : null,
     prEvents: state.prEvents.slice(0, TRAY_POPOVER_PR_EVENT_LIMIT).map((e) => ({ ...e })),
+    automations: [...(state.automations ?? [])]
+      .filter((a) => a.health !== 'off')
+      .sort((a, b) => AUTOMATION_ORDER.indexOf(a.health) - AUTOMATION_ORDER.indexOf(b.health))
+      .slice(0, TRAY_POPOVER_AUTOMATION_LIMIT)
+      .map((a) => ({ ...a, tone: AUTOMATION_TONE[a.health] })),
     health: state.health
       ? { state: state.health.state, degraded: [...state.health.degraded], tone: state.health.state ? HEALTH_TONE[state.health.state] : 'neutral' }
       : null,
@@ -169,6 +185,7 @@ export function parseTrayAction(raw: unknown): TrayAction | null {
     case 'open':
     case 'newSession':
     case 'resume':
+    case 'clearNotifications':
     case 'checkForUpdates':
     case 'quit':
       return { kind: a['kind'] }

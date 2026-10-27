@@ -15,10 +15,7 @@ export const sessionMonitorEs: Record<keyof typeof sessionMonitorEn, string> = {
   'header.slackHint': 'Las respuestas en estos hilos despiertan esta sesión. Haz clic para verlos en el monitor.',
   'header.more': 'Más',
   'monitor.resize': 'Cambiar el ancho del monitor',
-  'monitor.notInV2': 'Aún no en v2',
   'monitor.notReported': 'el agente no lo informa',
-  'monitor.flow': 'Flujo',
-  'monitor.flowMissing': 'Los flujos todavía no forman parte de Workhub 2, así que no hay un flujo para mostrar en esta sesión.',
   'monitor.ticketsCount.one': 'Ticket',
   'monitor.ticketsCount.other': 'Tickets · {count}',
   'monitor.prsCount.one': 'Pull request',
@@ -47,7 +44,8 @@ export const sessionMonitorEs: Record<keyof typeof sessionMonitorEn, string> = {
   'monitor.cacheRead': 'Contexto releído de la caché',
   'monitor.ofSubagents': 'De eso, subagentes',
   'monitor.requests': 'Tokens nuevos por request',
-  'monitor.requestsMissing': 'Workhub 2 todavía no lee los tokens de cada request.',
+  'monitor.requestTip': '{value} tokens nuevos',
+  'monitor.requestsSummary': '{count} requests en este turno · máx. {max}',
   'monitor.activity': 'Actividad',
   'monitor.noToolCalls': 'Todavía no hay llamadas a herramientas',
   'monitor.touchedPrs': 'Pull requests tocados',
@@ -59,6 +57,4 @@ export const sessionMonitorEs: Record<keyof typeof sessionMonitorEn, string> = {
   'monitor.files.other': '{count} archivos',
   'monitor.repos.one': '{count} repo',
   'monitor.repos.other': '{count} repos',
-  'monitor.memory': 'Memoria',
-  'monitor.memoryMissing': 'Workhub 2 todavía no sabe en qué proyecto de memoria guarda esta sesión.'
 }

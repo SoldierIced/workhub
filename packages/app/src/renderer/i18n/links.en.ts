@@ -4,7 +4,6 @@ export const linksEn = {
   'links.pr.openSessionHint': 'Open the session linked to this pull request, or start one in the matching folder',
   'links.pr.review': 'Ask Claude to review',
   'links.pr.reviewHint': 'Start a Claude session with a review prompt in the composer; nothing is sent until you press Send',
-  'links.ticket.start': 'Start session about this ticket',
   'links.ticket.startShort': 'Start a session about {key}',
   'links.pastSessions': 'Past sessions',
   'links.pastSessions.empty': 'No past sessions mention this.',

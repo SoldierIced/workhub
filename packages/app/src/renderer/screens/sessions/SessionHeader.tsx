@@ -10,7 +10,7 @@ import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
 import { sessionModelPicker, sessionModePicker } from '../../lib/agent-pickers'
 import { readPrefs, rememberMode, rememberModel, setPrefs } from '../../lib/prefs'
-import { abbreviateFolder, activityElapsed, activityOf, headerDensity, isClockActivity, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
+import { abbreviateFolder, activityElapsed, activityOf, headerDensity, isClockActivity, permissionModeLabel, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
 import { useNow } from '../../lib/usage'
 import { awaitingAnswer, pushItem, type SessionData } from '../../store'
 import { AiReviewButton } from './AiReviewPanel'
@@ -178,7 +178,7 @@ function PermissionChip({ view: v }: { view: SessionView }) {
       icon={mode?.unattended ? <ShieldAlert className="size-3" aria-hidden /> : undefined}
       className="shrink-0"
     >
-      {t('session.permissionMode', { mode: mode ? mode.label : v.state === 'starting' ? t('session.pending') : t('session.unknown') })}
+      {t('session.permissionMode', { mode: mode ? permissionModeLabel(mode, v.currentModeId, t) : v.state === 'starting' ? t('session.pending') : t('session.unknown') })}
     </Badge>
   )
 }
@@ -297,8 +297,8 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
         </span>
         <SlackChip view={v} />
         {unattended && !chipsInline && (
-          <span className="shrink-0 text-warning" title={v.permissionMode?.label}>
-            <ShieldAlert className="size-3.5" aria-label={t('session.permissionMode', { mode: v.permissionMode?.label ?? '' })} />
+          <span className="shrink-0 text-warning" title={v.permissionMode ? permissionModeLabel(v.permissionMode, v.currentModeId, t) : undefined}>
+            <ShieldAlert className="size-3.5" aria-label={t('session.permissionMode', { mode: v.permissionMode ? permissionModeLabel(v.permissionMode, v.currentModeId, t) : '' })} />
           </span>
         )}
       </div>

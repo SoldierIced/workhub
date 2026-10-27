@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import {
+  ActiveClock,
   accountAgent,
   BUILTIN_AGENTS,
   canSetModel,
@@ -45,6 +46,10 @@ interface ManagedSession {
   engine: Engine
   /** Set while the session hands over from one engine to the other. */
   switching: boolean
+  /** Working time from the session's own state changes, used while the agent reports none. */
+  clock: ActiveClock
+  /** The agent (or its transcript) reported its own working time: the derived one is dropped. */
+  reportsActiveTime: boolean
   /** The last transcript snapshot sent, to skip polls that found nothing new. */
   lastMonitor?: string
   /** An AI reviewer: started in the agent's most read-only mode, chat only. */
@@ -226,6 +231,8 @@ export class SessionManager {
       openPermissions: new Set(),
       console: new ConsoleActivity(),
       consoleStartedAt: 0,
+      clock: new ActiveClock(),
+      reportsActiveTime: false,
       toolStatus: new Map()
     }
     this.sessions.set(view.id, session)
@@ -608,7 +615,10 @@ export class SessionManager {
     this.polling = true
     try {
       const prefixes = ticketPrefixes(await this.deps.config.current())
-      for (const s of this.sessions.values()) await this.pollOne(s, prefixes)
+      for (const s of this.sessions.values()) {
+        await this.pollOne(s, prefixes)
+        if (s.clock.isBusy()) this.emitDerivedActive(s)
+      }
     } finally {
       this.polling = false
     }
@@ -622,6 +632,7 @@ export class SessionManager {
       .read({ agentSessionId: s.view.agentSessionId, cwd: s.view.cwd, configDir: s.account?.configDir, ticketPrefixes: ticketPrefixesNow })
       .catch(() => null)
     const key = snapshot && JSON.stringify(snapshot)
+    if (snapshot?.activeTimeMs !== undefined) s.reportsActiveTime = true
     if (!snapshot || key === s.lastMonitor) return
     s.lastMonitor = key ?? undefined
     for (const t of snapshot.toolCalls ?? []) s.toolStatus.set(t.id, { status: t.status, startedAt: t.startedAt })
@@ -659,6 +670,7 @@ export class SessionManager {
         if (e.models.length) this.deps.onAgentOptions?.(s.agent.id, s.account?.id ?? null, { models: e.models, modes: s.view.availableModes ?? [] })
       }
     }
+    if (s && e.type === 'monitor' && e.snapshot.activeTimeMs !== undefined) s.reportsActiveTime = true
     if (s) this.track(s, e, channel)
     this.deps.emitEvent(e)
     if (s) this.checkPending(s)
@@ -686,6 +698,16 @@ export class SessionManager {
     const since = patch.state && patch.state !== s.view.state ? { stateSince: Date.now() } : {}
     s.view = { ...s.view, ...patch, ...since }
     this.deps.emitChanged(s.view)
+    if (patch.state && 'stateSince' in since) {
+      s.clock.observe(patch.state, s.view.stateSince ?? Date.now())
+      this.emitDerivedActive(s)
+    }
+  }
+
+  /** Working time counted from the session's state changes, for agents that report none. */
+  private emitDerivedActive(s: ManagedSession): void {
+    if (s.reportsActiveTime) return
+    this.deps.emitEvent({ sessionId: s.view.id, type: 'monitor', snapshot: { activeTimeMs: s.clock.ms(Date.now()) } })
   }
 
   /** The session's folder, for reads main does on its behalf (local changes). */

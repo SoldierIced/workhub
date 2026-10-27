@@ -59,18 +59,3 @@ export function nextFocus(current: number, count: number, key: string): number |
       return null
   }
 }
-
-/** A small mark per agent (a letter on the agent's hue) until the app has agent icons of its own. */
-export function agentGlyph(agentId: string | undefined): { letter: string; hue: number } {
-  const id = (agentId ?? '').toLowerCase()
-  if (id.startsWith('claude')) return { letter: 'C', hue: 22 }
-  if (id.startsWith('codex')) return { letter: 'X', hue: 210 }
-  if (id.startsWith('kiro')) return { letter: 'K', hue: 265 }
-  if (id.startsWith('opencode')) return { letter: 'O', hue: 150 }
-  if (id.startsWith('gemini')) return { letter: 'G', hue: 225 }
-  if (id.startsWith('shell')) return { letter: '$', hue: 200 }
-  const letter = id.match(/\p{L}|\p{N}/u)?.[0]?.toUpperCase() ?? '?'
-  let hue = 0
-  for (const ch of id) hue = (hue * 31 + ch.codePointAt(0)!) % 360
-  return { letter, hue }
-}
