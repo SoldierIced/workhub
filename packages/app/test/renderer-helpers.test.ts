@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ImportPlan } from '@workhub/core'
 import { safeHref } from '../src/renderer/components/molecules/Markdown'
-import { isEmptyPlan, notesFor } from '../src/renderer/components/organisms/Workhub1Import'
+import { isEmptyPlan, mergedPrefs, notesFor, optionRows, otherNotes } from '../src/renderer/components/organisms/Workhub1Import'
 import { recentFolders, usageGroups, type SessionSummary } from '../src/renderer/lib/home'
 import { imageInputFromDataUrl } from '../src/renderer/lib/images'
 import { historyAccounts, historyAgents } from '../src/renderer/screens/HistoryScreen'
@@ -158,5 +158,35 @@ describe('Workhub 1 import preview', () => {
     expect(notesFor(plan, 'connections.jira-acme')).toEqual([{ code: 'reenterSecret', path: 'connections.jira-acme' }])
     expect(isEmptyPlan(plan)).toBe(false)
     expect(isEmptyPlan({ ...plan, connections: [] })).toBe(true)
+    expect(isEmptyPlan({ ...plan, connections: [], options: { claudePlanUsage: true } })).toBe(false)
+  })
+
+  const t = (key: string, params?: Record<string, string>) => `${key}${params ? JSON.stringify(params) : ''}`
+  const full: ImportPlan = {
+    ...plan,
+    automations: [],
+    options: { claudePlanUsage: true },
+    sessionGroups: { groups: [{ id: 'g', name: 'G', collapsed: false, members: [{ key: 'k1', title: 't', agentKey: 'claude', cwd: '/x' }] }], top: [{ kind: 'group', id: 'g' }, { kind: 'session', key: 'k2' }] },
+    prefs: { models: { 'claude:main': 'opus' }, language: 'es' },
+    notes: [...plan.notes, { code: 'notSupported', path: 'settings', detail: 'terminal.theme' }]
+  }
+
+  it('lists the app-wide parts of the plan as option rows', () => {
+    expect(optionRows(full, t).map((r) => [r.id, r.meta])).toEqual([
+      ['options', 'import.optPlanUsage'],
+      ['sessionGroups', 'import.sessionGroupsMeta{"groups":"1","sessions":"2"}'],
+      ['models', 'opus'],
+      ['language', 'es']
+    ])
+  })
+
+  it('lists notes with no row of their own, leaving out "already here"', () => {
+    expect(otherNotes(full)).toEqual([{ code: 'notSupported', path: 'settings', detail: 'terminal.theme' }])
+  })
+
+  it('keeps the model and language already chosen in Workhub 2', () => {
+    expect(mergedPrefs({ language: 'system', models: { 'claude:main': 'sonnet' } }, full.prefs)).toEqual({ language: 'es', models: { 'claude:main': 'sonnet' } })
+    expect(mergedPrefs({ language: 'en', models: {} }, full.prefs)).toEqual({ models: { 'claude:main': 'opus' } })
+    expect(mergedPrefs({ language: 'en', models: {} }, undefined)).toEqual({})
   })
 })

@@ -258,4 +258,20 @@ describe('Workhub 1 settings (read-only import)', () => {
     expect(v1.profiles?.[0]).toMatchObject({ id: 'acme', githubScope: 'org:acme', folders: [{ path: '~/acme' }] })
     expect(v1.jira?.['acme']?.site).toBe('acme.example.com')
   })
+
+  it('reads the modules, options and sidebar keys, and leaves runtime state out', () => {
+    const v1 = workhub1SettingsFromPlist(readFileSync(join(fixtures, 'workhub1-modules.plist'), 'utf8'))
+    expect(v1.automations?.[0]).toMatchObject({ name: 'PR reviews', useSecondAccount: true, triggers: { slackChannelIds: ['C000REVIEW'] } })
+    expect(v1.slack).toMatchObject({ enabled: true, profileID: 'acme', channels: [{ id: 'C000REVIEW' }] })
+    // Threads are only counted: nothing but whether they are closed is kept.
+    expect(v1.slackThreads).toEqual([{ closed: false }, { closed: true }])
+    expect(v1.observability?.['acme']).toMatchObject({ elasticURL: 'https://elastic.example.com:9200', auth: { basic: { username: 'reader' } } })
+    expect(v1.openSessions?.groups).toHaveLength(1)
+    expect(v1.notifications).toEqual({ pullRequests: false, slack: false })
+    expect(v1).toMatchObject({ healthAlerts: false, usageChecker: '~/usageChecker', usageRefreshMinutes: 10, promptLanguage: 'spanish', appLanguage: 'es', sidebarProfile: 'acme' })
+    expect(v1.sessionModels).toEqual({ '.claude': 'opus' })
+    expect(v1.sessionEfforts).toEqual({ '.claude-work': 'medium' })
+    expect(v1.appearance).toEqual({ 'terminal.fontSize': 17, 'terminal.fontFamily': '' })
+    expect(JSON.stringify(v1)).not.toContain('cursors')
+  })
 })

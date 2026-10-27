@@ -4,7 +4,7 @@
  * property list without changing anything. Its JSON values are stored as `<data>` (base64).
  */
 import { execFile } from 'node:child_process'
-import type { Workhub1Settings } from '@workhub/core'
+import { WORKHUB1_APPEARANCE_KEYS, WORKHUB1_NOTIFICATION_CATEGORIES, type Workhub1Observability, type Workhub1Settings } from '@workhub/core'
 
 export const WORKHUB1_DOMAIN = 'com.nehuenfortes.workhub'
 
@@ -127,20 +127,92 @@ function json(value: PlistValue | undefined): unknown {
   return undefined
 }
 
-/** The parts of Workhub 1's defaults that Workhub 2 imports. */
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && !(v instanceof Uint8Array)
+
+const OBSERVABILITY_PREFIX = 'settings.observability.'
+const MODEL_PREFIX = 'session.model.'
+const EFFORT_PREFIX = 'session.effort.'
+
+/**
+ * The parts of Workhub 1's defaults that Workhub 2 imports or reports. Runtime state (runs,
+ * cursors, seen events, snapshots, flows) is never read into the result.
+ */
 export function workhub1SettingsFromPlist(xml: string): Workhub1Settings {
   const root = parsePlist(xml)
-  if (!root || typeof root !== 'object' || Array.isArray(root) || root instanceof Date || root instanceof Uint8Array) return {}
+  if (!isRecord(root)) return {}
   const dict = root as Record<string, PlistValue>
   const settings: Workhub1Settings = {}
-  const main = json(dict['settings.claude.main'])
-  if (main && typeof main === 'object') settings.mainAccount = main as Workhub1Settings['mainAccount']
-  const second = json(dict['settings.claude.second'])
-  if (second && typeof second === 'object') settings.secondAccount = second as Workhub1Settings['secondAccount']
-  const profiles = json(dict['profiles.definitions'])
-  if (Array.isArray(profiles)) settings.profiles = profiles as Workhub1Settings['profiles']
-  const jira = json(dict['connections.jira'])
-  if (jira && typeof jira === 'object' && !Array.isArray(jira)) settings.jira = jira as Workhub1Settings['jira']
+  const object = (key: string) => {
+    const v = json(dict[key])
+    return isRecord(v) ? v : undefined
+  }
+  const list = (key: string) => {
+    const v = json(dict[key])
+    return Array.isArray(v) ? v : undefined
+  }
+  const bool = (key: string) => (typeof dict[key] === 'boolean' ? (dict[key] as boolean) : undefined)
+  const number = (key: string) => (typeof dict[key] === 'number' ? (dict[key] as number) : undefined)
+  const string = (key: string) => (typeof dict[key] === 'string' ? (dict[key] as string) : undefined)
+
+  const main = object('settings.claude.main')
+  if (main) settings.mainAccount = main as Workhub1Settings['mainAccount']
+  const second = object('settings.claude.second')
+  if (second) settings.secondAccount = second as Workhub1Settings['secondAccount']
+  const profiles = list('profiles.definitions')
+  if (profiles) settings.profiles = profiles as Workhub1Settings['profiles']
+  const jira = object('connections.jira')
+  if (jira) settings.jira = jira as Workhub1Settings['jira']
+  const automations = list('automations.items')
+  if (automations) settings.automations = automations as Workhub1Settings['automations']
+  const slack = object('slack.settings')
+  if (slack) settings.slack = slack as Workhub1Settings['slack']
+  const threads = list('slack.threads')
+  if (threads) settings.slackThreads = threads.filter(isRecord).map((t) => ({ closed: t['closed'] === true }))
+  const openSessions = object('workbench.openSessions')
+  if (openSessions) settings.openSessions = openSessions as Workhub1Settings['openSessions']
+
+  for (const key of Object.keys(dict)) {
+    if (key.startsWith(OBSERVABILITY_PREFIX)) {
+      const obs = object(key)
+      if (obs) settings.observability = { ...settings.observability, [key.slice(OBSERVABILITY_PREFIX.length)]: obs as Workhub1Observability }
+    } else if (key.startsWith(MODEL_PREFIX) && string(key)) {
+      settings.sessionModels = { ...settings.sessionModels, [key.slice(MODEL_PREFIX.length)]: string(key)! }
+    } else if (key.startsWith(EFFORT_PREFIX) && string(key)) {
+      settings.sessionEfforts = { ...settings.sessionEfforts, [key.slice(EFFORT_PREFIX.length)]: string(key)! }
+    }
+  }
+
+  const notifications: NonNullable<Workhub1Settings['notifications']> = {}
+  if (bool('settings.notifications') !== undefined) notifications.all = bool('settings.notifications')!
+  for (const category of WORKHUB1_NOTIFICATION_CATEGORIES) {
+    const v = bool(`settings.notifications.${category}`)
+    if (v !== undefined) notifications[category] = v
+  }
+  if (Object.keys(notifications).length) settings.notifications = notifications
+  const healthAlerts = bool('settings.healthAlerts')
+  if (healthAlerts !== undefined) settings.healthAlerts = healthAlerts
+  const prBabysitter = bool('settings.prBabysitter')
+  if (prBabysitter !== undefined) settings.prBabysitter = prBabysitter
+  const healthRefresh = number('settings.healthRefreshMinutes')
+  if (healthRefresh !== undefined) settings.healthRefreshMinutes = healthRefresh
+  const usageRefresh = number('settings.usageRefreshMinutes')
+  if (usageRefresh !== undefined) settings.usageRefreshMinutes = usageRefresh
+  const usageChecker = string('settings.usageChecker')
+  if (usageChecker !== undefined) settings.usageChecker = usageChecker
+  const promptLanguage = string('settings.promptLanguage')
+  if (promptLanguage !== undefined) settings.promptLanguage = promptLanguage
+  const appleLanguages = dict['AppleLanguages']
+  const appLanguage = string('settings.appLanguage') ?? (Array.isArray(appleLanguages) && typeof appleLanguages[0] === 'string' ? appleLanguages[0] : undefined)
+  if (appLanguage !== undefined && appLanguage !== 'system') settings.appLanguage = appLanguage
+  const sidebarProfile = string('sidebar.profile')
+  if (sidebarProfile) settings.sidebarProfile = sidebarProfile
+
+  const appearance: NonNullable<Workhub1Settings['appearance']> = {}
+  for (const key of WORKHUB1_APPEARANCE_KEYS) {
+    const v = dict[key]
+    if (typeof v === 'string' || typeof v === 'number') appearance[key] = v
+  }
+  if (Object.keys(appearance).length) settings.appearance = appearance
   return settings
 }
 
