@@ -101,6 +101,8 @@ export interface SessionMonitorSnapshot {
   context?: ContextUsage
   toolCalls?: ToolCallSummary[]
   subagents?: SubagentSummary[]
+  /** New tokens (input + cache write + output, cache re-reads left out) of each request of the current turn, in order. */
+  turnRequests?: number[]
   /** Time the agent spent working, in ms. */
   activeTimeMs?: number
   planUsage?: PlanUsageWindow[]

@@ -13,10 +13,7 @@ export const sessionMonitorEn = {
   'header.slackHint': 'Replies in these threads wake this session. Click to show them in the monitor.',
   'header.more': 'More',
   'monitor.resize': 'Resize the monitor',
-  'monitor.notInV2': 'Not in v2 yet',
   'monitor.notReported': 'not reported by the agent',
-  'monitor.flow': 'Flow',
-  'monitor.flowMissing': 'Flows are not part of Workhub 2 yet, so there is no flow to show for this session.',
   'monitor.ticketsCount.one': 'Ticket',
   'monitor.ticketsCount.other': 'Tickets · {count}',
   'monitor.prsCount.one': 'Pull request',
@@ -45,7 +42,8 @@ export const sessionMonitorEn = {
   'monitor.cacheRead': 'Context re-read from cache',
   'monitor.ofSubagents': 'Of which subagents',
   'monitor.requests': 'New tokens per request',
-  'monitor.requestsMissing': 'Workhub 2 does not read the tokens of each request yet.',
+  'monitor.requestTip': '{value} new tokens',
+  'monitor.requestsSummary': '{count} requests this turn · max {max}',
   'monitor.activity': 'Activity',
   'monitor.noToolCalls': 'No tool calls yet',
   'monitor.touchedPrs': 'Pull requests touched',
@@ -56,7 +54,5 @@ export const sessionMonitorEn = {
   'monitor.files.one': '{count} file',
   'monitor.files.other': '{count} files',
   'monitor.repos.one': '{count} repo',
-  'monitor.repos.other': '{count} repos',
-  'monitor.memory': 'Memory',
-  'monitor.memoryMissing': 'Workhub 2 does not know which memory project this session saves to yet.'
+  'monitor.repos.other': '{count} repos'
 } as const

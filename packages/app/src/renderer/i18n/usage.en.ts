@@ -7,13 +7,11 @@ export const usageEn = {
   'agentUsage.defaultAccount': 'Default account',
   'agentUsage.empty': 'No usage yet. Turn on reading per agent in Settings → Usage, or start a session that reports it.',
   'agentUsage.openSettings': 'Usage settings',
-  'agentUsage.resetsIn': 'resets in {time}',
   'agentUsage.asOf': 'from a session file, {when}',
   'agentUsage.readFailed': 'Could not read the usage',
   'agentUsage.ceiling': 'ceiling {ceiling}%',
   'agentUsage.state.warn': 'Near ceiling',
   'agentUsage.state.block': 'Over ceiling',
-  'agentUsage.kiro': 'Remaining credits and limits are not available: Kiro does not expose them locally.',
   'agentUsage.kiroCredits': 'Sessions in this run used {credits} credits.',
 
   'agentUsage.gate.block': '{account} is at {percent}% of its {window} window, past your {ceiling}% ceiling.',

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  automationLine,
+  buildTrayMenu,
   buildTrayPopover,
   parseTrayAction,
   popoverPlacement,
@@ -201,5 +203,39 @@ describe('popover placement', () => {
   it('anchors at the cursor when the platform gives no tray bounds', () => {
     const p = popoverPlacement({ tray: { x: 0, y: 0, width: 0, height: 0 }, ...win, fallback: { x: 1800, y: 1060 }, width: 360, height: 400 })
     expect(p).toMatchObject({ edge: 'bottom', x: 1920 - 360 - 6, y: 1032 - 400 - 6 })
+  })
+})
+
+describe('tray popover automations and notifications', () => {
+  it('lists enabled automations, failing and running first, with a tone', () => {
+    const automations = [
+      { id: 'a', name: 'Idle one', health: 'idle' as const, startedToday: 2 },
+      { id: 'b', name: 'Off one', health: 'off' as const, startedToday: 0 },
+      { id: 'c', name: 'Broken', health: 'failing' as const, startedToday: 1, lastError: 'boom' },
+      { id: 'd', name: 'Busy', health: 'running' as const, startedToday: 3 }
+    ]
+    const view = buildTrayPopover(state({ automations }), NOW)
+    expect(view.automations.map((a) => [a.id, a.tone])).toEqual([['c', 'danger'], ['d', 'info'], ['a', 'success']])
+    expect(buildTrayPopover(state(), NOW).automations).toEqual([])
+  })
+
+  it('words each automation like Workhub 1 and accepts "Clear all"', () => {
+    const t = (key: string, p?: Record<string, string | number>) => `${key}${p ? JSON.stringify(p) : ''}`
+    expect(automationLine({ id: 'a', name: 'x', health: 'running', startedToday: 3 }, t)).toBe('tray.automation.running{"count":3}')
+    expect(automationLine({ id: 'a', name: 'x', health: 'waiting', startedToday: 0 }, t)).toBe('tray.automation.queued')
+    expect(automationLine({ id: 'a', name: 'x', health: 'failing', startedToday: 0, lastError: 'boom' }, t)).toBe('tray.automation.failing{"error":"boom"}')
+    expect(parseTrayAction({ kind: 'clearNotifications' })).toEqual({ kind: 'clearNotifications' })
+  })
+
+  it('puts the automations and a "Clear all" item in the native menu', () => {
+    const text = { t: (k: string) => k, tn: (b: string) => b, time: () => '', windowLabel: (w: string) => w }
+    const items = buildTrayMenu(
+      state({ automations: [{ id: 'a', name: 'PR reviews', health: 'idle', startedToday: 1 }], notifications: [{ id: 'n1', title: 'Hi' }] }),
+      text,
+      NOW
+    )
+    expect(items.some((i) => i.type === 'label' && i.label === 'tray.section.automations')).toBe(true)
+    const notifications = items.find((i) => i.type === 'submenu' && i.label === 'tray.section.notifications')
+    expect(notifications?.type === 'submenu' && notifications.items.at(-1)).toEqual({ type: 'action', label: 'tray.notifications.clear', action: { kind: 'clearNotifications' } })
   })
 })
