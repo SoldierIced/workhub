@@ -11,7 +11,7 @@ import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
 import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
 import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
-import { CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
+import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/transcript-kiro'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
@@ -24,15 +24,16 @@ import {
   knownAgents,
   planWorkhub1Import,
   resolveEffectiveAgents,
+  usageAccountKey,
   validateConfig,
   type Result,
   type WorkhubConfig
 } from '@workhub/core'
-import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference } from '../shared/api'
+import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference, UsageAlert } from '../shared/api'
 import type { PrNotification } from '../shared/pr-events-api'
 import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
-import { claudeAccounts, UsageService } from './claude-accounts'
+import { AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
@@ -151,14 +152,32 @@ const sessions = new SessionManager({
   emitReplay: (id, messages) => send('session:replay', id, messages),
   emitConfigChanged: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
 })
-const usage = new UsageService(
-  new ClaudePlanUsageReader({ userAgent: `workhub/${app.getVersion()}` }),
-  async () => {
+// Alerts found before the renderer listens (the first read runs at start-up) wait for it.
+let usageAlertsReady = false
+const pendingUsageAlerts: UsageAlert[] = []
+// Plan usage per Claude and Codex account (Settings → Usage, opt-in per agent). WORKHUB_DEMO_USAGE=1
+// serves synthetic windows instead, so the cards, budgets and gate can be shown without accounts.
+const demoUsage = process.env['WORKHUB_DEMO_USAGE'] === '1'
+const usage = new AgentUsageService({
+  providers: demoUsage
+    ? [new DemoUsageProvider('claude'), new DemoUsageProvider('codex')]
+    : [new ClaudePlanUsageReader({ userAgent: `workhub/${app.getVersion()}` }), new CodexPlanUsageReader()],
+  load: async () => {
     const config = await configuration.current()
-    return { enabled: appOptions(config).claudePlanUsage, accounts: claudeAccounts(config, homedir()) }
+    const options = appOptions(config)
+    const claude = usageAccounts(config, 'claude', homedir())
+    const codex = usageAccounts(config, 'codex', homedir())
+    return {
+      accounts: [...(options.claudePlanUsage ? claude : []), ...(options.codexUsage ? codex : [])],
+      budget: options.usageBudget,
+      knownKeys: [...claude, ...codex].map((a) => usageAccountKey(a.agentId, a.accountId))
+    }
   },
-  (u: AccountUsage[]) => send('usage:changed', u)
-)
+  emit: (u: AccountUsage[]) => send('usage:changed', u),
+  alert: (alerts: UsageAlert[]) => (usageAlertsReady ? send('usage:alerts', alerts) : pendingUsageAlerts.push(...alerts)),
+  alertState: new StateFile(join(dataDir, 'usage-alerts.json'), 500)
+})
+const budgetOf = (agentId: string, accountId: string | null) => usage.budgetOf(agentId, accountId)
 
 const updates = new UpdateService((s) => send('updates:changed', s))
 
@@ -179,6 +198,7 @@ const slack = new SlackWatcherService({
   startSession: (input) => sessions.start(input),
   home: homedir(),
   usage: () => usage.current(),
+  budgetOf,
   myPullRequests: async () => {
     const lists = await codeHost.lists((await configuration.current()).activeProfileId ?? null)
     return new Set(lists.mine.map((i) => canonicalUrl(i.pr.url)))
@@ -198,6 +218,7 @@ const automations = new AutomationService({
   state: new StateFile(join(dataDir, 'automations-state.json'), 300),
   home: homedir(),
   usage: () => usage.current(),
+  budgetOf,
   emit: (snap) => send('automations:changed', snap),
   configChanged: () => send('config:changed'),
   notice: (n) => send('slack:notice', n)
@@ -321,6 +342,11 @@ function registerIpc(): void {
     })
   )
   ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
+  ipc.on('usage:notify', (_e, n: { title: string; body: string }) => showUsageNotification(n))
+  ipc.on('usage:ready', () => {
+    usageAlertsReady = true
+    if (pendingUsageAlerts.length) send('usage:alerts', pendingUsageAlerts.splice(0))
+  })
 
   registerTicketIpc({
     ipcMain: ipc,
@@ -371,6 +397,25 @@ function showSessionNotification(n: SessionNotification): void {
     win.show()
     win.focus()
     send('notifications:open', n.sessionId)
+  })
+  notification.show()
+}
+
+/** A usage alert (worded by the renderer); a click brings the window up on Home. */
+function showUsageNotification(n: { title: string; body: string }): void {
+  if (!Notification.isSupported() || typeof n?.title !== 'string') return
+  const log = process.env['WORKHUB_NOTIFICATION_LOG']
+  if (log) appendFileSync(log, `${JSON.stringify({ title: n.title, body: n.body, kind: 'usage' })}\n`)
+  const notification = new Notification({ title: n.title.slice(0, 200), body: String(n.body ?? '').slice(0, 400) })
+  liveNotifications.add(notification)
+  notification.on('close', () => liveNotifications.delete(notification))
+  notification.on('click', () => {
+    liveNotifications.delete(notification)
+    if (!win || win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    send('usage:open')
   })
   notification.show()
 }

@@ -20,7 +20,7 @@ import { resolveTheme, readPrefs, usePrefs, useSystemDark } from './lib/prefs'
 import { listSessions, memberOf, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
-import { useAccountUsage } from './lib/usage'
+import { useAccountUsage, useUsageAlerts } from './lib/usage'
 import { usePrEventNotifications } from './lib/usePrEventNotifications'
 import { useChatNotices } from './lib/useChatNotices'
 import { AutomationsScreen } from './screens/AutomationsScreen'
@@ -130,6 +130,8 @@ function Shell() {
       }),
     []
   )
+  // Usage alerts (Settings → Usage): a click opens Home, where "Usage by agent" is.
+  useUsageAlerts(useCallback(() => setRoute('home'), []))
   // Slack notices have no session: their click opens the Slack screen.
   useEffect(() => window.hub.notifications.onOpen((id) => (id ? openSession(id) : setRoute('slack'))), [openSession])
 
@@ -282,6 +284,7 @@ function Shell() {
                 <HomeScreen
                   profile={profile}
                   sessions={sessions}
+                  usage={accountUsage}
                   onOpenSession={openSession}
                   onOpenSettings={openSettings}
                   onOpenPullRequest={openPullRequest}

@@ -7,6 +7,7 @@ import { automationsEs } from './automations.es'
 import { prEs } from './pullRequests.es'
 import { ticketsEs } from './tickets.es'
 import { updatesEs } from './updates.es'
+import { usageEs } from './usage.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -327,7 +328,6 @@ export const es: Record<keyof typeof en, string> = {
   'history.resume': 'Retomar',
   'history.resumeConsole': 'Retomar en la terminal',
   'history.accountFailed': '{account}: no se pudieron listar las sesiones ({message})',
-  'settings.claude': 'Claude',
   'settings.planUsage': 'Leer el uso del plan por cuenta',
   'settings.planUsageHint': 'Cada 5 minutos, con el inicio de sesión de cada cuenta.',
   'settings.planUsageNote': 'Desactivado por defecto. Llama a un endpoint no documentado de Anthropic (el que usa /usage de Claude Code) con el inicio de sesión guardado de la cuenta; puede cambiar o dejar de funcionar en cualquier momento. Mientras está desactivado, el uso sale solo de lo que reportan las sesiones abiertas.',
@@ -354,5 +354,6 @@ export const es: Record<keyof typeof en, string> = {
   ...prEventsEs,
   ...linksEs,
   ...slackEs,
-  ...automationsEs
+  ...automationsEs,
+  ...usageEs
 }

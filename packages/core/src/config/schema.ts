@@ -9,6 +9,7 @@ import type { ChatWatcherSettings } from '../chat/types'
 import type { AutomationDefinition } from '../automations/types'
 import { DEFAULT_AI_REVIEW_SETTINGS as AI_REVIEW, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS } from '../ai-review/defaults'
 import { REVIEW_LANGUAGES } from '../ai-review/types'
+import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
 
 /**
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
@@ -51,9 +52,17 @@ export interface AppOptions {
   checkForUpdates: boolean
   /** OS notification per kind of pull request event (Settings → Notifications). */
   notifyPrEvents: PrEventToggles
+  /**
+   * Read Codex plan usage (5 h and weekly windows) per account: ChatGPT's undocumented Codex usage
+   * endpoint with the account's own Codex sign-in, else the newest rate limits in its session
+   * files. Off by default, like `claudePlanUsage`.
+   */
+  codexUsage: boolean
+  /** Ceilings, warning margin and alerts per account (Settings → Usage). */
+  usageBudget: UsageBudgetOptions
 }
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -244,6 +253,22 @@ const automation = z.object({
   receivesChatReplies: z.boolean().default(true)
 })
 
+/** A percentage from the config: rounded and clamped into 1..100 (a hand-edited value never keeps the config from loading). */
+const percent = z.number().transform((n) => Math.min(100, Math.max(1, Math.round(n))))
+
+const usageBudget = z.object({
+  alerts: z.boolean().default(DEFAULT_USAGE_BUDGET.alerts),
+  thresholds: z
+    .array(percent)
+    .transform((list) => [...new Set(list)].sort((a, b) => a - b))
+    .default([...DEFAULT_USAGE_BUDGET.thresholds]),
+  warnMargin: z
+    .number()
+    .transform((n) => Math.min(50, Math.max(0, Math.round(n))))
+    .default(DEFAULT_USAGE_BUDGET.warnMargin),
+  ceilings: z.record(z.string(), z.record(z.string(), percent)).default({})
+})
+
 export const configSchema = z.object({
   version: z.literal(CONFIG_VERSION),
   connections: z.array(connection).default([]),
@@ -260,7 +285,9 @@ export const configSchema = z.object({
       checkForUpdates: z.boolean().default(false),
       notifyPrEvents: z
         .object(Object.fromEntries(PR_EVENT_KINDS.map((k) => [k, z.boolean().default(DEFAULT_PR_EVENT_TOGGLES[k])])) as Record<(typeof PR_EVENT_KINDS)[number], z.ZodDefault<z.ZodBoolean>>)
-        .default(DEFAULT_PR_EVENT_TOGGLES)
+        .default(DEFAULT_PR_EVENT_TOGGLES),
+      codexUsage: z.boolean().default(false),
+      usageBudget: usageBudget.default(DEFAULT_USAGE_BUDGET).catch(DEFAULT_USAGE_BUDGET)
     })
     .optional(),
   sessionGroups: sessionGroups.optional(),

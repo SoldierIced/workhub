@@ -8,7 +8,7 @@ export const ATTENTION_ORDER: readonly Attention[] = ['needsReply', 'ready', 'wo
 
 /** The parts of a session the Home screen reads. */
 export interface SessionSummary {
-  view: { id: string; state: SessionState; cwd: string; startedAt: number; accountId?: string | null; accountName?: string }
+  view: { id: string; state: SessionState; cwd: string; startedAt: number; agentId?: string; accountId?: string | null; accountName?: string }
   items: ChatItem[]
   monitor: SessionMonitorSnapshot
 }
@@ -98,7 +98,7 @@ export interface UsageGroup {
 
 /**
  * Plan usage per account: what running sessions reported, replaced by the account's own read
- * when the user turned that read on (Settings → General). Accounts without data are left out.
+ * when the user turned that read on (Settings → Usage). Accounts without data are left out.
  */
 export function usageGroups(sessions: SessionSummary[], reads: AccountUsage[]): UsageGroup[] {
   const groups = new Map<string, UsageGroup>()
@@ -109,7 +109,8 @@ export function usageGroups(sessions: SessionSummary[], reads: AccountUsage[]): 
     g.windows = planUsage([{ ...s, monitor: { planUsage: [...g.windows, ...s.monitor.planUsage] } }])
     groups.set(key, g)
   }
-  for (const r of reads) {
+  // The sidebar card stays on Claude accounts; Home's "Usage by agent" lists every agent.
+  for (const r of reads.filter((x) => x.agentId === 'claude')) {
     const key = r.accountId ?? ''
     if (r.windows.length) groups.set(key, { key, name: r.name, windows: r.windows })
     else if (r.error && !groups.has(key)) groups.set(key, { key, name: r.name, windows: [], error: r.error })

@@ -1,7 +1,7 @@
 import { Gauge } from 'lucide-react'
 import type { PlanUsageWindow } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
-import { cn } from '../../lib/cn'
+import { UsageBar } from '../molecules/UsageBar'
 import type { UsageGroup } from '../../lib/home'
 
 function Windows({ windows }: { windows: PlanUsageWindow[] }) {
@@ -9,27 +9,12 @@ function Windows({ windows }: { windows: PlanUsageWindow[] }) {
   return (
     <ul className="flex flex-col gap-2">
       {windows.map((w) => (
-        <li key={w.window} className="grid grid-cols-[3.5rem_1fr_2.5rem] items-center gap-2 text-xs">
-          <span className="truncate text-muted">{w.window}</span>
-          <span
-            className="h-1.5 overflow-hidden rounded-full bg-surface-hover"
-            role="progressbar"
-            aria-label={w.window}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(w.percent)}
-          >
-            <span
-              className={cn('block h-full rounded-full', w.percent >= 90 ? 'bg-danger' : w.percent >= 75 ? 'bg-warning' : 'brand-gradient')}
-              style={{ width: `${Math.min(100, Math.max(2, w.percent))}%` }}
-            />
-          </span>
-          <span className="text-right font-medium tabular-nums">{Math.round(w.percent)}%</span>
-          {w.resetsAt && (
-            <span className="col-span-3 -mt-1 text-right text-2xs text-subtle">
-              {t('usage.resets', { when: formatDate(w.resetsAt, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) })}
-            </span>
-          )}
+        <li key={w.window}>
+          <UsageBar
+            label={w.window}
+            percent={w.percent}
+            caption={w.resetsAt ? t('usage.resets', { when: formatDate(w.resetsAt, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) }) : undefined}
+          />
         </li>
       ))}
     </ul>

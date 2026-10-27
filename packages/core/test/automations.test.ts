@@ -44,6 +44,7 @@ class FakeWorld implements AutomationHost {
   chat: ChatWatcherState = EMPTY_CHAT_STATE
   inactiveProfiles = new Set<string>()
   usage: number | null = null
+  budget: { window: string; resetsAt?: number } | null = null
   gate: unknown = undefined
 
   now = () => this.time
@@ -51,6 +52,7 @@ class FakeWorld implements AutomationHost {
   definitions = () => this.defs
   isActive = (a: AutomationDefinition) => !a.profileId || !this.inactiveProfiles.has(a.profileId)
   usagePercent = () => this.usage
+  budgetPaused = () => this.budget
   readGate = async () => this.gate
   replaceIdentity = async (oldKey: string, newKey: string) => {
     this.groups = replaceSessionIdentity(this.groups, oldKey, newKey)
@@ -158,6 +160,23 @@ describe('the engine', () => {
     await runOnce(world, engine)
     expect(world.delivered).toHaveLength(1)
     expect(engine.snapshot().runs.find((r) => r.outcome === 'coalesced')?.merged).toBe(2)
+  })
+
+  it('waits while the account is past its usage ceiling, and "Run now" overrides it once', async () => {
+    const { world, engine } = setup()
+    world.budget = { window: 'weekly', resetsAt: T0 + 3_600_000 }
+    engine.onChatMessages([prMessage('15.000001')], '')
+    await engine.tick()
+    expect(engine.runState('a1')).toMatchObject({ waitReason: 'budget.weekly', waitUntil: T0 + 3_600_000 })
+    expect(world.delivered).toHaveLength(0)
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    expect(world.delivered.map((d) => d.text)).toEqual(['/review'])
+    world.budget = null
+    engine.onChatMessages([prMessage('16.000001')], '')
+    world.time += 3_600_000
+    await runOnce(world, engine)
+    expect(world.delivered).toHaveLength(2)
   })
 
   it('skips outside the window, waits at the limits, and pauses after a failure', async () => {
