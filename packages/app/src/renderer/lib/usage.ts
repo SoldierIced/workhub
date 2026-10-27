@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { accountAgentId, appOptions, type CreditSpend, type SessionCeilings, type UsageBudgetOptions } from '@workhub/core'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { accountAgentId, appOptions, type ApiAgentSpend, type CreditSpend, type SessionCeilings, type UsageBudgetOptions } from '@workhub/core'
 import type { AccountUsage, UsageAlert } from '@shared/api'
 import { useConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
@@ -14,6 +14,38 @@ export function useAccountUsage(): AccountUsage[] {
     return window.hub.usage.onChanged(setUsage)
   }, [])
   return usage
+}
+
+/** When the newest account read happened (epoch ms); null when nothing was read. */
+export function lastReadAt(reads: readonly Pick<AccountUsage, 'at'>[]): number | null {
+  let latest: number | null = null
+  for (const r of reads) if (Number.isFinite(r.at) && (latest === null || r.at > latest)) latest = r.at
+  return latest
+}
+
+/**
+ * The usage cards' refresh button: reads every account again, bypassing the readers' caches
+ * (a second press within 30 s reuses the previous read, see the main process). The new reads
+ * reach every card through `usage:changed`.
+ */
+export function useUsageRefresh(): { refreshing: boolean; refresh: () => void; updatedAt: number | null } {
+  const reads = useAccountUsage()
+  const [refreshing, setRefreshing] = useState(false)
+  const live = useRef(true)
+  useEffect(() => {
+    live.current = true
+    return () => {
+      live.current = false
+    }
+  }, [])
+  const refresh = useCallback(() => {
+    setRefreshing(true)
+    void window.hub.usage
+      .refreshNow()
+      .catch(() => undefined)
+      .finally(() => live.current && setRefreshing(false))
+  }, [])
+  return { refreshing, refresh, updatedAt: lastReadAt(reads) }
 }
 
 /** Every session's own ceilings, by session identity (`sessionBudgetId`). */
@@ -44,6 +76,33 @@ export function useKiroSpend(): CreditSpend | null {
     }
   }, [])
   return spend
+}
+
+/** Spend of agents billed by API key, per agent over the last 7 days; read on mount and every minute. */
+export function useApiSpend(): ApiAgentSpend[] {
+  const [spend, setSpend] = useState<ApiAgentSpend[]>([])
+  useEffect(() => {
+    let live = true
+    const read = () =>
+      void window.hub.usage.apiSpend().then(
+        (s) => live && setSpend(s),
+        () => undefined
+      )
+    read()
+    const timer = setInterval(read, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [])
+  return spend
+}
+
+/** The hover text of one agent's API spend: each day's amount, and the tokens no price covers. */
+export function apiSpendDetail(spend: ApiAgentSpend, money: (usd: number) => string, unpriced: (tokens: number) => string): string {
+  const lines = spend.days.map((d) => `${d.day}: ${money(d.usd)}`)
+  if (spend.unpricedTokens > 0) lines.push('', unpriced(spend.unpricedTokens))
+  return lines.join('\n')
 }
 
 /** The current time, updated every `everyMs` (reset countdowns, windows that reset meanwhile). */

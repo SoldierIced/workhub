@@ -72,6 +72,9 @@ export interface AgentUsageDeps {
   intervalMs?: number
 }
 
+/** A forced refresh this soon after the previous one reuses it. */
+export const FORCE_FLOOR_MS = 30_000
+
 /**
  * Reads plan usage per agent account while the user has it on (Settings → Usage), evaluates the
  * budgets and fires the alerts. The latest reads also gate prompts and automations.
@@ -81,6 +84,8 @@ export class AgentUsageService {
   private budget: UsageBudgetOptions | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private alerts: UsageAlertState
+  private running: Promise<AccountUsage[]> | null = null
+  private forcedAt: number | null = null
 
   constructor(private readonly deps: AgentUsageDeps) {
     this.alerts = parseUsageAlertState(deps.alertState.load({}))
@@ -115,7 +120,27 @@ export class AgentUsageService {
     return accountBudgetStatus(this.budget, u.key, u.windows, this.now())
   }
 
-  async refresh(): Promise<AccountUsage[]> {
+  /**
+   * Reads every account again. `force` (the user's refresh button) also skips each reader's own
+   * cache, but a forced refresh within 30 s of the previous forced one returns that one's result,
+   * and readers keep their rate-limit backoff. A refresh already running is shared.
+   */
+  refresh(options: { force?: boolean } = {}): Promise<AccountUsage[]> {
+    if (options.force && this.forcedAt !== null && this.now() - this.forcedAt < FORCE_FLOOR_MS) return this.running ?? Promise.resolve(this.last)
+    if (options.force) this.forcedAt = this.now()
+    if (this.running && !options.force) return this.running
+    // A forced refresh waits for a regular one in progress, then reads again.
+    const run: Promise<AccountUsage[]> = (this.running ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => this.read(!!options.force))
+      .finally(() => {
+        if (this.running === run) this.running = null
+      })
+    this.running = run
+    return run
+  }
+
+  private async read(force: boolean): Promise<AccountUsage[]> {
     const { accounts, budget, knownKeys } = await this.deps.load()
     this.budget = budget
     const at = this.now()
@@ -126,7 +151,7 @@ export class AgentUsageService {
         const provider = this.deps.providers.find((p) => p.agentId === a.agentId)
         if (!provider) return { ...base, windows: [], error: `No usage reader for ${a.agentId}`, budget: { action: 'allow' } }
         try {
-          const windows = await provider.read(a.configDir)
+          const windows = await provider.read(a.configDir, force ? { force } : undefined)
           return { ...base, windows, budget: accountBudgetStatus(budget, key, windows, at) }
         } catch (err) {
           return { ...base, windows: [], error: err instanceof Error ? err.message : String(err), budget: { action: 'allow' } }

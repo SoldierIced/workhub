@@ -30,7 +30,7 @@ export const usageEn = {
     "Off by default. It calls an undocumented ChatGPT endpoint with the sign-in stored in the account's Codex folder (auth.json); it can change or stop working at any time. The sign-in is never refreshed or stored by Workhub. Without one, or when the endpoint fails, the newest limits Codex wrote in its session files are shown.",
   'agentUsage.settings.kiro': 'Read Kiro credits left',
   'agentUsage.settings.kiroNote':
-    "Asks kiro-cli for its own /usage (Kiro's sign-in; Workhub never reads it), at most every 15 minutes. Each read starts Kiro briefly, with its MCP servers, in a session Workhub keeps for this and reuses: you will see one empty session named after Workhub's folder in Kiro's list. Credits spent per day come from Kiro's session files either way.",
+    "Asks kiro-cli for its own /usage (Kiro's sign-in; Workhub never reads it), at most every 15 minutes and only while Workhub is open. Kiro runs briefly in a home folder of Workhub's own: none of your MCP servers start, and its one reused session stays out of Kiro's session list. Credits spent per day come from Kiro's session files either way.",
   'agentUsage.settings.budgets': 'Budgets',
   'agentUsage.settings.budgetsNote':
     'Past a ceiling, prompts sent from Workhub to that account need "Send anyway", and automations, Slack wakes and Slack reads on it wait until the window resets or the ceiling is raised or cleared. "Run now" on an automation still runs once. Nothing is installed in the agents: the gate lives only in Workhub, and lets everything through while the usage is unknown.',
@@ -66,5 +66,14 @@ export const usageEn = {
   'agentUsage.session.account': 'Account: {value}',
   'agentUsage.session.noRead': 'Turn on usage reading for this agent in Settings → Usage to set a limit.',
   'agentUsage.session.reset': "Use the account's limits",
-  'agentUsage.session.now': 'now {percent}%'
+  'agentUsage.session.now': 'now {percent}%',
+  'agentUsage.refresh': 'Refresh usage',
+  'agentUsage.refreshing': 'Reading usage…',
+  'agentUsage.updatedAt': 'Updated {time}',
+  'agentUsage.notReadYet': 'Not read yet',
+  'agentUsage.apiSpend': 'API spend',
+  'agentUsage.apiSpendHelp': 'Agents billed by API key (OpenCode, Codex or Claude on an API key, ACP agents that report a cost), from what their sessions report, priced at list prices where only tokens are known.',
+  'agentUsage.apiSpendShort': '{today} today · {week} in 7 days',
+  'agentUsage.apiSpendDays': 'Spent per day, last 7 days',
+  'agentUsage.apiUnpriced': '{tokens} tokens of models without a known price are not included.'
 } as const

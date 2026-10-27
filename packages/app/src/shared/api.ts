@@ -6,6 +6,7 @@ import type {
   AppOptions,
   AgentCapabilities,
   BudgetStatus,
+  ApiAgentSpend,
   CreditSpend,
   FolderSpendEntry,
   SessionCeilings,
@@ -313,10 +314,20 @@ export interface UsageApi {
   /** The last reads, and a fresh read when `refresh` is set. Empty while the option is off. */
   get(refresh?: boolean): Promise<AccountUsage[]>
   /**
+   * The refresh button: reads every account again, skipping the readers' caches (Kiro's 15-minute
+   * spacing too). A second press within 30 s returns the previous result.
+   */
+  refreshNow(): Promise<AccountUsage[]>
+  /**
    * Kiro credits spent today and over the last 7 days, from its local session files. Kiro does
    * not expose the credits left; null when no Kiro session data is found.
    */
   kiroSpend(): Promise<CreditSpend | null>
+  /**
+   * Spend of agents billed by API key (OpenCode, Codex or Claude on an API key, ACP agents that
+   * report a cost), per agent over the last 7 days, in USD. Empty when none spent anything.
+   */
+  apiSpend(): Promise<ApiAgentSpend[]>
   /**
    * Token spend per folder of a profile (the active one when omitted) over the last days, from the
    * transcripts scanned in the background and cached in the data folder.

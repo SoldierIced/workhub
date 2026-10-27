@@ -1,8 +1,8 @@
 import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { emptySpendCache, TokenSpendScanner, type SpendCache, type SpendSources } from '@workhub/adapters/token-spend'
-import { folderSpend, ownsFolder, profileFolderPaths, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
+import { emptySpendCache, TokenSpendScanner, worktreeAliases, type SpendCache, type SpendFileEntry, type SpendSources, type WorktreeLink } from '@workhub/adapters/token-spend'
+import { attributeFolder, folderSpend, ownsFolder, parseSpendKey, profileFolderPaths, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
 import type { FolderSpendResult } from '../shared/api'
 import { usageAccounts } from './agent-usage'
 import { profileProjectChildren } from './workspaces'
@@ -34,6 +34,8 @@ export class TokenSpendService {
   private scannedAt: number | null = null
   private scanning = false
   private timer: ReturnType<typeof setInterval> | null = null
+  /** Linked git worktree of each path looked up (null: none); emptied by each scan. */
+  private worktrees = new Map<string, WorktreeLink | null>()
 
   constructor(private readonly deps: TokenSpendDeps) {
     this.scanner = new TokenSpendScanner(deps.store.load(emptySpendCache()))
@@ -65,6 +67,7 @@ export class TokenSpendService {
       const sources = await this.deps.sources()
       this.buckets = await this.scanner.scan(sources, startOfLocalDay(now, SPEND_DAYS - 1), spendWindowStart(now))
       this.scannedAt = this.now()
+      this.worktrees = new Map()
       this.deps.store.save(this.scanner.snapshot())
     } catch {
       // A failed scan keeps the previous figures; the next one tries again.
@@ -72,6 +75,11 @@ export class TokenSpendService {
       this.scanning = false
       this.deps.emit()
     }
+  }
+
+  /** What the scanned transcripts `include` picks cost over the last 7 days (see `ApiSpendService`). */
+  costs(include: (path: string, entry: SpendFileEntry) => boolean): { usd: SpendBuckets; unpriced: SpendBuckets; tokens: SpendBuckets } {
+    return this.scanner.costs(spendWindowStart(this.now()), include)
   }
 
   /** The spend of one profile's folders over the last 7 days, largest first. */
@@ -83,8 +91,17 @@ export class TokenSpendService {
     const folders = profileFolderPaths(profile, home).map((f) => f.path)
     const children = await profileProjectChildren(profile, home)
     const owns = (path: string) => ownsFolder(profile.id, path, config.profiles, home)
-    const entries = folderSpend(this.buckets, folders, { sinceDay: spendWindowStart(this.now()), children, owns })
-    return { entries, days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders: folders.length > 0 || profile.ownsOutside === true }
+    const sinceDay = spendWindowStart(this.now())
+    const hasFolders = folders.length > 0 || profile.ownsOutside === true
+    // Worktrees outside the folders count for their repository (and so for the profile owning it).
+    const outside = new Set<string>()
+    for (const key of Object.keys(this.buckets)) {
+      const parsed = parseSpendKey(key)
+      if (parsed && parsed.day >= sinceDay && !outside.has(parsed.path) && !attributeFolder(parsed.path, folders, children)) outside.add(parsed.path)
+    }
+    const aliases = hasFolders ? await worktreeAliases(outside, this.worktrees) : {}
+    const entries = folderSpend(this.buckets, folders, { sinceDay, children, owns, aliases })
+    return { entries, days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders }
   }
 }
 

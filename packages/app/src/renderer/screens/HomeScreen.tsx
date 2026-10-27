@@ -12,7 +12,7 @@ import { AgentUsageCard } from '../components/organisms/AgentUsageCard'
 import { TokenSpendCard } from '../components/organisms/TokenSpendCard'
 import { useFolderSpend } from '../lib/folder-spend'
 import { agentUsageSections, kiroUsageNote } from '../lib/agent-usage'
-import { useNow, useUsageSettings } from '../lib/usage'
+import { useApiSpend, useNow, useUsageSettings } from '../lib/usage'
 import type { AccountUsage } from '@shared/api'
 import type { Route } from '../lib/nav'
 import { useTickets } from '../ticketsStore'
@@ -91,6 +91,7 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
   const usageSections = agentUsageSections(sessions, reads, budget, accountsOf, now)
   const kiro = kiroUsageNote(sessions, accountsOf)
   const kiroSpend = useKiroSpend()
+  const apiSpend = useApiSpend()
   // The tile shows the highest window of any account (Usage by agent below lists them all).
   const usage = [...planUsage(sessions), ...usageSections.flatMap((s) => s.accounts.flatMap((a) => a.windows))].sort((a, b) => b.percent - a.percent)[0]
   const spend = useFolderSpend(profile?.id)
@@ -206,7 +207,7 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
           <div className="flex min-w-0 flex-col gap-3">
             <PullRequestCard kind="mine" profileId={profile?.id ?? null} lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
             <PullRequestCard kind="toReview" profileId={profile?.id ?? null} lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
-            <AgentUsageCard sections={usageSections} kiro={kiro} kiroSpend={kiroSpend} ceilings={budget.ceilings} now={now} onOpenSettings={() => onOpenSettings('usage')} />
+            <AgentUsageCard sections={usageSections} kiro={kiro} kiroSpend={kiroSpend} apiSpend={apiSpend} ceilings={budget.ceilings} now={now} onOpenSettings={() => onOpenSettings('usage')} />
           </div>
           <div className="flex min-w-0 flex-col gap-3">
             <HomeTicketsCard
@@ -219,7 +220,7 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
               onViewAll={() => onNavigate?.('tickets')}
               onOpenSettings={() => onOpenSettings('trackers')}
             />
-            <TokenSpendCard spend={spend} onOpenSettings={() => onOpenSettings('profiles')} />
+            <TokenSpendCard spend={spend} apiSpend={apiSpend} onOpenSettings={() => onOpenSettings('profiles')} />
           </div>
         </div>
       </div>

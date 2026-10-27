@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import type { HistoryEntry, HistoryMessage, SessionHistorySource } from '@workhub/core'
 import { obj, oneLine, parseLine, str } from '../shared/reader-utils'
 import { defaultCodexHome, readRolloutHead, rolloutFiles, rolloutId } from './files'
-import { readSessionMeta } from './parser'
+import { readSessionMeta, userItemText, userMessageText } from './parser'
 
 export interface CodexHistoryOptions {
   /** The Codex home of an account without one. */
@@ -43,16 +43,20 @@ export class CodexSessionHistory implements SessionHistorySource {
     const head = await readRolloutHead(path, HEAD_BYTES)
     let meta = readSessionMeta(undefined)
     let prompt: string | undefined
+    // Newer rollouts write the prompt as an `item_completed` UserMessage; the user `message`
+    // response item is the last resort.
+    let fallback: string | undefined
     for (const line of head.split('\n')) {
       const entry = parseLine(line)
       const payload = obj(entry?.['payload'])
       if (!entry || !payload) continue
       if (entry['type'] === 'session_meta') meta = readSessionMeta(payload)
-      else if (entry['type'] === 'event_msg' && payload['type'] === 'user_message') {
-        prompt = str(payload['message'])
-        if (prompt) break
-      }
+      else if (entry['type'] === 'event_msg' && payload['type'] === 'user_message') prompt = str(payload['message'])
+      else if (entry['type'] === 'event_msg' && payload['type'] === 'item_completed') prompt = userItemText(obj(payload['item']))
+      else if (entry['type'] === 'response_item') fallback ??= userMessageText(payload)
+      if (prompt) break
     }
+    prompt ??= fallback
     // A subagent's rollout belongs to its parent session.
     if (meta.subagent) return null
     const id = meta.id ?? rolloutId(path.split(/[\\/]/).pop() ?? '')
