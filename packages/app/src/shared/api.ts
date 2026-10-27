@@ -1,5 +1,6 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
 import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
+import type { ProfileEnvApi, SetupApi, SystemNotificationsApi } from './setup-api'
 import type {
   LocalChanges,
   AppOptions,
@@ -378,6 +379,9 @@ export interface HubApi {
   tray: TrayApi
   windows: WindowsApi
   menu: MenuApi
+  setup: SetupApi
+  profileEnv: ProfileEnvApi
+  systemNotifications: SystemNotificationsApi
 }
 
 /** What Settings knows about Workhub 1 on this machine (see `previewWorkhub1Import`). */

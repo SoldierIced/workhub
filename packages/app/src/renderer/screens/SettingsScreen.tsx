@@ -38,7 +38,11 @@ import { ProfileColorField } from './ProfileColorField'
 import { HealthSettings } from './HealthSettings'
 import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
+import { ProfileExtraFields, prunedFolderOptions, useProfileEnvDraft } from './ProfileExtraSettings'
+import { SetupEntryGroup } from './SetupEntryGroup'
 import { AppBadgeRows, MenuBarRows, OtherNotificationRows } from './NotificationExtraSettings'
+import { NotificationMasterRows } from './NotificationMasterRow'
+import { VoiceSettingsGroup } from './VoiceSettings'
 import { TrackerSettings } from './TrackerSettings'
 import { UpdatesSettings } from './UpdatesSettings'
 import { UsageSettings } from './UsageSettings'
@@ -200,7 +204,13 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
         items={[
           { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} workhub1={workhub1} />, t('help.tab.general')) },
           { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: section(<AppearanceSettings />, t('help.tab.appearance')) },
-          { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection key={focusId('profiles')} snap={snap} run={run} initialId={focusId('profiles')} />, t('help.tab.profiles')) },
+          { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(
+              <div className="flex flex-col gap-6">
+                <ProfilesSection key={focusId('profiles')} snap={snap} run={run} initialId={focusId('profiles')} />
+                <SetupEntryGroup />
+              </div>,
+              t('help.tab.profiles')
+            ) },
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection key={focusId('connections')} snap={snap} run={run} initialId={focusId('connections')} />, t('help.tab.connections')) },
           { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings key={focusId('trackers')} snap={snap} run={run} initialId={focusId('trackers')} />) },
           { value: 'health', label: t('health.settings.tab'), icon: <Activity className="size-4" aria-hidden />, content: section(<HealthSettings snap={snap} run={run} focusSecret={focus?.tab === 'health'} />) },
@@ -235,6 +245,7 @@ function GeneralSection({ snap, run, workhub1 }: SectionProps & { workhub1: Work
         </SettingRow>
       </SettingsGroup>
       <SettingsGroup title={t('settings.notifications')} help={t('help.general.notifications')} footnote={t('settings.notificationsNote')}>
+        <NotificationMasterRows config={snap.config} editable={editable} run={run} />
         {(
           [
             ['notifyReplied', 'settings.notifyReplied', 'settings.notifyRepliedHint'],
@@ -250,6 +261,7 @@ function GeneralSection({ snap, run, workhub1 }: SectionProps & { workhub1: Work
       <SettingsGroup title={t('settings.otherNotifications')} help={t('help.general.otherNotifications')} footnote={t('settings.otherNotificationsNote')}>
         <OtherNotificationRows config={snap.config} editable={editable} run={run} />
       </SettingsGroup>
+      <VoiceSettingsGroup config={snap.config} editable={editable} run={run} />
       <SettingsGroup title={t('settings.menuBar')} help={t('help.general.menuBar')} footnote={window.hub.platform === 'linux' ? t('settings.keepInTrayLinuxNote') : undefined}>
         <MenuBarRows config={snap.config} editable={editable} run={run} />
         <AppBadgeRows config={snap.config} editable={editable} run={run} />
@@ -639,6 +651,7 @@ const emptyProfile = (): Profile => ({ id: '', name: '', connections: {}, accoun
 
 function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: string }) {
   const { t } = useI18n()
+  const toast = useToast()
   const initial = snap.config.profiles.find((x) => x.id === initialId)
   const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
   const [form, setForm] = useState<Profile>(initial ? structuredClone(initial) : emptyProfile())
@@ -646,6 +659,7 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
   const [idEdited, setIdEdited] = useState(false)
   // Field problems, shown only after a save attempt.
   const [errors, setErrors] = useState<ReturnType<typeof profileFieldErrors> | null>(null)
+  const env = useProfileEnvDraft(selected ? snap.config.profiles.find((p) => p.id === selected) : undefined)
 
   const select = (id: string | null) => {
     const p = snap.config.profiles.find((x) => x.id === id)
@@ -668,7 +682,28 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
     const profile: Profile = { ...form, folders: folders?.length ? folders : undefined }
     if (!profile.folders) delete profile.folders
     if (!profile.preferredAgents?.length) delete profile.preferredAgents
-    if (await run(() => window.hub.config.saveProfile(profile))) setSelected(form.id)
+    if (!profile.symbol) delete profile.symbol
+    if (!profile.linkBrowser?.trim()) delete profile.linkBrowser
+    else profile.linkBrowser = profile.linkBrowser.trim()
+    if (!profile.ownsOutside) delete profile.ownsOutside
+    const folderOptions = prunedFolderOptions(profile.folderOptions, profile.folders)
+    if (folderOptions) profile.folderOptions = folderOptions
+    else delete profile.folderOptions
+    const envNames = env.names()
+    if (envNames.length) profile.envNames = envNames
+    else delete profile.envNames
+    // Only one profile owns everything outside the folders: taking it lets the others go.
+    if (profile.ownsOutside) {
+      for (const other of snap.config.profiles.filter((p) => p.id !== profile.id && p.ownsOutside)) {
+        const { ownsOutside: _released, ...rest } = other
+        void _released
+        if (!(await run(() => window.hub.config.saveProfile(rest)))) return
+      }
+    }
+    if (await run(() => window.hub.config.saveProfile(profile))) {
+      setSelected(form.id)
+      if (!(await env.commit(profile.id))) toast(t('profileExtra.envSaved'), 'danger')
+    }
   }
 
   return (
@@ -725,6 +760,7 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
               }}
             />
           </Field>
+          <ProfileExtraFields form={form} onChange={setForm} env={env} />
           <FieldGroup legend={t('settings.connections')} help={t('help.profile.connections')}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2">
               {CONNECTION_KINDS.map((kind) => (

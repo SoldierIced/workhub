@@ -71,6 +71,8 @@ const CHAT_EVENTS: ReadonlySet<AgentEvent['type']> = new Set(['message', 'tool',
 
 export interface SessionManagerDeps {
   config: ConfigurationService
+  /** Environment variables the session's profile adds (Settings → Profiles); applied before the internal ones. */
+  profileEnv?: (profileId: string | null, cwd: string) => Promise<Record<string, string>>
   runtimes: Partial<Record<AgentAdapterKind, AgentRuntime>>
   /** Runs consoles and shells. */
   terminal: AgentRuntime
@@ -213,7 +215,7 @@ export class SessionManager {
       view,
       agent,
       account,
-      env: { ...launchEnvironment(agent, account), ...(internal.env ?? {}) },
+      env: { ...launchEnvironment(agent, account), ...((await this.deps.profileEnv?.(input.profileId, input.cwd)) ?? {}), ...(internal.env ?? {}) },
       runtime,
       engine,
       switching: false,

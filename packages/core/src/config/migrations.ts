@@ -29,9 +29,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // defaults, tray and notification switches, account failover). The document is unchanged; the
   // bump keeps an older Workhub from loading the file and dropping them on its next save.
   5: (raw) => raw,
-  // 6 -> 7: optional fields added since (Kiro credits read, app icon badge, mid-turn input per
-  // agent, profile colour, session group member profile). The document is unchanged; the bump
-  // keeps an older Workhub from loading the file and dropping them on its next save.
+  // 6 -> 7: optional fields added since 6: Kiro credits read, app icon badge, mid-turn input per
+  // agent, profile colour, session group member profile, profile symbol, folder switches, link
+  // browser, "owns outside" and environment variable names (values go to the secret store), the
+  // master notification switch, the read-aloud options and the welcome flag. All optional and
+  // default, so the document is unchanged; the bump keeps an older Workhub from loading the file
+  // and dropping them on its next save.
   6: (raw) => raw
 }
 

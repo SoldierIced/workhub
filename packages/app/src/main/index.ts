@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process'
 import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -97,6 +98,10 @@ import { buildAppMenuTemplate } from './app-menu'
 import { SessionNames } from './session-names'
 import { SessionWindows } from './session-windows'
 import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
+import { linkCommand } from './link-opener'
+import { profileSessionEnv, saveProfileEnv, storedProfileEnvNames } from './profile-env'
+import { SetupService } from './setup-service'
+import type { SetupPage } from '../shared/setup-api'
 
 // Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
 // (the Claude bridge) under process.resourcesPath instead.
@@ -264,6 +269,10 @@ const sessionNames = new SessionNames(new StateFile(join(dataDir, 'session-names
 const sessions = new SessionManager({
   config: configuration,
   names: sessionNames,
+  profileEnv: async (profileId, cwd) => {
+    const config = await configuration.current()
+    return profileSessionEnv(config.profiles.find((p) => p.id === profileId), cwd, secrets, homedir())
+  },
   runtimes,
   terminal,
   transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader({ kiroDir }), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
@@ -517,6 +526,56 @@ function syncTitleBarOverlay(): void {
   if (process.platform !== 'darwin' && win && !win.isDestroyed()) win.setTitleBarOverlay({ ...chromeColors(), height: TITLE_BAR_HEIGHT })
 }
 
+/**
+ * Opens a web link in the browser the profile chose (Settings → Profiles → "Open links with"),
+ * else in the default browser. A browser that cannot be started falls back to the default one.
+ */
+async function openLink(profileId: string | null, url: string): Promise<void> {
+  if (!/^https?:\/\//i.test(url)) return
+  const config = await configuration.current()
+  const profile = config.profiles.find((p) => p.id === (profileId ?? config.activeProfileId))
+  const command = linkCommand(process.platform, profile?.linkBrowser, url)
+  if (!command) return void (await shell.openExternal(url))
+  await new Promise<void>((done) =>
+    execFile(command.command, command.args, { windowsHide: true }, (err) => {
+      if (err) void shell.openExternal(url)
+      done()
+    })
+  )
+}
+
+const setup = new SetupService({
+  config: () => configuration.current(),
+  hasSecret: (ref) => secrets.has(ref),
+  path: () => [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter),
+  home: homedir(),
+  slackFailure: async () => {
+    const snapshot = await slack.snapshot()
+    return snapshot.health === 'failing' ? (snapshot.lastError ?? 'failing') : null
+  }
+})
+
+/** Setup windows (welcome, setup check, how Workhub works): one of each at a time. */
+const setupWindows = new Map<SetupPage, BrowserWindow>()
+const SETUP_HASH: Record<SetupPage, { hash: string; size: AuxWindowSize }> = {
+  welcome: { hash: '#welcome', size: { width: 760, height: 640, minWidth: 620, minHeight: 520 } },
+  check: { hash: '#setup', size: { width: 720, height: 680, minWidth: 560, minHeight: 440 } },
+  help: { hash: '#howitworks', size: { width: 720, height: 680, minWidth: 560, minHeight: 440 } }
+}
+
+function openSetupWindow(page: SetupPage): void {
+  const open = setupWindows.get(page)
+  if (open && !open.isDestroyed()) {
+    if (open.isMinimized()) open.restore()
+    open.focus()
+    return
+  }
+  const { hash, size } = SETUP_HASH[page]
+  const created = createAuxWindow(hash, 'Workhub 2', size)
+  setupWindows.set(page, created)
+  created.on('closed', () => setupWindows.delete(page))
+}
+
 function registerIpc(): void {
   // Every handler answers only the app's own renderer (see ipc-guard.ts).
   const ipc = guardIpc(ipcMain, (url) => isTrustedRendererUrl(url, rendererOrigin))
@@ -541,8 +600,24 @@ function registerIpc(): void {
   ipc.handle('config:deleteConnection', guarded((id: string) => configuration.deleteConnection(id)))
   ipc.handle('config:saveAccount', guarded((a) => configuration.saveAccount(a)))
   ipc.handle('config:deleteAccount', guarded((id: string) => configuration.deleteAccount(id)))
-  ipc.handle('config:saveProfile', guarded((p) => configuration.saveProfile(p)))
-  ipc.handle('config:deleteProfile', guarded((id: string) => configuration.deleteProfile(id)))
+  ipc.handle(
+    'config:saveProfile',
+    guarded(async (p) => {
+      const r = await configuration.saveProfile(p)
+      // A profile saved in the welcome window shows up in the main window too.
+      if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+      return r
+    })
+  )
+  ipc.handle(
+    'config:deleteProfile',
+    guarded(async (id: string) => {
+      const names = (await configuration.current()).profiles.find((p) => p.id === id)?.envNames ?? []
+      const r = await configuration.deleteProfile(id)
+      if (r.ok && names.length) await saveProfileEnv(id, {}, names, secrets)
+      return r
+    })
+  )
   ipc.handle('config:setActiveProfile', guarded((id: string) => configuration.setActiveProfile(id)))
   ipc.handle('config:effectiveAgents', async (_e, profileId: string | null) =>
     resolveEffectiveAgents(await configuration.current(), profileId)
@@ -645,8 +720,38 @@ function registerIpc(): void {
     if (pendingUsageAlerts.length) send('usage:alerts', pendingUsageAlerts.splice(0))
   })
 
+  ipc.handle('setup:run', () => setup.run())
+  ipc.on('setup:openWindow', (_e, page: SetupPage) => {
+    if (page === 'welcome' || page === 'check' || page === 'help') openSetupWindow(page)
+  })
+  ipc.on('setup:openSettings', (_e, tab: string) => {
+    if (typeof tab !== 'string') return
+    showMain()
+    win?.webContents.send('setup:openSettings', tab)
+  })
+  ipc.handle('setup:completeWelcome', async () => {
+    if (!loadError) await configuration.saveOptions({ welcomeDone: true })
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+    setupWindows.get('welcome')?.close()
+  })
+  ipc.handle('profileEnv:stored', async (_e, profileId: string) => {
+    const config = await configuration.current()
+    return storedProfileEnvNames(config.profiles.find((p) => p.id === profileId), secrets)
+  })
+  ipc.handle('profileEnv:save', async (_e, profileId: string, values: Record<string, string>, removed: string[]) => {
+    if (typeof profileId !== 'string' || !values || typeof values !== 'object' || !Array.isArray(removed)) return
+    const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v === 'string'))
+    await saveProfileEnv(profileId, clean, removed.filter((n) => typeof n === 'string'), secrets)
+  })
+  ipc.handle('systemNotifications:status', () => ({ supported: Notification.isSupported() }))
+  ipc.on('systemNotifications:openSettings', () => {
+    const target =
+      process.platform === 'darwin' ? 'x-apple.systempreferences:com.apple.Notifications-Settings.extension' : process.platform === 'win32' ? 'ms-settings:notifications' : null
+    if (target) void shell.openExternal(target)
+  })
   openTicketWindow = registerTicketIpc({
     ipcMain: ipc,
+    openLink,
     service: ticketService,
     createWindow: createAuxWindow,
     mainWindow: () => win,
@@ -693,7 +798,7 @@ function registerIpc(): void {
   ipc.on('sessions:write', (_e, id: string, data: string) => sessions.write(id, data))
   ipc.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
 
-  registerCodeHostIpc(ipc, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
+  registerCodeHostIpc(ipc, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url, profileId) => openLink(profileId, url) })
   registerLinksIpc({ ipcMain: ipc, loadConfig: () => configuration.current(), mainWindow: () => win })
   registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification })
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
@@ -1048,6 +1153,7 @@ async function refreshMenu(): Promise<void> {
         t,
         run: runMenuCommand,
         openHelp: () => void shell.openExternal(HELP_URL),
+        openSetup: openSetupWindow,
         developer: !app.isPackaged
       })
     )
@@ -1121,6 +1227,9 @@ void app.whenReady().then(async () => {
   aiReview.start()
   healthWatcher.start()
   ticketWatcher.start()
+  // First run: no profile yet and the welcome was not finished.
+  const first = await configuration.current()
+  if (!loadError && first.profiles.length === 0 && !appOptions(first).welcomeDone) openSetupWindow('welcome')
 })
 
 // macOS: clicking the Dock icon brings the hidden window back.

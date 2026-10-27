@@ -10,6 +10,7 @@ import { PullRequestWindow } from './screens/PullRequestWindow'
 import { TrayPopover } from './screens/TrayPopover'
 import { SessionWindowRoot, SubagentWindowRoot } from './screens/SessionWindow'
 import { parseSessionWindowHash, parseSubagentWindowHash } from './lib/windows'
+import { parseSetupHash, SetupWindow } from './screens/SetupWindows'
 import './styles.css'
 
 // Set the theme (and the text sizes) before the first paint so a light OS never flashes the dark palette.
@@ -28,6 +29,8 @@ function root(hash: string): ReactElement {
   if (pr) return <PullRequestWindow profileId={pr.profileId} url={pr.url} tab={pr.tab} />
   const ticket = parseTicketHash(hash)
   if (ticket) return <TicketWindowRoot profileId={ticket.profileId} ticketKey={ticket.key} />
+  const setup = parseSetupHash(hash)
+  if (setup) return <SetupWindow page={setup} />
   return <App />
 }
 

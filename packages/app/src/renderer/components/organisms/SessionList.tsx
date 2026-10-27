@@ -34,6 +34,7 @@ import { openSubagent, visibleSubagents } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
 import { usePlatform } from '../../lib/platform'
 import { shortcutLabel } from '../../lib/shortcuts'
+import { isSessionReadAloud, setSessionReadAloud, useReadAloudVersion } from '../../lib/readAloud'
 import { awaitingAnswer, pushItem } from '../../store'
 import { AgentIcon } from '../atoms/AgentIcon'
 import { Badge } from '../atoms/Badge'
@@ -164,6 +165,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
   /** Stops the session and drops it from the open sessions; a working one asks first. */
   const requestClose = (data: SessionData) => (isWorking(data) ? setClosing(data) : closeNow(data))
 
+  // The menu reads the per-session read-aloud switches; a change re-renders it.
+  useReadAloudVersion()
   const sessionMenu = (member: GroupMember): MenuItem[] => {
     const inGroup = groupOf(state, member.key)
     const isLive = live.has(member.key)
@@ -173,6 +176,10 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     if (entry && onRename) items.push({ label: t('session.rename'), onSelect: () => onRename(entry.data.view) })
     if (entry && onOpenInWindow && entry.data.view.state !== 'stopped') items.push({ label: t('window.openInNew'), hint: shortcutLabel({ key: 'n', shift: true }, platform), onSelect: () => onOpenInWindow(entry.data.view.id) })
     if (entry) items.push({ label: t('sessions.close'), onSelect: () => requestClose(entry.data) }, { separator: true })
+    if (entry && entry.data.view.state !== 'stopped') {
+      const reading = isSessionReadAloud(entry.data.view.id)
+      items.push({ label: reading ? t('voice.session.on') : t('voice.session.off'), onSelect: () => setSessionReadAloud(entry.data.view.id, !reading) }, { separator: true })
+    }
     items.push(
       { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveBy(s, member.key, -1)) },
       { label: t('groups.moveDown'), hint: 'Alt+↓', onSelect: () => act((s) => moveBy(s, member.key, 1)) },
