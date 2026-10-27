@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { automaticProfileColor, PROFILE_COLORS, profileColor, sidebarRows, type SessionGroups } from '@workhub/core'
-import { groupSummary, listSessions, memberOf } from '../src/renderer/lib/sessionGroups'
+import { groupSummary, historyLookupKeys, listSessions, memberOf, pastTitles, rowName } from '../src/renderer/lib/sessionGroups'
 import type { SessionData } from '../src/renderer/store'
 
 function session(id: string, fields: Partial<SessionData['view']> = {}, extra: Partial<SessionData> = {}): SessionData {
@@ -61,5 +61,54 @@ describe('profile colour of a session row', () => {
     expect(memberOf(listed!).profileId).toBe('side')
     const [none] = listSessions([session('b', { profileId: null })])
     expect('profileId' in memberOf(none!)).toBe(false)
+  })
+})
+
+describe('the name and account of a sidebar row', () => {
+  const asked = (text: string) => ({ items: [{ id: 1, kind: 'user', text }] as unknown as SessionData['items'] })
+
+  it('remembers the name, agent and account of an open session for when it is closed', () => {
+    const [listed] = listSessions([session('a', { cwd: '/work/sistema-indumentaria', accountId: 'work', accountName: 'Laboral' }, asked('Stock by size'))])
+    expect(memberOf(listed!)).toMatchObject({ title: 'Stock by size', titled: true, agentId: 'claude', agentName: 'Claude Code', accountId: 'work', accountName: 'Laboral' })
+    const [unnamed] = listSessions([session('b', { cwd: '/work/sistema-indumentaria' })])
+    expect(memberOf(unnamed!)).toMatchObject({ title: 'sistema-indumentaria' })
+    expect(memberOf(unnamed!).titled).toBeUndefined()
+  })
+
+  it('is the rename, then the first prompt, then what the member remembers, then the history, then the folder', () => {
+    const closed = { key: 'a', title: 'Remembered', titled: true, agentKey: 'claude', cwd: '/work/api' }
+    const [renamed] = listSessions([session('a', { name: 'Mine' }, asked('first'))])
+    const [prompted] = listSessions([session('a', {}, asked('first'))])
+    const [bare] = listSessions([session('a')])
+    expect(rowName(renamed, closed)).toBe('Mine')
+    expect(rowName(prompted, closed)).toBe('first')
+    expect(rowName(bare, closed, 'From history')).toBe('Remembered')
+    expect(rowName(undefined, closed)).toBe('Remembered')
+    const folderOnly = { ...closed, title: 'api', titled: undefined }
+    expect(rowName(bare, folderOnly, 'From history')).toBe('From history')
+    expect(rowName(bare, folderOnly)).toBe('api')
+  })
+
+  it('looks up in the history members without a name or account, and reopened sessions known by their folder, once', () => {
+    const groups: SessionGroups = {
+      groups: [{ id: 'g', name: 'W', collapsed: false, members: [member('old'), member('fresh'), { ...member('done'), titled: true, agentId: 'claude' }, { ...member('gone'), lookedUp: true }] }],
+      top: [{ kind: 'group', id: 'g' }]
+    }
+    const listed = listSessions([
+      session('fresh', { agentSessionId: 'fresh' }),
+      session('resumed', { agentSessionId: 'resumed', resumed: true }),
+      session('named', { agentSessionId: 'named', resumed: true }, asked('hi'))
+    ])
+    expect(historyLookupKeys(groups, listed, new Set())).toEqual(['old', 'resumed'])
+    expect(historyLookupKeys(groups, listed, new Set(['old', 'resumed']))).toEqual([])
+  })
+
+  it('takes the newest history title of each session', () => {
+    const titles = pastTitles([
+      { agentId: 'claude', accountId: null, agentSessionId: 'a', title: 'Old', lastModified: 1 },
+      { agentId: 'claude', accountId: 'w', agentSessionId: 'a', title: 'New', lastModified: 2 },
+      { agentId: 'claude', accountId: null, agentSessionId: 'b', title: ' ', lastModified: 2 }
+    ])
+    expect([...titles]).toEqual([['a', 'New']])
   })
 })

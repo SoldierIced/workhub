@@ -88,3 +88,12 @@ export function sessionsOfFolder<T extends HistoryEntry>(entries: readonly T[], 
   const target = folder.replace(/[\\/]+$/, '')
   return groupHistory(entries.filter((e) => (e.cwd ?? '').replace(/[\\/]+$/, '') === target && !open.has(historyId(e))), query).flatMap((g) => g.entries)
 }
+
+/**
+ * The past sessions whose agent session id is one of `keys` (sidebar group members are keyed by
+ * it): what a closed member's name and account are looked up in. Every account's copy is kept;
+ * `applyHistory` picks the newest.
+ */
+export function historyOfSessions<T extends HistoryEntry>(entries: readonly T[], keys: ReadonlySet<string>): T[] {
+  return entries.filter((e) => keys.has(e.agentSessionId))
+}

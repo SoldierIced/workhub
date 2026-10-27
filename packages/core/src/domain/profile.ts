@@ -72,6 +72,17 @@ export function profileColor(profiles: readonly Pick<Profile, 'id' | 'color'>[],
   return profiles[index]!.color ?? automaticProfileColor(index)
 }
 
+/**
+ * The colour that marks an agent account in the sidebar, by its place among the same agent's
+ * accounts: blue for the first and purple for the second, as Workhub 1 marked its Personal and Work
+ * accounts, then the rest of the palette. None for a session without an account, or one deleted.
+ */
+export function accountColor(accounts: readonly { id: string; agentId: string }[], accountId: string | null | undefined): string | undefined {
+  const account = accountId ? accounts.find((a) => a.id === accountId) : undefined
+  if (!account) return undefined
+  return automaticProfileColor(accounts.filter((a) => a.agentId === account.agentId).indexOf(account))
+}
+
 /** A valid name for a session environment variable. */
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
