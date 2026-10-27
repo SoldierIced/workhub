@@ -32,6 +32,8 @@ import { folderName } from '../../lib/home'
 import { groupSummary, listSessions, memberOf, newGroupId, sessionName, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
 import { openSubagent, visibleSubagents } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
+import { usePlatform } from '../../lib/platform'
+import { shortcutLabel } from '../../lib/shortcuts'
 import { awaitingAnswer, pushItem } from '../../store'
 import { AgentIcon } from '../atoms/AgentIcon'
 import { Badge } from '../atoms/Badge'
@@ -67,6 +69,10 @@ export interface SessionListProps {
   profiles?: readonly Pick<Profile, 'id' | 'name' | 'color'>[]
   /** The Slack badge of a row that owns followed threads opens the Slack screen. */
   onOpenSlack?: () => void
+  /** "Rename…" of an open session. */
+  onRename?: (view: SessionData['view']) => void
+  /** "Open in New Window" of an open session. */
+  onOpenInWindow?: (id: string) => void
 }
 
 type MenuItem = { label: string; hint?: string; onSelect: () => void } | { separator: true } | { label: string; items: MenuItem[] }
@@ -130,8 +136,9 @@ function readMember(e: DragEvent): GroupMember | null {
  * the user arranged them. Groups hold sessions by their stable identity, so a closed session
  * stays listed (dimmed, reopenable) until it is removed.
  */
-export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [], onOpenSlack }: SessionListProps) {
+export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [], onOpenSlack, onRename, onOpenInWindow }: SessionListProps) {
   const { t, tn } = useI18n()
+  const platform = usePlatform()
   const listed = useMemo(() => listSessions(sessions), [sessions])
   const liveKeys = useMemo(() => listed.map((s) => s.key), [listed])
   const rows = useMemo(() => sidebarRows(groups, listed), [groups, listed])
@@ -163,6 +170,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     const entry = listed.find((l) => l.key === member.key)
     const items: MenuItem[] = []
     if (!entry || entry.data.view.state === 'stopped') items.push({ label: t('groups.reopen'), onSelect: () => onReopen(member) }, { separator: true })
+    if (entry && onRename) items.push({ label: t('session.rename'), onSelect: () => onRename(entry.data.view) })
+    if (entry && onOpenInWindow && entry.data.view.state !== 'stopped') items.push({ label: t('window.openInNew'), hint: shortcutLabel({ key: 'n', shift: true }, platform), onSelect: () => onOpenInWindow(entry.data.view.id) })
     if (entry) items.push({ label: t('sessions.close'), onSelect: () => requestClose(entry.data) }, { separator: true })
     items.push(
       { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveBy(s, member.key, -1)) },
