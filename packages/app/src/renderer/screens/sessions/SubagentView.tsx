@@ -46,9 +46,9 @@ function Prompt({ text }: { text: string }) {
   const [open, setOpen] = useState(!long)
   return (
     <section className="rounded-lg border border-border bg-surface px-4 py-3" aria-label={t('subagent.prompt')}>
-      <div className="mb-1.5 text-xs font-semibold tracking-wide text-subtle uppercase">{t('subagent.prompt')}</div>
+      <div className="mb-1.5 text-chat-xs font-semibold tracking-wide text-subtle uppercase">{t('subagent.prompt')}</div>
       <div className={open ? '' : 'max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]'}>
-        <Markdown text={text} className="text-sm leading-relaxed" />
+        <Markdown text={text} className="text-chat-sm leading-relaxed" />
       </div>
       {long && (
         <Button size="sm" variant="ghost" className="mt-1" onClick={() => setOpen((v) => !v)}>
@@ -65,14 +65,14 @@ function Thinking({ text, durationMs }: { text: string; durationMs?: number }) {
   const label = durationMs !== undefined ? t('subagent.thoughtFor', { duration: shortDuration(durationMs) }) : t('subagent.thought')
   if (!text.trim()) {
     return (
-      <div className="ml-8 flex items-center gap-1.5 text-sm text-subtle">
+      <div className="ml-8 flex items-center gap-1.5 text-chat-sm text-subtle">
         <Brain className="size-3.5" aria-hidden />
         {label}
       </div>
     )
   }
   return (
-    <div className="ml-8 text-sm text-muted">
+    <div className="ml-8 text-chat-sm text-muted">
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex items-center gap-1.5 hover:text-text">
         <ChevronRight className={`size-3.5 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden />
         <Brain className="size-3.5" aria-hidden />
@@ -98,8 +98,8 @@ function Entry({ entry, sessionId, cwd }: { entry: ConversationEntry; sessionId:
     case 'user':
       return (
         <div className="flex flex-col items-end gap-1">
-          <span className="text-2xs text-subtle">{t('subagent.toParent')}</span>
-          <div className="max-w-[80%] rounded-xl rounded-br-sm bg-accent-soft px-3.5 py-2 text-sm whitespace-pre-wrap text-text">{entry.text}</div>
+          <span className="text-chat-2xs text-subtle">{t('subagent.toParent')}</span>
+          <div className="max-w-[80%] rounded-xl rounded-br-sm bg-accent-soft px-3.5 py-2 text-chat-sm whitespace-pre-wrap text-text">{entry.text}</div>
         </div>
       )
     case 'tool': {
@@ -168,16 +168,16 @@ function Body({ sessionId, subagentId, depth }: { sessionId: string; subagentId:
           <IconButton label={t('common.close')} icon={<X className="size-4" />} />
         </RDialog.Close>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto" role="log" aria-label={t('subagent.label')}>
+      <div className="min-h-0 flex-1 overflow-y-auto text-chat" role="log" aria-label={t('subagent.label')}>
         <div className="mx-auto flex max-w-3xl flex-col gap-3.5 px-6 py-5">
           {load.state === 'loading' && (
-            <p className="flex items-center gap-2 py-10 text-sm text-subtle">
+            <p className="flex items-center gap-2 py-10 text-chat-sm text-subtle">
               <Spinner className="size-4" /> {t('subagent.loading')}
             </p>
           )}
-          {load.state === 'missing' && <p className="py-10 text-center text-sm text-subtle">{t('subagent.missing')}</p>}
+          {load.state === 'missing' && <p className="py-10 text-center text-chat-sm text-subtle">{t('subagent.missing')}</p>}
           {c?.prompt && <Prompt text={c.prompt} />}
-          {c?.omitted ? <p className="text-center text-xs text-subtle">{tn('subagent.omitted', c.omitted)}</p> : null}
+          {c?.omitted ? <p className="text-center text-chat-xs text-subtle">{tn('subagent.omitted', c.omitted)}</p> : null}
           {hidden > 0 && (
             <Button size="sm" variant="ghost" className="self-center" onClick={() => setShown((n) => n + ENTRY_PAGE)}>
               {tn('subagent.showEarlier', Math.min(hidden, ENTRY_PAGE))}
@@ -186,14 +186,14 @@ function Body({ sessionId, subagentId, depth }: { sessionId: string; subagentId:
           {list.map((e) => (
             <Entry key={e.id} entry={e} sessionId={sessionId} cwd={c?.cwd} />
           ))}
-          {c && !c.entries.length && !c.result && <p className="text-center text-sm text-subtle">{t('subagent.empty')}</p>}
+          {c && !c.entries.length && !c.result && <p className="text-center text-chat-sm text-subtle">{t('subagent.empty')}</p>}
           {c?.result && (
             <section className="rounded-lg border border-success/40 bg-success-soft/40 px-4 py-3" aria-label={t('subagent.result')}>
-              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-success uppercase">
+              <div className="mb-1.5 flex items-center gap-1.5 text-chat-xs font-semibold tracking-wide text-success uppercase">
                 <CircleCheck className="size-3.5" aria-hidden />
                 {t('subagent.result')}
               </div>
-              <Markdown text={c.result} className="text-sm leading-relaxed" />
+              <Markdown text={c.result} className="text-chat-sm leading-relaxed" />
             </section>
           )}
         </div>

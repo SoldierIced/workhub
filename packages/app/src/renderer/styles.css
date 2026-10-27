@@ -287,3 +287,17 @@
     transition-duration: 1ms !important;
   }
 }
+
+/* Chat-relative text sizes (tool cards, sub-agent view): they follow the "Chat text size" preference. */
+@utility text-chat {
+  font-size: var(--wh-chat-font-size, 13px);
+}
+@utility text-chat-sm {
+  font-size: calc(var(--wh-chat-font-size, 13px) * 0.92);
+}
+@utility text-chat-xs {
+  font-size: calc(var(--wh-chat-font-size, 13px) * 0.85);
+}
+@utility text-chat-2xs {
+  font-size: calc(var(--wh-chat-font-size, 13px) * 0.77);
+}
