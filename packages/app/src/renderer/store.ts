@@ -12,12 +12,17 @@ import {
   type ToolView
 } from '@workhub/core'
 import { containsBell } from './lib/attention'
+import { TerminalScrollback } from './lib/terminal-scrollback'
 import type { SessionView } from '@shared/api'
 
 export type ChatItem =
   | { id: number; kind: 'agent' | 'thought' | 'error'; text: string }
-  /** `images`: data URLs of the pasted images, shown as thumbnails; a number when only the count is known (a replayed message). */
-  | { id: number; kind: 'user'; text: string; images?: string[] | number }
+  /**
+   * `images`: data URLs of the pasted images, shown as thumbnails; a number when only the count is
+   * known (a replayed message whose images could not be read back). `imagePaths`: each image's file
+   * in the data folder once written (see main/pasted-images.ts), which the file viewer opens.
+   */
+  | { id: number; kind: 'user'; text: string; images?: string[] | number; imagePaths?: (string | null)[] }
   /** A prompt turn ended; the reason is the agent's stop reason (end_turn, cancelled...). */
   | { id: number; kind: 'turnEnd'; stopReason: string }
   /** The agent process exited; `code` is null when a signal ended it. */
@@ -72,17 +77,18 @@ export function setExternalViewing(id: string | null): void {
   clearViewed()
 }
 
-/** What a session window starts from: this window's chat items and monitor of the session. */
-export function sessionSnapshot(id: string): { items: ChatItem[]; monitor: SessionMonitorSnapshot } | null {
+/** What a session window starts from: this window's chat items, monitor and terminal output of the session. */
+export function sessionSnapshot(id: string): { items: ChatItem[]; monitor: SessionMonitorSnapshot; terminals: Record<string, string> } | null {
   const s = sessions[id]
-  return s ? { items: s.items, monitor: s.monitor } : null
+  return s ? { items: s.items, monitor: s.monitor, terminals: scrollback.ofSession(id) } : null
 }
 
 /**
  * A session window takes the main window's chat of its session. It replaces what arrived here
  * before: main holds the newer messages until this snapshot is in (see session-windows.ts).
  */
-export function seedSession(id: string, snapshot: { items: unknown[]; monitor: SessionMonitorSnapshot }): void {
+export function seedSession(id: string, snapshot: { items: unknown[]; monitor: SessionMonitorSnapshot; terminals?: Record<string, string> }): void {
+  if (snapshot.terminals && typeof snapshot.terminals === 'object') seedTerminals(id, snapshot.terminals)
   const s = sessions[id]
   if (!s) return
   const items = (snapshot.items as ChatItem[]).map((i) => ({ ...i, id: ++seq }))
@@ -118,9 +124,15 @@ export function flagAttention(id: string, kind: AttentionKind): void {
 let seq = 0
 let sessions: Record<string, SessionData> = {}
 const listeners = new Set<() => void>()
-/** Terminal output per channel (`<session>:console`, `<session>:shell`) not yet written to an xterm. */
-const terminalBuffers = new Map<string, string[]>()
-const outputListeners = new Map<string, (data: string) => void>()
+/** Terminal output per channel (`<session>:console`, `<session>:shell`), shown or not. */
+const scrollback = new TerminalScrollback()
+const outputListeners = new Map<string, TerminalOutput>()
+
+/** A terminal view of a channel: `write` takes new output, `reset` clears the view before its output is replaced. */
+export interface TerminalOutput {
+  write: (data: string) => void
+  reset?: () => void
+}
 
 function set(next: Record<string, SessionData>): void {
   sessions = next
@@ -137,7 +149,48 @@ export function pushItem(id: string, kind: 'error', text: string): void {
 }
 
 export function pushUser(id: string, text: string, images?: string[]): void {
-  patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, kind: 'user', text, ...(images?.length ? { images } : {}) }] }))
+  const itemId = ++seq
+  patch(id, (s) => ({ ...s, items: [...s.items, { id: itemId, kind: 'user', text, ...(images?.length ? { images } : {}) }] }))
+  // Each pasted image is written once to a file of its own, so its thumbnail opens in the file viewer.
+  if (images?.length) void cacheImages(images).then((paths) => paths && setImagePaths(id, itemId, paths))
+}
+
+async function cacheImages(dataUrls: string[]): Promise<(string | null)[] | null> {
+  const files = typeof window === 'undefined' ? undefined : window.hub?.files
+  if (!files?.cacheImages) return null
+  try {
+    return await files.cacheImages(dataUrls)
+  } catch {
+    return null
+  }
+}
+
+/** Keeps the files of a message's images with it (the chat item). */
+export function setImagePaths(sessionId: string, itemId: number, paths: (string | null)[]): void {
+  patch(sessionId, (s) => ({
+    ...s,
+    items: s.items.map((i) => (i.id === itemId && i.kind === 'user' ? { ...i, imagePaths: paths } : i))
+  }))
+}
+
+/**
+ * Opens one of a message's images in the file viewer: its file when it was written already, else
+ * it is written first (a replayed image) and the file is kept with the message.
+ */
+export async function openChatImage(sessionId: string, item: Extract<ChatItem, { kind: 'user' }>, index: number): Promise<void> {
+  if (!Array.isArray(item.images)) return
+  const src = item.images[index]
+  if (!src) return
+  let path = item.imagePaths?.[index] ?? null
+  if (!path) {
+    path = (await cacheImages([src]))?.[0] ?? null
+    if (!path) return
+    const current = sessions[sessionId]?.items.find((i) => i.id === item.id)
+    const known = current?.kind === 'user' ? current.imagePaths : item.imagePaths
+    const paths = item.images.map((_, i) => (i === index ? path : (known?.[i] ?? null)))
+    setImagePaths(sessionId, item.id, paths)
+  }
+  await window.hub.files.openWindow(path)
 }
 
 export function pushTurnEnd(id: string, stopReason: string): void {
@@ -158,13 +211,33 @@ export function markPermission(id: string, requestId: string, answer: string): v
   }))
 }
 
-/** A terminal view takes the buffered output of its channel and receives the rest live. */
-export function attachOutput(channel: string, write: (data: string) => void): () => void {
-  for (const chunk of terminalBuffers.get(channel) ?? []) write(chunk)
-  terminalBuffers.delete(channel)
-  outputListeners.set(channel, write)
+/**
+ * A terminal view takes everything its channel printed so far (the scrollback, which a session
+ * window gets from the main window) and receives the rest live.
+ */
+export function attachOutput(channel: string, view: TerminalOutput): () => void {
+  const earlier = scrollback.text(channel)
+  if (earlier) view.write(earlier)
+  outputListeners.set(channel, view)
   return () => {
-    if (outputListeners.get(channel) === write) outputListeners.delete(channel)
+    if (outputListeners.get(channel) === view) outputListeners.delete(channel)
+  }
+}
+
+/** A session's terminal output, for a session window starting from this window's view. */
+export function terminalSnapshot(sessionId: string): Record<string, string> {
+  return scrollback.ofSession(sessionId)
+}
+
+/** Replaces a session's terminal output with a snapshot; a view already showing it starts over from it. */
+export function seedTerminals(sessionId: string, terminals: Record<string, string>): void {
+  for (const [channel, data] of Object.entries(terminals)) {
+    if (typeof data !== 'string' || !channel.startsWith(`${sessionId}:`)) continue
+    scrollback.replace(channel, data)
+    const view = outputListeners.get(channel)
+    if (!view) continue
+    view.reset?.()
+    if (data) view.write(data)
   }
 }
 
@@ -172,8 +245,12 @@ export function attachOutput(channel: string, write: (data: string) => void): ()
 export function replayItems(messages: HistoryMessage[], next: () => number): ChatItem[] {
   return messages.map((m): ChatItem => {
     switch (m.kind) {
-      case 'user':
-        return { id: next(), kind: 'user', text: m.text, ...(m.images ? { images: m.images } : {}) }
+      case 'user': {
+        // Images read back from the stored conversation show again; else only how many there were.
+        const shown = (m.imageData ?? []).map((i) => `data:${i.mediaType};base64,${i.data}`)
+        const images = shown.length ? shown : m.images
+        return { id: next(), kind: 'user', text: m.text, ...(images ? { images } : {}) }
+      }
       case 'agent':
         return { id: next(), kind: 'agent', text: m.text }
       case 'tool':
@@ -204,6 +281,7 @@ export function onChanged(view: SessionView): void {
 
 /** A session left the main process's list: drop it (its transcript stays in History). */
 export function onRemoved(id: string): void {
+  scrollback.dropSession(id)
   if (!sessions[id]) return
   const { [id]: _gone, ...rest } = sessions
   set(rest)
@@ -263,9 +341,8 @@ export function onEvent(e: AgentEvent): void {
     if (e.type !== 'output') return
     // A terminal agent rings the bell when it wants a look (finished, or waiting); a shell's own prompt does not count.
     if (e.sessionId.endsWith(':console') && containsBell(e.data)) raise(e.sessionId.split(':')[0]!, 'replied')
-    const write = outputListeners.get(e.sessionId)
-    if (write) write(e.data)
-    else terminalBuffers.set(e.sessionId, [...(terminalBuffers.get(e.sessionId) ?? []), e.data])
+    scrollback.append(e.sessionId, e.data)
+    outputListeners.get(e.sessionId)?.write(e.data)
     return
   }
   const s = sessions[e.sessionId]

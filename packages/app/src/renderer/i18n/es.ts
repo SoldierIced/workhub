@@ -318,6 +318,8 @@ export const es: Record<keyof typeof en, string> = {
   'session.model': 'Modelo',
   'session.modelDefault': 'Modelo por defecto',
   'chat.imageAlt': 'Imagen pegada {n}',
+  'chat.imageOpen': 'Clic para ver',
+  'chat.imageOpenLabel': 'Abrir la imagen pegada {n} en el visor de archivos',
   'chat.images.one': '{count} imagen',
   'chat.images.other': '{count} imágenes',
   'chat.noticeEmpty': 'Sin salida',
