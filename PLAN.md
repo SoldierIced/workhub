@@ -350,5 +350,6 @@ How to keep it near the low end:
   limits (both priced from their tokens with bundled list-price tables, no network), OpenCode's
   recorded per-message cost, and any ACP agent reporting a cost in `usage_update` (a persisted
   per-day ledger). Still open: provider balances (OpenRouter has an API; Anthropic and OpenAI to
-  research) and keeping the OpenAI price table current. Kiro credits left are read through
+  research). Both price tables were checked against the official pricing pages on 2026-10-27
+  (sources in `openai-prices.ts` and `claude-tools.ts`); re-check them when models ship. Kiro credits left are read through
   `kiro-cli`'s own `/usage`, on by default.
