@@ -16,11 +16,17 @@ export interface TraySession {
   state: SessionState
   unseen?: AttentionKind
   awaitingAnswer?: boolean
+  /** The agent's id (`claude`, `codex`…), for its icon in the popover. */
+  agentId?: string
+  /** Epoch ms since the session shows its current state (see `stampSince`). */
+  since?: number
 }
 
 export interface TrayUsageAccount {
   name: string
-  windows: readonly { window: string; percent: number }[]
+  /** The agent the account belongs to (`claude`, `codex`). */
+  agentId?: string
+  windows: readonly { window: string; percent: number; resetsAt?: number }[]
   error?: boolean
 }
 
@@ -46,7 +52,7 @@ export interface TrayState {
   /** Null while the Slack watcher is off. */
   slack: { health: TraySlackHealth; open: number; unread: number; error?: string } | null
   /** Notifications shown lately, newest first (Workhub 1's "Notifications" list). */
-  notifications?: readonly { id: string; title: string }[]
+  notifications?: readonly { id: string; title: string; at?: number }[]
   /** Epoch ms; unset or in the past when notifications are not paused. */
   pausedUntil?: number
   /** Whether "Check for updates" makes sense (a packaged build). */
