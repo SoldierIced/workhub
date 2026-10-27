@@ -228,6 +228,12 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
       })
       child.stdin?.end()
     })
+    // Killed after the timeout: the exit may come later, and the session id must be free for the
+    // engine that takes over (a hand-over starts it again at once).
+    if (this.sessions.get(sessionId) === s) {
+      this.sessions.delete(sessionId)
+      this.emit({ sessionId, type: 'state', state: 'stopped' })
+    }
   }
 
   async stopAll(): Promise<void> {

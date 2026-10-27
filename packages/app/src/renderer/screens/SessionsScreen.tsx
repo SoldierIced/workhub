@@ -8,12 +8,14 @@ import { BrandMark } from '../components/organisms'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { cn } from '../lib/cn'
-import { rememberModel } from '../lib/prefs'
+import { sessionModelPicker, sessionModePicker } from '../lib/agent-pickers'
+import { rememberMode, rememberModel } from '../lib/prefs'
 import { pushItem, type SessionData } from '../store'
 import { AiReviewAside, AiReviewButton } from './sessions/AiReviewPanel'
 import { ChatPane } from './sessions/ChatPane'
 import { ContinueMenu } from './sessions/ContinueMenu'
 import { MonitorPanel } from './sessions/MonitorPanel'
+import { PendingSwitchBar } from './sessions/PendingSwitchBar'
 import { TerminalPane } from './sessions/TerminalPane'
 
 export interface SessionsScreenProps {
@@ -62,7 +64,8 @@ function ModeSwitch({ data }: { data: SessionData }) {
   const v = data.view
   const [pending, setPending] = useState(false)
   const pick = async (mode: SessionMode) => {
-    if (mode === v.mode || pending) return
+    // Picking the view that runs while a switch waits drops the switch.
+    if ((mode === v.mode && !v.pendingMode) || pending) return
     setPending(true)
     try {
       await window.hub.sessions.setMode(v.id, mode)
@@ -77,6 +80,7 @@ function ModeSwitch({ data }: { data: SessionData }) {
       {v.modes.map((m) => {
         const Icon = MODE_ICON[m]
         const active = v.mode === m
+        const waiting = v.pendingMode === m
         return (
           <button
             key={m}
@@ -86,9 +90,12 @@ function ModeSwitch({ data }: { data: SessionData }) {
             disabled={pending}
             onClick={() => void pick(m)}
             data-testid={`mode-${m}`}
+            data-pending={waiting || undefined}
+            title={waiting ? t('session.switchPending', { mode: t(MODE_LABEL[m]) }) : undefined}
             className={cn(
               'inline-flex h-6 items-center gap-1.5 rounded px-2 text-sm transition-colors duration-150 disabled:opacity-60',
-              active ? 'bg-accent-soft font-medium text-text' : 'text-muted hover:text-text'
+              active ? 'bg-accent-soft font-medium text-text' : 'text-muted hover:text-text',
+              waiting && 'text-accent ring-1 ring-accent/50'
             )}
           >
             <Icon className="size-3.5" aria-hidden />
@@ -103,20 +110,45 @@ function ModeSwitch({ data }: { data: SessionData }) {
 function ModelPicker({ data }: { data: SessionData }) {
   const { t } = useI18n()
   const v = data.view
-  const models = v.models ?? []
+  const picker = sessionModelPicker(v)
   const change = (id: string) => {
     rememberModel(effectiveAgentKey(v.agentId, v.accountId), id || null)
     void window.hub.sessions.setModel(v.id, id || null).catch((e: unknown) => pushItem(v.id, 'error', e instanceof Error ? e.message : String(e)))
   }
   return (
-    <Select
-      aria-label={t('session.model')}
-      value={v.currentModelId && models.some((m) => m.id === v.currentModelId) ? v.currentModelId : ''}
-      onChange={change}
-      disabled={v.state !== 'ready'}
-      options={[{ value: '', label: t('session.modelDefault') }, ...models.map((m) => ({ value: m.id, label: m.name }))]}
-      className="h-7 w-44! text-sm"
-    />
+    <span data-testid="model-picker" title={v.modelIgnored ? t('agentControls.modelIgnored') : undefined}>
+      <Select
+        aria-label={t('session.model')}
+        value={picker.value}
+        onChange={change}
+        disabled={picker.disabled}
+        options={[...(picker.allowDefault ? [{ value: '', label: t('session.modelDefault') }] : []), ...picker.options]}
+        className="h-7 w-44! text-sm"
+      />
+    </span>
+  )
+}
+
+/** The session's agent (Kiro, OpenCode) or permission preset (Codex, Gemini), switched live over ACP. */
+function ModePicker({ data }: { data: SessionData }) {
+  const { t } = useI18n()
+  const v = data.view
+  const picker = sessionModePicker(v)
+  const change = (id: string) => {
+    if (!id) return
+    rememberMode(effectiveAgentKey(v.agentId, v.accountId), id)
+    void window.hub.sessions.setAgentMode(v.id, id).catch((e: unknown) => pushItem(v.id, 'error', e instanceof Error ? e.message : String(e)))
+  }
+  const label = t(picker.kind === 'agent' ? 'agentControls.agent' : 'agentControls.permission')
+  return (
+    <span
+      data-testid="mode-picker"
+      className="inline-flex items-center gap-1 text-xs text-muted"
+      title={v.modeIgnored ? t('agentControls.modeIgnored') : t(picker.kind === 'agent' ? 'agentControls.agentHint' : 'agentControls.permissionHint')}
+    >
+      {picker.kind === 'agent' && <UserRound className="size-3.5" aria-hidden />}
+      <Select aria-label={label} value={picker.value} onChange={change} disabled={picker.disabled} options={picker.options} placeholder={label} className="h-7 w-40! text-sm" />
+    </span>
   )
 }
 
@@ -134,16 +166,19 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
   const hasConsole = v.modes.includes('console')
   return (
     <>
-      <header className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3">
-        <div className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-raised text-accent">
+      {/* Wraps: on a narrow pane the controls move to a second row instead of squeezing the name and folder to nothing. */}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-3" data-testid="session-header">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised text-accent">
           <SquareTerminal className="size-4.5" aria-hidden />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h1 className="truncate text-md font-semibold">{v.agentName}</h1>
+        <div className="min-w-48 flex-1 basis-56" data-testid="session-identity">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="min-w-0 truncate text-md font-semibold" title={v.agentName}>
+              {v.agentName}
+            </h1>
             {v.accountName && (
-              <Badge tone="accent" data-testid="session-account" icon={<UserRound className="size-3" aria-hidden />}>
-                {v.accountName}
+              <Badge tone="accent" data-testid="session-account" className="min-w-0 shrink" title={v.accountName} icon={<UserRound className="size-3 shrink-0" aria-hidden />}>
+                <span className="truncate">{v.accountName}</span>
               </Badge>
             )}
           </div>
@@ -151,9 +186,10 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
             {v.cwd}
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
           {v.modes.length > 1 && <ModeSwitch data={data} />}
-          {v.controls && v.mode === 'app' && (v.models?.length ?? 0) > 0 && <ModelPicker data={data} />}
+          {sessionModePicker(v).visible && <ModePicker data={data} />}
+          {sessionModelPicker(v).visible && <ModelPicker data={data} />}
           <Badge tone={STATE_TONE[v.state]} data-testid="session-state" icon={<StateDot tone={STATE_TONE[v.state]} pulse={v.state === 'busy' || v.state === 'starting'} />}>
             {t(`state.${v.state}`)}
           </Badge>
@@ -165,7 +201,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
           >
             {t('session.permissionMode', { mode: mode ? mode.label : v.state === 'starting' ? t('session.pending') : t('session.unknown') })}
           </Badge>
-          {v.currentModeId && v.permissionMode?.id === 'agent-managed' && <Badge>{t('session.agentMode', { mode: v.currentModeId })}</Badge>}
+          {v.currentModeId && v.permissionMode?.id === 'agent-managed' && !sessionModePicker(v).visible && <Badge>{t('session.agentMode', { mode: v.currentModeId })}</Badge>}
           {live && <AiReviewButton view={v} />}
           {live && !v.readOnly && v.modes.includes('app') && <ContinueMenu view={v} />}
           {live && (
@@ -181,6 +217,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
           {t('session.startingHint')}
         </div>
       )}
+      <PendingSwitchBar view={v} />
       {v.error && (
         <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-sm text-danger">
           <CircleAlert className="size-4" aria-hidden />

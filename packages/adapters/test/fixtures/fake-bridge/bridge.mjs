@@ -6,6 +6,7 @@ const send = (o) => process.stdout.write(JSON.stringify(o) + '\n')
 const sdk = (message) => send({ type: 'sdk', message })
 let start = null
 let pendingPermission = null
+let ignoreClose = false
 let servers = [{ name: 'acme-docs', status: 'connected', toolCount: 2, tools: ['search', 'read'] }]
 
 function reply(id, text) {
@@ -47,6 +48,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         sdk({ type: 'result', subtype: 'success', is_error: true, result: "You've hit your limit · resets 3pm" })
       } else if (text === 'wait') {
         // Answered by an interrupt.
+      } else if (text === 'ignore close') {
+        // A Claude that does not end when its input closes: only a kill stops it.
+        ignoreClose = true
+        sdk({ type: 'result', subtype: 'success', is_error: false })
       } else {
         const images = (m.content ?? []).filter((b) => b.type === 'image').length
         reply('msg_' + Date.now(), images ? `pong with ${images} image(s)` : 'pong')
@@ -77,4 +82,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       send({ type: 'mcp_status', servers })
       break
   }
-}).on('close', () => process.exit(0))
+}).on('close', () => {
+  if (ignoreClose) setInterval(() => {}, 1000)
+  else process.exit(0)
+})

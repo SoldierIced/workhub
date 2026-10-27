@@ -7,6 +7,7 @@ import type { SessionIntent } from '../shared/links-api'
 import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 import type { ContinuityMoved, ContinuityOffer } from '../shared/continuity-api'
+import type { TrayRoute } from '../shared/tray-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -34,6 +35,7 @@ const api: HubApi = {
     effectiveAgents: (profileId) => ipcRenderer.invoke('config:effectiveAgents', profileId),
     previewWorkhub1Import: () => ipcRenderer.invoke('config:previewWorkhub1Import'),
     applyWorkhub1Import: () => ipcRenderer.invoke('config:applyWorkhub1Import'),
+    importWorkhub1Secrets: () => ipcRenderer.invoke('config:importWorkhub1Secrets'),
     onChanged: (cb) => subscribe<[]>('config:changed', cb)
   },
   tickets: {
@@ -55,8 +57,10 @@ const api: HubApi = {
     list: () => ipcRenderer.invoke('sessions:list'),
     start: (input) => ipcRenderer.invoke('sessions:start', input),
     prompt: (id, text, images) => ipcRenderer.invoke('sessions:prompt', id, text, images),
-    setMode: (id, mode) => ipcRenderer.invoke('sessions:setMode', id, mode),
+    setMode: (id, mode, options) => ipcRenderer.invoke('sessions:setMode', id, mode, options),
+    close: (id) => ipcRenderer.invoke('sessions:close', id),
     setModel: (id, model) => ipcRenderer.invoke('sessions:setModel', id, model),
+    setAgentMode: (id, modeId) => ipcRenderer.invoke('sessions:setAgentMode', id, modeId),
     mcp: (id, action, server) => ipcRenderer.send('sessions:mcp', id, action, server),
     cancel: (id) => ipcRenderer.invoke('sessions:cancel', id),
     stop: (id) => ipcRenderer.invoke('sessions:stop', id),
@@ -72,10 +76,12 @@ const api: HubApi = {
     list: () => ipcRenderer.invoke('history:list')
   },
   agents: {
-    availability: () => ipcRenderer.invoke('agents:availability')
+    availability: () => ipcRenderer.invoke('agents:availability'),
+    options: (agentKey, refresh) => ipcRenderer.invoke('agents:options', agentKey, refresh)
   },
   usage: {
     get: (refresh) => ipcRenderer.invoke('usage:get', refresh),
+    kiroSpend: () => ipcRenderer.invoke('usage:kiroSpend'),
     onChanged: (cb) => subscribe<[AccountUsage[]]>('usage:changed', cb),
     onAlerts: (cb) => subscribe<[UsageAlert[]]>('usage:alerts', cb),
     notify: (n) => ipcRenderer.send('usage:notify', n),
@@ -163,6 +169,11 @@ const api: HubApi = {
     handoff: (sessionId, request) => ipcRenderer.invoke('continuity:handoff', sessionId, request),
     onOffer: (cb) => subscribe<[ContinuityOffer]>('continuity:offer', cb),
     onMoved: (cb) => subscribe<[ContinuityMoved]>('continuity:moved', cb)
+  },
+  tray: {
+    setState: (state) => ipcRenderer.send('tray:state', state),
+    onNavigate: (cb) => subscribe<[TrayRoute]>('tray:navigate', cb),
+    onNewSession: (cb) => subscribe<[]>('tray:newSession', cb)
   }
 }
 

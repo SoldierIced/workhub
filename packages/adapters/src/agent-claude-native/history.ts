@@ -102,8 +102,15 @@ export class ClaudeSessionHistory implements SessionHistorySource {
     return toHistoryEntries(raw, account.agentId, account.accountId)
   }
 
+  /**
+   * The conversation as stored. Looked up under the session's folder first; a session whose
+   * transcript sits under another project folder (the folder was renamed or reached through a
+   * symlink) is looked up in every project.
+   */
   async messages(agentSessionId: string, cwd: string, configDir?: string): Promise<HistoryMessage[]> {
-    return toHistoryMessages(await this.run(['messages', agentSessionId, cwd], configDir))
+    const raw = await this.run(['messages', agentSessionId, cwd], configDir)
+    if (Array.isArray(raw) && raw.length > 0) return toHistoryMessages(raw)
+    return toHistoryMessages(await this.run(['messages', agentSessionId], configDir))
   }
 
   private run(args: string[], configDir: string | undefined): Promise<unknown> {

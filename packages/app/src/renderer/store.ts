@@ -144,11 +144,17 @@ export function replayItems(messages: HistoryMessage[], next: () => number): Cha
   })
 }
 
+/**
+ * The whole conversation of a chat that resumed (a reopened session, or the console handing it
+ * back). It replaces what the chat showed: main sends it before any event of the new chat, and
+ * the stored conversation already holds the earlier chat and the console's turns.
+ */
+export function withReplay(s: SessionData, messages: HistoryMessage[], next: () => number): SessionData {
+  return { ...s, items: [...replayItems(messages, next), { id: next(), kind: 'replayStart', count: messages.length }] }
+}
+
 function onReplay(id: string, messages: HistoryMessage[]): void {
-  patch(id, (s) => ({
-    ...s,
-    items: [...replayItems(messages, () => ++seq), { id: ++seq, kind: 'replayStart', count: messages.length }, ...s.items]
-  }))
+  patch(id, (s) => withReplay(s, messages, () => ++seq))
 }
 
 export function onChanged(view: SessionView): void {

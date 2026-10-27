@@ -3,12 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { parsePrWindowHash } from './lib/pullRequests'
 import { parseTicketHash, TicketWindowRoot } from './screens/TicketWindow'
-import { readPrefs, resolveTheme } from './lib/prefs'
+import { readPrefs } from './lib/prefs'
+import { applyAppearance } from './lib/appearance'
 import { PullRequestWindow } from './screens/PullRequestWindow'
 import './styles.css'
 
-// Set the theme before the first paint so a light OS never flashes the dark palette.
-document.documentElement.dataset['theme'] = resolveTheme(readPrefs().theme, matchMedia('(prefers-color-scheme: dark)').matches)
+// Set the theme (and the text sizes) before the first paint so a light OS never flashes the dark palette.
+applyAppearance(readPrefs(), matchMedia('(prefers-color-scheme: dark)').matches)
 
 // Secondary windows load the same bundle and are routed by the URL hash:
 // `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…` a ticket.

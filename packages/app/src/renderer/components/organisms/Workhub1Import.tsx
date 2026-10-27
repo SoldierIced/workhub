@@ -2,11 +2,13 @@ import { CircleAlert, Download, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { isEmptyImportPlan, type ImportNote, type ImportPlan, type ImportPrefs, type Result, type WorkhubConfig } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
-import { readPrefs, setPrefs } from '../../lib/prefs'
+import { clampSize, DEFAULT_PREFS, readPrefs, setPrefs, type Prefs } from '../../lib/prefs'
+import { findTerminalTheme } from '../../lib/terminalThemes'
 import type { MessageKey } from '../../i18n/translate'
 import { Badge } from '../atoms/Badge'
 import { Button } from '../atoms/Button'
 import { Spinner } from '../atoms/Spinner'
+import { Workhub1SecretsImport } from './Workhub1SecretsImport'
 
 const NOTE_LABEL: Record<ImportNote['code'], MessageKey> = {
   exists: 'import.noteExists',
@@ -39,10 +41,23 @@ export function rowPaths(plan: ImportPlan): Set<string> {
  * The renderer-only preferences of the import: a model already picked for an agent and a language
  * already chosen win over Workhub 1's.
  */
-export function mergedPrefs(current: { language: string; models: Record<string, string> }, imported: ImportPrefs | undefined): { language?: 'en' | 'es'; models?: Record<string, string> } {
-  const out: { language?: 'en' | 'es'; models?: Record<string, string> } = {}
+type AppearancePrefs = Pick<Prefs, 'terminalTheme' | 'terminalFontFamily' | 'terminalFontSize' | 'chatFontSize' | 'textSize'>
+
+export function mergedPrefs(
+  current: { language: string; models: Record<string, string> } & Partial<AppearancePrefs>,
+  imported: ImportPrefs | undefined
+): { language?: 'en' | 'es'; models?: Record<string, string> } & Partial<AppearancePrefs> {
+  const out: { language?: 'en' | 'es'; models?: Record<string, string> } & Partial<AppearancePrefs> = {}
   if (imported?.models) out.models = { ...imported.models, ...current.models }
   if (imported?.language && current.language === 'system') out.language = imported.language
+  // Appearance: only what is still at Workhub 2's default, so a choice made here is kept.
+  const a = imported?.appearance
+  if (a?.terminalTheme && !current.terminalTheme && findTerminalTheme(a.terminalTheme)) out.terminalTheme = a.terminalTheme
+  if (a?.terminalFontFamily && !current.terminalFontFamily) out.terminalFontFamily = a.terminalFontFamily
+  for (const key of ['terminalFontSize', 'chatFontSize', 'textSize'] as const) {
+    const v = a?.[key]
+    if (v !== undefined && (current[key] === undefined || current[key] === DEFAULT_PREFS[key])) out[key] = clampSize(key, v)
+  }
   return out
 }
 
@@ -73,6 +88,17 @@ export function optionRows(plan: ImportPlan, t: Translate): { id: string; name: 
   const models = Object.values(plan.prefs?.models ?? {})
   if (models.length) rows.push({ id: 'models', name: t('import.defaultModel'), meta: models.join(', '), notes: [] })
   if (plan.prefs?.language) rows.push({ id: 'language', name: t('import.language'), meta: plan.prefs.language, notes: [] })
+  const a = plan.prefs?.appearance
+  if (a) {
+    const parts = [
+      a.terminalTheme,
+      a.terminalFontFamily,
+      a.terminalFontSize && t('import.appearanceTerminal', { size: String(a.terminalFontSize) }),
+      a.textSize && t('import.appearanceText', { size: String(a.textSize) }),
+      a.chatFontSize && t('import.appearanceChat', { size: String(a.chatFontSize) })
+    ].filter(Boolean)
+    rows.push({ id: 'appearance', name: t('import.appearance'), meta: parts.join(', '), notes: [] })
+  }
   return rows
 }
 
@@ -118,7 +144,7 @@ function Group({ title, rows }: { title: string; rows: { id: string; name: strin
  * Settings → General: reads Workhub 1's settings (read-only, macOS) and shows what would be
  * added before anything is saved. Secrets are never copied; the preview marks them "re-enter".
  */
-export function Workhub1Import({ run }: { run: (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean> }) {
+export function Workhub1Import({ run, showTokens }: { run: (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>; showTokens: boolean }) {
   const { t } = useI18n()
   const [state, setState] = useState<{ kind: 'idle' | 'loading' } | { kind: 'missing' } | { kind: 'error'; message: string } | { kind: 'plan'; plan: ImportPlan } | { kind: 'done' }>({ kind: 'idle' })
 
@@ -133,7 +159,7 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
   const apply = async (plan: ImportPlan) => {
     if (await run(() => window.hub.config.applyWorkhub1Import())) {
       const prefs = mergedPrefs(readPrefs(), plan.prefs)
-      if (prefs.models || prefs.language) setPrefs(prefs)
+      if (Object.keys(prefs).length) setPrefs(prefs)
       setState({ kind: 'done' })
     }
   }
@@ -149,6 +175,7 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
           {t('import.preview')}
         </Button>
       </div>
+      {showTokens && <Workhub1SecretsImport />}
       {state.kind === 'missing' && <p className="text-sm text-muted">{t('import.missing')}</p>}
       {state.kind === 'done' && <p className="text-sm text-success">{t('import.done')}</p>}
       {state.kind === 'error' && (

@@ -115,6 +115,24 @@ export interface AgentAccount {
   configDir?: string
   /** Extra environment for sessions started with this account. */
   env?: Record<string, string>
+  /**
+   * The executable to start instead of the agent's own command (a full path, or another build on
+   * PATH). The agent's args are kept.
+   */
+  command?: string
+  /** Model a new session of this account starts with, unless one is picked for it. */
+  defaultModel?: string
+  /**
+   * Mode a new session starts in, unless one is picked: an ACP session mode id, i.e. the agent or
+   * persona for Kiro and OpenCode, the approval preset for Codex.
+   */
+  defaultMode?: string
+}
+
+/** The agent as an account runs it: the account's command replaces the agent's. */
+export function accountAgent<A extends Pick<AgentDefinition, 'command'>>(agent: A, account: Pick<AgentAccount, 'command'> | null): A {
+  const command = account?.command?.trim()
+  return command ? { ...agent, command } : agent
 }
 
 /** The agent id an agent's accounts are bound to. */

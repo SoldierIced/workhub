@@ -33,7 +33,7 @@ type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 const THRESHOLD_KEYS = Object.keys(HEALTH_THRESHOLD_RANGES) as (keyof typeof HEALTH_THRESHOLD_RANGES)[]
 
 /** Settings → Health: the Elasticsearch connection of the active profile, its refresh interval and the environments to watch. */
-export function HealthSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
+export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapshot; run: Run; focusSecret?: boolean }) {
   const { t } = useI18n()
   const profile = snap.config.profiles.find((p) => p.id === snap.config.activeProfileId)
   const connection = snap.config.connections.find((c) => c.id === profile?.connections.health)
@@ -110,7 +110,7 @@ export function HealthSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }
     setEnvs((all) => all.map((e, i) => (i === index ? { ...e, thresholds: { ...e.thresholds, [key]: value } } : e)))
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <p className="text-base text-muted">{t('health.settings.intro')}</p>
       {demo && <p className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning">{t('health.settings.demoNote')}</p>}
       {formError && (
@@ -120,7 +120,7 @@ export function HealthSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }
       )}
 
       <Card className="px-4">
-        <SwitchRow label={t('health.settings.module')} hint={`${t('health.settings.moduleHint')} (${profile.name})`}>
+        <SwitchRow label={t('health.settings.module')} help={t('help.health.module')} hint={`${t('health.settings.moduleHint')} (${profile.name})`}>
           <Switch
             checked={profile.modules.health}
             disabled={!editable}
@@ -130,7 +130,7 @@ export function HealthSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }
       </Card>
 
       <Card>
-        <CardHeader title={t('health.settings.connection')} />
+        <CardHeader title={t('health.settings.connection')} help={t('help.health.connection')} />
         <CardBody className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label={t('health.settings.url')} hint={t('health.settings.urlHint')} className="col-span-2">
@@ -152,9 +152,9 @@ export function HealthSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }
               </Field>
             )}
             <Field label={form.auth === 'basic' ? t('health.settings.secret.basic') : t('health.settings.secret.apiKey')} className={form.auth === 'basic' ? 'col-span-2' : ''}>
-              <Input type="password" value={form.secret} onChange={(e) => setConn({ secret: e.target.value })} placeholder={stored ? t('health.settings.secretStored') : ''} autoComplete="off" />
+              <Input type="password" autoFocus={focusSecret} value={form.secret} onChange={(e) => setConn({ secret: e.target.value })} placeholder={stored ? t('health.settings.secretStored') : ''} autoComplete="off" />
             </Field>
-            <Field label={t('health.settings.tls')}>
+            <Field label={t('health.settings.tls')} help={t('help.health.tls')}>
               <Select
                 value={form.tls}
                 onChange={(v) => setConn({ tls: v === 'pinned' || v === 'insecure' ? v : 'system' })}
@@ -191,6 +191,7 @@ export function HealthSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }
       <Card>
         <CardHeader
           title={t('health.settings.environments')}
+          help={t('help.health.environments')}
           actions={
             <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" aria-hidden />} onClick={addEnv} disabled={!editable}>
               {t('health.settings.addEnvironment')}

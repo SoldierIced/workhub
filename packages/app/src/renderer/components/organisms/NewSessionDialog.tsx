@@ -1,9 +1,11 @@
-import { FolderOpen } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { FolderOpen, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { pickAgent, type EffectiveAgent } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { installHintKey } from '../../lib/agents'
-import { readPrefs } from '../../lib/prefs'
+import type { AgentOptionsView } from '@shared/api'
+import { initialStartChoice } from '../../lib/agent-pickers'
+import { readPrefs, rememberMode, rememberModel } from '../../lib/prefs'
 import { Button } from '../atoms/Button'
 import { IconButton } from '../atoms/IconButton'
 import { Input } from '../atoms/Input'
@@ -23,7 +25,10 @@ export interface NewSessionDialogProps {
   onStarted: (sessionId: string) => void
 }
 
-/** Starts a session with the active profile: pick the agent and the folder. */
+/** "Default (auto)": the default option names the agent's own default when it is known. */
+const optionDefault = (label: string, id: string | undefined) => (id ? `${label} (${id})` : label)
+
+/** Starts a session with the active profile: pick the agent, the folder, and the model and agent or mode where the agent has them. */
 export function NewSessionDialog({ open, onOpenChange, profileId, agents, preferredAgents, initialAgentKey, initialCwd, onStarted }: NewSessionDialogProps) {
   const { t } = useI18n()
   const [agentKey, setAgentKey] = useState('')
@@ -32,6 +37,11 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
   const [busy, setBusy] = useState(false)
   // Agent id -> installed; an agent missing from the answer is treated as installed.
   const [installed, setInstalled] = useState<Record<string, boolean>>({})
+  // What the chosen agent offers (models, agents or modes) and the picks for this session.
+  const [options, setOptions] = useState<AgentOptionsView | null>(null)
+  const [loadingOptions, setLoadingOptions] = useState(false)
+  const [model, setModel] = useState('')
+  const [modeId, setModeId] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -53,12 +63,51 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
 
   const chosen = agents.find((a) => a.key === agentKey)
   const missing = chosen !== undefined && installed[chosen.agent.id] === false
+  // Only agents that run over ACP or natively take a model or mode at start.
+  const configurable = chosen !== undefined && chosen.agent.adapter !== 'terminal' && chosen.agent.capabilities.appMode
+
+  const agentKeyRef = useRef(agentKey)
+  agentKeyRef.current = agentKey
+  const loadOptions = (refresh: boolean) => {
+    if (!chosen || !configurable) {
+      setOptions(null)
+      return
+    }
+    const key = chosen.key
+    setLoadingOptions(true)
+    void window.hub.agents
+      .options(key, refresh)
+      .then(
+        (o) => {
+          if (key !== agentKeyRef.current) return
+          setOptions(o)
+          const prefs = readPrefs()
+          setModel(initialStartChoice('model', o, prefs.models[key], chosen.account))
+          setModeId(initialStartChoice('mode', o, prefs.modes[key], chosen.account))
+        },
+        () => setOptions(null)
+      )
+      .finally(() => setLoadingOptions(false))
+  }
+  useEffect(() => {
+    if (!open) return
+    setOptions(null)
+    setModel('')
+    setModeId('')
+    loadOptions(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, agentKey, configurable])
 
   const start = async () => {
     setError('')
     setBusy(true)
     try {
-      const view = await window.hub.sessions.start({ profileId, agentKey, cwd, cols: 100, rows: 30, model: readPrefs().models[agentKey] })
+      // Nothing picked: the main process falls back to the account's defaults, then the agent's.
+      const view = await window.hub.sessions.start({ profileId, agentKey, cwd, cols: 100, rows: 30, ...(model ? { model } : {}), ...(modeId ? { modeId } : {}) })
+      if (configurable) {
+        rememberModel(agentKey, model || null)
+        rememberMode(agentKey, modeId || null)
+      }
       onOpenChange(false)
       onStarted(view.id)
     } catch (e) {
@@ -111,6 +160,45 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
             placeholder={t('session.noAgents')}
           />
         </Field>
+        {configurable && (options?.models.length || options?.modes.length || loadingOptions || options?.source === 'none') ? (
+          <div className="grid grid-cols-2 gap-3" data-testid="new-session-options">
+            {(options?.modes.length ?? 0) > 0 && (
+              <Field label={t(options?.modeSemantics === 'persona' ? 'newSession.mode' : 'newSession.permissionMode')}>
+                <Select
+                  aria-label={t(options?.modeSemantics === 'persona' ? 'newSession.mode' : 'newSession.permissionMode')}
+                  value={modeId}
+                  onChange={setModeId}
+                  options={[
+                    { value: '', label: optionDefault(t('agentControls.agentDefault'), options?.defaultModeId) },
+                    ...(options?.modes ?? []).map((m) => ({ value: m.id, label: m.name }))
+                  ]}
+                />
+              </Field>
+            )}
+            {(options?.models.length ?? 0) > 0 && (
+              <Field label={t('newSession.model')}>
+                <Select
+                  aria-label={t('newSession.model')}
+                  value={model}
+                  onChange={setModel}
+                  options={[{ value: '', label: optionDefault(t('session.modelDefault'), options?.defaultModelId) }, ...(options?.models ?? []).map((m) => ({ value: m.id, label: m.name }))]}
+                />
+              </Field>
+            )}
+            <p className="col-span-2 flex items-center gap-2 text-xs text-subtle">
+              <span className="flex-1">
+                {loadingOptions
+                  ? t('newSession.loadingOptions')
+                  : options?.source === 'cli'
+                    ? t('newSession.optionsFromCli')
+                    : options?.source === 'session'
+                      ? t('newSession.optionsFromSession')
+                      : t('newSession.noOptions')}
+              </span>
+              <IconButton size="sm" className="size-6" label={t('newSession.refreshOptions')} icon={<RefreshCw className="size-3" />} disabled={loadingOptions} onClick={() => loadOptions(true)} />
+            </p>
+          </div>
+        ) : null}
         <Field label={t('newSession.folder')}>
           <div className="flex gap-2">
             <Input aria-label={t('newSession.folder')} value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} />
