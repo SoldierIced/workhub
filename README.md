@@ -200,6 +200,37 @@ Workhub stores no token. Set `scope=org:my-org` (GitHub search qualifiers) or `s
 repos behind the profile's folders, then to everything you can see. `WORKHUB_DEMO_CODEHOST=1`
 serves synthetic pull requests instead of a real host, for demos and screenshots.
 
+## Slack and automations
+
+The Slack screen (⌘/Ctrl+4) reads the channels set in Settings → Slack, on a schedule, through
+the Slack connector of one of your Claude accounts: a headless, read-only query (tools that post
+or change anything are refused). There is no Slack app and no token. Its state
+(`slack-state.json`) is shared by every profile and account.
+
+- **Followed threads.** The optional tracking hook (Settings → Slack, per account) records the Slack
+  messages a Claude session sends, so Workhub follows that thread. It edits the account's
+  `settings.json` only when you click Install (a `.bak` copy is kept) and Remove takes out only its
+  own entry. You can also follow a thread by pasting its link.
+- **One owner per thread.** Each thread wakes exactly one session, its owner. A wake types the
+  replies into the owner when it is idle, or reopens it in its transcript's own folder when it is
+  closed (never the folder the message was sent from). Threads close when their PR is merged or
+  closed, or after a week without activity.
+- **Archived threads.** Per profile, threads quiet for N minutes (default 15) fold into
+  "Archived (n)" in the Slack screen and the session monitor. A session's most recent thread never
+  folds. Archived threads are still watched, and a new reply brings them back.
+
+The Automations screen (⌘/Ctrl+5) sends a prompt or slash command to a dedicated session when a PR
+message arrives in a watched channel and/or every N minutes, within a time window and rate limits.
+Each Slack event fires at most one run, even across restarts and profiles: the ledger lives in
+`automations-state.json`. With "new session each run", the new session takes the old one's sidebar
+place and the threads it listens to. The old session closes once it is idle, off screen, and no
+thread wakes it.
+
+`WORKHUB_DEMO_SLACK=1` serves synthetic channels instead of asking an agent and disables the hook
+buttons. To drive runs without any model, use `packages/app/scripts/demo-agent.mjs` as a custom ACP
+agent (`"command": "node", "args": ["<path>/demo-agent.mjs"]`). In demo mode,
+`window.hub.slack.demo(...)` injects messages, replies and "a session sent a message" records.
+
 ## Privacy
 
 No telemetry. Agents run with their own configuration (MCP servers, hooks, permission defaults),

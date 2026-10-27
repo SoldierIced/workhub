@@ -5,12 +5,14 @@ import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
 import type { SessionGroups } from '../domain/session-groups'
 import { DEFAULT_HEALTH_REFRESH_MINUTES, DEFAULT_HEALTH_THRESHOLDS, HEALTH_THRESHOLD_RANGES, MAX_HEALTH_REFRESH_MINUTES, MIN_HEALTH_REFRESH_MINUTES, type HealthThresholds } from '../health/types'
 import { DEFAULT_PR_EVENT_TOGGLES, PR_EVENT_KINDS, type PrEventToggles } from '../pr-events/types'
+import type { ChatWatcherSettings } from '../chat/types'
+import type { AutomationDefinition } from '../automations/types'
 
 /**
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
  * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
  */
-export const CONFIG_VERSION = 4
+export const CONFIG_VERSION = 5
 
 export interface WorkhubConfig {
   version: typeof CONFIG_VERSION
@@ -24,6 +26,10 @@ export interface WorkhubConfig {
   options?: AppOptions
   /** Sidebar session groups and the order of the Sessions section. */
   sessionGroups?: SessionGroups
+  /** The chat (Slack) watcher's settings; see `chatWatcherSettings` for the defaults. */
+  chatWatcher?: ChatWatcherSettings
+  /** Automations, edited on the Automations screen. Their runs and sessions live in the data folder. */
+  automations?: AutomationDefinition[]
 }
 
 export interface AppOptions {
@@ -165,7 +171,8 @@ const profile = z.object({
   preferredAgents: z.array(z.string().min(1)).optional(),
   modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
   folders: z.array(z.string().min(1)).optional(),
-  health: healthSettings.optional()
+  health: healthSettings.optional(),
+  slackArchiveMinutes: z.number().int().min(1).optional()
 })
 
 const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string() })
@@ -177,6 +184,49 @@ const sessionGroups = z.object({
   top: z
     .array(z.discriminatedUnion('kind', [z.object({ kind: z.literal('group'), id: z.string().min(1) }), z.object({ kind: z.literal('session'), key: z.string().min(1) })]))
     .default([])
+})
+
+const hour = z.number().int().min(0).max(24)
+const weekdays = z.array(z.number().int().min(0).max(6))
+
+const chatWatcher = z.object({
+  enabled: z.boolean().default(false),
+  accountId: id.nullable().default(null),
+  model: z.string().default('haiku'),
+  intervalMinutes: z.number().int().min(1).default(10),
+  startHour: hour.default(9),
+  endHour: hour.default(19),
+  weekdays: weekdays.default([1, 2, 3, 4, 5]),
+  usageThreshold: z.number().min(0).max(100).default(85),
+  channels: z.array(z.object({ id: z.string().min(1), name: z.string(), purpose: z.string().default('') })).default([])
+})
+
+const automation = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  enabled: z.boolean().default(true),
+  prompt: z.string().default(''),
+  profileId: id.nullable().default(null),
+  agentKey: z.string().min(1),
+  folder: z.string().default('~'),
+  view: z.enum(['app', 'console']).default('app'),
+  model: z.string().optional(),
+  triggers: z
+    .object({
+      chatChannelIds: z.array(z.string()).default([]),
+      prOwner: z.string().default(''),
+      intervalMinutes: z.number().int().min(1).nullable().default(null),
+      pendingGate: z.object({ kind: z.literal('prReviewQueue'), stateFile: z.string() }).optional()
+    })
+    .default({ chatChannelIds: [], prOwner: '', intervalMinutes: null }),
+  window: z.object({ days: weekdays, startHour: hour, endHour: hour }).default({ days: [1, 2, 3, 4, 5], startHour: 9, endHour: 19 }),
+  limits: z
+    .object({ maxRuns: z.number().int().min(1), perMinutes: z.number().int().min(1), maxPerDay: z.number().int().min(1).nullable() })
+    .default({ maxRuns: 6, perMinutes: 5, maxPerDay: 60 }),
+  usageThreshold: z.number().min(0).max(100).default(85),
+  sessionPolicy: z.enum(['reuse', 'newEachRun']).default('reuse'),
+  runTimeoutMinutes: z.number().int().min(1).default(30),
+  receivesChatReplies: z.boolean().default(true)
 })
 
 export const configSchema = z.object({
@@ -198,7 +248,9 @@ export const configSchema = z.object({
         .default(DEFAULT_PR_EVENT_TOGGLES)
     })
     .optional(),
-  sessionGroups: sessionGroups.optional()
+  sessionGroups: sessionGroups.optional(),
+  chatWatcher: chatWatcher.optional(),
+  automations: z.array(automation).optional()
 })
 
 // Compile-time guard: the schema output must stay assignable to the domain types.

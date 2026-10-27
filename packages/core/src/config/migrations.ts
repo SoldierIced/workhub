@@ -20,7 +20,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // pull request notification switches (`options.notifyPrEvents`). Both are optional and default,
   // so the document is unchanged; the bump keeps an older Workhub from loading the file and
   // dropping them on its next save.
-  3: (raw) => raw
+  3: (raw) => raw,
+  // 4 -> 5 (P6a, chat watcher and automations): `chatWatcher`, `automations` and the per-profile
+  // `profiles[].slackArchiveMinutes` (Slack threads shown archived after N quiet minutes). All optional
+  // and default, so the document is unchanged; the bump keeps an older Workhub from dropping them.
+  4: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

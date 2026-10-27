@@ -22,6 +22,7 @@
     "./tracker-linear": "./src/tracker-linear/index.ts",
     "./tracker-demo": "./src/tracker-demo/index.ts",
     "./http": "./src/shared/http.ts",
+    "./chat-slack": "./src/chat-slack/index.ts",
     "./health-elastic": "./src/health-elastic/index.ts",
     "./pr-events-json": "./src/pr-events-json/index.ts"
   },

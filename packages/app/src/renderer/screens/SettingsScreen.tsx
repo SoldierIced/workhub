@@ -1,4 +1,4 @@
-import { Activity, FolderCog, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
+import { Activity, FolderCog, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import {
   appOptions,
@@ -27,6 +27,7 @@ import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { HealthSettings } from './HealthSettings'
+import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
 import { TrackerSettings } from './TrackerSettings'
 import { UpdatesSettings } from './UpdatesSettings'
@@ -126,6 +127,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection snap={snap} run={run} />) },
           { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings snap={snap} run={run} />) },
           { value: 'health', label: t('health.settings.tab'), icon: <Activity className="size-4" aria-hidden />, content: section(<HealthSettings snap={snap} run={run} />) },
+          { value: 'slack', label: t('nav.slack'), icon: <MessageSquare className="size-4" aria-hidden />, content: section(<SlackSettings snap={snap} run={run} />) },
           { value: 'accounts', label: t('settings.accounts'), icon: <UserCog className="size-4" aria-hidden />, content: section(<AccountsSection snap={snap} run={run} />) }
         ]}
       />
@@ -617,6 +619,9 @@ function ProfilesSection({ snap, run }: SectionProps) {
                 <Switch checked={form.modules[m]} onChange={(on) => setForm({ ...form, modules: { ...form.modules, [m]: on } })} />
               </SwitchRow>
             ))}
+          </FieldGroup>
+          <FieldGroup legend={t('nav.slack')}>
+            <SlackArchiveField value={form.slackArchiveMinutes} onChange={(minutes) => setForm({ ...form, slackArchiveMinutes: minutes })} />
           </FieldGroup>
         </>
       }

@@ -5,6 +5,9 @@ import { appOptions, type AppOptions, type WorkhubConfig } from '../config/schem
 import { EMPTY_SESSION_GROUPS, replaceSessionIdentity, type GroupMember, type SessionGroups } from '../domain/session-groups'
 import type { ConfigStore, SecretStore } from '../ports'
 import { fail, knownAgents, ok, validateConfig, type Result, type ValidationIssue } from './validation'
+import type { AutomationDefinition } from '../automations/types'
+import type { ChatWatcherSettings } from '../chat/types'
+import { deleteAutomation, saveAutomation, setChatWatcher } from './chat-automation-config'
 
 const key = (i: ValidationIssue) => `${i.path}\u0000${i.message}`
 
@@ -278,6 +281,24 @@ export class ConfigurationService {
     const result = replaceStoredSessionIdentity(config, oldKey, newKey, meta)
     // Nothing to move (the usual case): do not rewrite the file.
     return result.ok && result.value === config ? result : this.persist(result)
+  }
+
+  async saveChatWatcher(settings: ChatWatcherSettings): Promise<Result<WorkhubConfig>> {
+    const config = await this.current()
+    const r = setChatWatcher(config, settings)
+    return this.persist(r.ok ? commit(config, r.value) : r)
+  }
+
+  async saveAutomation(automation: AutomationDefinition): Promise<Result<WorkhubConfig>> {
+    const config = await this.current()
+    const r = saveAutomation(config, automation)
+    return this.persist(r.ok ? commit(config, r.value) : r)
+  }
+
+  async deleteAutomation(id: string): Promise<Result<WorkhubConfig>> {
+    const config = await this.current()
+    const r = deleteAutomation(config, id)
+    return this.persist(r.ok ? commit(config, r.value) : r)
   }
 
   async addImported(additions: { profiles: Profile[]; accounts: AgentAccount[]; connections: Connection[] }): Promise<Result<WorkhubConfig>> {

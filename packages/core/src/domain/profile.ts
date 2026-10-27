@@ -35,4 +35,6 @@ export interface Profile {
   folders?: string[]
   /** Health module setup: environments to watch and the refresh interval (the cluster is the profile's `health` connection). */
   health?: HealthSettings
+  /** Tracked Slack threads quiet for this many minutes are shown archived (default 15; see `threadArchiveMinutes`). */
+  slackArchiveMinutes?: number
 }

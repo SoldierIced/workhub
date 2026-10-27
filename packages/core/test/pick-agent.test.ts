@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { configSchema, orderAgents, pickAgent, resolveEffectiveAgents } from '../src'
+import { CONFIG_VERSION, configSchema, orderAgents, pickAgent, resolveEffectiveAgents } from '../src'
 import { claudeA, claudeB, config, kiroWork, profile } from './fixtures'
 
 const setup = (preferredAgents?: string[]) => {
@@ -52,7 +52,7 @@ describe('orderAgents', () => {
 
 describe('profile.preferredAgents in the config', () => {
   it('parses an existing profile without it unchanged, and keeps a saved order', () => {
-    const base = { version: 4, profiles: [{ id: 'acme', name: 'Acme' }] }
+    const base = { version: CONFIG_VERSION, profiles: [{ id: 'acme', name: 'Acme' }] }
     expect(configSchema.parse(base).profiles[0]).not.toHaveProperty('preferredAgents')
     const withOrder = { ...base, profiles: [{ id: 'acme', name: 'Acme', preferredAgents: ['claude:claude-b'] }] }
     expect(configSchema.parse(withOrder).profiles[0]?.preferredAgents).toEqual(['claude:claude-b'])
