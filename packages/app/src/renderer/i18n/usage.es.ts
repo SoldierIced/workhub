@@ -32,12 +32,13 @@ export const usageEs: Record<keyof typeof usageEn, string> = {
   'agentUsage.settings.codexHint': 'Cada 5 minutos, con el inicio de sesión de Codex de cada cuenta, o desde sus archivos de sesión más recientes.',
   'agentUsage.settings.codexNote':
     'Desactivado por defecto. Llama a un endpoint no documentado de ChatGPT con el inicio de sesión guardado en la carpeta de Codex de la cuenta (auth.json); puede cambiar o dejar de funcionar en cualquier momento. Workhub nunca renueva ni guarda ese inicio de sesión. Sin él, o si el endpoint falla, se muestran los límites más recientes que Codex escribió en sus archivos de sesión.',
-  'agentUsage.settings.kiro': 'Kiro',
-  'agentUsage.settings.kiroNote': 'No disponible: Kiro informa los créditos que usó cada turno, pero no los créditos ni los límites que quedan.',
+  'agentUsage.settings.kiro': 'Leer los créditos de Kiro que quedan',
+  'agentUsage.settings.kiroNote':
+    'Le pide a kiro-cli su propio /usage (con el inicio de sesión de Kiro; Workhub nunca lo lee), como mucho cada 15 minutos. Cada lectura abre Kiro un momento, con sus servidores MCP, en una sesión que Workhub guarda para esto y reutiliza: verás una sesión vacía con el nombre de la carpeta de Workhub en la lista de Kiro. Los créditos gastados por día salen de los archivos de sesión de Kiro de todos modos.',
   'agentUsage.settings.budgets': 'Presupuestos',
   'agentUsage.settings.budgetsNote':
     'Por encima de un techo, los prompts enviados desde Workhub a esa cuenta requieren "Enviar de todos modos", y las automatizaciones, los despertares y las lecturas de Slack en esa cuenta esperan hasta que la ventana se restablezca o el techo se suba o se quite. "Ejecutar ahora" en una automatización igual se ejecuta una vez. No se instala nada en los agentes: el control vive solo en Workhub, y deja pasar todo mientras el uso es desconocido.',
-  'agentUsage.settings.noAccounts': 'Activa la lectura de Claude o Codex para definir presupuestos.',
+  'agentUsage.settings.noAccounts': 'Activa la lectura de Claude, Codex o Kiro para definir presupuestos.',
   'agentUsage.settings.ceiling': 'Techo de {window} (%)',
   'agentUsage.settings.none': 'Sin techo',
   'agentUsage.settings.clear': 'Quitar',
@@ -53,5 +54,22 @@ export const usageEs: Record<keyof typeof usageEn, string> = {
 
   'agentUsage.alert.title': 'Uso: {account}',
   'agentUsage.alert.threshold': 'Ventana {window} en {percent}% (umbral {threshold}%), se restablece en {time}.',
-  'agentUsage.alert.ceiling': 'Ventana {window} en {percent}%: se alcanzó el techo de {threshold}%. El trabajo automático en esta cuenta espera; se restablece en {time}.'
+  'agentUsage.alert.ceiling': 'Ventana {window} en {percent}%: se alcanzó el techo de {threshold}%. El trabajo automático en esta cuenta espera; se restablece en {time}.',
+  'agentUsage.window.5h': '5h',
+  'agentUsage.window.weekly': 'sem.',
+  'agentUsage.window.monthly': 'mes',
+  'agentUsage.credits': '{used} de {limit} créditos usados, quedan {left}',
+  'agentUsage.resetsAt': 'Se restablece {when} (en {time})',
+  'agentUsage.kiroSpentShort': 'gastado {today} hoy · {week} en 7 días',
+  'agentUsage.kiroRemainingUnknown': 'créditos restantes: sin leer',
+  'agentUsage.kiroNoRemaining':
+    'Los créditos restantes no se leen: activa "Leer los créditos de Kiro que quedan" en Ajustes → Uso. Kiro los informa solo si se le piden con kiro-cli, nunca en sus archivos locales.',
+  'agentUsage.settings.kiroHint': 'Créditos usados y restantes en este ciclo de facturación, con el día en que se restablecen.',
+  'agentUsage.session.title': 'Límite de uso de esta sesión',
+  'agentUsage.session.help':
+    'Un techo solo para esta sesión, por ventana. Reemplaza el techo de la cuenta (Ajustes → Uso) para esa ventana, más alto o más bajo; 100 lo quita. Por encima, los mensajes necesitan "Enviar de todos modos". Se guarda con la sesión, también tras reiniciar.',
+  'agentUsage.session.account': 'Cuenta: {value}',
+  'agentUsage.session.noRead': 'Activa la lectura de uso de este agente en Ajustes → Uso para definir un límite.',
+  'agentUsage.session.reset': 'Usar los límites de la cuenta',
+  'agentUsage.session.now': 'ahora {percent}%'
 }

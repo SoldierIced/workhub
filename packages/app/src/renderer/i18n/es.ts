@@ -230,7 +230,7 @@ export const es: Record<keyof typeof en, string> = {
   'settings.appearance': 'Apariencia',
   'settings.profiles': 'Perfiles',
   'settings.connections': 'Conexiones',
-  'settings.accounts': 'Cuentas de agentes',
+  'settings.accounts': 'Agentes',
   'settings.interface': 'Interfaz',
   'settings.language': 'Idioma',
   'settings.languageHint': 'Sistema usa el idioma de tu sistema operativo.',

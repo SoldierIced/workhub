@@ -7,6 +7,7 @@ import type { MessageKey } from '../../i18n/translate'
 import { formatTokens } from '../../lib/home'
 import type { SessionData } from '../../store'
 import { AiReviewSection } from './AiReviewPanel'
+import { SessionBudgetSection } from './SessionBudgetSection'
 import { SlackThreadsSection } from './SlackThreadsSection'
 import { openSubagent } from '../../lib/subagentView'
 import { SubagentSheet } from './SubagentView'
@@ -219,6 +220,7 @@ export function MonitorPanel({ data }: { data: SessionData }) {
       <SubagentSheet sessionId={v.id} />
       <SlackThreadsSection view={v} />
       <AiReviewSection view={v} />
+      <SessionBudgetSection view={v} />
     </aside>
   )
 }
