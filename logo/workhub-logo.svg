@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#4338CA"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0E7FF"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS-style squircle -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <!-- spokes -->
+  <g stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="22" stroke-linecap="round">
+    <line x1="512" y1="512" x2="512" y2="250"/>
+    <line x1="512" y1="512" x2="739" y2="643"/>
+    <line x1="512" y1="512" x2="285" y2="643"/>
+  </g>
+  <!-- satellites: agents -->
+  <g fill="#FFFFFF">
+    <circle cx="512" cy="250" r="58"/>
+    <circle cx="739" cy="643" r="58"/>
+    <circle cx="285" cy="643" r="58"/>
+  </g>
+  <!-- hub with a prompt -->
+  <circle cx="512" cy="512" r="150" fill="url(#core)"/>
+  <path d="M452 452 L520 512 L452 572" fill="none" stroke="#4338CA" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="538" y1="572" x2="590" y2="572" stroke="#14B8A6" stroke-width="34" stroke-linecap="round"/>
+</svg>

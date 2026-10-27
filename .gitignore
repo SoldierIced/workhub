@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+.DS_Store
+spike/probe/out/
+spike/screenshots/
+*.log
+.dev-data/
+*.tsbuildinfo
+packages/app/screenshots/
+packages/app/.dev-data/
