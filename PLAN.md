@@ -145,7 +145,7 @@ when on. Flows keep the opinionated pipeline with per-step skip and a configurab
 |---|---|---|
 | P0 Spike | Electron + xterm/node-pty terminal session; ACP client talking to Kiro and to Claude (`claude-agent-acp`); check whether the Claude ACP adapter loads `~/.claude` MCP servers and what MCP info Kiro exposes over ACP | Terminal and both ACP chats stream on macOS; Windows next |
 | P1 Core + config | Monorepo, ports, domain models, connection registry, profiles, secret store, CI matrix | Core tests green on 3 OSes. Note (2026-10-27): first pass done on macOS only; the CI matrix and the Windows/Linux runs move to a follow-up. |
-| P2 Sessions | Terminal agent (any command), Claude adapter with app mode, transcript monitor, history, usage where available | Daily use replaces Workhub 1 sessions screen |
+| P2 Sessions | Terminal agent (any command), native Claude adapter with app mode (App/Terminal/Shell views), transcript monitor, history, multiple Claude accounts, usage where available, Workhub 1 settings import | Daily use replaces Workhub 1 sessions screen |
 | P3 Code host | GitHub adapter, PR list/detail/review; GitLab adapter | Same PR screen works on both |
 | P4 Tickets | Jira adapter, Linear adapter, ticket ↔ PR ↔ session links | |
 | P5 More agents | Kiro, OpenCode, Codex over ACP; their transcript readers; Gemini CLI later | Two non-Claude agents usable with monitor data |

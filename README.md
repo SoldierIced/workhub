@@ -6,7 +6,7 @@ threads and environment health around each task. Agents declare their capabiliti
 shows only what each one supports. Nothing personal or company-specific is in the code: every
 connection, profile and account is configuration loaded at runtime.
 
-Status: phase P1 (core + config). macOS is the only platform exercised so far. See
+Status: phase P2 (sessions). macOS is the only platform exercised so far. See
 [PLAN.md](PLAN.md) for the scope and the phases.
 
 ## Layout
@@ -17,8 +17,13 @@ packages/
   adapters/   Port implementations on Node/Electron:
                 config-json       ConfigStore on a JSON file (atomic writes)
                 secrets-electron  SecretStore on Electron safeStorage (+ an in-memory store)
+                agent-claude-native  AgentRuntime on Workhub 1's Claude Agent SDK bridge (default for Claude):
+                                  MCP status/reconnect/toggle, hooks, permissions, model switch, usage;
+                                  also the session history and the opt-in plan usage read
                 agent-acp         AgentRuntime over the Agent Client Protocol (Kiro, Claude via claude-agent-acp, OpenCode)
                 agent-terminal    AgentRuntime over a PTY (node-pty) for any CLI
+                transcript-claude TranscriptReader for Claude's JSONL transcripts (tokens, cost, tools, subagents, PRs, tickets)
+                workhub1-import   Reads Workhub 1's settings read-only (`defaults export`, macOS)
   app/        Electron shell: main process, preload bridge, React renderer (Tailwind + Radix design system, en/es)
 spike/        P0 spike, kept as a reference (not part of the workspaces)
 ```
@@ -41,11 +46,24 @@ the app bundles them with electron-vite, so there is no separate build step for 
 npm install          # postinstall downloads the Electron binary and rebuilds node-pty for it
 npm run dev          # the app in development mode
 npm run typecheck    # tsc on every package
-npm test             # Vitest: core and adapters
+npm test             # Vitest: core, adapters and app
 npm run build        # electron-vite build of the app (packages/app/out)
 ```
 
 To run the built app: `cd packages/app && npx electron .`
+
+## Sessions
+
+- **Claude Code** runs on the native adapter by default; **Claude Code (ACP)** stays selectable.
+  Each Claude account is a config folder (`CLAUDE_CONFIG_DIR`); the session header shows it.
+- Every session can switch between **App** (the chat), **Terminal** (the agent's own TUI, e.g.
+  `claude --resume <id>`, the same conversation) and **Shell** (a shell in the session folder).
+- The monitor reads Claude's transcript every 3 s. **Session history** lists every Claude session
+  of the configured accounts, grouped by folder, resumable in the app or the terminal.
+- Plan usage per account comes from what running sessions report. Reading it from Anthropic's
+  undocumented usage endpoint is an opt-in setting (Settings → General), off by default.
+- **Import from Workhub 1** (Settings → General, macOS) previews profiles, folders, Claude
+  accounts and connections before saving. Workhub 1 is never written; secrets are not copied.
 
 ## Where data lives
 
