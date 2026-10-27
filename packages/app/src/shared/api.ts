@@ -216,6 +216,11 @@ export interface SessionsApi {
   /** Returns at once with the session in `starting`; progress arrives through onChanged. */
   start(input: StartSessionInput): Promise<SessionView>
   /**
+   * Reopens a closed session by its identity (the sidebar): the open one when it already runs, and
+   * one start per identity even when a Slack wake opens it at the same moment.
+   */
+  reopen(identity: string, input: StartSessionInput): Promise<SessionView>
+  /**
    * Runs one prompt turn. On agents that take no input mid-turn it waits for the session's prompt
    * in flight; one still waiting when the session is interrupted fails with `PROMPT_WITHDRAWN`.
    */
