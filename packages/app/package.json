@@ -1,0 +1,38 @@
+{
+  "name": "@workhub/app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workhub 2 Electron shell: main process, preload bridge and React renderer.",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.97.0",
+    "@agentclientprotocol/sdk": "2.0.2",
+    "@workhub/adapters": "0.0.0",
+    "@workhub/core": "0.0.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "lucide-react": "1.62.0",
+    "node-pty": "1.1.0",
+    "radix-ui": "1.8.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "4.2.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.0.0",
+    "electron-vite": "6.0.0",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5"
+  }
+}

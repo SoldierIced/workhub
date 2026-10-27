@@ -1,0 +1,216 @@
+@import 'tailwindcss';
+
+/* Dark mode follows the data-theme attribute on <html> (set from the OS theme or the Settings override). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * Design tokens. Every color role, radius, font size and shadow is a CSS variable with a dark and a
+ * light value; `@theme inline` maps them to Tailwind utilities (bg-surface, text-muted, rounded-lg...).
+ * Brand: teal #14B8A6 -> indigo #4338CA (logo), used as accents only.
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --wh-bg: #0e1014;
+  --wh-sidebar: #12151a;
+  --wh-surface: #171a20;
+  --wh-surface-raised: #1e222a;
+  --wh-surface-hover: #252a33;
+  --wh-border: #2a2f39;
+  --wh-border-strong: #3a414e;
+  --wh-text: #e8eaef;
+  --wh-text-muted: #9aa2b1;
+  --wh-text-subtle: #6c7484;
+  --wh-accent: #2dd4bf;
+  --wh-accent-strong: #14b8a6;
+  --wh-accent-fg: #042520;
+  --wh-accent-soft: rgb(45 212 191 / 0.12);
+  --wh-accent-2: #818cf8;
+  --wh-success: #34d399;
+  --wh-warning: #fbbf24;
+  --wh-danger: #f87171;
+  --wh-info: #60a5fa;
+  --wh-success-soft: rgb(52 211 153 / 0.12);
+  --wh-warning-soft: rgb(251 191 36 / 0.12);
+  --wh-danger-soft: rgb(248 113 113 / 0.12);
+  --wh-info-soft: rgb(96 165 250 / 0.12);
+  --wh-focus: #5eead4;
+  --wh-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --wh-shadow-md: 0 4px 16px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.4);
+  --wh-shadow-lg: 0 18px 48px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.4);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --wh-bg: #f5f6f8;
+  --wh-sidebar: #eceef2;
+  --wh-surface: #ffffff;
+  --wh-surface-raised: #ffffff;
+  --wh-surface-hover: #f0f2f5;
+  --wh-border: #e1e4ea;
+  --wh-border-strong: #cdd2db;
+  --wh-text: #14171c;
+  --wh-text-muted: #596171;
+  --wh-text-subtle: #8a92a0;
+  --wh-accent: #0d9488;
+  --wh-accent-strong: #0f766e;
+  --wh-accent-fg: #ffffff;
+  --wh-accent-soft: rgb(13 148 136 / 0.1);
+  --wh-accent-2: #4338ca;
+  --wh-success: #059669;
+  --wh-warning: #b45309;
+  --wh-danger: #dc2626;
+  --wh-info: #2563eb;
+  --wh-success-soft: rgb(5 150 105 / 0.1);
+  --wh-warning-soft: rgb(217 119 6 / 0.12);
+  --wh-danger-soft: rgb(220 38 38 / 0.09);
+  --wh-info-soft: rgb(37 99 235 / 0.09);
+  --wh-focus: #0d9488;
+  --wh-shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
+  --wh-shadow-md: 0 4px 14px rgb(16 24 40 / 0.08), 0 1px 2px rgb(16 24 40 / 0.06);
+  --wh-shadow-lg: 0 18px 44px rgb(16 24 40 / 0.16), 0 2px 6px rgb(16 24 40 / 0.08);
+}
+
+@theme {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-white: #fff;
+  --color-black: #000;
+}
+
+@theme inline {
+  --color-bg: var(--wh-bg);
+  --color-sidebar: var(--wh-sidebar);
+  --color-surface: var(--wh-surface);
+  --color-surface-raised: var(--wh-surface-raised);
+  --color-surface-hover: var(--wh-surface-hover);
+  --color-border: var(--wh-border);
+  --color-border-strong: var(--wh-border-strong);
+  --color-text: var(--wh-text);
+  --color-muted: var(--wh-text-muted);
+  --color-subtle: var(--wh-text-subtle);
+  --color-accent: var(--wh-accent);
+  --color-accent-strong: var(--wh-accent-strong);
+  --color-accent-fg: var(--wh-accent-fg);
+  --color-accent-soft: var(--wh-accent-soft);
+  --color-accent-2: var(--wh-accent-2);
+  --color-success: var(--wh-success);
+  --color-warning: var(--wh-warning);
+  --color-danger: var(--wh-danger);
+  --color-info: var(--wh-info);
+  --color-success-soft: var(--wh-success-soft);
+  --color-warning-soft: var(--wh-warning-soft);
+  --color-danger-soft: var(--wh-danger-soft);
+  --color-info-soft: var(--wh-info-soft);
+  --color-focus: var(--wh-focus);
+
+  --shadow-sm: var(--wh-shadow-sm);
+  --shadow-md: var(--wh-shadow-md);
+  --shadow-lg: var(--wh-shadow-lg);
+}
+
+@theme {
+  /* A system stack that exists on macOS, Windows and Linux. */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Segoe UI Mono', 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-fade-in: fade-in 160ms var(--ease-out);
+  --animate-pop-in: pop-in 180ms var(--ease-out);
+  --animate-slide-in: slide-in 200ms var(--ease-out);
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes pop-in {
+    from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--wh-accent-soft);
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-border-strong);
+  }
+}
+
+/* Window dragging: toolbars drag the window, their controls do not. */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.drag-region :is(button, a, input, select, textarea, [role='button'], [role='combobox']) {
+  -webkit-app-region: no-drag;
+}
+
+.brand-gradient {
+  background-image: linear-gradient(135deg, #14b8a6, #4338ca);
+}
+
+.xterm-host .xterm {
+  padding: 8px;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
