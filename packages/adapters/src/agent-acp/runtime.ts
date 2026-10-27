@@ -27,6 +27,7 @@ import type {
   Unsubscribe
 } from '@workhub/core'
 import { findExecutable } from './availability'
+import { pathKeyOf } from '../shared/login-path'
 import { AcpMonitor, permissionMode, readModes } from './monitor-mapping'
 import { planSpawn } from './spawn-plan'
 
@@ -37,6 +38,11 @@ export interface AcpRuntimeOptions {
   clientVersion: string
   /** Folders prepended to PATH for the agent process (e.g. bundled agent adapters). */
   extraPath?: string[]
+  /**
+   * The PATH a session starts with (the login shell's, see shared/login-path.ts), read at each
+   * start; the process PATH when unset or when it returns undefined.
+   */
+  path?: () => string | undefined
   /** Every raw JSON-RPC message, for debugging. */
   onRaw?: (sessionId: string, direction: AcpDirection, message: AnyMessage) => void
 }
@@ -73,9 +79,10 @@ export class AcpRuntime implements AgentRuntime {
     const id = req.sessionId
     this.emit({ sessionId: id, type: 'state', state: 'starting' })
 
-    const env = { ...process.env, ...req.env }
     // Windows names the variable `Path`; a plain copy of process.env is case-sensitive.
-    const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
+    const pathKey = pathKeyOf(process.env)
+    const basePath = this.options.path?.()
+    const env = { ...process.env, ...(basePath ? { [pathKey]: basePath } : {}), ...req.env }
     if (this.options.extraPath?.length) env[pathKey] = [...this.options.extraPath, env[pathKey] ?? ''].join(delimiter)
 
     // On Windows there is no ENOENT-on-spawn contract to lean on (and no shell for `.exe`), so the

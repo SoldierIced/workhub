@@ -18,6 +18,7 @@
     "./codehost-github": "./src/codehost-github/index.ts",
     "./codehost-gitlab": "./src/codehost-gitlab/index.ts",
     "./cli": "./src/shared/cli.ts",
+    "./login-path": "./src/shared/login-path.ts",
     "./tracker-jira": "./src/tracker-jira/index.ts",
     "./tracker-linear": "./src/tracker-linear/index.ts",
     "./tracker-demo": "./src/tracker-demo/index.ts",

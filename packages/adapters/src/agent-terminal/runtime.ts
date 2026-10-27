@@ -3,6 +3,8 @@
  * Grown from the P0 spike's `pty-manager.ts`.
  */
 import * as nodePty from 'node-pty'
+import { delimiter } from 'node:path'
+import { pathKeyOf } from '../shared/login-path'
 import {
   NO_CAPABILITIES,
   type AgentCapabilities,
@@ -22,6 +24,16 @@ export interface TerminalRuntimeOptions {
   defaultShell?: string
   /** Injectable for tests. */
   spawn?: typeof nodePty.spawn
+  /**
+   * The PATH a session starts with (the login shell's, see shared/login-path.ts), read at each
+   * start; the process PATH when unset or when it returns undefined.
+   */
+  path?: () => string | undefined
+  /**
+   * Folders put last on PATH, so they only serve a command nothing earlier provides (the Claude
+   * Code binary Workhub bundles, for a user with no `claude` of their own).
+   */
+  fallbackPath?: string[]
 }
 
 export function defaultShell(): { command: string; args: string[] } {
@@ -39,6 +51,14 @@ export class TerminalRuntime implements AgentRuntime, TerminalControl {
 
   constructor(private readonly options: TerminalRuntimeOptions = {}) {
     this.spawnPty = options.spawn ?? nodePty.spawn
+  }
+
+  private env(extra: Record<string, string>): Record<string, string> {
+    const env = { ...(process.env as Record<string, string>) }
+    const pathKey = pathKeyOf(env)
+    const path = [this.options.path?.() || env[pathKey] || '', ...(this.options.fallbackPath ?? [])].filter(Boolean).join(delimiter)
+    if (path) env[pathKey] = path
+    return { ...env, ...extra }
   }
 
   /** A raw terminal: no structured data, whatever the agent could do in app mode. */
@@ -65,7 +85,7 @@ export class TerminalRuntime implements AgentRuntime, TerminalControl {
         cols: req.cols ?? 80,
         rows: req.rows ?? 24,
         cwd: req.cwd,
-        env: { ...(process.env as Record<string, string>), ...req.env }
+        env: this.env(req.env)
       })
     } catch (err) {
       const error = `could not start "${command}": ${err instanceof Error ? err.message : String(err)}`

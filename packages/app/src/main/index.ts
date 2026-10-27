@@ -1,13 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { AcpRuntime, agentAvailability } from '@workhub/adapters/agent-acp'
 import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
+import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
 import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
 import { CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/transcript-kiro'
@@ -88,17 +89,36 @@ const send = (channel: string, ...args: unknown[]) => {
 // Workhub 1's Agent SDK bridge, run with Electron's own Node. Packaged: staged into the resources
 // folder with its node_modules (scripts/stage-bridge.mjs); dev: straight from the adapters source.
 const bridgeDir = app.isPackaged ? join(process.resourcesPath, 'bridge') : join(repoRoot, 'packages', 'adapters', 'src', 'agent-claude-native', 'bridge')
-const terminal = new TerminalRuntime()
+
+/**
+ * The PATH agents and terminals start with: the login shell's (read once, in the background), so an
+ * app opened from the Finder or the Dock finds the same CLIs as a terminal does. Until it is read,
+ * and when it cannot be, the inherited PATH plus the usual CLI folders. Windows: unchanged.
+ */
+let cliPath = augmentedPath({ platform: process.platform, inherited: process.env['PATH'], loginShell: null })
+void readLoginShellPath().then((loginShell) => {
+  if (loginShell) cliPath = augmentedPath({ platform: process.platform, inherited: process.env['PATH'], loginShell })
+})
+const sessionPath = (): string | undefined => (process.platform === 'win32' ? undefined : cliPath)
+// The Claude Code binary the Agent SDK ships with: the terminal's `claude` when the user has none.
+const bundledClaudeDir = join(
+  app.isPackaged ? join(bridgeDir, 'node_modules') : join(repoRoot, 'node_modules'),
+  '@anthropic-ai',
+  `claude-agent-sdk-${process.platform}-${process.arch}`
+)
+const fallbackPath = existsSync(bundledClaudeDir) ? [bundledClaudeDir] : []
+const terminal = new TerminalRuntime({ path: sessionPath, fallbackPath })
 // Agent adapters installed with the app (claude-agent-acp) are found through PATH.
 const extraPath = app.isPackaged
   ? [join(bridgeDir, 'node_modules', '.bin')]
   : [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
 const runtimes = {
-  native: new ClaudeNativeRuntime({ bridgeDir }),
+  native: new ClaudeNativeRuntime({ bridgeDir, path: sessionPath }),
   acp: new AcpRuntime({
     clientName: 'workhub',
     clientVersion: app.getVersion(),
-    extraPath
+    extraPath,
+    path: sessionPath
   }),
   terminal
 }
@@ -237,7 +257,12 @@ function registerIpc(): void {
   ipc.handle('updates:check', () => updates.check())
   ipc.handle('updates:install', () => updates.install())
   ipc.handle('history:list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
-  ipc.handle('agents:availability', async () => agentAvailability(knownAgents(await configuration.current()), { extraPath }))
+  ipc.handle('agents:availability', async () =>
+    agentAvailability(knownAgents(await configuration.current()), {
+      extraPath,
+      path: [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter)
+    })
+  )
   ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
 
   registerTicketIpc({
