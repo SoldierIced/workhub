@@ -45,19 +45,25 @@ export interface TrayState {
   health: { state: HealthState | null; degraded: readonly string[] } | null
   /** Null while the Slack watcher is off. */
   slack: { health: TraySlackHealth; open: number; unread: number; error?: string } | null
+  /** Notifications shown lately, newest first (Workhub 1's "Notifications" list). */
+  notifications?: readonly { id: string; title: string }[]
   /** Epoch ms; unset or in the past when notifications are not paused. */
   pausedUntil?: number
   /** Whether "Check for updates" makes sense (a packaged build). */
   canCheckForUpdates: boolean
 }
 
-export type TrayRoute = 'home' | 'sessions' | 'pullRequests' | 'slack' | 'health' | 'settings'
+export type TrayRoute = 'home' | 'sessions' | 'pullRequests' | 'tickets' | 'slack' | 'automations' | 'health' | 'settings'
+
+export const TRAY_ROUTES: readonly TrayRoute[] = ['home', 'sessions', 'pullRequests', 'tickets', 'slack', 'automations', 'health', 'settings']
 
 export type TrayAction =
   | { kind: 'open' }
   | { kind: 'openSession'; id: string }
   | { kind: 'navigate'; route: TrayRoute }
   | { kind: 'openPullRequest'; profileId: string; url: string }
+  /** Does what a click on that notification does. */
+  | { kind: 'openNotification'; id: string }
   | { kind: 'newSession' }
   | { kind: 'pause'; preset: PausePreset }
   | { kind: 'resume' }
@@ -84,6 +90,7 @@ export interface TrayText {
 /** Most urgent first, at most this many sessions are listed under "Needs you". */
 export const TRAY_ATTENTION_LIMIT = 8
 export const TRAY_PR_EVENT_LIMIT = 5
+export const TRAY_NOTIFICATION_LIMIT = 8
 
 const ATTENTION_ORDER: StatusLevel[] = ['error', 'needsAnswer', 'readyToReview']
 
@@ -215,6 +222,15 @@ export function buildTrayMenu(state: TrayState, text: TrayText, now = Date.now()
     if (state.slack.unread) parts.push(tn('tray.slack.unread', state.slack.unread))
     items.push({ type: 'action', label: `${t('tray.section.slack')}: ${parts.join(' · ')}`, action: nav('slack') })
     if (state.slack.health === 'failing' && state.slack.error) items.push({ type: 'action', label: t('tray.slack.error', { error: truncate(state.slack.error, 60) }), action: nav('slack') })
+  }
+
+  if (state.notifications?.length) {
+    items.push({ type: 'separator' })
+    items.push({
+      type: 'submenu',
+      label: t('tray.section.notifications'),
+      items: state.notifications.slice(0, TRAY_NOTIFICATION_LIMIT).map((n) => ({ type: 'action', label: truncate(n.title, 64), action: { kind: 'openNotification', id: n.id } }))
+    })
   }
 
   // Quick actions.

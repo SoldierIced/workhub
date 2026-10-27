@@ -208,6 +208,12 @@ describe('tray menu', () => {
     expect(actions(items)).toContainEqual({ kind: 'navigate', route: 'health' })
   })
 
+  it('lists recent notifications, which open what their click opens', () => {
+    const items = buildTrayMenu(baseState({ notifications: [{ id: 'n1', title: 'PROD is degraded' }] }), text)
+    expect(labels(items)).toContain('>tray.section.notifications')
+    expect(actions(items)).toContainEqual({ kind: 'openNotification', id: 'n1' })
+  })
+
   it('offers to resume while paused', () => {
     const now = Date.now()
     const items = buildTrayMenu(baseState({ pausedUntil: now + 60_000 }), text, now)
