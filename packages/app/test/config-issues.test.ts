@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { emptyConfig, type ConnectionProvider, type WorkhubConfig } from '@workhub/core'
 import { errorText } from '../src/renderer/lib/errorText'
-import { friendlyIssue, humanIssue, profileFieldErrors } from '../src/renderer/lib/configIssues'
+import { accountFieldErrors, friendlyIssue, humanIssue, profileFieldErrors } from '../src/renderer/lib/configIssues'
 
 const providers = [
   { id: 'jira', kind: 'tracker', name: 'Jira', requiresSecret: true, requiresEndpoint: true },
@@ -65,6 +65,20 @@ describe('friendly messages', () => {
     expect(friendlyIssue({ path: 'profiles.#2.id', message: 'Too small', code: 'too_small' }, t)).toBe('issues.profileIdMissing')
     expect(friendlyIssue({ path: 'profiles.Bad.id', message: 'x', code: 'invalid_format' }, t)).toBe('issues.profileId')
     expect(friendlyIssue({ path: 'config', message: '[{"code":"x"}]', code: 'unexpected' }, t)).toBe('issues.unexpected')
+  })
+
+  it('names an account field instead of its config path', () => {
+    const t = (k: string, p?: Record<string, string | number>) => (p ? `${k}:${JSON.stringify(p)}` : k)
+    expect(friendlyIssue({ path: 'accounts.#2.id', message: 'Too small', code: 'too_small' }, t)).toBe('issues.accountIdMissing')
+    expect(friendlyIssue({ path: 'accounts.#2.name', message: 'Too small', code: 'too_small' }, t)).toBe('issues.accountName')
+    expect(friendlyIssue({ path: 'accounts.#2.configDir', message: 'x', code: 'invalid_type' }, t)).toBe('issues.invalidValue:{"where":"settings.configDir"}')
+    expect(friendlyIssue({ path: 'options.speechRate', message: 'x', code: 'too_big' }, t)).not.toContain('options.')
+  })
+
+  it('validates an account form per field', () => {
+    expect(accountFieldErrors({ id: '', name: ' ' })).toEqual({ id: 'issues.accountIdMissing', name: 'issues.accountName' })
+    expect(accountFieldErrors({ id: 'Work Acc', name: 'Work' })).toEqual({ id: 'issues.profileId' })
+    expect(accountFieldErrors({ id: 'work', name: 'Work' }, ['work'])).toEqual({ id: 'issues.accountIdTaken' })
   })
 
   it('validates a profile form per field', () => {
