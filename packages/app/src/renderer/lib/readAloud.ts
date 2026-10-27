@@ -157,9 +157,18 @@ export function useReadAloudVersion(): number {
 }
 
 /**
- * Reads each finished reply of the sessions that have the switch on. A session seen for the first
- * time takes the default of Settings → Voice, unless it is one Workhub opened on its own
- * (automation, review, Slack) or it was running before this window opened (a relaunch).
+ * Whether a session seen for the first time starts with reading aloud on (Settings → Voice), as
+ * Workhub 1 does: only a session the user starts now. One Workhub opened on its own (automation,
+ * review, Slack), one running before this window opened, and one resumed (a session brought back
+ * after a relaunch, reopened from the sidebar or History) start off.
+ */
+export function readsAloudByDefault(view: SessionData['view'], defaultOn: boolean, openedAt: number): boolean {
+  return defaultOn && view.startedAt >= openedAt - 1000 && !view.origin && !view.readOnly && !view.resumed
+}
+
+/**
+ * Reads each new finished reply of the sessions that have the switch on; what a session held when
+ * it was first seen (its earlier conversation) is never read.
  */
 export function useReadAloud(sessions: Record<string, SessionData>, options: Pick<AppOptions, 'readAloud' | 'speechVoice' | 'speechRate'>, platform: Platform): void {
   const seen = useRef(new Map<string, number>())
@@ -172,8 +181,7 @@ export function useReadAloud(sessions: Record<string, SessionData>, options: Pic
       const reply = lastFinishedReply(data.items)
       if (!seen.current.has(id)) {
         seen.current.set(id, reply?.turnId ?? 0)
-        const fresh = data.view.startedAt >= openedAt.current - 1000
-        if (latest.current.readAloud && fresh && !data.view.origin && !data.view.readOnly && !enabled.has(id)) setSessionReadAloud(id, true)
+        if (!enabled.has(id) && readsAloudByDefault(data.view, latest.current.readAloud, openedAt.current)) setSessionReadAloud(id, true)
         continue
       }
       if (!reply || reply.turnId === seen.current.get(id)) continue

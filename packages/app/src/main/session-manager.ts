@@ -215,7 +215,8 @@ export class SessionManager {
       modelControl: canSetModel(runtime),
       modeControl: canSetSessionMode(runtime),
       ...(input.readOnly ? { readOnly: true } : {}),
-      ...(internal.origin ? { origin: internal.origin } : {})
+      ...(internal.origin ? { origin: internal.origin } : {}),
+      ...(input.resumeAgentSessionId || input.identity ? { resumed: true } : {})
     }
     const session: ManagedSession = {
       view,

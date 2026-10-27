@@ -589,4 +589,12 @@ describe('SessionManager prompt gate', () => {
     expect(acp.prompts.map((p) => p.text)).toEqual(['first', 'folded in'])
     ends.forEach((e) => e())
   })
+
+  it('marks a reopened session as resumed and a new one as not', async () => {
+    const { manager } = setup()
+    const fresh = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    const resumed = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' })
+    const sameIdentity = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo', identity: 'old' })
+    expect([fresh.resumed, resumed.resumed, sameIdentity.resumed]).toEqual([undefined, true, true])
+  })
 })

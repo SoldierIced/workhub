@@ -5,11 +5,11 @@ import { expandEnvValue, profileSessionEnv, saveProfileEnv, storedProfileEnvName
 import { probe, SetupService } from '../src/main/setup-service'
 import { DICTIONARIES } from '../src/renderer/i18n/translate'
 import { fixLabel, itemDetail, itemTitle } from '../src/renderer/lib/setup'
-import { isStopSpeakingShortcut, lastFinishedReply, wpmToRate } from '../src/renderer/lib/readAloud'
+import { isStopSpeakingShortcut, lastFinishedReply, readsAloudByDefault, wpmToRate } from '../src/renderer/lib/readAloud'
 import { envChanges, envNamesToSave, prunedFolderOptions } from '../src/renderer/screens/ProfileExtraSettings'
 import { voiceOptions } from '../src/renderer/screens/VoiceSettings'
 import { parseSetupHash } from '../src/renderer/screens/SetupWindows'
-import type { ChatItem } from '../src/renderer/store'
+import type { ChatItem, SessionData } from '../src/renderer/store'
 
 const t = (key: string, params: Record<string, string | number> = {}) => (DICTIONARIES.en as Record<string, string>)[key]!.replace(/\{(\w+)\}/g, (_, k: string) => String(params[k] ?? ''))
 const tn = (base: string, count: number, params: Record<string, string | number> = {}) => t(`${base}.${count === 1 ? 'one' : 'other'}`, { count, ...params })
@@ -157,5 +157,21 @@ describe('link opener', () => {
     expect(linkCommand('darwin', undefined, 'https://x.y')).toBeNull()
     expect(linkCommand('darwin', '  ', 'https://x.y')).toBeNull()
     expect(linkCommand('darwin', 'Safari', 'file:///etc/passwd')).toBeNull()
+  })
+})
+
+describe('readsAloudByDefault', () => {
+  const opened = 1_000_000
+  const view = (over: Partial<SessionData['view']> = {}) => ({ startedAt: opened + 5_000, ...over }) as SessionData['view']
+  it('turns reading on only for a session the user starts now, like Workhub 1', () => {
+    expect(readsAloudByDefault(view(), true, opened)).toBe(true)
+    expect(readsAloudByDefault(view(), false, opened)).toBe(false)
+    // Brought back after a relaunch (resumed, or restarted under its identity) or reopened from the sidebar.
+    expect(readsAloudByDefault(view({ resumed: true }), true, opened)).toBe(false)
+    // Running before this window opened.
+    expect(readsAloudByDefault(view({ startedAt: opened - 60_000 }), true, opened)).toBe(false)
+    // Opened by Workhub on its own.
+    expect(readsAloudByDefault(view({ readOnly: true }), true, opened)).toBe(false)
+    expect(readsAloudByDefault(view({ origin: { kind: 'failover' } as never }), true, opened)).toBe(false)
   })
 })
