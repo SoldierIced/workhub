@@ -10,6 +10,7 @@ import {
   type AutomationHost,
   type AutomationNotice,
   type AutomationsState,
+  type BudgetStatus,
   type ConfigurationService,
   type DrivenSession,
   type Result,
@@ -18,6 +19,7 @@ import {
 import { locateClaudeTranscript } from '@workhub/adapters/transcript-claude'
 import type { AccountUsage, SessionView, StartSessionInput } from '../shared/api'
 import type { AutomationsSnapshot, AutomationStatus, ChatNoticeEvent } from '../shared/chat-api'
+import { agentKeyBudget } from './agent-usage'
 import { claudeAccounts } from './claude-accounts'
 import type { SessionDriver } from './session-driver'
 import type { SlackWatcherService } from './slack-watcher'
@@ -31,6 +33,8 @@ export interface AutomationServiceDeps {
   state: StateFile<AutomationsState>
   home: string
   usage: () => AccountUsage[]
+  /** The usage budget verdict of an account (Settings → Usage); automatic runs wait past a ceiling. */
+  budgetOf?: (agentId: string, accountId: string | null) => BudgetStatus
   emit: (snapshot: AutomationsSnapshot) => void
   /** The stored config changed here (a session's sidebar place moved); the renderer reloads it. */
   configChanged: () => void
@@ -119,8 +123,14 @@ export class AutomationService {
       usagePercent: (a) => {
         const { agentId, accountId } = accountOf(a.agentKey)
         if (agentId !== 'claude') return null
-        const windows = this.deps.usage().find((u) => u.accountId === accountId)?.windows ?? []
+        const windows = this.deps.usage().find((u) => u.agentId === 'claude' && u.accountId === accountId)?.windows ?? []
         return windows.find((w) => w.window === '5h')?.percent ?? null
+      },
+      budgetPaused: (a) => {
+        const budgetOf = this.deps.budgetOf
+        if (!budgetOf || !this.config) return null
+        const status = agentKeyBudget(this.config, a.agentKey, budgetOf)
+        return status.action === 'block' ? { window: status.window ?? 'budget', ...(status.resetsAt !== undefined ? { resetsAt: status.resetsAt } : {}) } : null
       },
       readGate: async (path) => {
         try {

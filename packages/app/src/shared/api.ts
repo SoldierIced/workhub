@@ -2,6 +2,7 @@
 import type {
   AppOptions,
   AgentCapabilities,
+  BudgetStatus,
   AgentDefinition,
   AgentEvent,
   AgentAccount,
@@ -127,14 +128,32 @@ export interface HistoryResult {
   errors: { account: string; message: string }[]
 }
 
-/** Plan usage of one Claude account (Settings: opt-in). */
+/** Plan usage of one agent account (Claude, Codex; Settings → Usage, opt-in per agent). */
 export interface AccountUsage {
+  /** The agent the account belongs to (`claude`, `codex`). */
+  agentId: string
+  /** `usageAccountKey`: what budgets are stored under. */
+  key: string
   accountId: string | null
   name: string
   windows: PlanUsageWindow[]
   error?: string
   /** Epoch milliseconds of the read. */
   at: number
+  /** The budget verdict at the time of the read (Settings → Usage). */
+  budget: BudgetStatus
+}
+
+/** A usage window crossed an alert threshold or its ceiling; the renderer words it and shows it. */
+export interface UsageAlert {
+  agentId: string
+  key: string
+  name: string
+  window: string
+  threshold: number
+  percent: number
+  ceiling: boolean
+  resetsAt: number
 }
 
 export interface SessionsApi {
@@ -170,6 +189,14 @@ export interface UsageApi {
   /** The last reads, and a fresh read when `refresh` is set. Empty while the option is off. */
   get(refresh?: boolean): Promise<AccountUsage[]>
   onChanged(cb: (usage: AccountUsage[]) => void): () => void
+  /** Threshold and ceiling crossings, once per window reset, while alerts are on. */
+  onAlerts(cb: (alerts: UsageAlert[]) => void): () => void
+  /** Shows an OS notification; a click brings the window up on Home. */
+  notify(n: { title: string; body: string }): void
+  /** The renderer listens for alerts; the ones found before are sent now. */
+  ready(): void
+  /** A usage notification was clicked. */
+  onOpen(cb: () => void): () => void
 }
 
 /** The OS family the app runs on; the renderer uses it for shortcut labels and window chrome. */

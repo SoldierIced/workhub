@@ -7,6 +7,10 @@ import type { MessageKey } from '../i18n/translate'
 import { ATTENTION_ORDER, folderName, formatTokens, groupByAttention, hasConnection, planUsage, tokensByFolder, type Attention } from '../lib/home'
 import { moduleScreens, ticketsInProgress } from '@workhub/core'
 import { HomeTicketsCard } from '../components/organisms/HomeTickets'
+import { AgentUsageCard } from '../components/organisms/AgentUsageCard'
+import { agentUsageSections, kiroUsageNote } from '../lib/agent-usage'
+import { useNow, useUsageSettings } from '../lib/usage'
+import type { AccountUsage } from '@shared/api'
 import type { Route } from '../lib/nav'
 import { useTickets } from '../ticketsStore'
 import type { SessionData } from '../store'
@@ -24,6 +28,8 @@ const ATTENTION: Record<Attention, { title: MessageKey; empty: MessageKey; tone:
 export interface HomeScreenProps {
   profile: Profile | undefined
   sessions: SessionData[]
+  /** Plan usage read per agent account (Settings → Usage). */
+  usage?: AccountUsage[]
   onOpenSession: (id: string) => void
   onOpenSettings: (tab?: string) => void
   /** Opens the Pull requests screen, on one PR when a URL is given. */
@@ -48,13 +54,18 @@ function ConnectionNote({ profile, kind, phase, onOpenSettings }: { profile: Pro
   )
 }
 
-export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, onOpenPullRequest, onNavigate }: HomeScreenProps) {
+export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession, onOpenSettings, onOpenPullRequest, onNavigate }: HomeScreenProps) {
   const { t, tn, formatDate } = useI18n()
   const pullRequests = usePullRequestLists(profile?.id ?? null)
   const groups = groupByAttention(sessions)
   const waiting = groups.needsReply.length
   const modules = new Set(moduleScreens(profile?.modules))
-  const usage = planUsage(sessions).sort((a, b) => b.percent - a.percent)[0]
+  const now = useNow()
+  const { budget, accountsOf } = useUsageSettings()
+  const usageSections = agentUsageSections(sessions, reads, budget, accountsOf, now)
+  const kiro = kiroUsageNote(sessions, accountsOf)
+  // The tile shows the highest window of any account (Usage by agent below lists them all).
+  const usage = [...planUsage(sessions), ...usageSections.flatMap((s) => s.accounts.flatMap((a) => a.windows))].sort((a, b) => b.percent - a.percent)[0]
   const folders = tokensByFolder(sessions).slice(0, 8)
   const maxTokens = folders[0]?.tokens ?? 1
   const tix = useTickets(profile?.id)
@@ -143,6 +154,7 @@ export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, o
           <PullRequestCard kind="toReview" lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
         </div>
         <div className="flex flex-col gap-3">
+          <AgentUsageCard sections={usageSections} kiro={kiro} ceilings={budget.ceilings} now={now} onOpenSettings={() => onOpenSettings('usage')} />
           <HomeTicketsCard
             profileId={profile?.id}
             status={tix.status}

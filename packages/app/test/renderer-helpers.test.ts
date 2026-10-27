@@ -33,8 +33,9 @@ describe('usage per account', () => {
 
   it('prefers the account read when the option is on, and shows a failed read only without other data', () => {
     const groups = usageGroups([summary('/a', 1, { accountId: 'work', accountName: 'Work' }, [{ window: '5h', percent: 10 }])], [
-      { accountId: 'work', name: 'Work', windows: [{ window: '5h', percent: 12 }], at: 0 },
-      { accountId: 'home', name: 'Home', windows: [], error: 'HTTP 401', at: 0 }
+      { agentId: 'claude', key: 'claude:work', accountId: 'work', name: 'Work', windows: [{ window: '5h', percent: 12 }], at: 0, budget: { action: 'allow' } },
+      { agentId: 'claude', key: 'claude:home', accountId: 'home', name: 'Home', windows: [], error: 'HTTP 401', at: 0, budget: { action: 'allow' } },
+      { agentId: 'codex', key: 'codex:work', accountId: 'work', name: 'Work', windows: [{ window: '5h', percent: 99 }], at: 0, budget: { action: 'allow' } }
     ])
     expect(groups).toEqual([
       { key: 'work', name: 'Work', windows: [{ window: '5h', percent: 12 }] },

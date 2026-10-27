@@ -1,6 +1,6 @@
 import { ArrowUp, Brain, ChevronRight, CircleAlert, FileText, History, Info, Pencil, Search, ShieldAlert, Square, SquareTerminal, TriangleAlert, Webhook, Wrench, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
-import type { ImageInput } from '@workhub/core'
+import { gatePrompt, setCeiling, type ImageInput } from '@workhub/core'
 import { Badge, Button, IconButton, Spinner } from '../../components/atoms'
 import { Markdown } from '../../components/molecules'
 import { BrandMark } from '../../components/organisms'
@@ -10,6 +10,10 @@ import { cn } from '../../lib/cn'
 import { onComposerDraft, takeComposerDraft } from '../../lib/drafts'
 import { imageInputFromDataUrl, MAX_PROMPT_IMAGES, readPastedImages } from '../../lib/images'
 import { markPermission, pushItem, pushTurnEnd, pushUser, type ChatItem, type SessionData } from '../../store'
+import { refreshConfig } from '../../configStore'
+import { sessionBudget } from '../../lib/agent-usage'
+import { useAccountLabel, useAccountUsage, useNow, useUsageSettings } from '../../lib/usage'
+import { BudgetNotice } from './BudgetNotice'
 
 const TOOL_ICON: Record<string, LucideIcon> = { read: FileText, edit: Pencil, execute: SquareTerminal, search: Search, think: Brain }
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
@@ -159,9 +163,32 @@ export function ChatPane({ data }: { data: SessionData }) {
 
   const acceptsImages = v.capabilities.imageInput
 
-  const send = async () => {
+  // Usage budget of the session's account (Settings → Usage): past a ceiling, a prompt needs "Send anyway".
+  const reads = useAccountUsage()
+  const usageSettings = useUsageSettings()
+  const now = useNow()
+  const accountLabel = useAccountLabel()
+  const gate = sessionBudget(v, reads, usageSettings.budget, usageSettings.accountsOf, now)
+  const [needsConfirm, setNeedsConfirm] = useState(false)
+  useEffect(() => {
+    if (gate.status.action !== 'block') setNeedsConfirm(false)
+  }, [gate.status.action])
+
+  const clearCeiling = async () => {
+    if (!gate.status.window) return
+    const r = await window.hub.config.saveOptions({ usageBudget: setCeiling(usageSettings.budget, gate.key, gate.status.window, null) })
+    if (r.ok) await refreshConfig()
+  }
+
+  const send = async (override = false) => {
     const value = text.trim()
     if ((!value && images.length === 0) || v.state !== 'ready') return
+    // The one-shot escape: "Send anyway" passes this prompt only; nothing stored changes.
+    if (gatePrompt(gate.status, 'user', override).kind === 'confirm') {
+      setNeedsConfirm(true)
+      return
+    }
+    setNeedsConfirm(false)
     const sent = images
     setText('')
     setImages([])
@@ -218,6 +245,15 @@ export function ChatPane({ data }: { data: SessionData }) {
       </div>
       <div className="shrink-0 px-6 pb-5">
         <div className="mx-auto max-w-3xl rounded-xl border border-border bg-surface shadow-md transition-colors focus-within:border-accent/60">
+          <BudgetNotice
+            status={gate.status}
+            account={accountLabel(usageSettings.accountsOf(v.agentId), reads.find((r) => r.key === gate.key)?.name ?? v.accountName ?? '')}
+            now={now}
+            needsConfirm={needsConfirm}
+            canSend={v.state === 'ready' && (text.trim().length > 0 || images.length > 0)}
+            onSendAnyway={() => void send(true)}
+            onClear={() => void clearCeiling()}
+          />
           {images.length > 0 && (
             <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label={t('chat.attached')}>
               {images.map((src, i) => (

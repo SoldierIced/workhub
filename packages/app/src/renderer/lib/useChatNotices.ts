@@ -9,7 +9,8 @@ import { pushUser } from '../store'
 const NOT_WOKEN: Record<string, MessageKey> = {
   automationOff: 'slack.notice.notWoken.automationOff',
   noReplies: 'slack.notice.notWoken.noReplies',
-  openElsewhere: 'slack.notice.notWoken.openElsewhere'
+  openElsewhere: 'slack.notice.notWoken.openElsewhere',
+  budget: 'slack.notice.notWoken.budget'
 }
 
 /**

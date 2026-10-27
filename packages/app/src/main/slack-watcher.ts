@@ -29,6 +29,7 @@ import {
   windowReason,
   autoCloseReason,
   closeThread,
+  type BudgetStatus,
   type ChatNotice,
   type ChatReadResult,
   type ChatSource,
@@ -38,8 +39,10 @@ import {
   type ChatMessage,
   type ConfigurationService,
   type TrackedThread,
+  type WakePlan,
   type WorkhubConfig
 } from '@workhub/core'
+import { agentKeyBudget } from './agent-usage'
 import type { DemoChatSource } from '@workhub/adapters/chat-slack'
 import { locateClaudeTranscript } from '@workhub/adapters/transcript-claude'
 import type { AccountUsage, SessionView, StartSessionInput } from '../shared/api'
@@ -66,6 +69,8 @@ export interface SlackWatcherDeps {
   startSession: (input: StartSessionInput) => Promise<SessionView>
   home: string
   usage: () => AccountUsage[]
+  /** The usage budget verdict of an account (Settings → Usage); wakes and reads wait past a ceiling. */
+  budgetOf?: (agentId: string, accountId: string | null) => BudgetStatus
   /** Canonical URLs of the user's open PRs in the active profile. */
   myPullRequests: () => Promise<Set<string>>
   /** `open`, `merged` or `closed`; undefined when it could not be read. */
@@ -151,6 +156,11 @@ export class SlackWatcherService {
       this.nextRunAt = now + this.interval(s)
       return this.setSkip('usage')
     }
+    // Reading Slack runs a turn on the Claude account: it pauses while that account is past its usage ceiling.
+    if (this.deps.budgetOf?.('claude', s.accountId).action === 'block') {
+      this.nextRunAt = now + this.interval(s)
+      return this.setSkip('budget')
+    }
     this.skipReason = undefined
     await this.cycle()
   }
@@ -162,7 +172,7 @@ export class SlackWatcherService {
   }
 
   private usagePercent(accountId: string | null): number | null {
-    const windows = this.deps.usage().find((u) => u.accountId === accountId)?.windows ?? []
+    const windows = this.deps.usage().find((u) => u.agentId === 'claude' && u.accountId === accountId)?.windows ?? []
     return windows.find((w) => w.window === '5h')?.percent ?? null
   }
 
@@ -336,6 +346,7 @@ export class SlackWatcherService {
       transcriptCwd: located?.cwd ?? null
     })
     const update = (change: (t: TrackedThread) => TrackedThread) => this.setState(updateThread(this.state, thread.id, change))
+    if (await this.pausedByBudget(thread, plan, views, located?.configDir)) return
     switch (plan.kind) {
       case 'deliver': {
         const outcome = await this.deps.driver.deliver(plan.sessionId, wakeText(thread, thread.pendingWake))
@@ -372,6 +383,29 @@ export class SlackWatcherService {
         }
       }
     }
+  }
+
+  /**
+   * A wake that would type into or reopen a session waits while that session's account is past a
+   * usage ceiling (Settings → Usage). The replies stay pending and are delivered once the window
+   * resets or the ceiling is raised or cleared; the user is told once per pause.
+   */
+  private async pausedByBudget(thread: TrackedThread, plan: WakePlan, views: SessionView[], configDir: string | undefined): Promise<boolean> {
+    const budgetOf = this.deps.budgetOf
+    if (!budgetOf || (plan.kind !== 'deliver' && plan.kind !== 'reopen')) return false
+    const config = await this.deps.configuration.current()
+    let agentKey: string | undefined
+    if (plan.kind === 'deliver') {
+      const view = views.find((v) => v.id === plan.sessionId)
+      agentKey = view ? (view.accountId ? `${view.agentId}:${view.accountId}` : view.agentId) : undefined
+    } else {
+      agentKey = plan.agentKey ?? this.agentKeyFor(config, configDir) ?? 'claude'
+    }
+    if (!agentKey || agentKeyBudget(config, agentKey, budgetOf).action !== 'block') return false
+    const already = thread.wakeLog[0]?.detail === 'budget'
+    this.setState(updateThread(this.state, thread.id, (t) => recordWake(t, 'pending', 'budget', this.now(), false)))
+    if (!already) this.deps.notice({ kind: 'notWoken', threadId: thread.id, title: thread.title, reason: 'budget', replies: thread.pendingWake.map((r) => ({ user: r.user, text: r.text })) })
+    return true
   }
 
   // Ownership, for the automations

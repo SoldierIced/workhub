@@ -23,6 +23,7 @@ export const automationsEn = {
   'automations.moduleOff': 'Its profile has the Automations module off: it does not run.',
   'automations.waiting': 'Waiting: {reason} {time}',
   'automations.reason.usage': 'the account\'s usage is over the guard',
+  'automations.reason.budget': 'the account is past its usage ceiling',
   'automations.reason.limit': 'rate limit reached',
   'automations.reason.rateLimited': 'the agent is rate limited',
   'automations.reason.backoff': 'backing off after failures',

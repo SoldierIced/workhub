@@ -6,6 +6,7 @@ import { automationsEn } from './automations.en'
 import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
+import { usageEn } from './usage.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -328,7 +329,6 @@ export const en = {
   'history.resume': 'Resume',
   'history.resumeConsole': 'Resume in the terminal',
   'history.accountFailed': '{account}: the sessions could not be listed ({message})',
-  'settings.claude': 'Claude',
   'settings.planUsage': 'Read plan usage per account',
   'settings.planUsageHint': "Every 5 minutes, with each account's own sign-in.",
   'settings.planUsageNote': "Off by default. It calls an undocumented Anthropic endpoint (the one Claude Code's /usage uses) with the account's stored sign-in; it can change or stop working at any time. While it is off, usage comes only from what running sessions report.",
@@ -355,5 +355,6 @@ export const en = {
   ...prEventsEn,
   ...linksEn,
   ...slackEn,
-  ...automationsEn
+  ...automationsEn,
+  ...usageEn
 } as const
