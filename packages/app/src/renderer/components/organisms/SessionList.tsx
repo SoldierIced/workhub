@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, X } from 'lucide-react'
+import { Bot, ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, Settings, X } from 'lucide-react'
 import { ContextMenu, DropdownMenu } from 'radix-ui'
 import { useMemo, useState, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
 import {
@@ -35,6 +35,7 @@ import { useNow } from '../../lib/usage'
 import { usePlatform } from '../../lib/platform'
 import { shortcutLabel } from '../../lib/shortcuts'
 import { isSessionReadAloud, setSessionReadAloud, useReadAloudVersion } from '../../lib/readAloud'
+import { useAutomations } from '../../chatStore'
 import { awaitingAnswer, pushItem } from '../../store'
 import { AgentIcon } from '../atoms/AgentIcon'
 import { Badge } from '../atoms/Badge'
@@ -397,6 +398,7 @@ function SessionItem(props: {
   const level = data ? statusLevel({ state: data.view.state, unseen: data.unseen, awaitingAnswer: awaitingAnswer(data) }) : null
   const tone = data ? (level ? LEVEL_TONE[level] : STATE_TONE[data.view.state]) : 'neutral'
   const closed = !data
+  const automation = useAutomations()?.automations.find((a) => a.session === member.key)?.definition.name
   // A session that was stopped is as good as closed: dimmed, and the row reopens it.
   const stopped = data?.view.state === 'stopped'
   const status = data ? (data.unseen && level ? t(LEVEL_LABEL[level]) : t(`state.${data.view.state}`)) : t('groups.closed')
@@ -495,6 +497,7 @@ function SessionItem(props: {
                     {status}
                   </span>
                 </span>
+                {automation && <Settings data-testid="automation-badge" role="img" aria-label={t('automations.sessionBadge', { name: automation })} className="size-3.5 shrink-0 text-subtle" />}
                 {data?.unseen && (
                   <span data-testid="unseen-mark" role="img" aria-label={t('attention.unseen')} className="size-2 shrink-0 rounded-full bg-accent" />
                 )}

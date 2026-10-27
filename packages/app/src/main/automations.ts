@@ -169,7 +169,7 @@ export class AutomationService {
     const folder = resolve(expandHome(a.folder || '~', this.deps.home))
     const isDir = await stat(folder).then((s) => s.isDirectory(), () => false)
     if (!isDir) throw new Error(`folder not found: ${folder}`)
-    const input: StartSessionInput = { profileId: a.profileId, agentKey: a.agentKey, cwd: folder, mode: a.view, cols: 120, rows: 32, ...(a.model ? { model: a.model } : {}) }
+    const input: StartSessionInput = { profileId: a.profileId, agentKey: a.agentKey, cwd: folder, mode: a.view, cols: 120, rows: 32, ...(a.model ? { model: a.model } : {}), ...(a.effort ? { effort: a.effort } : {}), ...(a.permissionMode ? { modeId: a.permissionMode } : {}) }
     if (previous) {
       const dirs = claudeAccounts(this.config ?? (await this.deps.configuration.current()), this.deps.home).map((c) => resolve(c.configDir || process.env['CLAUDE_CONFIG_DIR'] || join(this.deps.home, '.claude')))
       const located = accountOf(a.agentKey).agentId === 'claude' ? await locateClaudeTranscript(previous, dirs) : null

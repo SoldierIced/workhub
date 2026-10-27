@@ -22,6 +22,8 @@ export interface StartSessionRequest {
   resume?: boolean
   /** Model to start with; the agent's default when unset. */
   model?: string
+  /** Reasoning effort to start with (native Claude); ignored by agents without the setting. */
+  effort?: string
   /**
    * Session mode to start in (ACP `session/set_mode`): the agent or persona for Kiro and OpenCode,
    * the approval preset for Codex. Ignored when the agent does not offer it; `readOnly` wins.

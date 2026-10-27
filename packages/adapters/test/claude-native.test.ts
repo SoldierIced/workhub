@@ -73,6 +73,19 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     expect(echoed.configEnv).toBe('/tmp/acme-claude')
   })
 
+  it('starts with the effort and the Claude permission mode asked for, and ignores a mode it does not know', async () => {
+    const echoStart = async (id: string, extra: Partial<Parameters<ClaudeNativeRuntime['start']>[0]>) => {
+      await start(id, extra)
+      await rt.prompt(id, 'echo start')
+      return (JSON.parse(agentText(events)) as { start: Record<string, unknown> }).start
+    }
+    expect(await echoStart('n-opts', { effort: 'high', modeId: 'acceptEdits' })).toMatchObject({ effort: 'high', permissionMode: 'acceptEdits' })
+    await rt.stopAll()
+    const other = await echoStart('n-acp', { modeId: 'code-agent' })
+    expect(other['permissionMode']).toBeUndefined()
+    expect(other['effort']).toBeUndefined()
+  })
+
   it('reports a turn refused by a usage limit', async () => {
     await start('n-limit')
     const result = await rt.prompt('n-limit', 'hit the limit')

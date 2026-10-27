@@ -156,6 +156,8 @@ export interface StartSessionInput {
   identity?: string
   /** Model to start with (remembered per agent and account by the renderer); else the account's default. */
   model?: string
+  /** Reasoning effort to start with (Claude); else the account's setting. */
+  effort?: string
   /** Session mode to start in: the agent or persona (Kiro, OpenCode), the approval preset (Codex); else the account's default. */
   modeId?: string
   /** An AI reviewer: the agent's most read-only mode, chat only (see `StartSessionRequest.readOnly`). */

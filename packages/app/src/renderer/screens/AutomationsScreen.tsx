@@ -8,6 +8,7 @@ import { useAutomations, useSlack } from '../chatStore'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import { relativeTime } from '../lib/pullRequests'
+import { shortDuration } from '../lib/subagentView'
 import { AutomationEditor } from './automations/AutomationEditor'
 
 const HEALTH_TONE = { off: 'neutral', idle: 'success', waiting: 'info', paused: 'warning', failing: 'danger', running: 'accent' } as const
@@ -83,6 +84,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
               key={s.definition.id}
               status={s}
               now={now}
+              lastRun={snap.runs.find((r) => r.automationId === s.definition.id)}
               channelName={(id) => channels.find((c) => c.id === id)?.name ?? id}
               onEdit={() => setEditing(structuredClone(s.definition))}
               onRemove={() => void remove(s.definition.id)}
@@ -98,7 +100,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
           {snap.runs.length === 0 && <p className="text-sm text-subtle">{t('automations.noRuns')}</p>}
           <ul className="flex flex-col gap-1 text-sm" data-testid="automation-runs">
             {snap.runs.slice(0, 30).map((r) => (
-              <RunRow key={r.id} run={r} now={now} locale={locale} />
+              <RunRow key={r.id} run={r} now={now} locale={locale} removed={!snap.automations.some((s) => s.definition.id === r.automationId)} onOpen={() => void open(r.automationId)} />
             ))}
           </ul>
         </CardBody>
@@ -109,7 +111,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
   )
 }
 
-function AutomationCard({ status: s, now, channelName, onEdit, onRemove, onOpen }: { status: AutomationStatus; now: number; channelName: (id: string) => string; onEdit: () => void; onRemove: () => void; onOpen: () => void }) {
+function AutomationCard({ status: s, now, lastRun, channelName, onEdit, onRemove, onOpen }: { status: AutomationStatus; now: number; lastRun: AutomationRun | undefined; channelName: (id: string) => string; onEdit: () => void; onRemove: () => void; onOpen: () => void }) {
   const { t, locale } = useI18n()
   const a = s.definition
   const triggers = [
@@ -131,7 +133,20 @@ function AutomationCard({ status: s, now, channelName, onEdit, onRemove, onOpen 
         <p className="text-xs text-subtle">
           {t(a.sessionPolicy === 'reuse' ? 'automations.policy.reuse' : 'automations.policy.newEachRun')} · {a.folder} ·{' '}
           {t('automations.counts', { window: s.startedInWindow, max: a.limits.maxRuns, minutes: a.limits.perMinutes, today: s.startedToday })}
+          {a.limits.maxPerDay !== null && t('automations.dayMax', { max: a.limits.maxPerDay })}
         </p>
+        {s.health !== 'off' && s.nextIntervalAt && <p className="text-xs text-subtle">{t('automations.nextCheck', { time: relativeTime(s.nextIntervalAt, now, locale) })}</p>}
+        {s.lastCheck && (
+          <p className="text-xs text-subtle">
+            {t('automations.check', { time: relativeTime(s.lastCheck.at, now, locale), verdict: t(`automations.gate.${s.lastCheck.verdict.reason}` as 'automations.gate.pending', { queued: s.lastCheck.verdict.queued, stale: s.lastCheck.verdict.staleClaims }) })}
+          </p>
+        )}
+        {lastRun && (
+          <p className="flex items-center gap-1.5 text-xs text-subtle">
+            {t('automations.lastRun', { time: relativeTime(lastRun.endedAt ?? lastRun.queuedAt, now, locale) })}
+            <Badge tone={OUTCOME_TONE[lastRun.outcome]}>{t(`automations.outcome.${lastRun.outcome}`)}</Badge>
+          </p>
+        )}
         {!s.active && <p className="text-xs text-warning">{t('automations.moduleOff')}</p>}
         {s.waitReason && (
           <p className="text-xs text-subtle">
@@ -158,18 +173,31 @@ function AutomationCard({ status: s, now, channelName, onEdit, onRemove, onOpen 
   )
 }
 
-function RunRow({ run: r, now, locale }: { run: AutomationRun; now: number; locale: string }) {
+function RunRow({ run: r, now, locale, removed, onOpen }: { run: AutomationRun; now: number; locale: string; removed: boolean; onOpen: () => void }) {
   const { t } = useI18n()
   const detail = r.detail ? (r.detail.startsWith('timeout:') ? t('automations.detail.timeout', { minutes: r.detail.slice(8) }) : DETAIL_KEYS.has(r.detail) ? t(`automations.detail.${r.detail}` as 'automations.detail.paused') : r.detail) : ''
   return (
     <li className="flex items-center gap-2">
       <Badge tone={OUTCOME_TONE[r.outcome]}>{t(`automations.outcome.${r.outcome}`)}</Badge>
       <span className="font-medium">{r.automationName}</span>
-      <span className="text-subtle">{t(`automations.triggerKind.${r.trigger}`)}</span>
+      {removed && <span className="text-xs text-subtle">{t('automations.removed')}</span>}
+      {r.trigger === 'chat' && r.triggerLink && /^https?:\/\//.test(r.triggerLink) ? (
+        <button type="button" className="text-accent hover:underline" onClick={() => window.hub.openExternal(r.triggerLink!)}>
+          {t('automations.slackMessage')}
+        </button>
+      ) : (
+        <span className="text-subtle">{t(`automations.triggerKind.${r.trigger}`)}</span>
+      )}
       {r.merged > 0 && <span className="text-xs text-subtle">{t('automations.merged', { count: r.merged })}</span>}
       <span className="min-w-0 flex-1 truncate text-muted" title={detail}>
         {detail}
       </span>
+      {r.startedAt && r.endedAt && <span className="text-xs tabular-nums text-subtle">{shortDuration(r.endedAt - r.startedAt)}</span>}
+      {!removed && r.session && (
+        <button type="button" className="text-xs text-accent hover:underline" onClick={onOpen}>
+          {t('automations.openRunSession')}
+        </button>
+      )}
       <span className="text-xs text-subtle">{relativeTime(r.endedAt ?? r.startedAt ?? r.queuedAt, now, locale)}</span>
     </li>
   )

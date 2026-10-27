@@ -25,6 +25,9 @@ import type {
 import { pathKeyOf } from '../shared/login-path'
 import { ClaudeBridgeMapper, permissionResult, resultStopReason, settleResult } from './mapping'
 
+/** The permission modes Claude Code starts in; any other mode id (an ACP agent's) is ignored. */
+const CLAUDE_MODES: ReadonlySet<string> = new Set(['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions', 'dontAsk'])
+
 export interface ClaudeNativeRuntimeOptions {
   /** Folder holding `bridge.mjs` and `sessions.mjs`. */
   bridgeDir: string
@@ -142,8 +145,9 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
       configDir: req.env['CLAUDE_CONFIG_DIR'],
       ...(req.resume ? { resume: agentSessionId } : { sessionId: agentSessionId }),
       ...(req.model ? { model: req.model } : {}),
-      // A reviewer: plan mode, and the edit tools refused outright.
-      ...(req.readOnly ? { permissionMode: 'plan', readOnly: true } : {})
+      ...(req.effort ? { effort: req.effort } : {}),
+      // A reviewer: plan mode, and the edit tools refused outright. Else the mode asked for, when Claude has it.
+      ...(req.readOnly ? { permissionMode: 'plan', readOnly: true } : req.modeId && CLAUDE_MODES.has(req.modeId) ? { permissionMode: req.modeId } : {})
     })
     try {
       await ready

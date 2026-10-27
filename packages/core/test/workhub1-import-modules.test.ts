@@ -111,6 +111,8 @@ describe('Workhub 1 import: modules and options', () => {
       agentKey: 'claude:claude-work',
       folder: '~/acme/api',
       view: 'console',
+      effort: 'high',
+      permissionMode: 'plan',
       triggers: { chatChannelIds: ['C000REVIEW'], prOwner: 'acme', intervalMinutes: 5, pendingGate: { kind: 'prReviewQueue', stateFile: '~/state.json' } },
       // Calendar weekdays (1 = Sunday) become JavaScript ones (0 = Sunday).
       window: { days: [1, 2, 3, 4, 5], startHour: 9, endHour: 18 },
@@ -122,12 +124,6 @@ describe('Workhub 1 import: modules and options', () => {
     })
     // Outside every profile folder: Slack's profile owns it; the main account runs it.
     expect(plan.automations?.[1]).toMatchObject({ profileId: 'acme', agentKey: 'claude:claude-personal', sessionPolicy: 'reuse', receivesChatReplies: false, limits: { maxPerDay: null } })
-    expect(plan.notes).toEqual(
-      expect.arrayContaining([
-        { code: 'notSupported', path: 'automations.aaaaaaaa-0000-4000-8000-000000000001', detail: 'permissionMode' },
-        { code: 'notSupported', path: 'automations.aaaaaaaa-0000-4000-8000-000000000001', detail: 'effort' }
-      ])
-    )
   })
 
   it('maps the Slack watcher and turns on the modules each profile used', () => {
