@@ -3,6 +3,7 @@ import {
   addImported,
   appOptions,
   BUILTIN_AGENTS,
+  CONFIG_VERSION,
   consoleCommand,
   groupHistory,
   parseConfig,
@@ -79,7 +80,7 @@ describe('config version 2', () => {
       agents: [{ id: 'acme', name: 'Acme', adapter: 'terminal', command: 'acme', capabilities: { appMode: false, transcript: false, usage: false, planUsage: false, history: false, hooks: false, models: false, mcpStatus: false, mcpControl: false, subagents: false, permissionRequests: false } }],
       profiles: [{ id: 'acme', name: 'Acme' }]
     })
-    expect(parsed.version).toBe(2)
+    expect(parsed.version).toBe(CONFIG_VERSION)
     expect(parsed.agents[0]?.capabilities.imageInput).toBe(false)
     expect(parsed.profiles[0]?.folders).toBeUndefined()
   })

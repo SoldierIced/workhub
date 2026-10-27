@@ -11,7 +11,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // 1 -> 2: optional profile folders, agent console/transcript, the imageInput capability and app
   // options. All of them default, so the document needs no change; the bump keeps an older Workhub
   // from loading (and dropping) the new fields.
-  1: (raw) => raw
+  1: (raw) => raw,
+  // 2 -> 3: sidebar session groups (`sessionGroups`) and the notification switches in `options`.
+  // Both are optional and default, so the document is unchanged; the bump keeps an older Workhub
+  // from loading the file and dropping the groups on its next save.
+  2: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

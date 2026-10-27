@@ -42,6 +42,11 @@ export interface Session {
   state: SessionState
   /** The agent's own session id (ACP `sessionId`), once known. */
   agentSessionId?: string
+  /**
+   * The stable identity sidebar groups are keyed by: the agent's session id when it has one, else
+   * an id Workhub assigned at start (a plain terminal). Survives resume and mode hand-over.
+   */
+  identity?: string
   permissionMode: PermissionModeInfo | null
   /** Current persona or mode id when the agent has modes. */
   currentModeId?: string
