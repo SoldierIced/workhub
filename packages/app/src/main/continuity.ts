@@ -67,6 +67,8 @@ export interface ContinuityDeps {
   emitMoved: (moved: ContinuityMoved) => void
   /** Shows a prompt Workhub typed into a session's chat, as the automations do. */
   showPrompt: (sessionId: string, text: string) => void
+  /** Shows the end of that prompt's turn in the chat, as for the user's own turns. */
+  showTurnEnd?: (sessionId: string, stopReason: string) => void
   now?: () => number
   /** How long a moved session may take to be ready for the held prompt. */
   readyTimeoutMs?: number
@@ -332,7 +334,8 @@ export class ContinuityService {
     const view = await this.waitReady(id, this.deps.readyTimeoutMs ?? 120_000)
     if (view?.state !== 'ready') return
     this.deps.showPrompt(id, text)
-    await this.deps.sessions.prompt(id, text).catch(() => undefined)
+    const stopReason = await this.deps.sessions.prompt(id, text).catch(() => undefined)
+    if (stopReason) this.deps.showTurnEnd?.(id, stopReason)
   }
 
   /** One turn of the source agent with the fixed summary prompt; its reply is the summary. */

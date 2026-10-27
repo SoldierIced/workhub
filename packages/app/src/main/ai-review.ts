@@ -66,6 +66,8 @@ export interface AiReviewDeps {
   notice: (notice: AiReviewNotice) => void
   /** Shows a prompt Workhub typed as a user message in the session's chat. */
   showPrompt: (sessionId: string, text: string) => void
+  /** Shows the end of that prompt's turn in the chat, as for the user's own turns. */
+  showTurnEnd?: (sessionId: string, stopReason: string) => void
   ticketTitle?: (profileId: string | null, key: string) => Promise<string | undefined>
   /** Ticket project keys of the configured trackers, to find a key in the branch name. */
   ticketPrefixes?: (config: WorkhubConfig) => string[]
@@ -359,6 +361,7 @@ export class AiReviewService {
       if (model && this.deps.sessions.list().find((v) => v.id === started.id)?.modelIgnored) this.noteRound(review.id, { modelNote: `reviewer model "${model}" not applied: the agent does not offer it, so it runs with its default model` }, dev.id)
       this.deps.showPrompt(started.id, prompt)
       const stopReason = await withTimeout(this.deps.sessions.prompt(started.id, prompt), this.deps.replyTimeoutMs ?? 30 * 60_000, 'the reviewer did not answer in time')
+      this.deps.showTurnEnd?.(started.id, stopReason)
       raw = this.reviewers.get(started.id)?.text ?? ''
       if (stopReason === 'cancelled') error = 'the reviewer turn was cancelled'
       else if (!raw.trim()) error = 'the reviewer gave an empty reply'

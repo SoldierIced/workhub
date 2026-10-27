@@ -83,6 +83,7 @@ function setup(opts: { mode?: Profile['accountFailover']; budget?: (agentId: str
   const offers: ContinuityOffer[] = []
   const moved: ContinuityMoved[] = []
   const shown: [string, string][] = []
+  const ended: [string, string][] = []
   const copySession = vi.fn(opts.copy ?? (async () => ({})))
   const placeBeside = vi.fn(async () => undefined)
   const service = new ContinuityService({
@@ -97,9 +98,10 @@ function setup(opts: { mode?: Profile['accountFailover']; budget?: (agentId: str
     emitOffer: (o) => offers.push(o),
     emitMoved: (m) => moved.push(m),
     showPrompt: (id, text) => shown.push([id, text]),
+    showTurnEnd: (id, reason) => ended.push([id, reason]),
     settleMs: 10_000
   })
-  return { config, sessions, service, offers, moved, shown, copySession, placeBeside }
+  return { config, sessions, service, offers, moved, shown, ended, copySession, placeBeside }
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
@@ -156,7 +158,7 @@ describe('ContinuityService: account failover', () => {
   })
 
   it('sends the prompt the gate held once the moved session is ready', async () => {
-    const { service, sessions, shown } = setup()
+    const { service, sessions, shown, ended } = setup()
     sessions.startState = 'starting'
     const next = await service.failover('w1', { reason: 'ceiling', window: 'weekly', prompt: 'Run the tests' })
     expect(sessions.prompts).toEqual([])
@@ -164,6 +166,8 @@ describe('ContinuityService: account failover', () => {
     await flush()
     expect(sessions.prompts).toEqual([[next.id, 'Run the tests']])
     expect(shown).toEqual([[next.id, 'Run the tests']])
+    // Its turn ends in the chat like one the user sent.
+    expect(ended.map(([id]) => id)).toEqual([next.id])
     expect(sessions.started[0]?.origin).toMatchObject({ reason: 'ceiling', window: 'weekly' })
   })
 

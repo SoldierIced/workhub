@@ -170,6 +170,7 @@ const api: HubApi = {
     setViewing: (id) => ipcRenderer.send('automations:setViewing', id),
     onChanged: (cb) => subscribe<[AutomationsSnapshot]>('automations:changed', cb),
     onPrompted: (cb) => subscribe<[string, string]>('automations:prompted', cb),
+    onTurnEnded: (cb) => subscribe<[string, string]>('automations:turnEnded', cb),
     onConfigChanged: (cb) => subscribe<[]>('config:changed', cb)
   },
   aiReview: {
