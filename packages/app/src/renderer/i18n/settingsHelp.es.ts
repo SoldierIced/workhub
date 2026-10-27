@@ -44,6 +44,11 @@ export const settingsHelpEs: Record<keyof typeof settingsHelpEn, string> = {
   'help.account.name': 'Cómo aparece la cuenta en los menús y en la barra lateral, por ejemplo "Claude laboral".',
   'help.account.configDir': 'La carpeta que guarda el inicio de sesión y la configuración de esta cuenta (para Claude, algo como ~/.claude-work). Otra carpeta es otra cuenta.',
   'help.account.env': 'Variables de entorno extra para las sesiones de esta cuenta, como una clave de API.',
+  'help.general.otherNotifications': "Notificaciones de escritorio que no son de una sesión: respuestas de Slack, ejecuciones de automatizaciones, cambios en tickets y alertas de salud. Pausar las silencia todas por un tiempo.",
+  'help.general.menuBar': "Si está activado, cerrar la ventana deja Workhub funcionando en la barra de menús (o el área de notificaciones), así las sesiones, Slack y las automatizaciones siguen trabajando.",
+  'help.account.command': "El programa que se inicia para las sesiones de esta cuenta. Déjalo vacío para usar el comando del propio agente; complétalo si esta cuenta necesita otro binario o un envoltorio.",
+  'help.account.defaultModel': "El modelo con el que empiezan las sesiones nuevas de esta cuenta. Vacío usa el del agente; igual puedes cambiarlo desde el encabezado de la sesión.",
+  'help.account.defaultMode': "El modo (agente, preajuste) con el que empiezan las sesiones nuevas de esta cuenta. Vacío usa el del agente; igual puedes cambiarlo desde el encabezado de la sesión.",
 
   'help.trackers.list': 'Los sitios de Jira o Linear de los que Workhub puede leer tickets. El perfil activo usa el marcado con "Usar en el perfil activo".',
   'help.health.module': 'Muestra la pantalla Salud en este perfil.',

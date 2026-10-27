@@ -8,7 +8,8 @@ import { BrandMark } from '../components/organisms'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { cn } from '../lib/cn'
-import { rememberModel } from '../lib/prefs'
+import { sessionModelPicker, sessionModePicker } from '../lib/agent-pickers'
+import { rememberMode, rememberModel } from '../lib/prefs'
 import { pushItem, type SessionData } from '../store'
 import { AiReviewAside, AiReviewButton } from './sessions/AiReviewPanel'
 import { ChatPane } from './sessions/ChatPane'
@@ -108,20 +109,45 @@ function ModeSwitch({ data }: { data: SessionData }) {
 function ModelPicker({ data }: { data: SessionData }) {
   const { t } = useI18n()
   const v = data.view
-  const models = v.models ?? []
+  const picker = sessionModelPicker(v)
   const change = (id: string) => {
     rememberModel(effectiveAgentKey(v.agentId, v.accountId), id || null)
     void window.hub.sessions.setModel(v.id, id || null).catch((e: unknown) => pushItem(v.id, 'error', e instanceof Error ? e.message : String(e)))
   }
   return (
-    <Select
-      aria-label={t('session.model')}
-      value={v.currentModelId && models.some((m) => m.id === v.currentModelId) ? v.currentModelId : ''}
-      onChange={change}
-      disabled={v.state !== 'ready'}
-      options={[{ value: '', label: t('session.modelDefault') }, ...models.map((m) => ({ value: m.id, label: m.name }))]}
-      className="h-7 w-44! text-sm"
-    />
+    <span data-testid="model-picker" title={v.modelIgnored ? t('agentControls.modelIgnored') : undefined}>
+      <Select
+        aria-label={t('session.model')}
+        value={picker.value}
+        onChange={change}
+        disabled={picker.disabled}
+        options={[...(picker.allowDefault ? [{ value: '', label: t('session.modelDefault') }] : []), ...picker.options]}
+        className="h-7 w-44! text-sm"
+      />
+    </span>
+  )
+}
+
+/** The session's agent (Kiro, OpenCode) or permission preset (Codex, Gemini), switched live over ACP. */
+function ModePicker({ data }: { data: SessionData }) {
+  const { t } = useI18n()
+  const v = data.view
+  const picker = sessionModePicker(v)
+  const change = (id: string) => {
+    if (!id) return
+    rememberMode(effectiveAgentKey(v.agentId, v.accountId), id)
+    void window.hub.sessions.setAgentMode(v.id, id).catch((e: unknown) => pushItem(v.id, 'error', e instanceof Error ? e.message : String(e)))
+  }
+  const label = t(picker.kind === 'agent' ? 'agentControls.agent' : 'agentControls.permission')
+  return (
+    <span
+      data-testid="mode-picker"
+      className="inline-flex items-center gap-1 text-xs text-muted"
+      title={v.modeIgnored ? t('agentControls.modeIgnored') : t(picker.kind === 'agent' ? 'agentControls.agentHint' : 'agentControls.permissionHint')}
+    >
+      {picker.kind === 'agent' && <UserRound className="size-3.5" aria-hidden />}
+      <Select aria-label={label} value={picker.value} onChange={change} disabled={picker.disabled} options={picker.options} placeholder={label} className="h-7 w-40! text-sm" />
+    </span>
   )
 }
 
@@ -161,7 +187,8 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
         </div>
         <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
           {v.modes.length > 1 && <ModeSwitch data={data} />}
-          {v.controls && v.mode === 'app' && (v.models?.length ?? 0) > 0 && <ModelPicker data={data} />}
+          {sessionModePicker(v).visible && <ModePicker data={data} />}
+          {sessionModelPicker(v).visible && <ModelPicker data={data} />}
           <Badge tone={STATE_TONE[v.state]} data-testid="session-state" icon={<StateDot tone={STATE_TONE[v.state]} pulse={v.state === 'busy' || v.state === 'starting'} />}>
             {t(`state.${v.state}`)}
           </Badge>
@@ -173,7 +200,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
           >
             {t('session.permissionMode', { mode: mode ? mode.label : v.state === 'starting' ? t('session.pending') : t('session.unknown') })}
           </Badge>
-          {v.currentModeId && v.permissionMode?.id === 'agent-managed' && <Badge>{t('session.agentMode', { mode: v.currentModeId })}</Badge>}
+          {v.currentModeId && v.permissionMode?.id === 'agent-managed' && !sessionModePicker(v).visible && <Badge>{t('session.agentMode', { mode: v.currentModeId })}</Badge>}
           {live && <AiReviewButton view={v} />}
           {live && (
             <Button size="sm" variant="ghost" icon={<Square className="size-3" aria-hidden />} onClick={() => void window.hub.sessions.stop(v.id)}>

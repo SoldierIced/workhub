@@ -12,6 +12,8 @@ import { updatesEs } from './updates.es'
 import { usageEs } from './usage.es'
 import { appearanceEs } from './appearance.es'
 import { settingsHelpEs } from './settingsHelp.es'
+import { trayEs } from './tray.es'
+import { agentsEs } from './agents.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -386,7 +388,9 @@ export const es: Record<keyof typeof en, string> = {
   ...automationsEs,
   ...usageEs,
   ...aiReviewEs,
+  ...sessionsUxEs,
+  ...trayEs,
+  ...agentsEs,
   ...appearanceEs,
-  ...settingsHelpEs,
-  ...sessionsUxEs
+  ...settingsHelpEs
 }

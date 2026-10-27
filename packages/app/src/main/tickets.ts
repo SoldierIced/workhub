@@ -13,7 +13,8 @@ export interface TicketIpcDeps {
   broadcast: (channel: string, ...args: unknown[]) => void
 }
 
-export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, broadcast }: TicketIpcDeps): void {
+/** Registers the ticket handlers; returns the ticket window opener (ticket notifications use it). */
+export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, broadcast }: TicketIpcDeps): { openWindow: (profileId: string, key: string) => void } {
   const windows = new Map<string, BrowserWindow>()
   const changed = <T>(r: TicketsResult<T>): TicketsResult<T> => {
     if (r.ok) broadcast('tickets:changed')
@@ -35,7 +36,7 @@ export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, 
   )
   ipcMain.handle('tickets:test', (_e, connection: Connection, change: SecretChange) => service.test(connection, change))
 
-  ipcMain.handle('tickets:openWindow', (_e, profileId: string, key: string) => {
+  const openWindow = (profileId: string, key: string): void => {
     const id = `${profileId}:${key}`
     const existing = windows.get(id)
     if (existing && !existing.isDestroyed()) {
@@ -46,7 +47,8 @@ export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, 
     const win = createWindow(`#/ticket?profile=${encodeURIComponent(profileId)}&key=${encodeURIComponent(key)}`, key)
     windows.set(id, win)
     win.on('closed', () => windows.delete(id))
-  })
+  }
+  ipcMain.handle('tickets:openWindow', (_e, profileId: string, key: string) => openWindow(profileId, key))
 
   ipcMain.handle('tickets:openExternal', async (_e, url: string) => {
     // Only web links: the renderer shows text from trackers, which must never reach other schemes.
@@ -60,4 +62,5 @@ export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, 
     win.focus()
     win.webContents.send('tickets:openSession', sessionId)
   })
+  return { openWindow }
 }

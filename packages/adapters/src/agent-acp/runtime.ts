@@ -22,14 +22,18 @@ import type {
   AgentEvent,
   AgentEventListener,
   AgentRuntime,
+  ModelControl,
+  ModelOption,
   PromptResult,
+  SessionModeControl,
+  SessionModeOption,
   StartedSession,
   StartSessionRequest,
   Unsubscribe
 } from '@workhub/core'
 import { findExecutable } from './availability'
 import { pathKeyOf } from '../shared/login-path'
-import { AcpMonitor, permissionMode, readModes } from './monitor-mapping'
+import { AcpMonitor, permissionMode, readConfigSelect, readModels, readModes, type SelectVia } from './monitor-mapping'
 import { planSpawn } from './spawn-plan'
 
 export type AcpDirection = 'client->agent' | 'agent->client'
@@ -57,9 +61,18 @@ interface AcpSession {
   monitor: AcpMonitor
   pending: Map<string, (r: RequestPermissionResponse) => void>
   stopping: boolean
+  /** What the agent reported at `session/new` (or later through `config_option_update`). */
+  models: ModelOption[]
+  currentModelId?: string
+  modelVia?: SelectVia
+  modes: SessionModeOption[]
+  currentModeId?: string
+  modeVia?: SelectVia
 }
 
-export class AcpRuntime implements AgentRuntime {
+type RawRequest = (method: string, params: unknown) => Promise<unknown>
+
+export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeControl {
   readonly adapter = 'acp' as const
   private readonly sessions = new Map<string, AcpSession>()
   private readonly listeners = new Set<AgentEventListener>()
@@ -115,7 +128,9 @@ export class AcpRuntime implements AgentRuntime {
       agentSessionId: '',
       monitor,
       pending: new Map(),
-      stopping: false
+      stopping: false,
+      models: [],
+      modes: []
     }
     this.sessions.set(id, session)
 
@@ -181,27 +196,41 @@ export class AcpRuntime implements AgentRuntime {
       ])
       session.agentSessionId = created.sessionId
       const modes = readModes(created)
+      session.modes = modes.availableModes
+      session.currentModeId = modes.currentModeId
+      session.modeVia = modes.via
+      const models = readModels(created)
+      session.models = models.availableModels
+      session.currentModelId = models.currentModelId
+      session.modelVia = models.via
       const { availableModes } = modes
-      let { currentModeId } = modes
-      // A reviewer starts in the agent's most read-only permission mode, when it has one.
+      // A reviewer starts in the agent's most read-only permission mode, when it has one; otherwise
+      // the mode asked for (an agent or persona), when the agent offers it.
       const readOnlyMode = req.readOnly && req.agent.modeSemantics === 'permission' ? readOnlyModeId(availableModes) : undefined
-      if (readOnlyMode && readOnlyMode !== currentModeId) {
-        const setMode = session.conn.agent.request as unknown as (method: string, params: unknown) => Promise<unknown>
-        await Promise.race([setMode.call(session.conn.agent, 'session/set_mode', { sessionId: created.sessionId, modeId: readOnlyMode }), spawnFailed])
-        currentModeId = readOnlyMode
+      const wanted = readOnlyMode ?? (req.readOnly ? undefined : req.modeId)
+      let modeIgnored = false
+      if (wanted && wanted !== session.currentModeId) {
+        const applied = availableModes.some((m) => m.id === wanted) && (await this.applyMode(session, wanted, spawnFailed))
+        // A reviewer that cannot get into its read-only mode does not start.
+        if (!applied && readOnlyMode) throw new Error(`could not switch the reviewer to the "${readOnlyMode}" mode`)
+        modeIgnored = !applied
       }
+      const currentModeId = session.currentModeId
       // A model asked for: ACP's session model selection, when the agent reports models and takes it.
-      const modelIgnored = req.model ? !(await this.selectModel(session, created, req.model, spawnFailed)) : false
+      const modelIgnored = req.model ? !(await this.selectModel(session, req.model, spawnFailed)) : false
       const started: StartedSession = {
         agentSessionId: created.sessionId,
         agentName: init.agentInfo?.title ?? init.agentInfo?.name ?? req.agent.name,
         permissionMode: permissionMode(req.agent.modeSemantics, currentModeId, availableModes),
         currentModeId,
         availableModes,
-        ...(modelIgnored ? { modelIgnored: true } : {})
+        ...(modelIgnored ? { modelIgnored: true } : {}),
+        ...(modeIgnored ? { modeIgnored: true } : {}),
+        ...(session.models.length ? { models: session.models } : {}),
+        ...(session.currentModelId ? { currentModelId: session.currentModelId } : {})
       }
-      const model = req.model && !modelIgnored ? req.model : (created as { models?: { currentModelId?: string } }).models?.currentModelId
-      if (model) this.emit({ sessionId: id, type: 'monitor', snapshot: { model } })
+      if (session.models.length) this.emit({ sessionId: id, type: 'models', models: session.models, currentModelId: session.currentModelId })
+      if (session.currentModelId) this.emit({ sessionId: id, type: 'monitor', snapshot: { model: session.currentModelId } })
       this.emit({ sessionId: id, type: 'state', state: 'ready' })
       return started
     } catch (err) {
@@ -212,20 +241,85 @@ export class AcpRuntime implements AgentRuntime {
     }
   }
 
-  /**
-   * Switches a new session to `modelId` through `session/set_model` (unstable ACP). False when the
-   * agent reports no model list, does not offer that id, or refuses: the session keeps its default.
-   */
-  private async selectModel(session: AcpSession, created: unknown, modelId: string, spawnFailed: Promise<never>): Promise<boolean> {
-    const models = (created as { models?: { availableModels?: { modelId?: string }[] } }).models
-    if (!models?.availableModels?.some((m) => m.modelId === modelId)) return false
+  /** Sends a request the SDK has no typed method for (unstable or newer ACP methods). */
+  private raw(session: AcpSession, method: string, params: unknown): Promise<unknown> {
+    const request = session.conn.agent.request as unknown as RawRequest
+    return request.call(session.conn.agent, method, params)
+  }
+
+  /** `session/set_mode`, or the `mode` config option. True when the agent took it. */
+  private async applyMode(session: AcpSession, modeId: string, guard?: Promise<never>): Promise<boolean> {
+    const via = session.modeVia ?? { kind: 'method' }
+    const call =
+      via.kind === 'config'
+        ? this.raw(session, 'session/set_config_option', { sessionId: session.agentSessionId, configId: via.configId, value: modeId })
+        : this.raw(session, 'session/set_mode', { sessionId: session.agentSessionId, modeId })
     try {
-      const request = session.conn.agent.request as unknown as (method: string, params: unknown) => Promise<unknown>
-      await Promise.race([request.call(session.conn.agent, 'session/set_model', { sessionId: session.agentSessionId, modelId }), spawnFailed])
+      const result = await (guard ? Promise.race([call, guard]) : call)
+      session.currentModeId = modeId
+      this.readConfigResult(session, result)
       return true
     } catch {
       return false
     }
+  }
+
+  /**
+   * `session/set_model` (unstable ACP), or the `model` config option. False when the agent reports
+   * no model list, does not offer that id, or refuses: the session keeps its model.
+   */
+  private async selectModel(session: AcpSession, modelId: string, guard?: Promise<never>): Promise<boolean> {
+    if (!session.models.some((m) => m.id === modelId)) return false
+    const via = session.modelVia ?? { kind: 'method' }
+    const call =
+      via.kind === 'config'
+        ? this.raw(session, 'session/set_config_option', { sessionId: session.agentSessionId, configId: via.configId, value: modelId })
+        : this.raw(session, 'session/set_model', { sessionId: session.agentSessionId, modelId })
+    try {
+      const result = await (guard ? Promise.race([call, guard]) : call)
+      session.currentModelId = modelId
+      this.readConfigResult(session, result)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** `session/set_config_option` answers with every option's new value; keep what changed. */
+  private readConfigResult(session: AcpSession, result: unknown): void {
+    const options = (result as { configOptions?: unknown } | null)?.configOptions
+    if (!options) return
+    if (session.modelVia?.kind === 'config') session.currentModelId = readConfigSelect(options, 'model')?.currentValue ?? session.currentModelId
+    if (session.modeVia?.kind === 'config') session.currentModeId = readConfigSelect(options, 'mode')?.currentValue ?? session.currentModeId
+  }
+
+  /** Switches a running session's model. `null` (the agent's default) cannot be asked for over ACP and is ignored. */
+  async setModel(sessionId: string, modelId: string | null): Promise<void> {
+    const s = this.require(sessionId)
+    if (!modelId || modelId === s.currentModelId) return
+    if (!s.models.some((m) => m.id === modelId)) throw new Error(`the agent does not offer the model "${modelId}"`)
+    if (!(await this.selectModel(s, modelId))) throw new Error(`the agent refused the model "${modelId}"`)
+    this.emit({ sessionId, type: 'models', models: s.models, currentModelId: s.currentModelId })
+    this.emit({ sessionId, type: 'monitor', snapshot: { model: s.currentModelId } })
+  }
+
+  /** Switches a running session's mode: the agent or persona (Kiro, OpenCode), or the approval preset (Codex). */
+  async setSessionMode(sessionId: string, modeId: string): Promise<void> {
+    const s = this.require(sessionId)
+    if (modeId === s.currentModeId) return
+    if (!s.modes.some((m) => m.id === modeId)) throw new Error(`the agent does not offer the mode "${modeId}"`)
+    if (!(await this.applyMode(s, modeId))) throw new Error(`the agent refused the mode "${modeId}"`)
+    this.emitMode(s)
+  }
+
+  private emitMode(s: AcpSession): void {
+    if (!s.currentModeId) return
+    this.emit({
+      sessionId: s.id,
+      type: 'permissionMode',
+      mode: permissionMode(s.agent.modeSemantics, s.currentModeId, s.modes),
+      currentModeId: s.currentModeId
+    })
   }
 
   async prompt(sessionId: string, text: string): Promise<PromptResult> {
@@ -313,14 +407,27 @@ export class AcpRuntime implements AgentRuntime {
         break
       case 'current_mode_update':
         if (u.currentModeId) {
-          this.emit({
-            sessionId: s.id,
-            type: 'permissionMode',
-            mode: permissionMode(s.agent.modeSemantics, u.currentModeId, []),
-            currentModeId: u.currentModeId
-          })
+          s.currentModeId = u.currentModeId
+          this.emitMode(s)
         }
         break
+      case 'config_option_update': {
+        // The newer ACP form of model and mode changes, made by the agent or a slash command.
+        const options = u['configOptions']
+        const model = s.modelVia?.kind === 'config' ? readConfigSelect(options, 'model') : undefined
+        if (model?.currentValue && model.currentValue !== s.currentModelId) {
+          s.currentModelId = model.currentValue
+          if (model.options.length) s.models = model.options.map((o) => (o.description ? o : { id: o.id, name: o.name }))
+          this.emit({ sessionId: s.id, type: 'models', models: s.models, currentModelId: s.currentModelId })
+          this.emit({ sessionId: s.id, type: 'monitor', snapshot: { model: s.currentModelId } })
+        }
+        const mode = s.modeVia?.kind === 'config' ? readConfigSelect(options, 'mode') : undefined
+        if (mode?.currentValue && mode.currentValue !== s.currentModeId) {
+          s.currentModeId = mode.currentValue
+          this.emitMode(s)
+        }
+        break
+      }
     }
     const patch = s.monitor.applyUpdate(update)
     if (patch) this.emit({ sessionId: s.id, type: 'monitor', snapshot: patch })

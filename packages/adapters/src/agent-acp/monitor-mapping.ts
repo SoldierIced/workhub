@@ -12,6 +12,7 @@ import {
   isUnattendedMode,
   type McpServerState,
   type McpServerStatus,
+  type ModelOption,
   type ModeSemantics,
   type PermissionModeInfo,
   type SessionModeOption,
@@ -157,6 +158,7 @@ export class AcpMonitor {
         if (credits !== undefined) {
           patch.lastTurnCredits = credits
           patch.credits = (this.snapshot.credits ?? 0) + credits
+          patch.turnCredits = [...(this.snapshot.turnCredits ?? []), credits]
         }
         const turnMs = num(p['turnDurationMs'])
         if (turnMs !== undefined) patch.activeTimeMs = (this.snapshot.activeTimeMs ?? 0) + turnMs
@@ -195,15 +197,86 @@ export interface ModeState {
   availableModes?: SessionModeOption[]
 }
 
-/** Reads ACP `modes` (`{currentModeId, availableModes}`) from a `session/new` response. */
-export function readModes(session: unknown): { currentModeId?: string; availableModes: SessionModeOption[] } {
-  const modes = obj(obj(session)?.['modes'])
+/**
+ * How a session's model or mode is switched: the dedicated ACP method (`session/set_model`,
+ * `session/set_mode`), or a session config option (`session/set_config_option`, the newer ACP
+ * form some adapters use instead, e.g. claude-agent-acp).
+ */
+export type SelectVia = { kind: 'method' } | { kind: 'config'; configId: string }
+
+interface ConfigSelect {
+  configId: string
+  currentValue?: string
+  options: { id: string; name: string; description?: string }[]
+}
+
+/** The first `select` config option of a category (`model`, `mode`) in `configOptions`. */
+export function readConfigSelect(configOptions: unknown, category: string): ConfigSelect | undefined {
+  for (const raw of arr(configOptions)) {
+    const o = obj(raw)
+    if (!o || o['type'] !== 'select' || o['category'] !== category) continue
+    // ACP v1 names it `id`; the v2 draft `configId`.
+    const configId = str(o['id']) ?? str(o['configId'])
+    if (!configId) continue
+    // Options are either a flat list or groups of options.
+    const flat = arr(o['options']).flatMap((x) => {
+      const g = obj(x)
+      return g && Array.isArray(g['options']) ? arr(g['options']) : [x]
+    })
+    const options = flat.flatMap((x) => {
+      const v = obj(x)
+      const id = str(v?.['value'])
+      return id ? [{ id, name: str(v?.['name']) ?? id, description: str(v?.['description']) }] : []
+    })
+    return { configId, currentValue: str(o['currentValue']), options }
+  }
+  return undefined
+}
+
+const withoutEmpty = <T extends { description?: string }>(o: T): T => {
+  if (o.description === undefined) delete o.description
+  return o
+}
+
+/**
+ * Reads ACP `modes` (`{currentModeId, availableModes}`) from a `session/new` response, or the
+ * `mode` config option when the agent reports modes that way.
+ */
+export function readModes(session: unknown): { currentModeId?: string; availableModes: SessionModeOption[]; via?: SelectVia } {
+  const s = obj(session)
+  const modes = obj(s?.['modes'])
   const availableModes = arr(modes?.['availableModes']).flatMap((raw) => {
     const m = obj(raw)
     const id = str(m?.['id'])
     return id ? [{ id, name: str(m?.['name']) ?? id, description: str(m?.['description']) }] : []
   })
-  return { currentModeId: str(modes?.['currentModeId']), availableModes }
+  if (availableModes.length || modes) return { currentModeId: str(modes?.['currentModeId']), availableModes, ...(availableModes.length ? { via: { kind: 'method' } as const } : {}) }
+  const config = readConfigSelect(s?.['configOptions'], 'mode')
+  if (config?.options.length) {
+    return { currentModeId: config.currentValue, availableModes: config.options.map((o) => withoutEmpty({ ...o })), via: { kind: 'config', configId: config.configId } }
+  }
+  return { currentModeId: undefined, availableModes: [] }
+}
+
+/**
+ * Reads ACP `models` (`{currentModelId, availableModels: [{modelId, name, description}]}`, the
+ * unstable session model state Kiro and OpenCode report) from a `session/new` response, or the
+ * `model` config option.
+ */
+export function readModels(session: unknown): { currentModelId?: string; availableModels: ModelOption[]; via?: SelectVia } {
+  const s = obj(session)
+  const models = obj(s?.['models'])
+  const availableModels = arr(models?.['availableModels']).flatMap((raw) => {
+    const m = obj(raw)
+    const id = str(m?.['modelId']) ?? str(m?.['id'])
+    return id ? [withoutEmpty({ id, name: str(m?.['name']) ?? id, description: str(m?.['description']) })] : []
+  })
+  if (availableModels.length) return { currentModelId: str(models?.['currentModelId']), availableModels, via: { kind: 'method' } }
+  const config = readConfigSelect(s?.['configOptions'], 'model')
+  if (config?.options.length) {
+    return { currentModelId: config.currentValue, availableModels: config.options.map((o) => withoutEmpty({ ...o })), via: { kind: 'config', configId: config.configId } }
+  }
+  return { currentModelId: str(models?.['currentModelId']), availableModels: [] }
 }
 
 /**

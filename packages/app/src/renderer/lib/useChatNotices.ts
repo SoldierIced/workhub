@@ -15,7 +15,7 @@ const NOT_WOKEN: Record<string, MessageKey> = {
 
 /**
  * The Slack watcher's and the automations' notices, worded in the UI language: a toast, and an OS
- * notification (a click opens the Slack screen). Prompts typed by an automation show in the chat.
+ * notification (a click opens the Slack screen, or Automations for an automation's failure). Prompts typed by an automation show in the chat.
  */
 export function useChatNotices(): void {
   const { t, tn } = useI18n()
@@ -43,7 +43,9 @@ export function useChatNotices(): void {
       const w = word(n)
       if (!w) return
       toast(w.body ? `${w.title}: ${w.body}` : w.title, w.danger ? 'danger' : undefined)
-      if (n.kind !== 'tracking') window.hub.notifications.show({ title: w.title, body: w.body, sessionId: '' })
+      // Automation failures open Automations and follow their own switch; the rest are Slack's.
+      const automation = n.kind === 'automationFailed'
+      if (n.kind !== 'tracking') window.hub.notifications.show({ title: w.title, body: w.body, sessionId: '', kind: automation ? 'automations' : 'slack', route: automation ? 'automations' : 'slack' })
     })
     const offPrompted = window.hub.automations.onPrompted((id, text) => pushUser(id, text))
     return () => {

@@ -532,13 +532,15 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
   if (allOff || n.sessionWaiting === false) options.notifyNeedsAnswer = false
   if (allOff) options.notifyError = false
   if (allOff || n.pullRequests === false) options.notifyPrEvents = Object.fromEntries(PR_EVENT_KINDS.map((k) => [k, false])) as PrEventToggles
+  if (allOff || n.slack === false) options.notifySlack = false
+  if (allOff || n.tickets === false) options.notifyTickets = false
+  if (allOff || n.automations === false) options.notifyAutomations = false
+  // Workhub 1 keeps Health alerts under their own key (`settings.healthAlerts`), not the category.
+  if (allOff || v1.healthAlerts === false) options.notifyHealth = false
   if (Object.keys(options).length) {
     if (current.options) note('exists', 'options')
     else plan.options = options
   }
-  for (const category of ['slack', 'tickets', 'automations'] as const) if (n[category] === false && !allOff) note('notSupported', 'settings', `notifications.${category}`)
-  // Workhub 2's Health sends no notifications, so only an "on" is lost.
-  if (v1.healthAlerts === true) note('notSupported', 'settings', 'healthAlerts')
   if (v1.usageChecker?.trim()) note('notSupported', 'settings', 'usageChecker')
   if (v1.usageRefreshMinutes !== undefined) note('notSupported', 'settings', 'usageRefreshMinutes')
   if (v1.prBabysitter === true) note('notSupported', 'settings', 'prBabysitter')
