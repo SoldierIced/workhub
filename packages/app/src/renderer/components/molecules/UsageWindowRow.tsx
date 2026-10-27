@@ -1,4 +1,6 @@
 import type { PlanUsageWindow } from '@workhub/core'
+import type { ReactElement } from 'react'
+import { Tooltip } from '../atoms/Tooltip'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
@@ -13,9 +15,10 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 /** The hover text of a window: percent, credits, ceiling, full reset date and countdown, reading time. */
 export function useWindowHover(): (w: PlanUsageWindow, ceiling: number | undefined, now: number) => string {
   const { t, formatDate, formatNumber } = useI18n()
+  const label = useWindowLabel()
   return (w, ceiling, now) =>
     [
-      `${w.window}: ${Math.round(w.percent)}%`,
+      `${label(w.window)}: ${Math.round(w.percent)}%`,
       w.used !== undefined && w.limit !== undefined
         ? t('agentUsage.credits', { used: formatNumber(round2(w.used)), limit: formatNumber(w.limit), left: formatNumber(round2(Math.max(0, w.limit - w.used))) })
         : '',
@@ -55,11 +58,10 @@ const TONE_TEXT = { danger: 'text-danger', warning: 'text-warning', normal: '' }
 
 /** A window in a few characters, to sit beside another one: `5h ▮▮▯ 47%`. Details on hover. */
 export function UsageWindowChip({ w, ceiling, now }: { w: PlanUsageWindow; ceiling?: number; now: number }) {
-  const hover = useWindowHover()
   const label = useWindowLabel()(w.window)
   const tone = usageTone(w.percent, ceiling)
   return (
-    <span className="flex min-w-0 items-center gap-1 text-xs" title={hover(w, ceiling, now)} data-testid="usage-window">
+    <span className="flex min-w-0 items-center gap-1 text-xs" data-testid="usage-window">
       <span className="shrink-0 text-subtle">{label}</span>
       <UsageBar percent={w.percent} ceiling={ceiling} label={label} tone={tone} className="w-6 shrink-0" />
       <span className={cn('shrink-0 font-medium tabular-nums', TONE_TEXT[tone])}>{Math.round(w.percent)}%</span>
@@ -75,14 +77,28 @@ export function UsageWindowRow({ w, ceiling, now, className }: { w: PlanUsageWin
   const { formatDate } = useI18n()
   const tone = usageTone(w.percent, ceiling)
   const label = useWindowLabel()(w.window)
-  const hover = useWindowHover()(w, ceiling, now)
   return (
-    <span className={cn('flex items-center gap-1.5 text-xs', className)} title={hover} data-testid="usage-window">
+    <span className={cn('flex items-center gap-1.5 text-xs', className)} data-testid="usage-window">
       <span className="w-11 shrink-0 truncate text-subtle">{label}</span>
       <UsageBar percent={w.percent} ceiling={ceiling} label={label} tone={tone} className="min-w-8 flex-1" />
       <span className={cn('w-8 shrink-0 text-right font-medium tabular-nums', tone === 'danger' && 'text-danger', tone === 'warning' && 'text-warning')}>{Math.round(w.percent)}%</span>
       <span className="w-16 shrink-0 truncate text-right text-2xs text-subtle tabular-nums">{w.resetsAt !== undefined ? shortReset(w.resetsAt, now, formatDate) : ''}</span>
     </span>
+  )
+}
+
+/**
+ * The tooltip of a whole usage row. Native `title` tooltips showed only over the element that
+ * carried one (a bar, a percent, not the gaps between them), waited about a second, and did not show
+ * at all while the window was not focused. This one opens anywhere over the row, after the app's
+ * short delay, in a portal (no clipping by the sidebar's scroll area) kept inside the window.
+ */
+export function UsageRowTooltip({ text, side = 'bottom', children }: { text: string; side?: 'top' | 'bottom' | 'left' | 'right'; children: ReactElement }) {
+  if (!text) return children
+  return (
+    <Tooltip side={side} align="start" className="max-w-80" testId="usage-tooltip" content={<span className="block text-xs leading-snug whitespace-pre-line tabular-nums">{text}</span>}>
+      {children}
+    </Tooltip>
   )
 }
 

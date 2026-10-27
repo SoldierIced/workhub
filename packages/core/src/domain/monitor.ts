@@ -71,6 +71,8 @@ export interface PlanUsageWindow {
   /** Amount used and the plan's limit, when the agent reports units rather than only a percent (Kiro credits). */
   used?: number
   limit?: number
+  /** The plan the window belongs to, when the agent names it (Kiro's `planName`, e.g. "Kiro Pro"). */
+  plan?: string
 }
 
 export type McpServerState = 'loading' | 'running' | 'needs-auth' | 'failed' | 'disabled' | 'unknown'
