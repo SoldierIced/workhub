@@ -1,5 +1,15 @@
 import { useSyncExternalStore } from 'react'
-import { mergeMonitor, type AgentEvent, type HistoryMessage, type PermissionOption, type SessionMonitorSnapshot } from '@workhub/core'
+import {
+  attentionFromTransition,
+  mergeMonitor,
+  raiseAttention,
+  type AgentEvent,
+  type AttentionKind,
+  type HistoryMessage,
+  type PermissionOption,
+  type SessionMonitorSnapshot
+} from '@workhub/core'
+import { containsBell } from './lib/attention'
 import type { SessionView } from '@shared/api'
 
 export type ChatItem =
@@ -21,6 +31,46 @@ export interface SessionData {
   view: SessionView
   items: ChatItem[]
   monitor: SessionMonitorSnapshot
+  /** Why the session needs a look: set while it is off screen, cleared when it is viewed. */
+  unseen?: AttentionKind
+}
+
+/** Whether a permission request or a question is still waiting for the user's answer. */
+export function awaitingAnswer(s: Pick<SessionData, 'items'>): boolean {
+  return s.items.some((i) => i.kind === 'permission' && i.answer === undefined)
+}
+
+// What the user is looking at: a session counts as seen only while its screen is up in a focused window.
+let viewing: string | null = null
+let windowFocused = typeof document === 'undefined' ? true : document.hasFocus()
+const attentionListeners = new Set<(id: string, kind: AttentionKind) => void>()
+
+const isOnScreen = (id: string): boolean => viewing === id && windowFocused
+
+/** Tells the store which session is on screen (null: none, e.g. another screen is open). Viewing clears its flag. */
+export function setViewing(id: string | null): void {
+  viewing = id
+  clearViewed()
+}
+
+function clearViewed(): void {
+  const s = viewing && windowFocused ? sessions[viewing] : undefined
+  if (s?.unseen) set({ ...sessions, [s.view.id]: { ...s, unseen: undefined } })
+}
+
+/** Called when a session needs a look while it is off screen (an OS notification, for one). */
+export function onAttention(cb: (id: string, kind: AttentionKind) => void): () => void {
+  attentionListeners.add(cb)
+  return () => attentionListeners.delete(cb)
+}
+
+function raise(id: string, kind: AttentionKind): void {
+  const s = sessions[id]
+  if (!s) return
+  const onScreen = isOnScreen(id)
+  const unseen = raiseAttention(s.unseen, kind, onScreen)
+  if (unseen !== s.unseen) set({ ...sessions, [id]: { ...s, unseen } })
+  if (!onScreen) for (const l of attentionListeners) l(id, kind)
 }
 
 let seq = 0
@@ -90,9 +140,11 @@ function onReplay(id: string, messages: HistoryMessage[]): void {
   }))
 }
 
-function onChanged(view: SessionView): void {
+export function onChanged(view: SessionView): void {
   const prev = sessions[view.id]
   set({ ...sessions, [view.id]: prev ? { ...prev, view } : { view, items: [], monitor: {} } })
+  const kind = attentionFromTransition(prev?.view.state, view.state)
+  if (kind) raise(view.id, kind)
 }
 
 export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): SessionData {
@@ -132,10 +184,12 @@ export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): S
   }
 }
 
-function onEvent(e: AgentEvent): void {
+export function onEvent(e: AgentEvent): void {
   // Terminal channels carry raw output only; their state reaches the session through `changed`.
   if (e.sessionId.includes(':')) {
     if (e.type !== 'output') return
+    // A terminal agent rings the bell when it wants a look (finished, or waiting); a shell's own prompt does not count.
+    if (e.sessionId.endsWith(':console') && containsBell(e.data)) raise(e.sessionId.split(':')[0]!, 'replied')
     const write = outputListeners.get(e.sessionId)
     if (write) write(e.data)
     else terminalBuffers.set(e.sessionId, [...(terminalBuffers.get(e.sessionId) ?? []), e.data])
@@ -145,16 +199,29 @@ function onEvent(e: AgentEvent): void {
   if (!s) return
   const next = applyEvent(s, e, () => ++seq)
   if (next !== s) set({ ...sessions, [e.sessionId]: next })
+  if (e.type === 'permission') raise(e.sessionId, 'needsAnswer')
 }
 
 let started = false
 export function startStore(): void {
   if (started) return
   started = true
+  window.addEventListener('focus', () => {
+    windowFocused = true
+    clearViewed()
+  })
+  window.addEventListener('blur', () => {
+    windowFocused = false
+  })
   window.hub.sessions.onChanged(onChanged)
   window.hub.sessions.onEvent(onEvent)
   window.hub.sessions.onReplay(onReplay)
   void window.hub.sessions.list().then((list) => list.forEach(onChanged))
+}
+
+/** The current sessions, outside React (tests, serialized writers). */
+export function getSessions(): Record<string, SessionData> {
+  return sessions
 }
 
 export function useSessions(): Record<string, SessionData> {

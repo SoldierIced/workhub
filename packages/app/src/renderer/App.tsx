@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { EffectiveAgent } from '@workhub/core'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember } from '@workhub/core'
 import { TooltipProvider } from './components/atoms'
-import { ToastProvider } from './components/molecules'
+import { ToastProvider, useToast } from './components/molecules'
 import { NewSessionDialog, Sidebar, Toolbar } from './components/organisms'
+import { dropOnSessionsTitle, SessionList } from './components/organisms/SessionList'
 import { refreshConfig, useConfig } from './configStore'
 import { I18nProvider, useI18n } from './i18n/I18nProvider'
 import { recentFolders, usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
-import { resolveTheme, usePrefs, useSystemDark } from './lib/prefs'
+import { NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
+import { resolveTheme, readPrefs, usePrefs, useSystemDark } from './lib/prefs'
+import { listSessions, memberOf, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage } from './lib/usage'
@@ -19,7 +22,7 @@ import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { TicketsScreen } from './screens/TicketsScreen'
-import { startStore, useSessions } from './store'
+import { onAttention, setViewing, startStore, useSessions } from './store'
 
 /** Applies the theme preference to <html> and tells the main process (native chrome). */
 function useTheme(): 'light' | 'dark' {
@@ -37,6 +40,7 @@ function useTheme(): 'light' | 'dark' {
 
 function Shell() {
   const { t } = useI18n()
+  const toast = useToast()
   const platform = usePlatform()
   const theme = useTheme()
   const snap = useConfig()
@@ -72,10 +76,46 @@ function Shell() {
 
   const sessions = useMemo(() => Object.values(sessionMap).sort((a, b) => b.view.startedAt - a.view.startedAt), [sessionMap])
 
+  const groups = snap?.config.sessionGroups ?? EMPTY_SESSION_GROUPS
+  const listed = useMemo(() => listSessions(sessions), [sessions])
+  const liveKeys = useMemo(() => listed.map((s) => s.key), [listed])
+  // Latest values for callbacks that outlive a render (notifications, opening a session).
+  const latest = useRef({ sessions, groups, snap, t, liveKeys })
+  latest.current = { sessions, groups, snap, t, liveKeys }
+
   const openSession = useCallback((id: string) => {
     setSelectedSession(id)
     setRoute('sessions')
+    // Opening a session from anywhere (Home, a ticket, a notification) shows it: its group unfolds.
+    const view = latest.current.sessions.find((s) => s.view.id === id)?.view
+    const group = view && groupOf(latest.current.groups, sessionIdentity(view))
+    if (group?.collapsed) void updateGroups((g) => setGroupCollapsed(g, group.id, false), latest.current.liveKeys)
   }, [])
+
+  // A session counts as seen only while its screen is up (and the window focused: the store tracks that).
+  useEffect(() => setViewing(route === 'sessions' ? selectedSession : null), [route, selectedSession])
+
+  // Sessions that need a look get an OS notification, named after their group when they have one.
+  useEffect(
+    () =>
+      onAttention((id, kind) => {
+        const { sessions: all, groups: stored, snap: config, t: tr } = latest.current
+        const options = appOptions(config?.config ?? { options: undefined })
+        const data = all.find((s) => s.view.id === id)
+        if (!data || !options[NOTIFY_OPTION[kind]]) return
+        const group = groupOf(stored, sessionIdentity(data.view))
+        window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id })
+      }),
+    []
+  )
+  useEffect(() => window.hub.notifications.onOpen(openSession), [openSession])
+
+  // Members remember their title, agent and folder so they can be listed (and reopened) once closed.
+  useEffect(() => {
+    if (!snap || snap.loadError) return
+    const live = listed.map(memberOf)
+    if (refreshMembers(groups, live) !== groups) void updateGroups((g) => refreshMembers(g, live), liveKeys)
+  }, [snap, groups, listed, liveKeys])
   const openPullRequest = useCallback((url?: string) => {
     setPrFocus(url ?? null)
     setRoute('pullRequests')
@@ -110,6 +150,26 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey)
   }, [reachable, platform, navigate, newSession])
 
+  const reopenMember = async (member: GroupMember) => {
+    const choice = agents.find((a) => a.key === member.agentKey)
+    // Claude and agents with their own terminal UI resume by session id; others start again under the same identity.
+    const resumes = choice ? choice.agent.adapter === 'native' || Boolean(choice.agent.console) : false
+    try {
+      const view = await window.hub.sessions.start({
+        profileId: activeProfileId,
+        agentKey: member.agentKey,
+        cwd: member.cwd,
+        cols: 100,
+        rows: 30,
+        model: readPrefs().models[member.agentKey],
+        ...(resumes ? { resumeAgentSessionId: member.key } : { identity: member.key })
+      })
+      openSession(view.id)
+    } catch (e) {
+      toast(t('groups.reopenFailed', { message: e instanceof Error ? e.message : String(e) }), 'danger')
+    }
+  }
+
   const selectProfile = async (id: string) => {
     const r = await window.hub.config.setActiveProfile(id)
     if (r.ok) await refreshConfig()
@@ -130,7 +190,18 @@ function Shell() {
         onManageProfiles={() => openSettings('profiles')}
         sessions={sessions.map((s) => s.view)}
         selectedSessionId={selectedSession}
-        onSelectSession={openSession}
+        sessionList={
+          <SessionList
+            sessions={sessions}
+            groups={groups}
+            selectedId={selectedSession}
+            active={route === 'sessions'}
+            onSelect={openSession}
+            onReopen={(m) => void reopenMember(m)}
+          />
+        }
+        attentionCount={sessions.filter((s) => s.unseen).length}
+        onDropOnSessions={(e) => dropOnSessionsTitle(e, liveKeys)}
         folders={recentFolders(sessions, profile?.folders)}
         onNewSessionIn={(f) => newSession(f)}
         usage={usageGroups(sessions, accountUsage)}

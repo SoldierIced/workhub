@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { AcpRuntime } from '@workhub/adapters/agent-acp'
@@ -19,7 +19,7 @@ import {
   type Result,
   type WorkhubConfig
 } from '@workhub/core'
-import type { AccountUsage, ConfigSnapshot, HistoryItem, HistoryResult, SessionMode, ThemePreference } from '../shared/api'
+import type { AccountUsage, ConfigSnapshot, HistoryItem, HistoryResult, SessionMode, SessionNotification, ThemePreference } from '../shared/api'
 import { claudeAccounts, UsageService } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { SessionManager } from './session-manager'
@@ -192,6 +192,8 @@ function registerIpc(): void {
       return r
     })
   )
+  ipcMain.handle('config:saveSessionGroups', guarded((g) => configuration.saveSessionGroups(g)))
+  ipcMain.on('notifications:show', (_e, n: SessionNotification) => showSessionNotification(n))
   // Workhub 1's settings are only ever read (`defaults export`); nothing is written back.
   ipcMain.handle('config:previewWorkhub1Import', async () => {
     try {
@@ -240,6 +242,26 @@ function registerIpc(): void {
   ipcMain.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
 
   registerCodeHostIpc(ipcMain, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
+}
+
+/** Notifications stay referenced until they close, or the OS may drop their click handler. */
+const liveNotifications = new Set<Notification>()
+
+/** An OS notification (Electron's, on macOS, Windows and Linux); a click brings the window up and opens the session. */
+function showSessionNotification(n: SessionNotification): void {
+  if (!Notification.isSupported() || typeof n.title !== 'string' || typeof n.sessionId !== 'string') return
+  const notification = new Notification({ title: n.title.slice(0, 200), body: String(n.body ?? '').slice(0, 400) })
+  liveNotifications.add(notification)
+  notification.on('close', () => liveNotifications.delete(notification))
+  notification.on('click', () => {
+    liveNotifications.delete(notification)
+    if (!win || win.isDestroyed()) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    send('notifications:open', n.sessionId)
+  })
+  notification.show()
 }
 
 /** One window per pull request; opening an open one brings it to the front. */

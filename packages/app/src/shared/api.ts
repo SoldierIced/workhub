@@ -18,6 +18,7 @@ import type {
   Result,
   SecretChange,
   Session,
+  SessionGroups,
   SessionScreen,
   ValidationIssue,
   WorkhubConfig
@@ -49,6 +50,8 @@ export interface ConfigApi {
   deleteProfile(id: string): Promise<Result<WorkhubConfig>>
   setActiveProfile(id: string): Promise<Result<WorkhubConfig>>
   saveOptions(options: Partial<AppOptions>): Promise<Result<WorkhubConfig>>
+  /** Stores the sidebar groups (computed in the renderer with the pure functions of core). */
+  saveSessionGroups(groups: SessionGroups): Promise<Result<WorkhubConfig>>
   effectiveAgents(profileId: string | null): Promise<EffectiveAgent[]>
   /** Workhub 1's settings mapped onto this config, read-only (macOS). `available: false` when Workhub 1 has none here. */
   previewWorkhub1Import(): Promise<{ available: boolean; plan?: ImportPlan; error?: string }>
@@ -99,6 +102,8 @@ export interface StartSessionInput {
   mode?: 'app' | 'console'
   /** Continue a past session (from the history) instead of starting a new one. */
   resumeAgentSessionId?: string
+  /** Reopen a session that has no agent session id (a plain terminal) under its old identity, so it keeps its group. */
+  identity?: string
   /** Model to start with (remembered per agent and account by the renderer). */
   model?: string
 }
@@ -164,6 +169,18 @@ export function toPlatform(nodePlatform: string): Platform {
 /** Appearance preference: follow the OS or force one theme. */
 export type ThemePreference = 'system' | 'light' | 'dark'
 
+/** An OS notification about a session; clicking it asks the renderer to open that session. */
+export interface SessionNotification {
+  title: string
+  body: string
+  sessionId: string
+}
+
+export interface NotificationsApi {
+  show(n: SessionNotification): void
+  onOpen(cb: (sessionId: string) => void): () => void
+}
+
 export interface HubApi {
   platform: Platform
   /** Tells the main process the theme preference so native chrome (title bar, dialogs) follows it. */
@@ -176,6 +193,7 @@ export interface HubApi {
   sessions: SessionsApi
   history: HistoryApi
   usage: UsageApi
+  notifications: NotificationsApi
   codeHost: CodeHostApi
   tickets: TicketsApi
 }
