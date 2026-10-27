@@ -111,7 +111,7 @@ export function ReportingCard({ silent, reporting, read, serviceUrls }: { silent
   const { t, tn } = useI18n()
   return (
     <Card aria-label={t('health.reporting.title')}>
-      <CardHeader title={t('health.reporting.title')} meta={read ? tn('health.reporting.ok', reporting) : undefined} />
+      <CardHeader title={t('health.reporting.title')} />
       <CardBody>
         {!read ? (
           <Empty>{t('health.reporting.none')}</Empty>
