@@ -168,7 +168,7 @@ describe('AcpRuntime against a fake ACP agent', () => {
       const res = await rt.prompt('s1', 'hello')
       expect(res.stopReason).toBe('end_turn')
       const types = events.map((e) => (e.type === 'state' ? `state:${e.state}` : e.type))
-      expect(types.slice(0, 2)).toEqual(['state:starting', 'monitor'])
+      expect(types.slice(0, 3)).toEqual(['state:starting', 'models', 'monitor'])
       expect(types).toContain('state:ready')
       expect(types).toContain('state:busy')
       expect(events).toContainEqual({ sessionId: 's1', type: 'message', role: 'agent', text: 'echo: hello' })
