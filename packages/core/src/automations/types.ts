@@ -19,7 +19,12 @@ export interface AutomationDefinition {
   folder: string
   /** `app` (the chat) or `console` (the agent's own terminal UI, or a terminal agent). */
   view: 'app' | 'console'
+  /** Model the session starts with; the account's default when unset. */
   model?: string
+  /** Reasoning effort (Claude only); unset: the account's setting. */
+  effort?: string
+  /** Permission mode the session starts in: a Claude mode, or a mode id the agent offers; unset: the account's default. */
+  permissionMode?: string
   triggers: AutomationTriggers
   window: AutomationWindow
   limits: AutomationLimits
@@ -30,6 +35,12 @@ export interface AutomationDefinition {
   /** Whether replies to the chat messages its sessions send wake them. Off: those threads are not followed. */
   receivesChatReplies: boolean
 }
+
+/** Reasoning efforts Claude Code accepts, lowest first. */
+export const AUTOMATION_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+
+/** Claude Code's permission modes an unattended run can start in (Workhub 1's list). */
+export const CLAUDE_PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'] as const
 
 /**
  * `reuse`: one dedicated session, resumed when it is closed. `newEachRun`: a fresh session per
