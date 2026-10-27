@@ -60,6 +60,7 @@ const api: HubApi = {
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list'),
     start: (input) => ipcRenderer.invoke('sessions:start', input),
+    reopen: (identity, input) => ipcRenderer.invoke('sessions:reopen', identity, input),
     prompt: (id, text, images) => ipcRenderer.invoke('sessions:prompt', id, text, images),
     setMode: (id, mode, options) => ipcRenderer.invoke('sessions:setMode', id, mode, options),
     close: (id) => ipcRenderer.invoke('sessions:close', id),

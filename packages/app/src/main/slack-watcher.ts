@@ -48,6 +48,7 @@ import { locateClaudeTranscript } from '@workhub/adapters/transcript-claude'
 import type { AccountUsage, SessionView, StartSessionInput } from '../shared/api'
 import type { ChatNoticeEvent, SlackDemoInput, SlackHealth, SlackHookAccount, SlackResult, SlackSnapshot, TrackThreadInput } from '../shared/chat-api'
 import { claudeAccounts } from './claude-accounts'
+import { OwnerStarts } from './owner-starts'
 import type { SessionDriver } from './session-driver'
 import type { StateFile } from './state-file'
 
@@ -67,6 +68,8 @@ export interface SlackWatcherDeps {
   state: StateFile<ChatWatcherState>
   driver: SessionDriver
   startSession: (input: StartSessionInput) => Promise<SessionView>
+  /** The per-identity single start shared with the sidebar's reopen; one of its own when absent (tests). */
+  ownerStarts?: OwnerStarts
   home: string
   usage: () => AccountUsage[]
   /** The usage budget verdict of an account (Settings → Usage); wakes and reads wait past a ceiling. */
@@ -104,8 +107,8 @@ export class SlackWatcherService {
   private skipReason: SlackSnapshot['skipReason']
   private delivering = false
   private readonly opening = new Map<string, number>()
-  /** Owners being opened right now: a wake and a click on "Open" at once share one session. */
-  private readonly resuming = new Map<string, Promise<SessionView>>()
+  /** Owners being opened right now: a wake, a click on "Open" and the sidebar's reopen share one session. */
+  private readonly ownerStarts: OwnerStarts
   private readonly prStates = new Map<string, { state?: string; checkedAt: number }>()
   private hooks: SlackHookAccount[] = []
   private timers: ReturnType<typeof setInterval>[] = []
@@ -115,6 +118,7 @@ export class SlackWatcherService {
   constructor(private readonly deps: SlackWatcherDeps) {
     this.now = deps.now ?? Date.now
     this.state = deps.state.load(EMPTY_CHAT_STATE)
+    this.ownerStarts = deps.ownerStarts ?? new OwnerStarts({ views: () => deps.driver.views(), start: (input) => deps.startSession(input) })
   }
 
   link(automations: ChatAutomationLink): void {
@@ -510,16 +514,7 @@ export class SlackWatcherService {
    * other caller gets that same session, and one already open is returned instead of a copy.
    */
   private resumeOwner(owner: string, input: Omit<StartSessionInput, 'resumeAgentSessionId'>): Promise<SessionView> {
-    const inFlight = this.resuming.get(owner)
-    if (inFlight) return inFlight
-    const open = this.deps.driver
-      .views()
-      .filter((v) => sessionIdentity(v) === owner && v.state !== 'stopped' && v.state !== 'error')
-      .sort((a, b) => b.startedAt - a.startedAt)[0]
-    if (open) return Promise.resolve(open)
-    const started = this.deps.startSession({ ...input, resumeAgentSessionId: owner }).finally(() => this.resuming.delete(owner))
-    this.resuming.set(owner, started)
-    return started
+    return this.ownerStarts.start(owner, { ...input, resumeAgentSessionId: owner })
   }
 
   /** The profile the owner last ran in here (its sidebar place and colour stay), else the active one. */

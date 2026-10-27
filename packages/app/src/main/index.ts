@@ -60,7 +60,7 @@ import {
   type SessionCeilings,
   type WorkhubConfig
 } from '@workhub/core'
-import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference, UsageAlert } from '../shared/api'
+import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, StartSessionInput, ThemePreference, UsageAlert } from '../shared/api'
 import type { PrNotification } from '../shared/pr-events-api'
 import type { SlackSnapshot } from '../shared/chat-api'
 import { TRAY_POPOVER_HASH, type TrayRendererState } from '../shared/tray-api'
@@ -87,6 +87,7 @@ import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionDriver } from './session-driver'
+import { OwnerStarts } from './owner-starts'
 import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
 import { LocalReviewService, registerLocalReviewIpc } from './local-review'
@@ -366,6 +367,9 @@ const updates = new UpdateService((s) => send('updates:changed', s))
 // asking an agent, and never touches a Claude account's settings.
 const driver = new SessionDriver(sessions, (id, text) => send('automations:prompted', id, text))
 const demoSlack = process.env['WORKHUB_DEMO_SLACK'] === '1' ? new DemoChatSource() : null
+// One start per session identity: the sidebar's reopen and a Slack wake for the same session share it.
+const ownerStarts = new OwnerStarts({ views: () => sessions.list(), start: (input) => sessions.start(input) })
+
 const slack = new SlackWatcherService({
   configuration,
   source: demoSlack ?? new SlackAgentChatSource({ bridgeDir, cwd: dataDir }),
@@ -377,6 +381,7 @@ const slack = new SlackWatcherService({
   state: new StateFile(join(dataDir, 'slack-state.json'), 500),
   driver,
   startSession: (input) => sessions.start(input),
+  ownerStarts,
   home: homedir(),
   usage: () => usage.current(),
   budgetOf,
@@ -775,6 +780,10 @@ function registerIpc(): void {
 
   ipc.handle('sessions:list', () => sessions.list())
   ipc.handle('sessions:start', (_e, input) => sessions.start(input))
+  ipc.handle('sessions:reopen', (_e, identity: string, input: StartSessionInput) => {
+    if (typeof identity !== 'string' || !identity) throw new Error('an identity is required')
+    return ownerStarts.start(identity, input)
+  })
   ipc.handle('sessions:prompt', (_e, id: string, text: string, images) => sessions.prompt(id, text, images))
   ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode, options?: { now?: unknown }) => sessions.setMode(id, mode, { now: options?.now === true }))
   ipc.handle('sessions:close', (_e, id: string) => sessions.close(id))

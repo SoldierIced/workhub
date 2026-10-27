@@ -262,7 +262,8 @@ function Shell() {
     // Claude and agents with their own terminal UI resume by session id; others start again under the same identity.
     const resumes = choice ? choice.agent.adapter === 'native' || Boolean(choice.agent.console) : false
     try {
-      const view = await window.hub.sessions.start({
+      // The same single start per identity as a Slack wake: both at once open one session.
+      const view = await window.hub.sessions.reopen(member.key, {
         profileId: activeProfileId,
         agentKey: member.agentKey,
         cwd: member.cwd,

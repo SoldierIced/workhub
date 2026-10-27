@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EMPTY_CHAT_STATE, emptyConfig, newThread, type ChatWatcherState, type WorkhubConfig } from '@workhub/core'
+import { OwnerStarts } from '../src/main/owner-starts'
 import { SlackWatcherService, type SlackWatcherDeps } from '../src/main/slack-watcher'
 import type { SessionView, StartSessionInput } from '../src/shared/api'
 import type { ChatNoticeEvent } from '../src/shared/chat-api'
@@ -50,6 +51,16 @@ function setup(home: string) {
   const starts: StartSessionInput[] = []
   const notices: ChatNoticeEvent[] = []
   let now = NOW
+  const startSession = async (input: StartSessionInput) => {
+    starts.push(input)
+    // Starting takes a moment: a second caller arrives meanwhile.
+    await new Promise((r) => setTimeout(r, 10))
+    const v = view({ id: `ui-${starts.length}`, startedAt: now, profileId: input.profileId })
+    views.push(v)
+    return v
+  }
+  // The same single start the main process hands the sidebar's reopen.
+  const ownerStarts = new OwnerStarts({ views: () => views, start: startSession })
   const deps = {
     configuration: { current: async () => config },
     source: {},
@@ -57,14 +68,8 @@ function setup(home: string) {
     demo: null,
     state: { load: () => state, save: () => undefined, flush: () => undefined },
     driver: { views: () => views, deliver: async () => 'waiting' as const },
-    startSession: async (input: StartSessionInput) => {
-      starts.push(input)
-      // Starting takes a moment: a second caller arrives meanwhile.
-      await new Promise((r) => setTimeout(r, 10))
-      const v = view({ id: `ui-${starts.length}`, startedAt: now, profileId: input.profileId })
-      views.push(v)
-      return v
-    },
+    startSession,
+    ownerStarts,
     home,
     usage: () => [],
     myPullRequests: async () => new Set<string>(),
@@ -73,7 +78,7 @@ function setup(home: string) {
     notice: (n: ChatNoticeEvent) => void notices.push(n),
     now: () => now
   } as unknown as SlackWatcherDeps
-  return { watcher: new SlackWatcherService(deps), views, starts, notices, tick: (ms: number) => (now += ms) }
+  return { watcher: new SlackWatcherService(deps), ownerStarts, views, starts, notices, tick: (ms: number) => (now += ms) }
 }
 
 describe('waking a Slack thread owner', () => {
@@ -89,6 +94,17 @@ describe('waking a Slack thread owner', () => {
     expect(starts).toHaveLength(1)
     expect(starts[0]).toMatchObject({ resumeAgentSessionId: OWNER, cwd: '/tmp/acme', agentKey: 'claude:main' })
     expect(opened).toBe('ui-1')
+  })
+
+  it('opens one session when the sidebar reopens the owner while a Slack wake opens it', async () => {
+    const { watcher, ownerStarts, starts } = setup(home)
+    const sidebar = { profileId: 'acme', agentKey: 'claude:main', cwd: '/tmp/acme', resumeAgentSessionId: OWNER }
+    const [reopened] = await Promise.all([ownerStarts.start(OWNER, sidebar), watcher.deliverPendingWakes(), ownerStarts.start(OWNER, sidebar)])
+    expect(starts).toHaveLength(1)
+    expect(reopened.id).toBe('ui-1')
+    // Once open, a later reopen shows that session instead of starting a copy.
+    expect((await ownerStarts.start(OWNER, sidebar)).id).toBe('ui-1')
+    expect(starts).toHaveLength(1)
   })
 
   it('reopens the owner in the profile it last ran in, so it keeps its sidebar place', async () => {
