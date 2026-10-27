@@ -147,7 +147,7 @@ notarization (Apple Developer ID, a Windows code-signing certificate) are a late
   OpenCode were checked on a real install, Codex only from its documentation (no data here).
 - Plan usage per account comes from what running sessions report. Reading it from Anthropic's
   undocumented usage endpoint is an opt-in setting (Settings → General), off by default.
-- **Import from Workhub 1** (Settings → General, macOS) previews profiles, folders, Claude
+- **Import from Workhub 1** (Settings → General → "Migrate from Workhub 1", macOS, shown only when Workhub 1 settings are found on the machine) previews profiles, folders, Claude
   accounts and connections (GitHub, Jira, Elastic), automations, the Slack watcher, Health
   environments, the profile modules they use, notification and usage options, the model per
   account, the sidebar session groups and the appearance (terminal theme, font and size, text

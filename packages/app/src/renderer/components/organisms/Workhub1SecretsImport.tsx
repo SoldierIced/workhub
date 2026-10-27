@@ -6,6 +6,7 @@ import type { MessageKey } from '../../i18n/translate'
 import { refreshConfig } from '../../configStore'
 import { Button } from '../atoms/Button'
 import { Spinner } from '../atoms/Spinner'
+import { useToast } from '../molecules/Toast'
 
 const STATUS_LABEL: Record<Workhub1SecretResult['status'], MessageKey> = {
   imported: 'import.secretsImported',
@@ -22,12 +23,18 @@ export function Workhub1SecretsImport({ compact = false }: { compact?: boolean }
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<Workhub1SecretResult[] | null>(null)
+  const toast = useToast()
   if (window.hub.platform !== 'mac') return null
 
   const run = async () => {
     setBusy(true)
     try {
-      setResults(await window.hub.config.importWorkhub1Secrets())
+      const r = await window.hub.config.importWorkhub1Secrets()
+      setResults(r)
+      // Once every token is in, this button goes away with the refresh: say what happened first.
+      const imported = r.filter((x) => x.status === 'imported').length
+      if (imported) toast(t('import.secretsDone', { count: imported }))
+      if (imported < r.length) toast(t('import.secretsSomeLeft', { count: r.length - imported }), 'danger')
       await refreshConfig()
     } finally {
       setBusy(false)
@@ -37,7 +44,7 @@ export function Workhub1SecretsImport({ compact = false }: { compact?: boolean }
   return (
     <div className="flex flex-col gap-2" data-testid="workhub1-secrets-import">
       <div className="flex items-center gap-3">
-        {!compact && <p className="min-w-0 flex-1 text-xs text-subtle">{t('import.secretsHint')}</p>}
+        <p className={compact ? 'min-w-0 flex-1 text-sm text-text' : 'min-w-0 flex-1 text-xs text-subtle'}>{compact ? t('import.secretsBanner') : t('import.secretsHint')}</p>
         <Button size="sm" variant="secondary" icon={busy ? <Spinner className="size-3" /> : <KeyRound className="size-3.5" aria-hidden />} disabled={busy} title={compact ? t('import.secretsHint') : undefined} onClick={() => void run()}>
           {t('import.secrets')}
         </Button>

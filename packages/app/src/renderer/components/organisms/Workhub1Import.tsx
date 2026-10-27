@@ -144,7 +144,7 @@ function Group({ title, rows }: { title: string; rows: { id: string; name: strin
  * Settings → General: reads Workhub 1's settings (read-only, macOS) and shows what would be
  * added before anything is saved. Secrets are never copied; the preview marks them "re-enter".
  */
-export function Workhub1Import({ run }: { run: (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean> }) {
+export function Workhub1Import({ run, showTokens }: { run: (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>; showTokens: boolean }) {
   const { t } = useI18n()
   const [state, setState] = useState<{ kind: 'idle' | 'loading' } | { kind: 'missing' } | { kind: 'error'; message: string } | { kind: 'plan'; plan: ImportPlan } | { kind: 'done' }>({ kind: 'idle' })
 
@@ -175,7 +175,7 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
           {t('import.preview')}
         </Button>
       </div>
-      <Workhub1SecretsImport />
+      {showTokens && <Workhub1SecretsImport />}
       {state.kind === 'missing' && <p className="text-sm text-muted">{t('import.missing')}</p>}
       {state.kind === 'done' && <p className="text-sm text-success">{t('import.done')}</p>}
       {state.kind === 'error' && (

@@ -1,4 +1,4 @@
-import { Activity, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
+import { Activity, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   appOptions,
@@ -17,7 +17,7 @@ import {
   type ValidationIssue,
   type WorkhubConfig
 } from '@workhub/core'
-import type { ConfigSnapshot } from '@shared/api'
+import type { ConfigSnapshot, Workhub1Preview } from '@shared/api'
 import { Badge, Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { AgentOrderList, Card, CardBody, CardHeader, EmptyState, Field, HelpTip, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
 import { Workhub1Import, Workhub1SecretsImport } from '../components/organisms'
@@ -26,6 +26,7 @@ import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
 import { humanIssue, type IssueTarget } from '../lib/configIssues'
+import { showWorkhub1Migration, showWorkhub1Tokens, useWorkhub1Preview } from '../lib/workhub1'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { AiReviewProfileFields } from './AiReviewSettings'
 import { HealthSettings } from './HealthSettings'
@@ -127,6 +128,8 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   // The item a "fix" button asked to open; the tab's form starts on it.
   const [focus, setFocus] = useState<IssueTarget | null>(null)
+  // Workhub 1 on this Mac (read again after every config change): drives the migration UI's visibility.
+  const workhub1 = useWorkhub1Preview(snap?.config)
 
   const run: Run = async (op) => {
     const r = await op()
@@ -159,7 +162,11 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
       <h1 className="text-2xl font-semibold tracking-tight">{t('nav.settings')}</h1>
       {snap.loadError && <Issues title={t('settings.loadError')} issues={[{ path: 'config.json', message: snap.loadError }]} />}
       <StoredIssues snap={snap} onFix={fix} />
-      {snap.issues.some((i) => i.message === 'a secret is required') && <Workhub1SecretsImport compact />}
+      {showWorkhub1Tokens(window.hub.platform, workhub1) && (
+        <div className="rounded-lg border border-border bg-surface px-4 py-3 shadow-sm">
+          <Workhub1SecretsImport compact />
+        </div>
+      )}
       <Tabs
         variant="fill"
         label={t('nav.settings')}
@@ -170,7 +177,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
           onTabChange(v)
         }}
         items={[
-          { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} />, t('help.tab.general')) },
+          { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} workhub1={workhub1} />, t('help.tab.general')) },
           { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: section(<AppearanceSettings />, t('help.tab.appearance')) },
           { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection key={focusId('profiles')} snap={snap} run={run} initialId={focusId('profiles')} />, t('help.tab.profiles')) },
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection key={focusId('connections')} snap={snap} run={run} initialId={focusId('connections')} />, t('help.tab.connections')) },
@@ -185,7 +192,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
   )
 }
 
-function GeneralSection({ snap, run }: SectionProps) {
+function GeneralSection({ snap, run, workhub1 }: SectionProps & { workhub1: Workhub1Preview | null }) {
   const { t } = useI18n()
   const { language } = usePrefs()
   const options = appOptions(snap.config)
@@ -225,11 +232,6 @@ function GeneralSection({ snap, run }: SectionProps) {
       <SettingsGroup title={t('prevent.settings.title')} help={t('help.general.prEvents')} footnote={t('prevent.settings.note')}>
         <PullRequestNotificationRows config={snap.config} editable={editable} run={run} />
       </SettingsGroup>
-      {window.hub.platform === 'mac' && editable && (
-        <SettingsGroup title={t('import.group')} help={t('help.general.import')}>
-          <Workhub1Import run={run} />
-        </SettingsGroup>
-      )}
       <SettingsGroup title={t('settings.storage')} help={t('help.general.storage')}>
         <div className="flex items-center gap-3 py-3">
           <FolderCog className="size-4 text-muted" aria-hidden />
@@ -239,6 +241,19 @@ function GeneralSection({ snap, run }: SectionProps) {
           </code>
         </div>
       </SettingsGroup>
+      {editable && showWorkhub1Migration(window.hub.platform, workhub1) && (
+        <details className="group rounded-lg border border-border bg-surface shadow-sm" data-testid="workhub1-migration">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 select-none">
+            <ChevronRight className="size-4 text-muted transition-transform group-open:rotate-90" aria-hidden />
+            <span className="text-md font-semibold">{t('import.migrate')}</span>
+            <HelpTip text={t('help.general.import')} label={t('import.migrate')} />
+            <span className="ml-2 min-w-0 truncate text-sm text-subtle">{t('import.migrateHint')}</span>
+          </summary>
+          <div className="border-t border-border px-4">
+            <Workhub1Import run={run} showTokens={showWorkhub1Tokens(window.hub.platform, workhub1)} />
+          </div>
+        </details>
+      )}
     </div>
   )
 }
