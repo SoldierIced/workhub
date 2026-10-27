@@ -40,7 +40,13 @@ function setup() {
       prompt: async (id, text) => (prompts.push([id, text]), 'end_turn'),
       write: (channel, data) => void writes.push([channel, data]),
       cancel: async () => undefined,
-      stop: async () => undefined
+      stop: async () => undefined,
+      remove: (id) => {
+        const i = views.findIndex((v) => v.id === id)
+        if (i < 0 || views[i]!.state === 'ready' || views[i]!.state === 'busy') return false
+        views.splice(i, 1)
+        return true
+      }
     },
     (id, text) => void shown.push([id, text])
   )
@@ -60,6 +66,16 @@ describe('session driver', () => {
     driver.onChanged(views[0])
     expect(renamed).toEqual([['provisional-v1', 'real-1']])
     expect(driver.list()[0]).toMatchObject({ identity: 'real-1', turnsEnded: 1 })
+  })
+
+  it('forgets a stopped session it drops, and keeps a live one', async () => {
+    const { views, driver } = setup()
+    views.push(view('v1', 'ready'), view('v2', 'stopped'))
+    views.forEach((v) => driver.onChanged(v))
+    await driver.forget('v1')
+    expect(driver.list().map((s) => s.id)).toEqual(['v1', 'v2'])
+    await driver.forget('v2')
+    expect(driver.list().map((s) => s.id)).toEqual(['v1'])
   })
 
   it('types into the chat or the console, and waits while the session is busy', async () => {

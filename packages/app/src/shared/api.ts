@@ -155,6 +155,8 @@ export interface SessionsApi {
   mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void
   onEvent(cb: (e: AgentEvent) => void): () => void
   onChanged(cb: (s: SessionView) => void): () => void
+  /** A finished session left the list (an automation replaced it). */
+  onRemoved(cb: (id: string) => void): () => void
   /** Earlier messages of a resumed session, to show before the new turns. */
   onReplay(cb: (id: string, messages: HistoryMessage[]) => void): () => void
 }

@@ -49,6 +49,8 @@ export interface SessionManagerDeps {
   history: Partial<Record<string, SessionHistorySource>>
   emitEvent: (e: AgentEvent) => void
   emitChanged: (s: SessionView) => void
+  /** A finished session left the list (an automation replaced it); the renderer drops it. */
+  emitRemoved?: (id: string) => void
   emitReplay: (id: string, messages: HistoryMessage[]) => void
   /** Main rewrote the config by itself (a group place moved to a session's real id): the renderer reloads it. */
   emitConfigChanged?: () => void
@@ -101,6 +103,15 @@ export class SessionManager {
 
   list(): SessionView[] {
     return [...this.sessions.values()].map((s) => s.view)
+  }
+
+  /** Drops a stopped or failed session from the list. A live one stays: the caller must stop it first. */
+  remove(id: string): boolean {
+    const s = this.sessions.get(id)
+    if (!s || (s.view.state !== 'stopped' && s.view.state !== 'error')) return false
+    this.sessions.delete(id)
+    this.deps.emitRemoved?.(id)
+    return true
   }
 
   async start(input: StartSessionInput): Promise<SessionView> {

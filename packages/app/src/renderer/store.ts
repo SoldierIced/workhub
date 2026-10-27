@@ -147,6 +147,13 @@ export function onChanged(view: SessionView): void {
   if (kind) raise(view.id, kind)
 }
 
+/** A session left the main process's list: drop it (its transcript stays in History). */
+export function onRemoved(id: string): void {
+  if (!sessions[id]) return
+  const { [id]: _gone, ...rest } = sessions
+  set(rest)
+}
+
 export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): SessionData {
   switch (e.type) {
     case 'message': {
@@ -214,6 +221,7 @@ export function startStore(): void {
     windowFocused = false
   })
   window.hub.sessions.onChanged(onChanged)
+  window.hub.sessions.onRemoved(onRemoved)
   window.hub.sessions.onEvent(onEvent)
   window.hub.sessions.onReplay(onReplay)
   void window.hub.sessions.list().then((list) => list.forEach(onChanged))

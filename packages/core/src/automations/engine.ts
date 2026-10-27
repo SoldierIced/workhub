@@ -40,6 +40,8 @@ export interface AutomationSessions {
   deliver(sessionId: string, text: string): Promise<'delivered' | 'waiting'>
   interrupt(sessionId: string): Promise<void>
   stop(sessionId: string): Promise<void>
+  /** Drops a stopped session the engine replaced from the session list (it stays in History). */
+  forget(sessionId: string): Promise<void>
 }
 
 export type AutomationNotice = { kind: 'failed'; automationId: string; automationName: string; outcome: AutomationOutcome; detail: string }
@@ -426,7 +428,9 @@ export class AutomationEngine {
         keep.push(identity)
         continue
       }
-      await this.host.sessions.stop(open.id).catch(() => undefined)
+      const stopped = await this.host.sessions.stop(open.id).then(() => true, () => false)
+      // Only a session this hand-over stopped leaves the list; one that would not stop stays visible.
+      if (stopped) await this.host.sessions.forget(open.id).catch(() => undefined)
     }
     if (keep.length !== this.state.retiring.length) this.save({ ...this.state, retiring: keep })
   }

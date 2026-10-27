@@ -9,6 +9,8 @@ export interface DrivableSessions {
   write(channelId: string, data: string): void
   cancel(id: string): Promise<void>
   stop(id: string): Promise<void>
+  /** Drops a stopped or failed session from the list; false when it is still live. */
+  remove(id: string): boolean
 }
 
 /**
@@ -95,5 +97,12 @@ export class SessionDriver {
 
   async stop(sessionId: string): Promise<void> {
     await this.sessions.stop(sessionId)
+  }
+
+  /** Drops a stopped session the engine replaced: out of the list and out of the driver's own books. */
+  async forget(sessionId: string): Promise<void> {
+    if (!this.sessions.remove(sessionId)) return
+    for (const m of [this.turns, this.lastState, this.engine, this.lastOutput, this.identities]) m.delete(sessionId)
+    if (this.viewing === sessionId) this.viewing = null
   }
 }

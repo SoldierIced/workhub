@@ -37,6 +37,7 @@ class FakeWorld implements AutomationHost {
   live: DrivenSession[] = []
   delivered: { sessionId: string; text: string }[] = []
   stopped: string[] = []
+  forgotten: string[] = []
   notices: AutomationNotice[] = []
   saved: AutomationsState | null = null
   groups: SessionGroups = EMPTY_SESSION_GROUPS
@@ -81,6 +82,10 @@ class FakeWorld implements AutomationHost {
       this.stopped.push(sessionId)
       const s = this.live.find((x) => x.id === sessionId)
       if (s) s.state = 'stopped'
+    },
+    forget: async (sessionId: string) => {
+      this.forgotten.push(sessionId)
+      this.live = this.live.filter((x) => x.id !== sessionId)
     }
   }
 
@@ -241,7 +246,7 @@ describe('new session each run (Workhub 1 bugs)', () => {
     const { world, engine, old } = await firstRun()
     engine.runNow('a1')
     await runOnce(world, engine)
-    const fresh = world.live[1]!
+    const fresh = world.live.find((s) => s.id !== old.id)!
     expect(fresh.identity).not.toBe(old.identity)
     expect(groupOf(world.groups, fresh.identity)?.id).toBe('g1')
     expect(world.groups.groups[0]?.members.map((m) => m.key)).toEqual(['other', fresh.identity])
@@ -263,6 +268,9 @@ describe('new session each run (Workhub 1 bugs)', () => {
     world.time += 2_000
     await engine.tick()
     expect(world.stopped).toEqual([old.id])
+    // Stopped by the hand-over: it leaves the session list too.
+    expect(world.forgotten).toEqual([old.id])
+    expect(world.live.map((s) => s.id)).not.toContain(old.id)
   })
 
   it('bug 1: a replaced session that a thread still wakes stays open until nothing wakes it', async () => {

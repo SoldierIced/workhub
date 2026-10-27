@@ -147,6 +147,7 @@ const sessions = new SessionManager({
     driver.onChanged(s)
     send('session:changed', s)
   },
+  emitRemoved: (id) => send('session:removed', id),
   emitReplay: (id, messages) => send('session:replay', id, messages),
   emitConfigChanged: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
 })

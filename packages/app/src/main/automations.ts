@@ -114,7 +114,8 @@ export class AutomationService {
         start: (a, previous) => this.open(a, previous),
         deliver: (id, text) => this.deps.driver.deliver(id, text),
         interrupt: (id) => this.deps.driver.interrupt(id),
-        stop: (id) => this.deps.driver.stop(id)
+        stop: (id) => this.deps.driver.stop(id),
+        forget: (id) => this.deps.driver.forget(id)
       },
       usagePercent: (a) => {
         const { agentId, accountId } = accountOf(a.agentKey)

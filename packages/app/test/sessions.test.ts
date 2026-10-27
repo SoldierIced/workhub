@@ -93,6 +93,7 @@ function setup(config: WorkhubConfig = emptyConfig(), transcriptExists = false) 
   const terminal = new FakeTerminal('terminal', caps({ appMode: false }))
   const changed: SessionView[] = []
   const events: AgentEvent[] = []
+  const removed: string[] = []
   const replays: [string, HistoryMessage[]][] = []
   const transcript: TranscriptReader = {
     id: 'claude',
@@ -108,17 +109,31 @@ function setup(config: WorkhubConfig = emptyConfig(), transcriptExists = false) 
     history: { claude: { list: async () => [], messages: async () => [{ kind: 'user', text: 'earlier' }] } },
     emitEvent: (e) => events.push(e),
     emitChanged: (s) => changed.push(s),
+    emitRemoved: (id) => removed.push(id),
     emitReplay: (id, m) => replays.push([id, m]),
     emitConfigChanged,
     pollMs: 60_000
   })
   const last = (id: string) => [...changed].reverse().find((s) => s.id === id)!
-  return { manager, native, acp, terminal, changed, events, replays, transcript, last, replaceSessionIdentity, emitConfigChanged }
+  return { removed, manager, native, acp, terminal, changed, events, replays, transcript, last, replaceSessionIdentity, emitConfigChanged }
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
 describe('SessionManager', () => {
+  it('drops a stopped session from the list and tells the renderer, but never a live one', async () => {
+    const { manager, removed } = setup()
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    await flush()
+    expect(manager.remove(view.id)).toBe(false)
+    expect(manager.list()).toHaveLength(1)
+    await manager.stop(view.id)
+    expect(manager.remove(view.id)).toBe(true)
+    expect(manager.list()).toHaveLength(0)
+    expect(removed).toEqual([view.id])
+    expect(manager.remove(view.id)).toBe(false)
+  })
+
   it('starts native Claude in the app with a preassigned session id and offers app, terminal and shell', async () => {
     const { manager, native, last } = setup()
     const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', model: 'haiku' })

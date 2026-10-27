@@ -63,6 +63,7 @@ const api: HubApi = {
     resize: (id, cols, rows) => ipcRenderer.send('sessions:resize', id, cols, rows),
     onEvent: (cb) => subscribe<[AgentEvent]>('session:event', cb),
     onChanged: (cb) => subscribe<[SessionView]>('session:changed', cb),
+    onRemoved: (cb) => subscribe<[string]>('session:removed', cb),
     onReplay: (cb) => subscribe<[string, HistoryMessage[]]>('session:replay', cb)
   },
   history: {
