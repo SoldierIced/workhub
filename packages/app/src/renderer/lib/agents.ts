@@ -1,4 +1,4 @@
-import { accountAgentId, usageAccountKey, type AgentAccount, type AgentDefinition } from '@workhub/core'
+import { accountAgentId, usageAccountKey, type AgentAccount, type AgentDefinition, type PlanUsageWindow } from '@workhub/core'
 import type { AccountUsage } from '@shared/api'
 import { en } from '../i18n/en'
 import type { MessageKey } from '../i18n/translate'
@@ -88,5 +88,74 @@ export function agentDirectory(
     out.push(entry(agent))
     for (const variant of agents.filter((a) => a.accountsOf === agent.id)) out.push(entry(variant))
   }
+  return out
+}
+
+/** Ids of the sign-in entries in the accounts list; never an account id (those cannot hold `:`). */
+export const SIGN_IN_ID_PREFIX = 'sign-in:'
+
+/** How an agent signs in without an account: Kiro once per computer, Claude and Codex in a default folder, others on their own. */
+export type SignInKind = 'onePerComputer' | 'folder' | 'generic'
+
+/** An agent's own sign-in on this computer (sessions without an account use it), for the accounts list. */
+export interface SignInEntry {
+  id: string
+  agent: AgentDefinition
+  kind: SignInKind
+  /** What the usage read says about it; unknown while its reading is off or has not run. */
+  login: LoginState
+  /** Undefined until the check answers. */
+  installed: boolean | undefined
+  /** The windows of its latest usage read (Kiro: the monthly credits). */
+  windows: PlanUsageWindow[]
+  /** The plan's name, when the agent reports it (Kiro). */
+  plan?: string
+}
+
+/** The default folder of an agent that keeps its sign-in in one (`~/.claude`, `~/.codex`). */
+export function defaultSignInFolder(agent: Pick<AgentDefinition, 'id' | 'accountConfigEnv'>): string | undefined {
+  return agent.accountConfigEnv ? `~/.${agent.id}` : undefined
+}
+
+/**
+ * One sign-in entry per agent that signs in at all (not a terminal, not one that uses another
+ * agent's accounts), so every agent is in the accounts list, Kiro included (its only sign-in).
+ */
+export function signInEntries(agents: readonly AgentDefinition[], reads: readonly AccountUsage[], availability: Readonly<Record<string, boolean>> | null): SignInEntry[] {
+  return agents
+    .filter((a) => a.adapter !== 'terminal' && !(a.accountsOf && agents.some((b) => b.id === a.accountsOf)))
+    .map((agent) => {
+      const owner = accountAgentId(agent)
+      const read = reads.find((r) => r.key === usageAccountKey(owner, null))
+      const plan = read?.windows.find((w) => w.plan)?.plan
+      return {
+        id: `${SIGN_IN_ID_PREFIX}${agent.id}`,
+        agent,
+        kind: owner === 'kiro' ? 'onePerComputer' : agent.accountConfigEnv ? 'folder' : 'generic',
+        login: loginOf(reads, owner, null),
+        installed: availability ? availability[agent.id] : undefined,
+        windows: read?.windows ?? [],
+        ...(plan ? { plan } : {})
+      }
+    })
+}
+
+export type AccountListItem = { id: string; kind: 'signIn'; signIn: SignInEntry } | { id: string; kind: 'account'; account: AgentAccount }
+
+/**
+ * The accounts list of Settings → Agents: per agent, its sign-in on this computer and then its
+ * accounts; accounts of agents not in the list (removed from the config) come last.
+ */
+export function accountListItems(signIns: readonly SignInEntry[], accounts: readonly AgentAccount[]): AccountListItem[] {
+  const out: AccountListItem[] = []
+  const placed = new Set<string>()
+  for (const s of signIns) {
+    out.push({ id: s.id, kind: 'signIn', signIn: s })
+    for (const account of accounts.filter((a) => a.agentId === accountAgentId(s.agent))) {
+      out.push({ id: account.id, kind: 'account', account })
+      placed.add(account.id)
+    }
+  }
+  for (const account of accounts) if (!placed.has(account.id)) out.push({ id: account.id, kind: 'account', account })
   return out
 }

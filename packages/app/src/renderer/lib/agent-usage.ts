@@ -175,3 +175,20 @@ export function compactWindows<W extends { window: string }>(windows: readonly W
   const shown = (base.length ? base : windows).slice(0, 2)
   return { shown, extra: windows.filter((w) => !shown.includes(w)) }
 }
+
+/**
+ * The tooltip of a whole usage row (one account): its title, then every window's details (also
+ * the ones not shown on the row) and any extra block (Kiro's spend), separated by blank lines.
+ * Empty blocks are dropped.
+ */
+export function accountHoverText(title: string, blocks: readonly (string | null | undefined)[]): string {
+  return [title, ...blocks]
+    .map((b) => b?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/** Kiro's credits per day as hover lines: a heading, then `day: credits`, newest last. */
+export function kiroSpendLines(heading: string, days: readonly { day: string; credits: number }[], format: (n: number) => string): string {
+  return [heading, ...days.map((d) => `${d.day}: ${format(Math.round(d.credits * 100) / 100)}`)].join('\n')
+}

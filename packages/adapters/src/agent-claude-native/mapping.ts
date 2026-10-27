@@ -13,6 +13,7 @@ import {
   type PermissionModeInfo,
   type PermissionOption,
   type PlanUsageWindow,
+  type SessionModeOption,
   type SessionMonitorSnapshot
 } from '@workhub/core'
 import { claudeToolResult, claudeToolView } from '../shared/claude-tool-view'
@@ -33,6 +34,26 @@ const MODE_LABEL: Record<string, string> = {
   dontAsk: "Don't ask",
   auto: 'Auto'
 }
+
+/** Descriptions of Claude Code's permission modes, as its docs word them. */
+const MODE_DESCRIPTION: Record<string, string> = {
+  default: 'Asks before file edits and commands',
+  acceptEdits: 'Edits files without asking; asks before commands',
+  plan: 'Reads and plans; changes nothing',
+  auto: 'Decides itself which actions need asking',
+  dontAsk: 'Never asks: denies what is not allowed in settings',
+  bypassPermissions: 'Runs every tool without asking'
+}
+
+/**
+ * The permission modes a Claude Code session can start in or switch to (Settings → Agents, the
+ * session header's picker), in the order the pickers list them.
+ */
+export const CLAUDE_PERMISSION_MODES: readonly SessionModeOption[] = ['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'].map((id) => ({
+  id,
+  name: MODE_LABEL[id]!,
+  description: MODE_DESCRIPTION[id]!
+}))
 
 export function claudePermissionMode(id: string, source: PermissionModeInfo['source'] = 'agent'): PermissionModeInfo {
   return { id, label: MODE_LABEL[id] ?? id, source, unattended: isUnattendedMode(id) }
@@ -158,7 +179,9 @@ export class ClaudeBridgeMapper {
           return id ? [{ id, name: str(o?.['displayName']) ?? id, description: str(o?.['description']) }] : []
         })
         if (models.length) events.push({ sessionId, type: 'models', models })
-        const mode = str(obj(line['defaults'])?.['permissionMode'])
+        // No mode in the settings is Claude's own default mode, so the header's picker shows one.
+        const defaults = obj(line['defaults'])
+        const mode = str(defaults?.['permissionMode']) ?? (defaults ? 'default' : undefined)
         if (mode) events.push({ sessionId, type: 'permissionMode', mode: claudePermissionMode(mode), currentModeId: mode })
         return events
       }

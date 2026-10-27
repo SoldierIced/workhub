@@ -29,7 +29,8 @@ import { Workhub1Import, Workhub1SecretsImport } from '../components/organisms'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
-import { accountEnvHintKey } from '../lib/agents'
+import { accountEnvHintKey, accountListItems, signInEntries, SIGN_IN_ID_PREFIX } from '../lib/agents'
+import { useAccountUsage } from '../lib/usage'
 import { accountFieldErrors, friendlyIssue, humanIssue, profileFieldErrors, type IssueTarget } from '../lib/configIssues'
 import { showWorkhub1Migration, showWorkhub1Tokens, useWorkhub1Preview } from '../lib/workhub1'
 import { setPrefs, usePrefs } from '../lib/prefs'
@@ -48,7 +49,7 @@ import { TrackerSettings } from './TrackerSettings'
 import { UpdatesSettings } from './UpdatesSettings'
 import { UsageSettings } from './UsageSettings'
 import { AppearanceSettings } from './AppearanceSettings'
-import { AgentsOverview } from './AgentsSettings'
+import { AgentsOverview, SignInDetail } from './AgentsSettings'
 import { SettingRow, SettingsGroup } from './settings/SettingsLayout'
 
 const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
@@ -322,7 +323,8 @@ function MasterDetail<T extends { id: string }>(props: {
   onSelect: (id: string | null) => void
   formTitle: string
   form: ReactNode
-  actions: ReactNode
+  /** Save, delete…; none for an entry that is only shown (an agent's own sign-in). */
+  actions?: ReactNode
 }) {
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
@@ -354,7 +356,7 @@ function MasterDetail<T extends { id: string }>(props: {
         <CardHeader title={props.formTitle} as="h2" />
         <CardBody className="flex flex-col gap-4">
           {props.form}
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">{props.actions}</div>
+          {props.actions && <div className="flex flex-wrap gap-2 border-t border-border pt-4">{props.actions}</div>}
         </CardBody>
       </Card>
     </div>
@@ -513,7 +515,28 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
   const [errors, setErrors] = useState<ReturnType<typeof accountFieldErrors> | null>(null)
 
   const formRef = useRef<HTMLDivElement>(null)
+  // Every agent's own sign-in is listed with the accounts (Kiro's is its only one).
+  const reads = useAccountUsage()
+  const [availability, setAvailability] = useState<Record<string, boolean> | null>(null)
+  useEffect(() => {
+    let live = true
+    void window.hub.agents.availability().then(
+      (a) => live && setAvailability(a),
+      () => undefined
+    )
+    return () => {
+      live = false
+    }
+  }, [snap.agents])
+  const signIns = signInEntries(snap.agents, reads, availability)
+  const listItems = accountListItems(signIns, snap.config.accounts)
+  const signIn = selected?.startsWith(SIGN_IN_ID_PREFIX) ? signIns.find((e) => e.id === selected) : undefined
   const select = (id: string | null, agentId = firstAgent) => {
+    if (id?.startsWith(SIGN_IN_ID_PREFIX)) {
+      setErrors(null)
+      setSelected(id)
+      return
+    }
     const a = snap.config.accounts.find((x) => x.id === id)
     setErrors(null)
     setSelected(a ? a.id : null)
@@ -568,97 +591,117 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
           {t('settings.accountsList')}
           <HelpTip text={t('help.accounts.list')} label={t('settings.accountsList')} />
         </h2>
+        <p className="px-1 text-sm text-subtle" data-testid="accounts-hint">
+          {t('settings.accountsHint')}
+        </p>
         <MasterDetail
           title={t('settings.accountsList')}
           newLabel={t('common.new')}
           emptyLabel={t('settings.noneYet')}
-          items={snap.config.accounts}
+          items={listItems}
           selected={selected}
           onSelect={select}
-          label={(a) => a.name || a.id}
-          meta={(a) => snap.agents.find((x) => x.id === a.agentId)?.name ?? a.agentId}
-          formTitle={selected ? form.name || form.id : t('settings.newAccount')}
+          label={(i) => (i.kind === 'signIn' ? i.signIn.agent.name : i.account.name || i.account.id)}
+          meta={(i) => (i.kind === 'signIn' ? <Badge tone="neutral">{t('agents.signIn.badge')}</Badge> : (snap.agents.find((x) => x.id === i.account.agentId)?.name ?? i.account.agentId))}
+          formTitle={signIn ? t('agents.signIn.title', { agent: signIn.agent.name }) : selected ? form.name || form.id : t('settings.newAccount')}
           form={
-            <div className="grid grid-cols-2 gap-4">
-              <Field label={t('settings.id')} help={t('help.id')} error={errors?.id && t(errors.id)}>
-                <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="kiro-acme" />
-              </Field>
-              <Field label={t('settings.agent')} help={t('help.account.agent')}>
-                <Select value={form.agentId} onChange={(v) => setForm({ ...form, agentId: v })} options={snap.agents.map((a) => ({ value: a.id, label: a.name }))} />
-              </Field>
-              <Field label={t('settings.name')} help={t('help.account.name')} className="col-span-2" error={errors?.name && t(errors.name)}>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme work" />
-              </Field>
-              <Field
-                label={t('settings.configDir')}
-                help={t('help.account.configDir')}
-                hint={agent?.accountConfigEnv ? t('settings.configDirSets', { env: agent.accountConfigEnv }) : t('settings.configDirNone')}
-                className="col-span-2"
-              >
-                <Input
-                  value={form.configDir ?? ''}
-                  disabled={!agent?.accountConfigEnv}
-                  onChange={(e) => setForm({ ...form, configDir: e.target.value })}
-                  placeholder="~/.acme-agent"
-                  spellCheck={false}
-                />
-              </Field>
-              <Field label={t('settings.envLines')} hint={envHintKey ? t(envHintKey) : undefined} help={t('help.account.env')} className="col-span-2">
-                <Textarea rows={3} value={envText} onChange={(e) => setEnvText(e.target.value)} placeholder="ACME_ACCOUNT=work" spellCheck={false} />
-              </Field>
-              {agent && agent.adapter !== 'terminal' && (
-                <Field label={t('settings.accountCommand')} hint={t('settings.accountCommandHint', { command: agent.command })} help={t('help.account.command')} className="col-span-2">
-                  <Input value={form.command ?? ''} onChange={(e) => setForm({ ...form, command: e.target.value })} placeholder={agent.command} spellCheck={false} data-testid="account-command" />
+            signIn ? (
+              <SignInDetail entry={signIn} snap={snap} run={run} onAddAccount={(agentId) => select(null, agentId)} />
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <Field label={t('settings.id')} help={t('help.id')} error={errors?.id && t(errors.id)}>
+                  <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="kiro-acme" />
                 </Field>
-              )}
-              {configurable && (
-                <>
-                  <Field label={t('settings.defaultModel')} hint={t('settings.defaultModelHint')} help={t('help.account.defaultModel')}>
-                    <Input
-                      value={form.defaultModel ?? ''}
-                      onChange={(e) => setForm({ ...form, defaultModel: e.target.value })}
-                      list="account-models"
-                      placeholder={options?.defaultModelId ?? t('settings.agentDefaultOption')}
-                      spellCheck={false}
-                      data-testid="account-default-model"
-                    />
+                <Field label={t('settings.agent')} help={t('help.account.agent')}>
+                  <Select value={form.agentId} onChange={(v) => setForm({ ...form, agentId: v })} options={snap.agents.map((a) => ({ value: a.id, label: a.name }))} />
+                </Field>
+                <Field label={t('settings.name')} help={t('help.account.name')} className="col-span-2" error={errors?.name && t(errors.name)}>
+                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme work" />
+                </Field>
+                <Field
+                  label={t('settings.configDir')}
+                  help={t('help.account.configDir')}
+                  hint={agent?.accountConfigEnv ? t('settings.configDirSets', { env: agent.accountConfigEnv }) : t('settings.configDirNone')}
+                  className="col-span-2"
+                >
+                  <Input
+                    value={form.configDir ?? ''}
+                    disabled={!agent?.accountConfigEnv}
+                    onChange={(e) => setForm({ ...form, configDir: e.target.value })}
+                    placeholder="~/.acme-agent"
+                    spellCheck={false}
+                  />
+                </Field>
+                <Field label={t('settings.envLines')} hint={envHintKey ? t(envHintKey) : undefined} help={t('help.account.env')} className="col-span-2">
+                  <Textarea rows={3} value={envText} onChange={(e) => setEnvText(e.target.value)} placeholder="ACME_ACCOUNT=work" spellCheck={false} />
+                </Field>
+                {agent && agent.adapter !== 'terminal' && (
+                  <Field label={t('settings.accountCommand')} hint={t('settings.accountCommandHint', { command: agent.command })} help={t('help.account.command')} className="col-span-2">
+                    <Input value={form.command ?? ''} onChange={(e) => setForm({ ...form, command: e.target.value })} placeholder={agent.command} spellCheck={false} data-testid="account-command" />
                   </Field>
-                  <Field label={t('settings.defaultMode')} hint={t('settings.defaultModeHint')} help={t('help.account.defaultMode')}>
-                    <Input
-                      value={form.defaultMode ?? ''}
-                      onChange={(e) => setForm({ ...form, defaultMode: e.target.value })}
-                      list="account-modes"
-                      placeholder={options?.defaultModeId ?? t('settings.agentDefaultOption')}
-                      spellCheck={false}
-                      data-testid="account-default-mode"
-                    />
-                  </Field>
-                  <datalist id="account-models">
-                    {options?.models.map((m) => <option key={m.id} value={m.id} label={m.description ? `${m.name} · ${m.description}` : m.name} />)}
-                  </datalist>
-                  <datalist id="account-modes">
-                    {options?.modes.map((m) => <option key={m.id} value={m.id} label={m.description ? `${m.name} · ${m.description}` : m.name} />)}
-                  </datalist>
-                  <p className="col-span-2 -mt-2 text-xs text-subtle" data-testid="account-options-source">
-                    {options && options.source !== 'none'
-                      ? t('settings.optionsSource', { count: options.models.length + options.modes.length, source: t(options.source === 'cli' ? 'settings.optionsSource.cli' : 'settings.optionsSource.session') })
-                      : t('settings.optionsNone')}
-                  </p>
-                </>
-              )}
-            </div>
+                )}
+                {configurable && (
+                  <>
+                    <Field label={t('settings.defaultModel')} hint={t('settings.defaultModelHint')} help={t('help.account.defaultModel')}>
+                      <Input
+                        value={form.defaultModel ?? ''}
+                        onChange={(e) => setForm({ ...form, defaultModel: e.target.value })}
+                        list="account-models"
+                        placeholder={options?.defaultModelId ?? t('settings.agentDefaultOption')}
+                        spellCheck={false}
+                        data-testid="account-default-model"
+                      />
+                    </Field>
+                    <Field label={t('settings.defaultMode')} hint={t('settings.defaultModeHint')} help={t('help.account.defaultMode')}>
+                      <Input
+                        value={form.defaultMode ?? ''}
+                        onChange={(e) => setForm({ ...form, defaultMode: e.target.value })}
+                        list="account-modes"
+                        placeholder={options?.defaultModeId ?? t('settings.agentDefaultOption')}
+                        spellCheck={false}
+                        data-testid="account-default-mode"
+                      />
+                    </Field>
+                    <datalist id="account-models">
+                      {options?.models.map((m) => (
+                        <option key={m.id} value={m.id} label={m.description ? `${m.name} · ${m.description}` : m.name} />
+                      ))}
+                    </datalist>
+                    <datalist id="account-modes">
+                      {options?.modes.map((m) => (
+                        <option key={m.id} value={m.id} label={m.description ? `${m.name} · ${m.description}` : m.name} />
+                      ))}
+                    </datalist>
+                    <p className="col-span-2 -mt-2 text-xs text-subtle" data-testid="account-options-source">
+                      {options && options.source !== 'none'
+                        ? t('settings.optionsSource', {
+                            count: options.models.length + options.modes.length,
+                            source: t(options.source === 'cli' ? 'settings.optionsSource.cli' : 'settings.optionsSource.session')
+                          })
+                        : t('settings.optionsNone')}
+                    </p>
+                  </>
+                )}
+              </div>
+            )
           }
           actions={
-            <>
-              <Button variant="primary" onClick={() => void save()}>
-                {t('settings.saveAccount')}
-              </Button>
-              {selected && (
-                <Button variant="danger" icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => void run(() => window.hub.config.deleteAccount(selected)).then((ok) => ok && select(null))}>
-                  {t('common.delete')}
+            signIn ? undefined : (
+              <>
+                <Button variant="primary" onClick={() => void save()}>
+                  {t('settings.saveAccount')}
                 </Button>
-              )}
-            </>
+                {selected && (
+                  <Button
+                    variant="danger"
+                    icon={<Trash2 className="size-3.5" aria-hidden />}
+                    onClick={() => void run(() => window.hub.config.deleteAccount(selected)).then((ok) => ok && select(null))}
+                  >
+                    {t('common.delete')}
+                  </Button>
+                )}
+              </>
+            )
           }
         />
       </div>

@@ -13,7 +13,7 @@ import {
 } from '@workhub/core'
 import type { AccountUsage } from '../src/shared/api'
 import { DemoUsageProvider } from '../src/main/agent-usage'
-import { agentDirectory, agentEngine } from '../src/renderer/lib/agents'
+import { accountListItems, agentDirectory, agentEngine, signInEntries } from '../src/renderer/lib/agents'
 import { agentUsageSections, budgetWindows, sessionBudget, shortReset, usageTone } from '../src/renderer/lib/agent-usage'
 import { en } from '../src/renderer/i18n/en'
 
@@ -76,6 +76,31 @@ describe('Settings → Agents directory', () => {
       expect(en[`agents.engine.${k}` as keyof typeof en]).toBeTruthy()
       expect(en[`agents.engine.${k}Hint` as keyof typeof en]).toBeTruthy()
     }
+  })
+})
+
+describe('Settings → Agents accounts list', () => {
+  const kiroRead = read('kiro', null, [{ window: 'monthly', percent: 25, used: 2500, limit: 10000, plan: 'KIRO POWER' }])
+
+  it('lists every agent that signs in, Kiro and Codex included, but not terminals or a second engine of Claude', () => {
+    const entries = signInEntries(BUILTIN_AGENTS, [kiroRead, read('codex', null, [], 'not signed in')], { kiro: true, codex: false })
+    expect(entries.map((e) => e.agent.id)).toEqual(['claude', 'kiro', 'opencode', 'codex', 'gemini'])
+    const kiro = entries.find((e) => e.agent.id === 'kiro')!
+    expect(kiro).toMatchObject({ id: 'sign-in:kiro', kind: 'onePerComputer', login: { state: 'ok' }, installed: true, plan: 'KIRO POWER' })
+    expect(kiro.windows).toHaveLength(1)
+    expect(entries.find((e) => e.agent.id === 'codex')).toMatchObject({ kind: 'folder', login: { state: 'error', error: 'not signed in' }, installed: false })
+    expect(entries.find((e) => e.agent.id === 'claude')).toMatchObject({ kind: 'folder', login: { state: 'unknown' }, windows: [] })
+    expect(entries.find((e) => e.agent.id === 'opencode')?.kind).toBe('generic')
+    expect(signInEntries(BUILTIN_AGENTS, [], null)[0]?.installed).toBeUndefined()
+  })
+
+  it("puts each agent's sign-in before its accounts, and accounts of unknown agents last", () => {
+    const orphan: AgentAccount = { id: 'gone', agentId: 'removed-agent', name: 'Gone' }
+    const kiroWork: AgentAccount = { id: 'kiro-work', agentId: 'kiro', name: 'Kiro work' }
+    const items = accountListItems(signInEntries(BUILTIN_AGENTS, [], null), [orphan, kiroWork, personal, work])
+    expect(items.map((i) => i.id)).toEqual(['sign-in:claude', 'personal', 'work', 'sign-in:kiro', 'kiro-work', 'sign-in:opencode', 'sign-in:codex', 'sign-in:gemini', 'gone'])
+    // A sign-in id can never be an account id (account ids have no ":").
+    expect(items.filter((i) => i.kind === 'signIn').every((i) => i.id.includes(':'))).toBe(true)
   })
 })
 
