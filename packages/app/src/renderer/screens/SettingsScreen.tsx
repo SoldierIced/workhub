@@ -245,6 +245,16 @@ function GeneralSection({ snap, run, workhub1 }: SectionProps & { workhub1: Work
           />
         </SettingRow>
       </SettingsGroup>
+      <SettingsGroup title={t('settings.sessionsGroup')} help={t('help.general.sessions')}>
+        <SwitchRow label={t('settings.reopenSessions')} hint={t('settings.reopenSessionsHint')}>
+          <Switch
+            checked={options.reopenSessions}
+            disabled={!editable}
+            aria-label={t('settings.reopenSessions')}
+            onChange={(on) => void run(() => window.hub.config.saveOptions({ reopenSessions: on }))}
+          />
+        </SwitchRow>
+      </SettingsGroup>
       <SettingsGroup title={t('settings.notifications')} help={t('help.general.notifications')} footnote={t('settings.notificationsNote')}>
         <NotificationMasterRows config={snap.config} editable={editable} run={run} />
         {(

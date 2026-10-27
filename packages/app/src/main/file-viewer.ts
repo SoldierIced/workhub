@@ -10,6 +10,7 @@ import type { BrowserWindow, IpcMainInvokeEvent, IpcMainEvent } from 'electron'
 import { absoluteFilePath, fileKindOfPath, lineCount, mimeOfPath, TEXT_VIEW_LIMIT } from '@workhub/core'
 import type { FileContent, FileRead, FileStamp } from '../shared/local-review-api'
 import type { IpcRegistrar } from './ipc-guard'
+import { cachePastedImages } from './pasted-images'
 
 /** Images and PDFs larger than this are not drawn. */
 export const MEDIA_LIMIT = 64 * 1024 * 1024
@@ -88,6 +89,8 @@ export interface FileViewerDeps {
   showItemInFolder(path: string): void
   openPath(path: string): Promise<string>
   writeClipboard(text: string): void
+  /** Where pasted chat images are written to be opened here (see pasted-images.ts). */
+  pastedImagesDir?: string
 }
 
 /** Opens viewer windows and answers them; returns `open` for the main process's own use. */
@@ -119,6 +122,8 @@ export function registerFileViewerIpc(ipc: IpcRegistrar, deps: FileViewerDeps): 
   const own = (e: IpcMainInvokeEvent | IpcMainEvent, path: unknown): string | null => (typeof path === 'string' && pathOf.get(e.sender.id) === path ? path : null)
 
   ipc.handle('files:openWindow', (_e, path: string, cwd?: string) => open(path, cwd))
+  // Pasted chat images get a file of their own (named after their content) that the viewer opens.
+  ipc.handle('files:cacheImages', (_e, dataUrls: unknown) => (deps.pastedImagesDir ? cachePastedImages(deps.pastedImagesDir, dataUrls) : []))
   ipc.handle('files:read', (e, path: unknown, known?: { stamp: FileStamp | null } | null, forceText?: boolean) => {
     const p = own(e, path)
     if (!p) throw new Error('this window does not show that file')

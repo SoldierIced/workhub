@@ -55,6 +55,11 @@ export interface FilesApi {
   /** A file in the viewer window; a relative path is taken from `cwd` (the session's folder). */
   openWindow(path: string, cwd?: string): Promise<void>
   /**
+   * Writes pasted images (`data:` URLs) to files of their own in the data folder, once each (named
+   * after their content), for `openWindow`. Each entry is the file, or null when it was not an image.
+   */
+  cacheImages(dataUrls: string[]): Promise<(string | null)[]>
+  /**
    * Only from a viewer window, for its own file: the content, or null when it did not change since
    * `known.stamp`. `forceText` reads an image as text (an SVG the page cannot draw).
    */

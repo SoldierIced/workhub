@@ -38,7 +38,7 @@ export function TerminalPane({ channel, visible, theme, label }: { channel: stri
     t.loadAddon(f)
     t.open(host.current!)
     term.current = t
-    const detach = attachOutput(channel, (d) => t.write(d))
+    const detach = attachOutput(channel, { write: (d) => t.write(d), reset: () => t.reset() })
     t.onData((d) => window.hub.sessions.write(channel, d))
     let sent = ''
     let frame = 0
