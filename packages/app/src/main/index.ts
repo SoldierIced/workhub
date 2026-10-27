@@ -21,6 +21,7 @@ import {
 } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot, HistoryItem, HistoryResult, SessionMode, ThemePreference } from '../shared/api'
 import { claudeAccounts, UsageService } from './claude-accounts'
+import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { SessionManager } from './session-manager'
 
 // Dev layout: packages/app/out/main -> packages/app. Packaging is P8.
@@ -47,6 +48,8 @@ const configStore = new JsonConfigStore(join(dataDir, 'config.json'))
 const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
 const configuration = new ConfigurationService(configStore, secrets)
 let loadError: string | undefined
+// WORKHUB_DEMO_CODEHOST=1 reads synthetic pull requests instead of a real host (screenshots, demos).
+const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1' })
 
 let win: BrowserWindow | null = null
 const send = (channel: string, ...args: unknown[]) => {
@@ -223,6 +226,37 @@ function registerIpc(): void {
   )
   ipcMain.on('sessions:write', (_e, id: string, data: string) => sessions.write(id, data))
   ipcMain.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
+
+  registerCodeHostIpc(ipcMain, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
+}
+
+/** One window per pull request; opening an open one brings it to the front. */
+const prWindows = new Map<string, BrowserWindow>()
+
+function openPullRequestWindow(profileId: string | null, url: string): void {
+  const open = prWindows.get(url)
+  if (open && !open.isDestroyed()) {
+    if (open.isMinimized()) open.restore()
+    open.focus()
+    return
+  }
+  const prWin = new BrowserWindow({
+    width: 1100,
+    height: 780,
+    minWidth: 720,
+    minHeight: 480,
+    title: 'Workhub 2',
+    backgroundColor: chromeColors().color,
+    ...windowChrome(),
+    webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  prWindows.set(url, prWin)
+  prWin.on('closed', () => prWindows.delete(url))
+  // Links inside the app never navigate or open windows of their own.
+  prWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  const hash = `pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}`
+  if (process.env['ELECTRON_RENDERER_URL']) void prWin.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#${hash}`)
+  else void prWin.loadFile(join(__dirname, '../renderer/index.html'), { hash })
 }
 
 function createWindow(): void {

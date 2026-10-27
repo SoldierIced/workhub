@@ -22,6 +22,7 @@ import type {
   ValidationIssue,
   WorkhubConfig
 } from '@workhub/core'
+import type { CodeHostApi } from './codehost-api'
 
 export interface ConfigSnapshot {
   config: WorkhubConfig
@@ -174,4 +175,5 @@ export interface HubApi {
   sessions: SessionsApi
   history: HistoryApi
   usage: UsageApi
+  codeHost: CodeHostApi
 }

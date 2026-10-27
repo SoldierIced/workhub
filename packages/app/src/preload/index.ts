@@ -50,6 +50,15 @@ const api: HubApi = {
   usage: {
     get: (refresh) => ipcRenderer.invoke('usage:get', refresh),
     onChanged: (cb) => subscribe<[AccountUsage[]]>('usage:changed', cb)
+  },
+  codeHost: {
+    lists: (profileId, force) => ipcRenderer.invoke('codeHost:lists', profileId, force),
+    view: (profileId, url) => ipcRenderer.invoke('codeHost:view', profileId, url),
+    review: (profileId, url, action, body) => ipcRenderer.invoke('codeHost:review', profileId, url, action, body),
+    comment: (profileId, url, body) => ipcRenderer.invoke('codeHost:comment', profileId, url, body),
+    reply: (profileId, url, threadId, body) => ipcRenderer.invoke('codeHost:reply', profileId, url, threadId, body),
+    openWindow: (profileId, url) => ipcRenderer.invoke('codeHost:openWindow', profileId, url),
+    openExternal: (profileId, url) => ipcRenderer.invoke('codeHost:openExternal', profileId, url)
   }
 }
 

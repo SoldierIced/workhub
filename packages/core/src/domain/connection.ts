@@ -35,10 +35,11 @@ export interface ConnectionProvider {
   phase: string
 }
 
-/** Providers Workhub plans to support. Adapters arrive in the phase listed (PLAN section 5). */
+/** Providers Workhub plans to support. GitHub and GitLab read through the `gh`/`glab` login: no secret of their own.
+ *  Adapters arrive in the phase listed (PLAN section 5). */
 export const CONNECTION_PROVIDERS: readonly ConnectionProvider[] = [
-  { id: 'github', kind: 'codeHost', name: 'GitHub', requiresSecret: true, requiresEndpoint: false, defaultEndpoint: 'https://api.github.com', phase: 'P3' },
-  { id: 'gitlab', kind: 'codeHost', name: 'GitLab', requiresSecret: true, requiresEndpoint: false, defaultEndpoint: 'https://gitlab.com', phase: 'P3' },
+  { id: 'github', kind: 'codeHost', name: 'GitHub', requiresSecret: false, requiresEndpoint: false, defaultEndpoint: 'https://api.github.com', phase: 'P3' },
+  { id: 'gitlab', kind: 'codeHost', name: 'GitLab', requiresSecret: false, requiresEndpoint: false, defaultEndpoint: 'https://gitlab.com', phase: 'P3' },
   { id: 'jira', kind: 'tracker', name: 'Jira', requiresSecret: true, requiresEndpoint: true, phase: 'P4' },
   { id: 'linear', kind: 'tracker', name: 'Linear', requiresSecret: true, requiresEndpoint: false, defaultEndpoint: 'https://api.linear.app', phase: 'P4' },
   { id: 'github-issues', kind: 'tracker', name: 'GitHub Issues', requiresSecret: true, requiresEndpoint: false, defaultEndpoint: 'https://api.github.com', phase: 'P4' },

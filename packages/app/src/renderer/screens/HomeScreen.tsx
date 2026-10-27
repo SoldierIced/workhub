@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, GitPullRequest, Ticket, Workflow } from 'lucide-react'
+import { Activity, ArrowRight, Ticket, Workflow } from 'lucide-react'
 import type { ConnectionKind, Profile } from '@workhub/core'
 import { Badge, Button, STATE_TONE, StateDot, type Tone } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, ListRow, StatTile } from '../components/molecules'
@@ -7,6 +7,8 @@ import type { MessageKey } from '../i18n/translate'
 import { ATTENTION_ORDER, folderName, formatTokens, groupByAttention, hasConnection, planUsage, tokensByFolder, type Attention } from '../lib/home'
 import { moduleScreens } from '@workhub/core'
 import type { SessionData } from '../store'
+import { usePullRequestLists } from '../pullRequestsStore'
+import { PullRequestCard, PullRequestTile } from './pullRequests/HomeCards'
 
 const ATTENTION: Record<Attention, { title: MessageKey; empty: MessageKey; tone: Tone }> = {
   needsReply: { title: 'home.needsReply', empty: 'home.needsReplyEmpty', tone: 'warning' },
@@ -20,6 +22,8 @@ export interface HomeScreenProps {
   sessions: SessionData[]
   onOpenSession: (id: string) => void
   onOpenSettings: (tab?: string) => void
+  /** Opens the Pull requests screen, on one PR when a URL is given. */
+  onOpenPullRequest: (url?: string) => void
 }
 
 /** "Connect X in Settings" or "arrives in phase N", depending on whether the profile has the connection. */
@@ -39,15 +43,15 @@ function ConnectionNote({ profile, kind, phase, onOpenSettings }: { profile: Pro
   )
 }
 
-export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings }: HomeScreenProps) {
+export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, onOpenPullRequest }: HomeScreenProps) {
   const { t, tn, formatDate } = useI18n()
+  const pullRequests = usePullRequestLists(profile?.id ?? null)
   const groups = groupByAttention(sessions)
   const waiting = groups.needsReply.length
   const modules = new Set(moduleScreens(profile?.modules))
   const usage = planUsage(sessions).sort((a, b) => b.percent - a.percent)[0]
   const folders = tokensByFolder(sessions).slice(0, 8)
   const maxTokens = folders[0]?.tokens ?? 1
-  const codeHost = hasConnection(profile, 'codeHost')
   const tracker = hasConnection(profile, 'tracker')
 
   return (
@@ -118,8 +122,8 @@ export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings }:
       )}
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <StatTile label={t('home.myOpenPrs')} value={null} caption={codeHost ? t('home.arrivesIn', { phase: 'P3' }) : t('home.notConnected.codeHost')} />
-        <StatTile label={t('home.waitingReview')} value={null} caption={codeHost ? t('home.arrivesIn', { phase: 'P3' }) : t('home.notConnected.codeHost')} />
+        <PullRequestTile kind="mine" lists={pullRequests.lists} loading={pullRequests.loading} />
+        <PullRequestTile kind="toReview" lists={pullRequests.lists} loading={pullRequests.loading} />
         <StatTile label={t('home.ticketsInProgress')} value={null} caption={tracker ? t('home.arrivesIn', { phase: 'P4' }) : t('home.notConnected.tracker')} />
         <StatTile
           label={t('home.planUsage')}
@@ -130,18 +134,8 @@ export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings }:
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="flex flex-col gap-3">
-          <Card>
-            <CardHeader title={t('home.myPrs')} icon={<GitPullRequest className="size-4" aria-hidden />} />
-            <CardBody>
-              <ConnectionNote profile={profile} kind="codeHost" phase="P3" onOpenSettings={onOpenSettings} />
-            </CardBody>
-          </Card>
-          <Card>
-            <CardHeader title={t('home.waitingReview')} icon={<GitPullRequest className="size-4" aria-hidden />} />
-            <CardBody>
-              <ConnectionNote profile={profile} kind="codeHost" phase="P3" onOpenSettings={onOpenSettings} />
-            </CardBody>
-          </Card>
+          <PullRequestCard kind="mine" lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
+          <PullRequestCard kind="toReview" lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
         </div>
         <div className="flex flex-col gap-3">
           <Card>
