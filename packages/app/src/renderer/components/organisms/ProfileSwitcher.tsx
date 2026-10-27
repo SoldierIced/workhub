@@ -3,6 +3,7 @@ import { DropdownMenu } from 'radix-ui'
 import type { Profile } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
+import { profileSymbol } from '../../lib/profileSymbols'
 
 export interface ProfileSwitcherProps {
   profiles: Profile[]
@@ -31,7 +32,10 @@ export function ProfileSwitcher({ profiles, activeId, onSelect, onManage }: Prof
             active ? 'brand-gradient' : 'bg-surface-hover text-muted'
           )}
         >
-          {(active?.name ?? '?').slice(0, 1).toUpperCase()}
+          {(() => {
+            const Symbol = profileSymbol(active?.symbol)
+            return Symbol ? <Symbol className="size-4" /> : (active?.name ?? '?').slice(0, 1).toUpperCase()
+          })()}
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{active?.name ?? t('profile.none')}</span>

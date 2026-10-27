@@ -28,7 +28,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // 5 -> 6: optional fields added since (agent order, usage budgets, AI review, agent account
   // defaults, tray and notification switches, account failover). The document is unchanged; the
   // bump keeps an older Workhub from loading the file and dropping them on its next save.
-  5: (raw) => raw
+  5: (raw) => raw,
+  // 6 -> 7: profile symbol, folder switches, link browser, "owns outside" and environment variable
+  // names (values go to the secret store), plus the master notification switch, the read-aloud
+  // options and the welcome flag. All optional and default, so the document is unchanged; the bump
+  // keeps an older Workhub from loading the file and dropping them on its next save.
+  6: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

@@ -27,6 +27,7 @@ import { useAiReviewNotices } from './lib/useAiReviewNotices'
 import { useChatNotices } from './lib/useChatNotices'
 import { useContinuity } from './lib/continuity'
 import { useTraySync } from './lib/useTraySync'
+import { useReadAloud } from './lib/readAloud'
 import { AutomationsScreen } from './screens/AutomationsScreen'
 import { SlackScreen } from './screens/SlackScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
@@ -93,6 +94,7 @@ function Shell() {
   latest.current = { sessions, groups, snap, t, tn, liveKeys }
   usePrEventNotifications(() => latest.current)
   useChatNotices()
+  useReadAloud(sessionMap, appOptions(snap?.config ?? { options: undefined }), platform)
   useAiReviewNotices()
   // An automation moved a session's sidebar place in the stored config.
   useEffect(() => window.hub.automations.onConfigChanged(() => void refreshConfig()), [])
@@ -151,6 +153,8 @@ function Shell() {
     if (tab) setSettingsTab(tab)
     setRoute('settings')
   }, [])
+  // A setup window's fix button asked for a Settings tab.
+  useEffect(() => window.hub.setup.onOpenSettings((tab) => openSettings(tab)), [openSettings])
   const navigate = useCallback((r: Route) => {
     if (r === 'sessions') setSelectedSession(null)
     setRoute(r)

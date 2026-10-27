@@ -1,4 +1,4 @@
-import { shell, type BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron'
 import type { Connection, SecretChange } from '@workhub/core'
 import type { TicketsResult } from '../shared/tickets-api'
 import type { IpcRegistrar } from './ipc-guard'
@@ -10,11 +10,13 @@ export interface TicketIpcDeps {
   /** Creates a secondary window on the renderer with this hash. */
   createWindow: (hash: string, title: string) => BrowserWindow
   mainWindow: () => BrowserWindow | null
+  /** Opens a web link in the active profile's browser. */
+  openLink: (profileId: string | null, url: string) => Promise<void>
   broadcast: (channel: string, ...args: unknown[]) => void
 }
 
 /** Registers the ticket handlers; returns the ticket window opener (ticket notifications use it). */
-export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, broadcast }: TicketIpcDeps): { openWindow: (profileId: string, key: string) => void } {
+export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, openLink, broadcast }: TicketIpcDeps): { openWindow: (profileId: string, key: string) => void } {
   const windows = new Map<string, BrowserWindow>()
   const changed = <T>(r: TicketsResult<T>): TicketsResult<T> => {
     if (r.ok) broadcast('tickets:changed')
@@ -52,7 +54,7 @@ export function registerTicketIpc({ ipcMain, service, createWindow, mainWindow, 
 
   ipcMain.handle('tickets:openExternal', async (_e, url: string) => {
     // Only web links: the renderer shows text from trackers, which must never reach other schemes.
-    if (/^https?:\/\//i.test(url)) await shell.openExternal(url)
+    if (/^https?:\/\//i.test(url)) await openLink(null, url)
   })
 
   ipcMain.on('tickets:openSession', (_e, sessionId: string) => {

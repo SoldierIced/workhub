@@ -223,7 +223,7 @@ export class CodeHostService {
 export interface CodeHostIpcOptions {
   service: CodeHostService
   openWindow: (profileId: string | null, url: string) => void
-  openExternal: (url: string) => Promise<void>
+  openExternal: (url: string, profileId: string | null) => Promise<void>
 }
 
 export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, openExternal }: CodeHostIpcOptions): void {
@@ -241,6 +241,6 @@ export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, op
   })
   ipc.handle('codeHost:openExternal', async (_e, profileId: string | null, url: string) => {
     // Only pull request URLs of the connected host; the renderer never opens arbitrary links.
-    if (await service.recognizes(profileId, url)) await openExternal(url)
+    if (await service.recognizes(profileId, url)) await openExternal(url, profileId)
   })
 }
