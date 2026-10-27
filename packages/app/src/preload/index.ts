@@ -35,6 +35,15 @@ const api: HubApi = {
     resize: (id, cols, rows) => ipcRenderer.send('sessions:resize', id, cols, rows),
     onEvent: (cb) => subscribe<[AgentEvent]>('session:event', cb),
     onChanged: (cb) => subscribe<[SessionView]>('session:changed', cb)
+  },
+  codeHost: {
+    lists: (profileId, force) => ipcRenderer.invoke('codeHost:lists', profileId, force),
+    view: (profileId, url) => ipcRenderer.invoke('codeHost:view', profileId, url),
+    review: (profileId, url, action, body) => ipcRenderer.invoke('codeHost:review', profileId, url, action, body),
+    comment: (profileId, url, body) => ipcRenderer.invoke('codeHost:comment', profileId, url, body),
+    reply: (profileId, url, threadId, body) => ipcRenderer.invoke('codeHost:reply', profileId, url, threadId, body),
+    openWindow: (profileId, url) => ipcRenderer.invoke('codeHost:openWindow', profileId, url),
+    openExternal: (profileId, url) => ipcRenderer.invoke('codeHost:openExternal', profileId, url)
   }
 }
 

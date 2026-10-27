@@ -13,6 +13,7 @@ import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { HomeScreen } from './screens/HomeScreen'
 import { PlaceholderScreen } from './screens/PlaceholderScreen'
+import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { startStore, useSessions } from './store'
@@ -40,6 +41,7 @@ function Shell() {
   const [route, setRoute] = useState<Route>('home')
   const [settingsTab, setSettingsTab] = useState('general')
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  const [prFocus, setPrFocus] = useState<string | null>(null)
   const [agents, setAgents] = useState<EffectiveAgent[]>([])
   const [dialog, setDialog] = useState<{ open: boolean; cwd?: string; agentKey?: string }>({ open: false })
 
@@ -69,6 +71,10 @@ function Shell() {
   const openSession = useCallback((id: string) => {
     setSelectedSession(id)
     setRoute('sessions')
+  }, [])
+  const openPullRequest = useCallback((url?: string) => {
+    setPrFocus(url ?? null)
+    setRoute('pullRequests')
   }, [])
   const openSettings = useCallback((tab?: string) => {
     if (tab) setSettingsTab(tab)
@@ -133,7 +139,9 @@ function Shell() {
           {route !== 'sessions' && (
             <div key={route} className="h-full animate-fade-in overflow-y-auto">
               {route === 'home' ? (
-                <HomeScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} />
+                <HomeScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} onOpenPullRequest={openPullRequest} />
+              ) : route === 'pullRequests' ? (
+                <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
               ) : route === 'settings' ? (
                 <SettingsScreen snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
               ) : (

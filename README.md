@@ -19,6 +19,8 @@ packages/
                 secrets-electron  SecretStore on Electron safeStorage (+ an in-memory store)
                 agent-acp         AgentRuntime over the Agent Client Protocol (Kiro, Claude via claude-agent-acp, OpenCode)
                 agent-terminal    AgentRuntime over a PTY (node-pty) for any CLI
+                codehost-github   CodeHost over the `gh` CLI (your own login, no token stored)
+                codehost-gitlab   CodeHost over the `glab` CLI (fixture-tested only so far)
   app/        Electron shell: main process, preload bridge, React renderer (Tailwind + Radix design system, en/es)
 spike/        P0 spike, kept as a reference (not part of the workspaces)
 ```
@@ -68,6 +70,15 @@ cd packages/app
 WORKHUB_DATA_DIR=/tmp/workhub-smoke npx electron . --remote-debugging-port=9222
 node scripts/drive.mjs '[{"tap":"button[aria-label=Settings]"},{"shot":"screenshots/settings.png"}]'
 ```
+
+## Pull requests
+
+The Pull requests screen (⌘/Ctrl+2) and the Home cards read through the code host of the active
+profile's connection, using the `gh` or `glab` CLI you already signed in with (`gh auth login`);
+Workhub stores no token. Set `scope=org:my-org` (GitHub search qualifiers) or `scope=group:my/group`
+(GitLab) in the connection's settings to narrow the search; without it, GitHub falls back to the
+repos behind the profile's folders, then to everything you can see. `WORKHUB_DEMO_CODEHOST=1`
+serves synthetic pull requests instead of a real host, for demos and screenshots.
 
 ## Privacy
 

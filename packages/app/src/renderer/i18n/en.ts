@@ -1,3 +1,4 @@
+import { prEn } from './pullRequests.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -214,5 +215,7 @@ export const en = {
   'module.flows': 'Flows',
   'module.health': 'Health',
   'module.chatWatcher': 'Chat watcher',
-  'module.automations': 'Automations'
+  'module.automations': 'Automations',
+
+  ...prEn
 } as const
