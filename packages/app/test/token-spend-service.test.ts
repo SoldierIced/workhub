@@ -34,6 +34,23 @@ describe('TokenSpendService', () => {
   })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 
+  it('counts a worktree outside the profile folders for its repository inside them', async () => {
+    const work = join(root, 'work')
+    const main = join(work, 'api')
+    mkdirSync(join(main, '.git', 'worktrees', 'api-fix'), { recursive: true })
+    writeFileSync(join(main, '.git', 'worktrees', 'api-fix', 'commondir'), '../..\n')
+    const wt = join(root, 'api-fix')
+    mkdirSync(wt, { recursive: true })
+    writeFileSync(join(wt, '.git'), `gitdir: ${join(main, '.git', 'worktrees', 'api-fix')}\n`)
+    const project = join(root, '.claude', 'projects', 'p')
+    mkdirSync(project, { recursive: true })
+    writeFileSync(join(project, 'a.jsonl'), JSON.stringify({ type: 'assistant', cwd: wt, timestamp: new Date().toISOString(), message: { id: 'm1', usage: { input_tokens: 7, output_tokens: 0 } } }) + '\n')
+    const config: WorkhubConfig = { ...emptyConfig(), profiles: [profile('one', [work])], activeProfileId: 'one' }
+    const svc = new TokenSpendService({ config: async () => config, store: memoryStore(), sources: async () => ({ claudeDirs: [join(root, '.claude')], codexHomes: [], kiroDirs: [] }), emit: () => {} })
+    await svc.refresh()
+    expect((await svc.forProfile('one')).entries).toMatchObject([{ name: 'api', path: main, tokens: 7 }])
+  })
+
   it('scans at start-up, keeps each profile to its own folders, and persists the cache', async () => {
     const work = join(root, 'work')
     mkdirSync(join(work, 'api'), { recursive: true })

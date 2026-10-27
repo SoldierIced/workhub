@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addSpend, attributeFolder, folderSpend, localDayKey, mergeSpend, parseSpendKey, pruneSpend, spendKey, spendWindowStart, type SpendBuckets } from '../src'
+import { addSpend, aliasPath, attributeFolder, folderSpend, localDayKey, mergeSpend, parseSpendKey, pruneSpend, spendKey, spendWindowStart, type SpendBuckets } from '../src'
 
 const at = (iso: string) => new Date(iso).getTime()
 const day = (iso: string) => localDayKey(new Date(iso))
@@ -66,5 +66,20 @@ describe('folderSpend', () => {
       { name: 'wayni', path: '/w/wayni', root: true, tokens: 30, byAgent: { claude: 30 } }
     ])
     expect(folderSpend(b, [], { sinceDay: '2026-10-21' })).toEqual([])
+  })
+
+  it('counts a worktree outside the folders for its main repository inside them', () => {
+    const b: SpendBuckets = {}
+    addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/elsewhere/api-fix/src', 40)
+    addSpend(b, at('2026-10-27T10:00:00'), 'codex', '/elsewhere/repo-wt', 10)
+    addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/elsewhere/unrelated', 5)
+    const aliases = { '/elsewhere/api-fix': '/w/wayni/api', '/elsewhere/repo-wt': '/w/repo', '/elsewhere/unrelated': '/far/away' }
+    const out = folderSpend(b, ['/w/wayni', '/w/repo'], { sinceDay: day('2026-10-21T12:00:00'), children: { '/w/wayni': ['api'] }, aliases })
+    expect(out).toEqual([
+      { name: 'api', path: '/w/wayni/api', root: false, tokens: 40, byAgent: { claude: 40 } },
+      { name: 'repo', path: '/w/repo', root: false, tokens: 10, byAgent: { codex: 10 } }
+    ])
+    expect(aliasPath('/elsewhere/api-fix/src/a', aliases)).toBe('/w/wayni/api/src/a')
+    expect(aliasPath('/elsewhere/api-fixed', aliases)).toBe('/elsewhere/api-fixed')
   })
 })

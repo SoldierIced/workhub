@@ -4,9 +4,13 @@
  * only what was appended: append-only JSONL files resume at the byte offset they stopped at with
  * the parser state they had; whole-file formats (Kiro's JSON, compressed Codex rollouts) are read
  * again only when their size or modification time changed. Never throws.
+ *
+ * A Claude session copied to another account by failover (same `projects/<folder>/<id>.jsonl` in
+ * two config folders) is counted once, from its newest copy: the copies share their beginning and
+ * the newest one holds everything said so far.
  */
 import { open, readdir, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { mergeSpend, pruneSpend, type SpendBuckets } from '@workhub/core'
 import { isCompressed, readRollout } from '../transcript-codex/files'
 import { claudePending, claudeSpendLine, codexSpendLine, kiroSpendFile, type ClaudeSpendState, type CodexSpendState } from './parsers'
@@ -110,7 +114,18 @@ export class TokenSpendScanner {
 
   private async run(sources: SpendSources, since: number, sinceDay: string): Promise<SpendBuckets> {
     const files = new Map<string, Kind>()
-    for (const dir of new Set(sources.claudeDirs)) for (const f of await claudeFiles(dir)) files.set(f, 'claude')
+    // One Claude transcript per path relative to its config folder: the newest copy.
+    const claude = new Map<string, { path: string; mtimeMs: number }>()
+    for (const dir of new Set(sources.claudeDirs)) {
+      for (const f of await claudeFiles(dir)) {
+        const info = await stat(f).catch(() => null)
+        if (!info?.isFile()) continue
+        const rel = relative(dir, f)
+        const prev = claude.get(rel)
+        if (!prev || info.mtimeMs > prev.mtimeMs) claude.set(rel, { path: f, mtimeMs: info.mtimeMs })
+      }
+    }
+    for (const { path } of claude.values()) files.set(path, 'claude')
     for (const home of new Set(sources.codexHomes)) for (const f of await codexFiles(join(home, 'sessions'), since)) files.set(f, isCompressed(f) ? 'codex-zst' : 'codex')
     for (const dir of new Set(sources.kiroDirs)) {
       const cli = join(dir, 'sessions', 'cli')
