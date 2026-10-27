@@ -60,6 +60,8 @@ export interface ConfigApi {
   previewWorkhub1Import(): Promise<{ available: boolean; plan?: ImportPlan; error?: string }>
   /** Reads Workhub 1's settings again and adds what the preview showed. Never writes to Workhub 1. */
   applyWorkhub1Import(): Promise<Result<WorkhubConfig>>
+  /** Main changed the config on its own (a session's group place moved to its real id). */
+  onChanged(cb: () => void): () => void
 }
 
 /**

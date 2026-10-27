@@ -133,7 +133,8 @@ const sessions = new SessionManager({
   history: historySources,
   emitEvent: (e) => send('session:event', e),
   emitChanged: (s) => send('session:changed', s),
-  emitReplay: (id, messages) => send('session:replay', id, messages)
+  emitReplay: (id, messages) => send('session:replay', id, messages),
+  emitConfigChanged: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
 })
 const usage = new UsageService(
   new ClaudePlanUsageReader({ userAgent: `workhub/${app.getVersion()}` }),

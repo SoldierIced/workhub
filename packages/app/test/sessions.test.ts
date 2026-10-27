@@ -86,7 +86,8 @@ class FakeNative extends FakeRuntime {
 }
 
 function setup(config: WorkhubConfig = emptyConfig(), transcriptExists = false) {
-  const replaceSessionIdentity = vi.fn(async () => undefined)
+  const replaceSessionIdentity = vi.fn(async (): Promise<{ ok: boolean } | undefined> => undefined)
+  const emitConfigChanged = vi.fn()
   const native = new FakeNative('native', caps())
   const acp = new FakeRuntime('acp', caps({ mcpControl: false }))
   const terminal = new FakeTerminal('terminal', caps({ appMode: false }))
@@ -108,10 +109,11 @@ function setup(config: WorkhubConfig = emptyConfig(), transcriptExists = false) 
     emitEvent: (e) => events.push(e),
     emitChanged: (s) => changed.push(s),
     emitReplay: (id, m) => replays.push([id, m]),
+    emitConfigChanged,
     pollMs: 60_000
   })
   const last = (id: string) => [...changed].reverse().find((s) => s.id === id)!
-  return { manager, native, acp, terminal, changed, events, replays, transcript, last, replaceSessionIdentity }
+  return { manager, native, acp, terminal, changed, events, replays, transcript, last, replaceSessionIdentity, emitConfigChanged }
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
@@ -227,6 +229,15 @@ describe('session identity', () => {
     await flush()
     expect(replaceSessionIdentity).toHaveBeenCalledWith(provisional, 'acp-real')
     expect(last(view.id)).toMatchObject({ identity: 'acp-real', agentSessionId: 'acp-real' })
+  })
+
+  it('tells the renderer to reload the config once the group place moved', async () => {
+    const { manager, acp, replaceSessionIdentity, emitConfigChanged } = setup()
+    replaceSessionIdentity.mockImplementation(async () => ({ ok: true }))
+    acp.start = async () => ({ agentName: 'Fake', permissionMode: null, agentSessionId: 'acp-real' })
+    await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
+    await flush()
+    expect(emitConfigChanged).toHaveBeenCalledTimes(1)
   })
 })
 

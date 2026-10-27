@@ -8,7 +8,7 @@ import {
   type GroupMember,
   type SessionGroups
 } from '@workhub/core'
-import { currentConfig, refreshConfig } from '../configStore'
+import { refreshConfig } from '../configStore'
 import { awaitingAnswer, type SessionData } from '../store'
 
 /** A session as the sidebar lists it, with the identity groups know it by. */
@@ -47,12 +47,13 @@ export function summarize(sessions: readonly SessionData[]): AttentionSummary {
 let writes: Promise<unknown> = Promise.resolve()
 
 /**
- * Applies a change to the stored groups. Changes are applied one after the other on the latest
- * config, so two quick drags never overwrite each other.
+ * Applies a change to the stored groups. Changes are applied one after the other, each on the
+ * config as main has it right now (main rewrites groups by itself when a session gets its real id),
+ * so neither two quick drags nor a stale copy ever overwrite a newer state.
  */
 export function updateGroups(change: (state: SessionGroups) => SessionGroups, liveKeys: readonly string[]): Promise<void> {
   const run = async (): Promise<void> => {
-    const stored = currentConfig()?.config.sessionGroups ?? EMPTY_SESSION_GROUPS
+    const stored = (await refreshConfig()).config.sessionGroups ?? EMPTY_SESSION_GROUPS
     const base = reconcileTop(stored, liveKeys)
     const next = change(base)
     if (next === base) return
