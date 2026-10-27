@@ -73,7 +73,9 @@ export class AcpRuntime implements AgentRuntime {
 
     const env = { ...process.env, ...req.env }
     if (this.options.extraPath?.length) env['PATH'] = [...this.options.extraPath, env['PATH'] ?? ''].join(delimiter)
-    const child = spawn(req.agent.command, req.agent.args, { cwd: req.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    // Windows runs npm-installed agents (npx, gemini, opencode) through .cmd shims, which Node
+    // only starts through a shell. Not verified on Windows yet.
+    const child = spawn(req.agent.command, req.agent.args, { cwd: req.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32' })
 
     const monitor = new AcpMonitor()
     const session: AcpSession = {
