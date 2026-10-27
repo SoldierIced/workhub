@@ -1,13 +1,11 @@
 import type { CSSProperties } from 'react'
 import { Bot, SquareTerminal } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { AgentLogo, LOGO_AGENTS } from './AgentLogos'
 import { agentGlyph, type AgentGlyph } from '../../lib/agents'
 
-/** Monogram badges: original marks, no brand logos. Same fill in both themes; white text keeps the contrast. */
-const BADGE: Record<Exclude<AgentGlyph, 'shell' | 'generic'>, { text: string; className: string }> = {
-  claude: { text: 'C', className: 'bg-[#c2603f]' },
-  kiro: { text: 'K', className: 'bg-[#7c5cd6]' },
-  codex: { text: 'Cx', className: 'bg-[#1f8a70]' },
+/** Monogram badges for agents without a logo. Same fill in both themes; white text keeps the contrast. */
+const BADGE: Record<'opencode' | 'gemini', { text: string; className: string }> = {
   opencode: { text: 'Oc', className: 'bg-[#3b6fd4]' },
   gemini: { text: 'G', className: 'bg-[#b8497f]' }
 }
@@ -24,7 +22,7 @@ export interface AgentIconProps {
   style?: CSSProperties
 }
 
-/** A small mark that tells which agent runs a session: a monogram per known agent, a terminal for shells, a bot for the rest. */
+/** A small mark that tells which agent runs a session: the official logo for Claude, Codex and Kiro, a monogram for the other known agents, a terminal for shells, a bot for the rest. */
 export function AgentIcon({ agentId, adapter, label, className, style }: AgentIconProps) {
   const glyph = agentGlyph(agentId, adapter)
   const a11y = label ? { role: 'img' as const, 'aria-label': label } : { 'aria-hidden': true }
@@ -37,7 +35,15 @@ export function AgentIcon({ agentId, adapter, label, className, style }: AgentIc
       </span>
     )
   }
-  const badge = BADGE[glyph]
+  if (LOGO_AGENTS.has(glyph)) {
+    const kiro = glyph === 'kiro'
+    return (
+      <span {...a11y} data-agent-icon={glyph} data-agent-logo={glyph} style={style} className={cn(base, kiro ? 'bg-[#9046ff]' : 'bg-surface-hover text-text ring-1 ring-border ring-inset', className)}>
+        <AgentLogo agent={glyph as 'claude' | 'codex' | 'kiro'} />
+      </span>
+    )
+  }
+  const badge = BADGE[glyph as 'opencode' | 'gemini']
   return (
     <span {...a11y} data-agent-icon={glyph} style={style} className={cn(base, 'font-semibold text-white', badge.className, badge.text.length > 1 ? 'text-[9px] tracking-tighter' : 'text-xs', className)}>
       <span aria-hidden>{badge.text}</span>

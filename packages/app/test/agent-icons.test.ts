@@ -1,3 +1,6 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { AgentIcon } from '../src/renderer/components/atoms/AgentIcon'
 import { describe, expect, it } from 'vitest'
 import { agentGlyph } from '../src/renderer/lib/agents'
 import { sessionName } from '../src/renderer/lib/sessionGroups'
@@ -38,5 +41,24 @@ describe('sessionName', () => {
   it('falls back to the folder before anything is asked', () => {
     expect(sessionName(data([]))).toBe('shop-api')
     expect(sessionName(data([{ id: 1, kind: 'user', text: '  ' }]))).toBe('shop-api')
+  })
+})
+
+describe('AgentIcon', () => {
+  const html = (agentId: string, adapter?: string) => renderToStaticMarkup(createElement(AgentIcon, { agentId, adapter, label: agentId }))
+
+  it('shows the logo of Claude (SDK and ACP), Codex and Kiro', () => {
+    for (const id of ['claude', 'claude-acp', 'claude:work']) expect(html(id)).toContain('data-agent-logo="claude"')
+    expect(html('codex')).toContain('data-agent-logo="codex"')
+    expect(html('kiro')).toContain('data-agent-logo="kiro"')
+    expect(html('claude')).toContain('<svg')
+  })
+
+  it('keeps the letter fallback for agents without a logo and the terminal mark for shells', () => {
+    expect(html('opencode')).toContain('>Oc<')
+    expect(html('gemini')).toContain('>G<')
+    expect(html('opencode')).not.toContain('<svg')
+    expect(html('zsh')).toContain('data-agent-icon="shell"')
+    expect(html('my-agent', 'acp')).toContain('data-agent-icon="generic"')
   })
 })
