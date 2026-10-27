@@ -2,6 +2,7 @@ import { linksEn } from './links.en'
 import { aiReviewEn } from './aiReview.en'
 import { sessionsUxEn } from './sessionsUx.en'
 import { healthEn } from './health.en'
+import { healthPromptsEn } from './healthPrompts.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
 import { automationsEn } from './automations.en'
@@ -385,6 +386,7 @@ export const en = {
   ...ticketsEn,
   ...updatesEn,
   ...healthEn,
+  ...healthPromptsEn,
   ...prEventsEn,
   ...linksEn,
   ...slackEn,

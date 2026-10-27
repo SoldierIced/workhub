@@ -1,11 +1,21 @@
 import {
+  median,
   trendStats,
+  type ErrorGroup,
   type HealthEnvironment,
   type K8sEvent,
+  type LogLine,
+  type NewErrorType,
+  type PodEvent,
   type PodIssue,
+  type PodStatus,
   type ServiceErrorCount,
   type ServiceReporting,
-  type SlowTransaction
+  type SignalTrend,
+  type SlowTransaction,
+  type SpanBreakdown,
+  type WindowComparison,
+  type WindowStats
 } from '@workhub/core'
 import { at, clip, field, list, num, str, type Json } from './json'
 
@@ -33,6 +43,8 @@ export const es = {
   term: (fieldName: string, value: string | number | boolean): Clause => ({ term: { [fieldName]: value } }),
   terms: (fieldName: string, values: string[]): Clause => ({ terms: { [fieldName]: values } }),
   filter: (clauses: Clause[]): Clause => ({ bool: { filter: clauses } }),
+  /** `from <= @timestamp < to`, both epoch milliseconds. */
+  between: (from: number, to: number): Clause => ({ range: { '@timestamp': { gte: from, lt: to, format: 'epoch_millis' } } }),
   /** An aggregation-only search: no hits, no total count. Both keep the load on the cluster down. */
   aggregations: (query: Clause, aggs: Record<string, unknown>): Record<string, unknown> => ({ size: 0, track_total_hits: false, query, aggs })
 }
@@ -51,7 +63,8 @@ export const readsMetrics = (env: HealthEnvironment): boolean => apmEnvironmentV
 export const K8S_DATASETS = {
   statePod: 'metrics-kubernetes.state_pod',
   stateContainer: 'metrics-kubernetes.state_container',
-  event: 'metrics-kubernetes.event'
+  event: 'metrics-kubernetes.event',
+  containerLogs: 'logs-kubernetes.container'
 } as const
 
 export const k8sIndex = (dataset: keyof typeof K8S_DATASETS, env: HealthEnvironment): string => `${K8S_DATASETS[dataset]}-${kubernetesSuffix(env)}`
@@ -66,6 +79,8 @@ interface TrendOptions {
   recentHours: number
   limit: number
   extraAggs?: Record<string, unknown>
+  /** Rank the keys by their rolling-window count instead of the whole window. */
+  byRecent?: boolean
 }
 
 /**
@@ -73,13 +88,13 @@ interface TrendOptions {
  * rolling count is what gets compared: today's calendar bucket is partial and would make
  * everything look like it is improving.
  */
-export function dailyTrend({ index, keyField, filters, windowDays, recentHours, limit, extraAggs = {} }: TrendOptions): EsRequest {
+export function dailyTrend({ index, keyField, filters, windowDays, recentHours, limit, extraAggs = {}, byRecent = false }: TrendOptions): EsRequest {
   const perKey = {
     daily: { date_histogram: { field: '@timestamp', calendar_interval: 'day', min_doc_count: 0 } },
     recent: { filter: es.since(`now-${recentHours}h`) },
     ...extraAggs
   }
-  const byKey = { terms: { field: keyField, size: limit }, aggs: perKey }
+  const byKey = { terms: { field: keyField, size: limit, ...(byRecent ? { order: { recent: 'desc' } } : {}) }, aggs: perKey }
   return { index, body: es.aggregations(es.filter([es.since(`now-${windowDays}d/d`), ...filters]), { by_key: byKey }) }
 }
 
@@ -292,4 +307,340 @@ export function parseSlowTransactions(response: Json, minCalls: number, limit: n
     ]
   })
   return all.sort((a, b) => b.p95Ms - a.p95Ms).slice(0, limit)
+}
+
+/** The slowest few flows get a breakdown; one per flow when asked on demand. */
+export const DEFAULT_SPAN_SAMPLE = 100
+
+// Container stderr -------------------------------------------------------------------------------
+
+/**
+ * stderr volume per container: the only infrastructure signal an environment without kube-state
+ * metrics has. A proxy, not a truth: plenty of applications write normal output there, so only its
+ * movement against its own baseline means anything. The namespace rides along so infrastructure
+ * containers can be told apart.
+ */
+export function containerStderr(env: HealthEnvironment, windowDays = 7, limit = 25): EsRequest {
+  return dailyTrend({
+    index: k8sIndex('containerLogs', env),
+    keyField: 'kubernetes.container.name',
+    filters: [es.term('stream', 'stderr')],
+    windowDays,
+    recentHours: env.thresholds.errorWindowHours,
+    limit,
+    extraAggs: { namespace: { terms: { field: 'kubernetes.namespace', size: 1 } } }
+  })
+}
+
+const trendRank = (s: SignalTrend) => ['new', 'worsening', 'ongoing', 'chronic'].indexOf(s.stats.state)
+
+export function parseTrends(response: Json): SignalTrend[] {
+  return list(at(response, 'aggregations', 'by_key', 'buckets'))
+    .flatMap((bucket): SignalTrend[] => {
+      const key = str(at(bucket, 'key'))
+      const stats = trendOfBucket(bucket)
+      return key && stats ? [{ key, stats, namespace: str(at(bucket, 'namespace', 'buckets', 0, 'key')) }] : []
+    })
+    .sort((a, b) => trendRank(a) - trendRank(b) || b.stats.recent - a.stats.recent)
+}
+
+// One service's errors, on demand ---------------------------------------------------------------
+
+/**
+ * The top `limit` error groups (`error.grouping_key`) of one service by errors in the rolling
+ * window, each with its daily series, first and last occurrence, the most common transaction of
+ * the window and its latest error for the type, message and culprit. One request, one service.
+ */
+export function errorGroups(env: HealthEnvironment, service: string, limit = 5): EsRequest {
+  const t = env.thresholds
+  return dailyTrend({
+    index: env.apm.errors,
+    keyField: 'error.grouping_key',
+    filters: [es.terms('service.environment', apmEnvironmentValues(env)), es.term('service.name', service)],
+    windowDays: t.trendWindowDays,
+    recentHours: t.errorWindowHours,
+    limit,
+    byRecent: true,
+    extraAggs: {
+      recent: { filter: es.since(`now-${t.errorWindowHours}h`), aggs: { endpoint: { terms: { field: 'transaction.name', size: 1 } } } },
+      first_seen: { min: { field: '@timestamp' } },
+      last_seen: { max: { field: '@timestamp' } },
+      sample: { top_hits: { size: 1, sort: [{ '@timestamp': 'desc' }], _source: false, fields: ['error.exception.type', 'error.exception.message', 'error.log.message', 'error.culprit'] } }
+    }
+  })
+}
+
+/** Groups with errors in the window, most first. `now` and `windowHours` decide which are new. */
+export function parseErrorGroups(response: Json, now: number, windowHours: number): ErrorGroup[] {
+  const windowStart = now - windowHours * 3_600_000
+  return list(at(response, 'aggregations', 'by_key', 'buckets'))
+    .flatMap((bucket): ErrorGroup[] => {
+      const recent = num(at(bucket, 'recent', 'doc_count')) ?? 0
+      const groupingKey = str(at(bucket, 'key'))
+      if (!groupingKey || recent <= 0) return []
+      const series = list(at(bucket, 'daily', 'buckets')).map((b) => num(at(b, 'doc_count')) ?? 0)
+      const hit = at(bucket, 'sample', 'hits', 'hits', 0)
+      const firstSeen = num(at(bucket, 'first_seen', 'value'))
+      return [
+        {
+          groupingKey,
+          exceptionType: str(field(hit, 'error.exception.type')),
+          message: clip(str(field(hit, 'error.exception.message')) ?? str(field(hit, 'error.log.message')), 160),
+          culprit: str(field(hit, 'error.culprit')),
+          endpoint: str(at(bucket, 'recent', 'endpoint', 'buckets', 0, 'key')),
+          recent,
+          total: num(at(bucket, 'doc_count')) ?? recent,
+          firstSeen,
+          lastSeen: num(at(bucket, 'last_seen', 'value')),
+          activeDays: series.filter((n) => n > 0).length,
+          daysWithData: series.length,
+          typicalDay: median(series.slice(0, -1).filter((n) => n > 0)),
+          isNew: firstSeen !== undefined && firstSeen >= windowStart
+        }
+      ]
+    })
+    .sort((a, b) => b.recent - a.recent || a.groupingKey.localeCompare(b.groupingKey))
+}
+
+// One pod, on demand -----------------------------------------------------------------------------
+
+/**
+ * The container status of the given pods in the restart window: the waiting reason seen most and
+ * the latest document of the container with the most restarts, for how its last run ended.
+ */
+export function podStatus(env: HealthEnvironment, pods: string[]): EsRequest {
+  const query = es.filter([es.since(`now-${env.thresholds.restartWindowMinutes}m`), es.terms('kubernetes.pod.name', pods)])
+  const latest = {
+    top_hits: {
+      size: 1,
+      sort: [{ 'kubernetes.container.status.restarts': { order: 'desc', unmapped_type: 'long' } }, { '@timestamp': 'desc' }],
+      _source: false,
+      fields: ['kubernetes.container.name', 'kubernetes.namespace', 'kubernetes.container.status.last_terminated_reason', 'kubernetes.container.status.last_terminated_exitcode', 'kubernetes.container.status.last_terminated_timestamp']
+    }
+  }
+  const byPod = {
+    terms: { field: 'kubernetes.pod.name', size: Math.max(pods.length, 1) },
+    aggs: {
+      waiting: { filter: { exists: { field: 'kubernetes.container.status.reason' } }, aggs: { reason: { terms: { field: 'kubernetes.container.status.reason', size: 1 } } } },
+      latest
+    }
+  }
+  return { index: k8sIndex('stateContainer', env), body: es.aggregations(query, { by_pod_status: byPod }) }
+}
+
+export function parsePodStatus(response: Json): Record<string, PodStatus> {
+  const result: Record<string, PodStatus> = {}
+  for (const bucket of list(at(response, 'aggregations', 'by_pod_status', 'buckets'))) {
+    const pod = str(at(bucket, 'key'))
+    if (!pod) continue
+    const hit = at(bucket, 'latest', 'hits', 'hits', 0)
+    // Seconds as a float; a millisecond value is accepted too.
+    const raw = num(field(hit, 'kubernetes.container.status.last_terminated_timestamp'))
+    const exit = num(field(hit, 'kubernetes.container.status.last_terminated_exitcode'))
+    result[pod] = {
+      container: str(field(hit, 'kubernetes.container.name')),
+      namespace: str(field(hit, 'kubernetes.namespace')),
+      waitingReason: str(at(bucket, 'waiting', 'reason', 'buckets', 0, 'key')),
+      lastTerminatedReason: str(field(hit, 'kubernetes.container.status.last_terminated_reason')),
+      lastExitCode: exit === undefined ? undefined : Math.round(exit),
+      lastTerminatedAt: raw === undefined ? undefined : raw > 100_000_000_000 ? raw : raw * 1000
+    }
+  }
+  return result
+}
+
+/** The latest warning reasons about one pod in the last `hours`, one bucket per reason with its latest message. */
+export function podEvents(env: HealthEnvironment, pod: string, hours: number, limit = 3): EsRequest {
+  const query = es.filter([es.since(`now-${hours}h`), es.term('kubernetes.event.involved_object.name', pod), es.term('kubernetes.event.type', 'Warning')])
+  const byReason = {
+    terms: { field: 'kubernetes.event.reason', size: limit, order: { last_seen: 'desc' } },
+    aggs: {
+      last_seen: { max: { field: '@timestamp' } },
+      latest: { top_hits: { size: 1, sort: [{ '@timestamp': 'desc' }], _source: false, fields: ['kubernetes.event.message', 'kubernetes.event.count'] } }
+    }
+  }
+  return { index: k8sIndex('event', env), body: es.aggregations(query, { by_reason: byReason }) }
+}
+
+/** Newest first. */
+export function parsePodEvents(response: Json): PodEvent[] {
+  return list(at(response, 'aggregations', 'by_reason', 'buckets'))
+    .flatMap((bucket): PodEvent[] => {
+      const reason = str(at(bucket, 'key'))
+      if (!reason) return []
+      const hit = at(bucket, 'latest', 'hits', 'hits', 0)
+      return [
+        {
+          reason,
+          message: clip(str(field(hit, 'kubernetes.event.message')), 240),
+          lastSeen: num(at(bucket, 'last_seen', 'value')),
+          count: num(at(bucket, 'doc_count')) ?? 0,
+          occurrences: num(field(hit, 'kubernetes.event.count'))
+        }
+      ]
+    })
+    .sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0))
+}
+
+/** The last `lines` lines one pod wrote to stderr in the last `hours`: a handful of hits. */
+export function podStderr(env: HealthEnvironment, pod: string, hours: number, lines = 5): EsRequest {
+  const query = es.filter([es.since(`now-${hours}h`), es.term('kubernetes.pod.name', pod), es.term('stream', 'stderr')])
+  return {
+    index: k8sIndex('containerLogs', env),
+    body: { size: lines, track_total_hits: false, query, sort: [{ '@timestamp': 'desc' }], _source: false, fields: ['message', 'kubernetes.container.name', { field: '@timestamp', format: 'epoch_millis' }] }
+  }
+}
+
+/** Oldest first, as they were written. */
+export function parsePodStderr(response: Json): LogLine[] {
+  return [...list(at(response, 'hits', 'hits'))].reverse().flatMap((hit): LogLine[] => {
+    const text = clip(str(field(hit, 'message')), 300)
+    if (!text) return []
+    const ts = Number(field(hit, '@timestamp'))
+    return [{ text, container: str(field(hit, 'kubernetes.container.name')), timestamp: Number.isFinite(ts) ? ts : undefined }]
+  })
+}
+
+// One slow flow, on demand -------------------------------------------------------------------------
+
+/** Step 1 of a breakdown: the slowest executions of one transaction, to know which `transaction.id`s to break down. */
+export function slowestExecutions(env: HealthEnvironment, service: string, name: string, sample = DEFAULT_SPAN_SAMPLE): EsRequest {
+  const query = es.filter([
+    es.since(`now-${env.thresholds.slowFlowHours}h`),
+    es.term('processor.event', 'transaction'),
+    es.term('service.name', service),
+    es.term('transaction.name', name),
+    es.terms('service.environment', apmEnvironmentValues(env))
+  ])
+  return { index: env.apm.traces, body: { size: sample, track_total_hits: false, query, sort: [{ 'transaction.duration.us': 'desc' }], _source: false, fields: ['transaction.id', 'transaction.duration.us'] } }
+}
+
+export interface TransactionSample {
+  ids: string[]
+  wallMs: number
+}
+
+export function parseExecutions(response: Json): TransactionSample {
+  const ids: string[] = []
+  let wall = 0
+  for (const hit of list(at(response, 'hits', 'hits'))) {
+    const id = str(field(hit, 'transaction.id'))
+    if (!id) continue
+    ids.push(id)
+    wall += (num(field(hit, 'transaction.duration.us')) ?? 0) / 1000
+  }
+  return { ids, wallMs: wall }
+}
+
+/**
+ * Step 2: the spans of the sampled transactions, broken down by destination, type and subtype.
+ * Spans carry `transaction.id` but not the transaction's name, hence the ids from step 1.
+ */
+export function spanBreakdown(env: HealthEnvironment, sample: TransactionSample, top = 8): EsRequest {
+  const byResource = {
+    multi_terms: {
+      terms: [
+        { field: 'span.destination.service.resource', missing: 'n/a' },
+        { field: 'span.type', missing: 'n/a' },
+        { field: 'span.subtype', missing: 'n/a' }
+      ],
+      size: top,
+      order: { total: 'desc' }
+    },
+    aggs: { total: { sum: { field: 'span.duration.us' } } }
+  }
+  const query = es.filter([es.since(`now-${env.thresholds.slowFlowHours}h`), es.term('processor.event', 'span'), es.terms('transaction.id', sample.ids)])
+  return { index: env.apm.traces, body: es.aggregations(query, { by_resource: byResource }) }
+}
+
+/** Largest total first. */
+export function parseSpanBreakdown(response: Json, sample: TransactionSample): SpanBreakdown[] {
+  const transactions = Math.max(sample.ids.length, 1)
+  const na = (v: string | undefined) => (v === 'n/a' ? undefined : v)
+  return list(at(response, 'aggregations', 'by_resource', 'buckets'))
+    .flatMap((bucket): SpanBreakdown[] => {
+      const calls = num(at(bucket, 'doc_count')) ?? 0
+      if (calls <= 0) return []
+      const totalMs = (num(at(bucket, 'total', 'value')) ?? 0) / 1000
+      const type = str(at(bucket, 'key', 1)) ?? 'n/a'
+      return [
+        {
+          resource: na(str(at(bucket, 'key', 0))) ?? type,
+          type,
+          subtype: na(str(at(bucket, 'key', 2))),
+          calls,
+          totalMs,
+          averageMs: totalMs / calls,
+          callsPerTransaction: calls / transactions,
+          shareOfWallTime: sample.wallMs > 0 ? totalMs / sample.wallMs : 0
+        }
+      ]
+    })
+    .sort((a, b) => b.totalMs - a.totalMs)
+}
+
+/** The two windows of a comparison: the last `hours` and the `hours` before them, as epoch milliseconds. */
+export function comparisonWindows(now: number, hours: number): { previous: [number, number]; current: [number, number] } {
+  const width = hours * 3_600_000
+  return { previous: [now - 2 * width, now - width], current: [now - width, now] }
+}
+
+function windowFilters(env: HealthEnvironment, processor: string, service: string, transaction: string | null, now: number, hours: number) {
+  const w = comparisonWindows(now, hours)
+  const clauses: Clause[] = [es.term('processor.event', processor), es.terms('service.environment', apmEnvironmentValues(env)), es.term('service.name', service)]
+  if (transaction !== null) clauses.push(es.term('transaction.name', transaction))
+  return { query: es.filter([...clauses, es.between(w.previous[0], w.current[1])]), windows: { previous: es.between(...w.previous), current: es.between(...w.current) } }
+}
+
+/** Error counts of a service in the two windows. Errors are compared for the whole service: many carry no transaction. */
+export function windowErrors(env: HealthEnvironment, service: string, now: number, hours: number): EsRequest {
+  const { query, windows } = windowFilters(env, 'error', service, null, now, hours)
+  return { index: env.apm.errors, body: es.aggregations(query, { windows: { filters: { filters: windows } } }) }
+}
+
+/** Transactions, failed transactions and p95 of one transaction in the two windows. */
+export function windowTransactions(env: HealthEnvironment, service: string, transaction: string | null, now: number, hours: number): EsRequest {
+  const { query, windows } = windowFilters(env, 'transaction', service, transaction, now, hours)
+  const perWindow = { failed: { filter: es.term('event.outcome', 'failure') }, latency: { percentiles: { field: 'transaction.duration.us', percents: [95] } } }
+  return { index: env.apm.traces, body: es.aggregations(query, { windows: { filters: { filters: windows }, aggs: perWindow } }) }
+}
+
+/** Error types of the service whose first occurrence in the trend window falls inside the current window, newest first. */
+export function newErrorTypes(env: HealthEnvironment, service: string, now: number, hours: number, limit = 25): EsRequest {
+  const query = es.filter([
+    es.between(now - env.thresholds.trendWindowDays * 86_400_000, now),
+    es.term('processor.event', 'error'),
+    es.terms('service.environment', apmEnvironmentValues(env)),
+    es.term('service.name', service)
+  ])
+  const byGroup = {
+    terms: { field: 'error.grouping_key', size: limit, order: { first_seen: 'desc' } },
+    aggs: { first_seen: { min: { field: '@timestamp' } }, sample: { top_hits: { size: 1, _source: false, fields: ['error.exception.type', 'error.culprit'] } } }
+  }
+  return { index: env.apm.errors, body: es.aggregations(query, { by_group: byGroup }) }
+}
+
+export function parseNewErrorTypes(response: Json, since: number): NewErrorType[] {
+  return list(at(response, 'aggregations', 'by_group', 'buckets')).flatMap((bucket): NewErrorType[] => {
+    const groupingKey = str(at(bucket, 'key'))
+    const firstSeen = num(at(bucket, 'first_seen', 'value'))
+    if (!groupingKey || firstSeen === undefined || firstSeen < since) return []
+    const hit = at(bucket, 'sample', 'hits', 'hits', 0)
+    return [{ groupingKey, exceptionType: str(field(hit, 'error.exception.type')), culprit: str(field(hit, 'error.culprit')), firstSeen, count: num(at(bucket, 'doc_count')) ?? 0 }]
+  })
+}
+
+/** Joins the three answers of a window comparison. */
+export function parseWindowComparison(errors: Json, transactions: Json, newTypes: Json, service: string, transaction: string | null, now: number, hours: number): WindowComparison {
+  const stats = (name: 'previous' | 'current'): WindowStats => {
+    const tx = at(transactions, 'aggregations', 'windows', 'buckets', name)
+    return {
+      errors: num(at(errors, 'aggregations', 'windows', 'buckets', name, 'doc_count')) ?? 0,
+      transactions: num(at(tx, 'doc_count')) ?? 0,
+      failedTransactions: num(at(tx, 'failed', 'doc_count')) ?? 0,
+      p95Ms: percentileMs(at(tx, 'latency'), 95)
+    }
+  }
+  const since = comparisonWindows(now, hours).current[0]
+  return { service, transaction, windowHours: hours, previous: stats('previous'), current: stats('current'), newErrorTypes: parseNewErrorTypes(newTypes, since) }
 }

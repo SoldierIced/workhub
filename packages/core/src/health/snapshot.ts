@@ -83,6 +83,7 @@ export function makeSnapshot(env: HealthEnvironment, signals: HealthSignals): He
     silentServices: silent,
     reportingServiceCount: signals.reporting.length - silent.length,
     slow: signals.slow,
+    containerStderr: signals.stderr ?? [],
     fetchedAt: signals.fastFetchedAt,
     trendFetchedAt: signals.trendFetchedAt,
     slowFetchedAt: signals.slowFetchedAt,
@@ -104,6 +105,7 @@ export function pendingSnapshot(environmentId: string): HealthSnapshot {
     silentServices: [],
     reportingServiceCount: 0,
     slow: [],
+    containerStderr: [],
     stale: false
   }
 }
