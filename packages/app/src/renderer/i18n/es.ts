@@ -149,6 +149,8 @@ export const es: Record<keyof typeof en, string> = {
   'monitor.activeTime': 'Tiempo activo',
   'monitor.planUsage': 'Uso del plan',
   'monitor.mcpServers': 'Servidores MCP',
+  'monitor.pullRequests': 'Pull requests',
+  'monitor.tickets': 'Tickets',
   'monitor.tools.one': '{count} herramienta',
   'monitor.tools.other': '{count} herramientas',
 

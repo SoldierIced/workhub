@@ -1,31 +1,73 @@
-import { NO_CAPABILITIES, type AgentDefinition } from './agent'
+import { NO_CAPABILITIES, type AgentDefinition, type ConsoleLaunch } from './agent'
+
+/** `claude` itself, for the console view: a fixed session id, resumed once it has a transcript. */
+const CLAUDE_CONSOLE: ConsoleLaunch = {
+  command: 'claude',
+  args: [],
+  resumeArgs: ['--resume', '{sessionId}'],
+  newSessionArgs: ['--session-id', '{sessionId}']
+}
 
 /**
  * Agents Workhub knows out of the box. Users can add their own in the config (`agents`), and a
  * custom agent with the same id replaces the built-in one.
  *
- * Capabilities list only what was observed (P0 spike, spike/README.md); transcript readers and
- * the native Claude adapter arrive in P2/P5 and will turn more flags on.
+ * Capabilities list only what was observed (P0 spike, spike/README.md) or what the native Claude
+ * adapter and the Claude transcript reader provide (P2); the other transcript readers arrive in P5.
  */
 export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
   {
     id: 'claude',
+    name: 'Claude Code',
+    // The Claude Agent SDK through Workhub 1's bridge (PLAN D8): MCP status and control, hooks,
+    // models and usage, which ACP does not carry.
+    adapter: 'native',
+    command: 'claude',
+    args: [],
+    capabilities: {
+      ...NO_CAPABILITIES,
+      appMode: true,
+      transcript: true,
+      usage: true,
+      planUsage: true,
+      history: true,
+      hooks: true,
+      models: true,
+      mcpStatus: true,
+      mcpControl: true,
+      subagents: true,
+      permissionRequests: true,
+      imageInput: true
+    },
+    modeSemantics: 'permission',
+    accountConfigEnv: 'CLAUDE_CONFIG_DIR',
+    console: CLAUDE_CONSOLE,
+    transcript: 'claude',
+    builtIn: true
+  },
+  {
+    id: 'claude-acp',
     name: 'Claude Code (ACP)',
     adapter: 'acp',
-    // The official ACP adapter; the native Agent SDK adapter replaces it in P2 (PLAN D8).
+    // The official ACP adapter, kept selectable next to the native one.
     command: 'claude-agent-acp',
     args: [],
     capabilities: {
       ...NO_CAPABILITIES,
       appMode: true,
+      transcript: true,
       usage: true,
       history: true,
       hooks: true,
       models: true,
+      subagents: true,
       permissionRequests: true
     },
     modeSemantics: 'permission',
     accountConfigEnv: 'CLAUDE_CONFIG_DIR',
+    console: CLAUDE_CONSOLE,
+    transcript: 'claude',
+    accountsOf: 'claude',
     builtIn: true
   },
   {

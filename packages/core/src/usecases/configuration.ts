@@ -1,7 +1,7 @@
 import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { connectionSecretRef, type Connection } from '../domain/connection'
 import type { Profile } from '../domain/profile'
-import type { WorkhubConfig } from '../config/schema'
+import { appOptions, type AppOptions, type WorkhubConfig } from '../config/schema'
 import type { ConfigStore, SecretStore } from '../ports'
 import { fail, knownAgents, ok, validateConfig, type Result, type ValidationIssue } from './validation'
 
@@ -110,6 +110,42 @@ export function setActiveProfile(config: WorkhubConfig, id: string): Result<Work
   return commit(config, { ...config, activeProfileId: id })
 }
 
+export function setOptions(config: WorkhubConfig, options: Partial<AppOptions>): Result<WorkhubConfig> {
+  return commit(config, { ...config, options: { ...appOptions(config), ...options } })
+}
+
+/**
+ * Adds imported profiles, accounts and connections (ids that already exist must be left out by
+ * the caller). Imported connections may lack their secret: secrets are never imported, so a
+ * missing one is reported as a stored problem ("re-enter it") instead of refusing the import.
+ */
+export function addImported(
+  config: WorkhubConfig,
+  additions: { profiles: Profile[]; accounts: AgentAccount[]; connections: Connection[] }
+): Result<WorkhubConfig> {
+  for (const [list, items] of [
+    ['profiles', additions.profiles],
+    ['accounts', additions.accounts],
+    ['connections', additions.connections]
+  ] as const) {
+    for (const item of items) {
+      if ((config[list] as { id: string }[]).some((x) => x.id === item.id)) return exists(`${list}.${item.id}`)
+    }
+  }
+  const next: WorkhubConfig = {
+    ...config,
+    profiles: [...config.profiles, ...additions.profiles],
+    accounts: [...config.accounts, ...additions.accounts],
+    connections: [...config.connections, ...additions.connections]
+  }
+  if (!next.activeProfileId && next.profiles[0]) next.activeProfileId = next.profiles[0].id
+  const imported = new Set(additions.connections.map((c) => `connections.${c.id}.secretRef`))
+  const result = commit(config, next)
+  if (result.ok) return result
+  const blocking = result.issues.filter((i) => !(imported.has(i.path) && i.message === 'a secret is required'))
+  return blocking.length ? fail(blocking) : ok(next)
+}
+
 /** What to do with a connection's secret when saving it. */
 export type SecretChange =
   /** Keep whatever secret the connection already has. */
@@ -205,6 +241,14 @@ export class ConfigurationService {
 
   async saveAgent(agent: AgentDefinition): Promise<Result<WorkhubConfig>> {
     return this.persist(saveAgent(await this.current(), agent))
+  }
+
+  async saveOptions(options: Partial<AppOptions>): Promise<Result<WorkhubConfig>> {
+    return this.persist(setOptions(await this.current(), options))
+  }
+
+  async addImported(additions: { profiles: Profile[]; accounts: AgentAccount[]; connections: Connection[] }): Promise<Result<WorkhubConfig>> {
+    return this.persist(addImported(await this.current(), additions))
   }
 
   async deleteAgent(id: string): Promise<Result<WorkhubConfig>> {

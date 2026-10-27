@@ -14,7 +14,9 @@ const FIELD_CAPABILITY: Record<MonitorField, AgentCapabilityName | null> = {
   subagents: 'subagents',
   activeTime: null,
   planUsage: 'planUsage',
-  mcpServers: 'mcpStatus'
+  mcpServers: 'mcpStatus',
+  pullRequests: 'transcript',
+  tickets: 'transcript'
 }
 
 const FIELD_VALUE: Record<MonitorField, (s: SessionMonitorSnapshot) => unknown> = {
@@ -28,7 +30,9 @@ const FIELD_VALUE: Record<MonitorField, (s: SessionMonitorSnapshot) => unknown> 
   subagents: (s) => s.subagents,
   activeTime: (s) => s.activeTimeMs,
   planUsage: (s) => s.planUsage,
-  mcpServers: (s) => s.mcpServers
+  mcpServers: (s) => s.mcpServers,
+  pullRequests: (s) => s.pullRequests,
+  tickets: (s) => s.ticketKeys
 }
 
 function hasValue(v: unknown): boolean {

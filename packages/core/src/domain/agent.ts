@@ -31,6 +31,8 @@ export interface AgentCapabilities {
   subagents: boolean
   /** The agent asks Workhub before running tools (allow/deny prompts). */
   permissionRequests: boolean
+  /** Prompts can carry images (pasted screenshots). */
+  imageInput: boolean
 }
 
 export type AgentCapabilityName = keyof AgentCapabilities
@@ -46,7 +48,8 @@ export const NO_CAPABILITIES: AgentCapabilities = {
   mcpStatus: false,
   mcpControl: false,
   subagents: false,
-  permissionRequests: false
+  permissionRequests: false,
+  imageInput: false
 }
 
 /**
@@ -75,8 +78,32 @@ export interface AgentDefinition {
    * Codex: `CODEX_HOME`). Unset when the agent has no per-account config folder.
    */
   accountConfigEnv?: string
+  /**
+   * The agent's own terminal UI, for the console view of a session (Workhub 1's console mode).
+   * `{sessionId}` in the args is replaced with the agent's session id.
+   */
+  console?: ConsoleLaunch
+  /** Id of the transcript reader that fills the monitor of this agent's sessions, e.g. `claude`. */
+  transcript?: string
+  /** Another agent whose accounts this one uses (Claude over ACP uses the native Claude accounts). */
+  accountsOf?: string
   /** True for agents shipped with Workhub; false for agents defined in the user's config. */
   builtIn?: boolean
+}
+
+export interface ConsoleLaunch {
+  command: string
+  args: string[]
+  /** Args that open an existing session, e.g. `--resume {sessionId}`. */
+  resumeArgs?: string[]
+  /** Args that start a new session with an id chosen by Workhub, e.g. `--session-id {sessionId}`. */
+  newSessionArgs?: string[]
+}
+
+/** The command line of an agent's console view: resume when the session has history, else start it with its id. */
+export function consoleCommand(launch: ConsoleLaunch, agentSessionId: string | undefined, hasHistory: boolean): { command: string; args: string[] } {
+  const extra = !agentSessionId ? [] : hasHistory ? (launch.resumeArgs ?? []) : (launch.newSessionArgs ?? [])
+  return { command: launch.command, args: [...launch.args, ...extra.map((a) => a.replaceAll('{sessionId}', agentSessionId ?? ''))] }
 }
 
 /** One account of an agent. An agent can have any number of accounts (not a fixed pair). */
@@ -88,6 +115,11 @@ export interface AgentAccount {
   configDir?: string
   /** Extra environment for sessions started with this account. */
   env?: Record<string, string>
+}
+
+/** The agent id an agent's accounts are bound to. */
+export function accountAgentId(agent: Pick<AgentDefinition, 'id' | 'accountsOf'>): string {
+  return agent.accountsOf ?? agent.id
 }
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/

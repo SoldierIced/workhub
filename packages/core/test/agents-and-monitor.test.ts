@@ -22,7 +22,7 @@ describe('resolveEffectiveAgents', () => {
 
   it('expands an agent into one entry per bound account', () => {
     const c = config({ accounts: [claudeA, claudeB, kiroWork], profiles: [profile({ accountIds: ['claude-a', 'claude-b'] })] })
-    expect(keys(c, 'acme')).toEqual(['claude:claude-a', 'claude:claude-b', 'kiro', 'opencode', 'shell'])
+    expect(keys(c, 'acme')).toEqual(['claude:claude-a', 'claude:claude-b', 'claude-acp:claude-a', 'claude-acp:claude-b', 'kiro', 'opencode', 'shell'])
   })
 
   it('limits to the allowed agents, plus agents of bound accounts', () => {
@@ -31,7 +31,7 @@ describe('resolveEffectiveAgents', () => {
   })
 
   it('uses a user agent in place of the built-in with the same id', () => {
-    const custom: AgentDefinition = { ...BUILTIN_AGENTS[1]!, name: 'Kiro (custom)', args: ['acp', '--trace'] }
+    const custom: AgentDefinition = { ...BUILTIN_AGENTS.find((a) => a.id === 'kiro')!, name: 'Kiro (custom)', args: ['acp', '--trace'] }
     const entry = resolveEffectiveAgents(config({ agents: [custom] }), null).find((e) => e.agent.id === 'kiro')
     expect(entry?.agent.args).toEqual(['acp', '--trace'])
     expect(entry?.agent.builtIn).toBe(false)
@@ -39,7 +39,7 @@ describe('resolveEffectiveAgents', () => {
 
   it('labels account entries with the account name', () => {
     const c = config({ accounts: [claudeA], profiles: [profile({ accountIds: ['claude-a'], agentIds: [] })] })
-    expect(resolveEffectiveAgents(c, 'acme').map((e) => e.label)).toEqual(['Claude Code (ACP) - Account A'])
+    expect(resolveEffectiveAgents(c, 'acme').map((e) => e.label)).toEqual(['Claude Code - Account A'])
   })
 })
 

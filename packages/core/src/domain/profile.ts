@@ -24,4 +24,6 @@ export interface Profile {
    */
   agentIds?: string[]
   modules: ModuleToggles
+  /** Folders the profile works in (Workhub 1's profile folders): new sessions and history group by them. */
+  folders?: string[]
 }

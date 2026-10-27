@@ -7,7 +7,7 @@ import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
  * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
  */
-export const CONFIG_VERSION = 1
+export const CONFIG_VERSION = 2
 
 export interface WorkhubConfig {
   version: typeof CONFIG_VERSION
@@ -17,6 +17,23 @@ export interface WorkhubConfig {
   accounts: AgentAccount[]
   profiles: Profile[]
   activeProfileId?: string
+  /** App-wide switches; see `appOptions` for the defaults. */
+  options?: AppOptions
+}
+
+export interface AppOptions {
+  /**
+   * Read Claude plan usage (5 h and weekly windows) from Anthropic's undocumented OAuth usage
+   * endpoint with each account's own Claude Code login, as Workhub 1 does. Off by default
+   * (PLAN section 6): the endpoint is not a public API and may change or be refused.
+   */
+  claudePlanUsage: boolean
+}
+
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false }
+
+export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
+  return { ...DEFAULT_OPTIONS, ...config.options }
 }
 
 export function emptyConfig(): WorkhubConfig {
@@ -42,7 +59,15 @@ const capabilities = z.object({
   mcpStatus: z.boolean(),
   mcpControl: z.boolean(),
   subagents: z.boolean(),
-  permissionRequests: z.boolean()
+  permissionRequests: z.boolean(),
+  imageInput: z.boolean().default(false)
+})
+
+const consoleLaunch = z.object({
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  resumeArgs: z.array(z.string()).optional(),
+  newSessionArgs: z.array(z.string()).optional()
 })
 
 const connection = z.object({
@@ -65,6 +90,9 @@ const agent = z.object({
   capabilities,
   modeSemantics: z.enum(['permission', 'persona', 'none']).default('none'),
   accountConfigEnv: z.string().optional(),
+  console: consoleLaunch.optional(),
+  transcript: z.string().optional(),
+  accountsOf: id.optional(),
   builtIn: z.boolean().optional()
 })
 
@@ -89,7 +117,8 @@ const profile = z.object({
   connections: z.partialRecord(z.enum(CONNECTION_KINDS), id).default({}),
   accountIds: z.array(id).default([]),
   agentIds: z.array(id).optional(),
-  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false })
+  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
+  folders: z.array(z.string().min(1)).optional()
 })
 
 export const configSchema = z.object({
@@ -98,7 +127,8 @@ export const configSchema = z.object({
   agents: z.array(agent).default([]),
   accounts: z.array(account).default([]),
   profiles: z.array(profile).default([]),
-  activeProfileId: id.optional()
+  activeProfileId: id.optional(),
+  options: z.object({ claudePlanUsage: z.boolean().default(false) }).optional()
 })
 
 // Compile-time guard: the schema output must stay assignable to the domain types.

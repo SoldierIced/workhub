@@ -27,16 +27,36 @@ export interface ContextUsage {
 
 export interface ToolCallSummary {
   id: string
+  /** What the call did, in words ("Read config.ts", "Ran the tests"). */
   title: string
+  /** The command, path or URL behind the title. */
+  detail?: string
   /** ACP tool kind: read, edit, execute, fetch, other... */
   kind?: string
+  /** pending, in_progress, completed, failed. */
   status?: string
+  /** Epoch milliseconds. */
+  startedAt?: number
+  endedAt?: number
 }
 
 export interface SubagentSummary {
   id: string
   name?: string
+  /** running, completed, failed, stopped. */
   status?: string
+  /** Subagent type, e.g. `general-purpose`. */
+  type?: string
+  description?: string
+  model?: string
+  tokens?: TokenUsage
+  cost?: Money
+  /** The last thing it did, in words. */
+  lastStep?: string
+  stepCount?: number
+  /** Epoch milliseconds. */
+  startedAt?: number
+  lastActivityAt?: number
 }
 
 export interface PlanUsageWindow {
@@ -46,12 +66,18 @@ export interface PlanUsageWindow {
   resetsAt?: number
 }
 
-export type McpServerState = 'loading' | 'running' | 'needs-auth' | 'failed' | 'unknown'
+export type McpServerState = 'loading' | 'running' | 'needs-auth' | 'failed' | 'disabled' | 'unknown'
 
 export interface McpServerStatus {
   name: string
   state: McpServerState
   toolCount?: number
+  /** Tool names without the server prefix, when the agent reports them. */
+  tools?: string[]
+  /** Why the server failed, when the agent says. */
+  error?: string
+  /** Where the server is configured (user, project, plugin...), when the agent says. */
+  source?: string
 }
 
 export interface SessionMonitorSnapshot {
@@ -70,6 +96,10 @@ export interface SessionMonitorSnapshot {
   activeTimeMs?: number
   planUsage?: PlanUsageWindow[]
   mcpServers?: McpServerStatus[]
+  /** Pull request URLs the session's tool calls and commands created or touched, oldest first. */
+  pullRequests?: string[]
+  /** Ticket keys (`ABC-123`) named in the session's prompts, tool calls and commands, oldest first. */
+  ticketKeys?: string[]
 }
 
 export type MonitorField =
@@ -84,3 +114,5 @@ export type MonitorField =
   | 'activeTime'
   | 'planUsage'
   | 'mcpServers'
+  | 'pullRequests'
+  | 'tickets'

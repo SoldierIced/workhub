@@ -150,6 +150,8 @@ export const en = {
   'monitor.activeTime': 'Active time',
   'monitor.planUsage': 'Plan usage',
   'monitor.mcpServers': 'MCP servers',
+  'monitor.pullRequests': 'Pull requests',
+  'monitor.tickets': 'Tickets',
   'monitor.tools.one': '{count} tool',
   'monitor.tools.other': '{count} tools',
 

@@ -7,7 +7,11 @@ import { CONFIG_VERSION, configSchema, emptyConfig, type WorkhubConfig } from '.
 export type Migration = (raw: Record<string, unknown>) => Record<string, unknown>
 
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
-  0: (raw) => ({ ...raw, version: 1 })
+  0: (raw) => ({ ...raw, version: 1 }),
+  // 1 -> 2: optional profile folders, agent console/transcript, the imageInput capability and app
+  // options. All of them default, so the document needs no change; the bump keeps an older Workhub
+  // from loading (and dropping) the new fields.
+  1: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

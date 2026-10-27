@@ -3,7 +3,7 @@ import { CONFIG_VERSION, ConfigParseError, ConfigVersionError, migrateConfig, pa
 
 describe('parseConfig', () => {
   it('returns an empty config for a missing document', () => {
-    expect(parseConfig(null)).toEqual({ version: 1, connections: [], agents: [], accounts: [], profiles: [] })
+    expect(parseConfig(null)).toEqual({ version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [] })
   })
 
   it('migrates an unversioned document to the current version and fills defaults', () => {

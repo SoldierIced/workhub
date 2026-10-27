@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ConfigParseError, ConfigVersionError, emptyConfig, type WorkhubConfig } from '@workhub/core'
+import { CONFIG_VERSION, ConfigParseError, ConfigVersionError, emptyConfig, type WorkhubConfig } from '@workhub/core'
 import { JsonConfigStore } from '../src/config-json'
 import { EncryptionUnavailableError, MemorySecretStore, SafeStorageSecretStore, type SafeStorageLike } from '../src/secrets-electron'
 
@@ -52,7 +52,7 @@ describe('JsonConfigStore', () => {
   it('migrates an unversioned file on load', async () => {
     const path = join(dir, 'config.json')
     await writeFile(path, JSON.stringify({ profiles: [{ id: 'acme', name: 'Acme' }] }))
-    expect((await new JsonConfigStore(path).load()).version).toBe(1)
+    expect((await new JsonConfigStore(path).load()).version).toBe(CONFIG_VERSION)
   })
 
   it('refuses corrupt or newer files without touching them', async () => {

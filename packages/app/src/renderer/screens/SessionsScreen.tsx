@@ -341,7 +341,9 @@ const FIELD_LABEL: Record<MonitorField, MessageKey> = {
   subagents: 'monitor.subagents',
   activeTime: 'monitor.activeTime',
   planUsage: 'monitor.planUsage',
-  mcpServers: 'monitor.mcpServers'
+  mcpServers: 'monitor.mcpServers',
+  pullRequests: 'monitor.pullRequests',
+  tickets: 'monitor.tickets'
 }
 
 function MonitorPanel({ data }: { data: SessionData }) {
@@ -373,6 +375,10 @@ function MonitorPanel({ data }: { data: SessionData }) {
         return m.planUsage?.map((p) => `${p.window}: ${p.percent}%`).join(', ')
       case 'mcpServers':
         return null
+      case 'pullRequests':
+        return m.pullRequests?.join('\n')
+      case 'tickets':
+        return m.ticketKeys?.join(', ')
     }
   }
   const servers = m.mcpServers ?? []

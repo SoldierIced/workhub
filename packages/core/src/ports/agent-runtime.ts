@@ -13,6 +13,26 @@ export interface StartSessionRequest {
   /** Initial terminal size, for terminal sessions. */
   cols?: number
   rows?: number
+  /**
+   * The agent's session id, chosen by Workhub so every view of the session (app, console) and
+   * its transcript share it. With `resume` the session already exists and is continued.
+   */
+  agentSessionId?: string
+  resume?: boolean
+  /** Model to start with; the agent's default when unset. */
+  model?: string
+}
+
+/** An image pasted into a prompt, base64 without the `data:` prefix. */
+export interface ImageInput {
+  mediaType: string
+  data: string
+}
+
+export interface ModelOption {
+  id: string
+  name: string
+  description?: string
 }
 
 export interface StartedSession {
@@ -40,8 +60,17 @@ export interface PromptResult {
 export type AgentEvent =
   | { sessionId: string; type: 'state'; state: SessionState; error?: string }
   | { sessionId: string; type: 'message'; role: 'agent' | 'thought'; text: string }
-  | { sessionId: string; type: 'tool'; toolCallId: string; title?: string; status?: string; kind?: string }
-  | { sessionId: string; type: 'permission'; requestId: string; title: string; options: PermissionOption[] }
+  | { sessionId: string; type: 'tool'; toolCallId: string; title?: string; status?: string; kind?: string; detail?: string }
+  | { sessionId: string; type: 'permission'; requestId: string; title: string; options: PermissionOption[]; detail?: string }
+  /** The agent withdrew a permission request (the turn was interrupted). */
+  | { sessionId: string; type: 'permissionCancelled'; requestId: string }
+  /** Models the session can switch to, and the current one. */
+  | { sessionId: string; type: 'models'; models: ModelOption[]; currentModelId?: string }
+  /**
+   * Something the agent's harness reports outside the conversation: a hook's output, an
+   * informational banner. Shown as its own block, never merged into the agent's reply.
+   */
+  | { sessionId: string; type: 'notice'; noticeId: string; kind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
   | { sessionId: string; type: 'permissionMode'; mode: PermissionModeInfo; currentModeId?: string }
   /** Partial monitor update; the receiver merges it (see `mergeMonitor`). */
   | { sessionId: string; type: 'monitor'; snapshot: SessionMonitorSnapshot }
@@ -62,7 +91,8 @@ export interface AgentRuntime {
   capabilities(agent: AgentDefinition): AgentCapabilities
   /** Spawns the agent and opens the session. Emits `state: starting` right away. */
   start(request: StartSessionRequest): Promise<StartedSession>
-  prompt(sessionId: string, text: string): Promise<PromptResult>
+  /** Runs one prompt turn; `images` only reach agents whose capabilities include `imageInput`. */
+  prompt(sessionId: string, text: string, images?: ImageInput[]): Promise<PromptResult>
   cancel(sessionId: string): Promise<void>
   stop(sessionId: string): Promise<void>
   stopAll(): Promise<void>
@@ -81,4 +111,18 @@ export interface TerminalControl {
 export function isTerminalControl(runtime: AgentRuntime): runtime is AgentRuntime & TerminalControl {
   const r = runtime as Partial<TerminalControl>
   return typeof r.write === 'function' && typeof r.resize === 'function'
+}
+
+/** Live controls some runtimes offer (the native Claude adapter): model and MCP servers. */
+export interface SessionControls {
+  setModel(sessionId: string, modelId: string | null): Promise<void>
+  /** Asks for a fresh MCP status; it arrives as a `monitor` event. */
+  refreshMcp(sessionId: string): void
+  reconnectMcp(sessionId: string, server: string): void
+  toggleMcp(sessionId: string, server: string, enabled: boolean): void
+}
+
+export function hasSessionControls(runtime: AgentRuntime): runtime is AgentRuntime & SessionControls {
+  const r = runtime as Partial<SessionControls>
+  return typeof r.setModel === 'function' && typeof r.reconnectMcp === 'function' && typeof r.toggleMcp === 'function'
 }

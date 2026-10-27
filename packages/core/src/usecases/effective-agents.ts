@@ -1,4 +1,4 @@
-import type { AgentAccount, AgentDefinition } from '../domain/agent'
+import { accountAgentId, type AgentAccount, type AgentDefinition } from '../domain/agent'
 import type { WorkhubConfig } from '../config/schema'
 import { knownAgents } from './validation'
 
@@ -19,7 +19,8 @@ export function effectiveAgentKey(agentId: string, accountId: string | null): st
 /**
  * The agents a profile offers. For each agent the profile allows (all known agents when
  * `agentIds` is unset): one entry per bound account of that agent, or a single default entry
- * when none is bound. Agents with a bound account are offered even if `agentIds` omits them.
+ * when none is bound. Agents with a bound account are offered even if `agentIds` omits them. An
+ * agent that uses another agent's accounts (`accountsOf`) expands into those accounts too.
  * Without a profile, every known agent with its default setup.
  */
 export function resolveEffectiveAgents(config: WorkhubConfig, profileId: string | null | undefined): EffectiveAgent[] {
@@ -34,7 +35,7 @@ export function resolveEffectiveAgents(config: WorkhubConfig, profileId: string 
   const result: EffectiveAgent[] = []
   for (const agent of agents) {
     if (!allowed.has(agent.id)) continue
-    const accounts = bound.filter((a) => a.agentId === agent.id)
+    const accounts = bound.filter((a) => a.agentId === accountAgentId(agent))
     if (accounts.length === 0) result.push(entry(agent, null))
     else for (const acc of accounts) result.push(entry(agent, acc))
   }
