@@ -33,7 +33,7 @@ export function UsageWindowRow({ w, ceiling, now, className }: { w: PlanUsageWin
     .join('\n')
   return (
     <span className={cn('flex items-center gap-1.5 text-xs', className)} title={hover} data-testid="usage-window">
-      <span className="w-9 shrink-0 truncate text-subtle">{label}</span>
+      <span className="w-11 shrink-0 truncate text-subtle">{label}</span>
       <span
         className="relative h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-surface-hover"
         role="progressbar"
