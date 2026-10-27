@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No @types/node and no DOM: importing fs, child_process or window here fails the typecheck.
+    "types": []
+  },
+  "include": ["src", "test"]
+}
