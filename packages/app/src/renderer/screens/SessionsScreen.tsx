@@ -17,6 +17,7 @@ import { ContinueMenu } from './sessions/ContinueMenu'
 import { MonitorPanel } from './sessions/MonitorPanel'
 import { PendingSwitchBar } from './sessions/PendingSwitchBar'
 import { TerminalPane } from './sessions/TerminalPane'
+import { errorText } from '../lib/errorText'
 
 export interface SessionsScreenProps {
   sessions: SessionData[]
@@ -70,7 +71,7 @@ function ModeSwitch({ data }: { data: SessionData }) {
     try {
       await window.hub.sessions.setMode(v.id, mode)
     } catch (e) {
-      pushItem(v.id, 'error', e instanceof Error ? e.message : String(e))
+      pushItem(v.id, 'error', errorText(e))
     } finally {
       setPending(false)
     }
@@ -113,7 +114,7 @@ function ModelPicker({ data }: { data: SessionData }) {
   const picker = sessionModelPicker(v)
   const change = (id: string) => {
     rememberModel(effectiveAgentKey(v.agentId, v.accountId), id || null)
-    void window.hub.sessions.setModel(v.id, id || null).catch((e: unknown) => pushItem(v.id, 'error', e instanceof Error ? e.message : String(e)))
+    void window.hub.sessions.setModel(v.id, id || null).catch((e: unknown) => pushItem(v.id, 'error', errorText(e)))
   }
   return (
     <span data-testid="model-picker" title={v.modelIgnored ? t('agentControls.modelIgnored') : undefined}>
@@ -137,7 +138,7 @@ function ModePicker({ data }: { data: SessionData }) {
   const change = (id: string) => {
     if (!id) return
     rememberMode(effectiveAgentKey(v.agentId, v.accountId), id)
-    void window.hub.sessions.setAgentMode(v.id, id).catch((e: unknown) => pushItem(v.id, 'error', e instanceof Error ? e.message : String(e)))
+    void window.hub.sessions.setAgentMode(v.id, id).catch((e: unknown) => pushItem(v.id, 'error', errorText(e)))
   }
   const label = t(picker.kind === 'agent' ? 'agentControls.agent' : 'agentControls.permission')
   return (

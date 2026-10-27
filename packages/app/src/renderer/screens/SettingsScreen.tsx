@@ -9,6 +9,7 @@ import {
   OPTIONAL_MODULES,
   orderAgents,
   resolveEffectiveAgents,
+  slugId,
   type AgentAccount,
   type Connection,
   type ConnectionKind,
@@ -28,7 +29,7 @@ import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
-import { humanIssue, type IssueTarget } from '../lib/configIssues'
+import { friendlyIssue, humanIssue, profileFieldErrors, type IssueTarget } from '../lib/configIssues'
 import { showWorkhub1Migration, showWorkhub1Tokens, useWorkhub1Preview } from '../lib/workhub1'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { AiReviewProfileFields } from './AiReviewSettings'
@@ -73,6 +74,7 @@ const fromLines = (text: string): Record<string, string> =>
   )
 
 function Issues({ issues, title }: { issues: ValidationIssue[]; title?: string }) {
+  const { t } = useI18n()
   if (!issues.length) return null
   return (
     <div role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
@@ -80,7 +82,7 @@ function Issues({ issues, title }: { issues: ValidationIssue[]; title?: string }
       <ul className="flex flex-col gap-0.5">
         {issues.map((i) => (
           <li key={`${i.path}${i.message}`}>
-            <code className="rounded bg-danger-soft px-1">{i.path}</code> {i.message}
+            {friendlyIssue(i, (k, p) => t(k, p))}
           </li>
         ))}
       </ul>
@@ -609,11 +611,17 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
   const initial = snap.config.profiles.find((x) => x.id === initialId)
   const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
   const [form, setForm] = useState<Profile>(initial ? structuredClone(initial) : emptyProfile())
+  // A new profile's id follows its name until the user edits the id themselves.
+  const [idEdited, setIdEdited] = useState(false)
+  // Field problems, shown only after a save attempt.
+  const [errors, setErrors] = useState<ReturnType<typeof profileFieldErrors> | null>(null)
 
   const select = (id: string | null) => {
     const p = snap.config.profiles.find((x) => x.id === id)
     setSelected(p ? p.id : null)
     setForm(p ? structuredClone(p) : emptyProfile())
+    setIdEdited(false)
+    setErrors(null)
   }
   const toggle = (list: string[], id: string, on: boolean) => (on ? [...list, id] : list.filter((x) => x !== id))
   const allAgents = form.agentIds === undefined
@@ -621,6 +629,10 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
   const orderedAgents = orderAgents(form.preferredAgents, resolveEffectiveAgents({ ...snap.config, profiles: [form] }, form.id || null))
 
   const save = async () => {
+    // Nothing is sent until the profile is valid: the id and name are the only required fields.
+    const found = profileFieldErrors(form, selected ? [] : snap.config.profiles.map((p) => p.id))
+    setErrors(found)
+    if (found.id || found.name) return
     const folders = form.folders?.map((f) => f.trim()).filter(Boolean)
     const profile: Profile = { ...form, folders: folders?.length ? folders : undefined }
     if (!profile.folders) delete profile.folders
@@ -642,11 +654,28 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
       form={
         <>
           <div className="grid grid-cols-2 gap-4">
-            <Field label={t('settings.id')} help={t('help.id')}>
-              <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="acme" />
+            <Field label={t('settings.id')} help={t('help.id')} error={errors?.id && t(errors.id)}>
+              <Input
+                value={form.id}
+                disabled={selected !== null}
+                onChange={(e) => {
+                  setIdEdited(true)
+                  setForm({ ...form, id: e.target.value })
+                  setErrors(null)
+                }}
+                placeholder="acme"
+              />
             </Field>
-            <Field label={t('settings.name')}>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme" />
+            <Field label={t('settings.name')} error={errors?.name && t(errors.name)}>
+              <Input
+                value={form.name}
+                onChange={(e) => {
+                  const name = e.target.value
+                  setForm({ ...form, name, ...(selected === null && !idEdited ? { id: name.trim() ? slugId(name, '') : '' } : {}) })
+                  setErrors(null)
+                }}
+                placeholder="Acme"
+              />
             </Field>
           </div>
           <Field label={t('settings.folders')} hint={t('settings.foldersHint')} help={t('help.profile.folders')}>

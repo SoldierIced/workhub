@@ -38,6 +38,7 @@ import { SessionsScreen } from './screens/SessionsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, setViewing, startStore, useSessions } from './store'
+import { errorText } from './lib/errorText'
 
 /** Applies the appearance preferences to <html> and tells the main process (native chrome). */
 function useTheme(): 'light' | 'dark' {
@@ -193,7 +194,7 @@ function Shell() {
       })
       openSession(view.id)
     } catch (e) {
-      toast(t('groups.reopenFailed', { message: e instanceof Error ? e.message : String(e) }), 'danger')
+      toast(t('groups.reopenFailed', { message: errorText(e) }), 'danger')
     }
   }
 
@@ -208,7 +209,7 @@ function Shell() {
       openSession(view.id)
       toast(t('health.investigate.drafted'))
     } catch (e) {
-      toast(t('health.investigate.failed', { message: e instanceof Error ? e.message : String(e) }), 'danger')
+      toast(t('health.investigate.failed', { message: errorText(e) }), 'danger')
     }
   }
 

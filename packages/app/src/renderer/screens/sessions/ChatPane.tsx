@@ -18,6 +18,7 @@ import type { ContinuityOptions } from '@shared/continuity-api'
 import { dismissOffer, originText, useContinuityActions, useContinuityOffer } from '../../lib/continuity'
 import { ContinuityNotice } from './ContinuityNotice'
 import { openSubagent, subagentOfCall } from '../../lib/subagentView'
+import { errorText } from '../../lib/errorText'
 
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
 
@@ -239,7 +240,7 @@ export function ChatPane({ data }: { data: SessionData }) {
     try {
       pushTurnEnd(v.id, await window.hub.sessions.prompt(v.id, value, inputs.length ? inputs : undefined))
     } catch (e) {
-      pushItem(v.id, 'error', e instanceof Error ? e.message : String(e))
+      pushItem(v.id, 'error', errorText(e))
     }
   }
 

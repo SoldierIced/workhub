@@ -396,7 +396,9 @@ function guarded<A extends unknown[]>(fn: (...args: A) => Promise<Result<Workhub
     try {
       return await fn(...args)
     } catch (err) {
-      return { ok: false, issues: [{ path: 'config', message: err instanceof Error ? err.message : String(err) }] }
+      // The real error goes to the log; the user gets a sentence, never a dumped validation error.
+      console.error('config write failed', err)
+      return { ok: false, issues: [{ path: 'config', code: 'unexpected', message: 'the change could not be saved' }] }
     }
   }
 }

@@ -12,6 +12,7 @@ import { Input } from '../atoms/Input'
 import { Select } from '../atoms/Select'
 import { Dialog } from '../molecules/Dialog'
 import { Field } from '../molecules/Field'
+import { errorText } from '../../lib/errorText'
 
 export interface NewSessionDialogProps {
   open: boolean
@@ -111,7 +112,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
       onOpenChange(false)
       onStarted(view.id)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }
