@@ -30,9 +30,9 @@ export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: 
   return (
     <section aria-label={t('usage.title')} className="rounded-lg border border-border bg-surface px-3 py-2.5 shadow-sm">
       <header className="flex items-center gap-1.5 text-sm font-medium text-muted">
-        <Gauge className="size-3.5" aria-hidden />
-        {t('usage.title')}
-        <span className="ml-auto text-xs font-normal text-subtle">{tn('usage.running', running)}</span>
+        <Gauge className="size-3.5 shrink-0" aria-hidden />
+        <span className="min-w-0 truncate">{t('usage.title')}</span>
+        <span className="ml-auto shrink-0 text-xs font-normal whitespace-nowrap text-subtle">{tn('usage.running', running)}</span>
         <UsageRefreshButton className="-my-1 size-6" />
       </header>
       {groups.length === 0 && !kiroSpend && !apiSpend.length ? (
