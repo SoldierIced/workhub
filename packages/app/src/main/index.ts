@@ -13,6 +13,7 @@ import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
 import { createCliRunner } from '@workhub/adapters/cli'
 import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
+import { readNotificationPermission } from '@workhub/adapters/notification-permission'
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
@@ -71,6 +72,7 @@ import { TrayPopover } from './tray-popover'
 import { healthAlertWords, isLocale, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
 import { profileWorkspaces } from './workspaces'
+import { NotificationPermissionCheck } from './notification-permission'
 import { HealthWatcher, TicketWatcher } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
@@ -195,11 +197,19 @@ const appBadge = new AppBadge({
   describe: (count) => trayText(trayLocale).tn('tray.tooltip.attention', count)
 })
 
+/** Whether macOS shows this app's notifications (Settings warns when it does not). */
+const notificationPermission = new NotificationPermissionCheck({
+  platform: process.platform,
+  supported: () => Notification.isSupported(),
+  readPrefs: () => readNotificationPermission({ execPath: process.execPath }),
+  createProbe: () => new Notification({ title: app.getName(), silent: true })
+})
+
 /** Every OS notification goes through here: per-kind switches and "Pause notifications". */
 const notifier = new Notifier({
   options: async () => appOptions(await configuration.current()),
   supported: () => Notification.isSupported(),
-  create: (content) => new Notification(content),
+  create: (content) => notificationPermission.observe(new Notification(content)),
   logPath: process.env['WORKHUB_NOTIFICATION_LOG'],
   onShown: scheduleTray
 })
@@ -758,7 +768,7 @@ function registerIpc(): void {
     const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v === 'string'))
     await saveProfileEnv(profileId, clean, removed.filter((n) => typeof n === 'string'), secrets)
   })
-  ipc.handle('systemNotifications:status', () => ({ supported: Notification.isSupported() }))
+  ipc.handle('systemNotifications:status', async () => ({ supported: await notificationPermission.allowed() }))
   ipc.on('systemNotifications:openSettings', () => {
     const target =
       process.platform === 'darwin' ? 'x-apple.systempreferences:com.apple.Notifications-Settings.extension' : process.platform === 'win32' ? 'ms-settings:notifications' : null
