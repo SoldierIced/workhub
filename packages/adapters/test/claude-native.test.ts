@@ -1,0 +1,240 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { BUILTIN_AGENTS, type AgentEvent } from '@workhub/core'
+import {
+  accessToken,
+  ClaudeBridgeMapper,
+  ClaudeNativeRuntime,
+  ClaudePlanUsageReader,
+  ClaudeSessionHistory,
+  keychainServices,
+  parsePlanUsage,
+  permissionResult,
+  PlanUsageError,
+  rateLimitWindow,
+  toHistoryMessages
+} from '../src/agent-claude-native'
+import { parsePlist, workhub1SettingsFromPlist } from '../src/workhub1-import'
+
+const fixtures = join(import.meta.dirname, 'fixtures')
+const fakeBridge = join(fixtures, 'fake-bridge')
+const claude = BUILTIN_AGENTS.find((a) => a.id === 'claude')!
+
+function waitFor(events: AgentEvent[], predicate: (e: AgentEvent) => boolean, ms = 5000): Promise<AgentEvent> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now()
+    const tick = () => {
+      const found = events.find(predicate)
+      if (found) resolve(found)
+      else if (Date.now() - started > ms) reject(new Error('timed out'))
+      else setTimeout(tick, 10)
+    }
+    tick()
+  })
+}
+
+const agentText = (events: AgentEvent[]) => events.flatMap((e) => (e.type === 'message' && e.role === 'agent' ? [e.text] : [])).join('')
+
+describe('ClaudeNativeRuntime over the bridge protocol', () => {
+  let rt: ClaudeNativeRuntime
+  const events: AgentEvent[] = []
+  const start = async (id: string, extra: Partial<Parameters<ClaudeNativeRuntime['start']>[0]> = {}) => {
+    rt = new ClaudeNativeRuntime({ bridgeDir: fakeBridge, stopTimeoutMs: 2000 })
+    events.length = 0
+    rt.subscribe((e) => events.push(e))
+    return rt.start({ sessionId: id, agent: claude, account: null, cwd: fixtures, env: {}, ...extra })
+  }
+  afterEach(async () => {
+    await rt?.stopAll()
+  })
+
+  it('starts with a Workhub-chosen session id, reports models, permission mode, MCP servers and hook output', async () => {
+    const started = await start('n1', { agentSessionId: 'aaaaaaaa-1111-4111-8111-111111111111', model: 'haiku', env: { CLAUDE_CONFIG_DIR: '/tmp/acme-claude' } })
+    expect(started.agentSessionId).toBe('aaaaaaaa-1111-4111-8111-111111111111')
+    expect(events.filter((e) => e.type === 'state').map((e) => e.type === 'state' && e.state)).toEqual(['starting', 'ready'])
+    const models = await waitFor(events, (e) => e.type === 'models')
+    expect(models.type === 'models' && models.models.map((m) => m.id)).toEqual(['default', 'haiku'])
+    const mode = await waitFor(events, (e) => e.type === 'permissionMode')
+    expect(mode.type === 'permissionMode' && mode.mode).toMatchObject({ id: 'default', source: 'agent', unattended: false })
+    const mcp = await waitFor(events, (e) => e.type === 'monitor' && !!e.snapshot.mcpServers)
+    expect(mcp.type === 'monitor' && mcp.snapshot.mcpServers).toEqual([{ name: 'acme-docs', state: 'running', toolCount: 2, tools: ['search', 'read'] }])
+    const hook = await waitFor(events, (e) => e.type === 'notice')
+    expect(hook).toMatchObject({ kind: 'hook', title: 'SessionStart · SessionStart:startup', text: 'Remember the acme rules.' })
+
+    // The start line carries the session id (not resume), the model and the account folder.
+    expect(await rt.prompt('n1', 'echo start')).toEqual({ stopReason: 'end_turn' })
+    const echoed = JSON.parse(agentText(events)) as { cwd: string; start: Record<string, unknown>; configEnv: string }
+    expect(echoed.start).toMatchObject({ sessionId: 'aaaaaaaa-1111-4111-8111-111111111111', model: 'haiku', configDir: '/tmp/acme-claude' })
+    expect(echoed.start['resume']).toBeUndefined()
+    expect(echoed.configEnv).toBe('/tmp/acme-claude')
+  })
+
+  it('resumes a session by id', async () => {
+    await start('n2', { agentSessionId: 'bbbbbbbb-2222-4222-8222-222222222222', resume: true })
+    await rt.prompt('n2', 'echo start')
+    expect(JSON.parse(agentText(events)).start).toMatchObject({ resume: 'bbbbbbbb-2222-4222-8222-222222222222' })
+  })
+
+  it('streams the reply once (deltas, not the full message again) and sends images as content blocks', async () => {
+    await start('n3')
+    expect(await rt.prompt('n3', 'Reply with the single word pong.')).toEqual({ stopReason: 'end_turn' })
+    expect(agentText(events)).toBe('pong')
+    const usage = await waitFor(events, (e) => e.type === 'monitor' && !!e.snapshot.planUsage)
+    expect(usage.type === 'monitor' && usage.snapshot.planUsage).toEqual([{ window: '5h', percent: 42, resetsAt: 1790000000000 }])
+    events.length = 0
+    await rt.prompt('n3', 'look', [{ mediaType: 'image/png', data: 'iVBORw0KGgo=' }])
+    expect(agentText(events)).toBe('pong with 1 image(s)')
+  })
+
+  it('asks for permission, answers with the chosen option and tracks the tool call', async () => {
+    await start('n4')
+    const turn = rt.prompt('n4', 'use a tool')
+    const ask = await waitFor(events, (e) => e.type === 'permission')
+    expect(ask).toMatchObject({ title: 'List files', detail: '$ ls' })
+    expect(ask.type === 'permission' && ask.options.map((o) => o.optionId)).toEqual(['allow', 'allow-always', 'deny'])
+    rt.respondPermission('n4', ask.type === 'permission' ? ask.requestId : '', 'allow-always')
+    expect(await turn).toEqual({ stopReason: 'end_turn' })
+    expect(agentText(events)).toBe('permission allow always')
+    expect(events.filter((e) => e.type === 'tool').map((e) => e.type === 'tool' && e.status)).toEqual(['in_progress', 'completed'])
+  })
+
+  it('interrupts a turn, toggles an MCP server and reports a refused setting as a notice', async () => {
+    await start('n5')
+    const turn = rt.prompt('n5', 'wait')
+    await rt.cancel('n5')
+    expect(await turn).toEqual({ stopReason: 'cancelled' })
+    rt.toggleMcp('n5', 'acme-docs', false)
+    await waitFor(events, (e) => e.type === 'monitor' && e.snapshot.mcpServers?.[0]?.state === 'disabled')
+    await rt.setModel('n5', 'nope')
+    await waitFor(events, (e) => e.type === 'notice' && e.kind === 'warning' && e.text === 'no model nope')
+  })
+
+  it('stops by closing the bridge input and reports the session stopped', async () => {
+    await start('n6')
+    await rt.stop('n6')
+    await waitFor(events, (e) => e.type === 'state' && e.state === 'stopped')
+    await expect(rt.prompt('n6', 'x')).rejects.toThrow(/no Claude session/)
+  })
+})
+
+describe('ClaudeBridgeMapper', () => {
+  it('ignores subagent traffic and keeps unstreamed text', () => {
+    const m = new ClaudeBridgeMapper('s')
+    expect(m.map({ type: 'sdk', message: { type: 'assistant', parent_tool_use_id: 'toolu_x', message: { content: [{ type: 'text', text: 'inner' }] } } })).toEqual([])
+    const events = m.map({ type: 'sdk', message: { type: 'assistant', message: { id: 'm1', model: '<synthetic>', content: [{ type: 'text', text: "You've hit your limit" }] } } })
+    expect(events).toEqual([{ sessionId: 's', type: 'message', role: 'agent', text: "You've hit your limit" }])
+  })
+
+  it('drops hooks that said nothing and flags failed ones', () => {
+    const m = new ClaudeBridgeMapper('s')
+    const hook = (extra: object) => m.map({ type: 'sdk', message: { type: 'system', subtype: 'hook_response', hook_event: 'Stop', hook_name: 'Stop', output: '', stdout: '', stderr: '', ...extra } })
+    expect(hook({ outcome: 'success' })).toEqual([])
+    expect(hook({ outcome: 'error', stderr: 'boom' })).toMatchObject([{ type: 'notice', kind: 'hook', title: 'Stop', text: 'boom', failed: true }])
+  })
+
+  it('builds the permission answers Workhub 1 sends', () => {
+    expect(permissionResult('allow', { a: 1 }, [])).toEqual({ behavior: 'allow', updatedInput: { a: 1 } })
+    expect(permissionResult(null, {}, [])).toMatchObject({ behavior: 'deny' })
+  })
+
+  it('reads plan windows from rate limit events', () => {
+    expect(rateLimitWindow({ rateLimitType: 'seven_day', utilization: 87 })).toEqual({ window: 'weekly', percent: 87 })
+    expect(rateLimitWindow({ rateLimitType: 'overage', utilization: 0.1 })).toBeNull()
+    expect(rateLimitWindow({ rateLimitType: 'five_hour' })).toBeNull()
+  })
+})
+
+describe('Claude session history', () => {
+  it('lists every session of an account with its folder and title', async () => {
+    const history = new ClaudeSessionHistory({ bridgeDir: fakeBridge })
+    const entries = await history.list({ agentId: 'claude', accountId: 'work', configDir: '/tmp/acme-work' })
+    expect(entries).toEqual([
+      { agentId: 'claude', accountId: 'work', agentSessionId: 'sess-1', title: 'Build fix', firstPrompt: 'fix it', cwd: '/tmp/acme-web', gitBranch: 'main', lastModified: 2000, createdAt: 1000 },
+      { agentId: 'claude', accountId: 'work', agentSessionId: 'sess-2', title: 'Account /tmp/acme-work', lastModified: 1500 }
+    ])
+    expect(await history.messages('sess-1', '/tmp/acme-web')).toEqual([{ kind: 'user', text: 'hello from sess-1 in /tmp/acme-web' }])
+  })
+
+  it('turns stored messages into a replayable conversation', () => {
+    const messages = toHistoryMessages([
+      { type: 'user', message: { content: '<command-name>/clear</command-name>' } },
+      { type: 'user', message: { content: [{ type: 'text', text: 'Look at this' }, { type: 'image', source: {} }] } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'Sure.' }, { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a/b.ts' } }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true }] } },
+      { type: 'assistant', parent_tool_use_id: 't9', message: { content: [{ type: 'text', text: 'subagent' }] } },
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'Done.' }] } }
+    ])
+    expect(messages).toEqual([
+      { kind: 'user', text: 'Look at this', images: 1 },
+      { kind: 'agent', text: 'Sure.' },
+      { kind: 'tool', id: 't1', title: 'Read b.ts', detail: '/a/b.ts', failed: true },
+      { kind: 'agent', text: 'Done.' }
+    ])
+  })
+})
+
+describe('Claude plan usage (opt-in)', () => {
+  const body = { five_hour: { utilization: 37.5, resets_at: '2026-10-01T15:00:00Z' }, seven_day: { utilization: '80', resets_at: null }, seven_day_opus: null, extra_usage: { is_enabled: false } }
+
+  it('parses the windows of a usage response', () => {
+    expect(parsePlanUsage(body)).toEqual([
+      { window: '5h', percent: 37.5, resetsAt: Date.parse('2026-10-01T15:00:00Z') },
+      { window: 'weekly', percent: 80 }
+    ])
+  })
+
+  it('reads the token from the folder credentials and sends it only to the usage endpoint', async () => {
+    const calls: [string, RequestInit | undefined][] = []
+    const reader = new ClaudePlanUsageReader({
+      readCredentials: async (p) => (p.endsWith('.credentials.json') ? JSON.stringify({ claudeAiOauth: { accessToken: 'tok-123' } }) : null),
+      fetch: (async (url: string, init?: RequestInit) => {
+        calls.push([url, init])
+        return new Response(JSON.stringify(body), { status: 200 })
+      }) as typeof fetch
+    })
+    expect((await reader.read('/tmp/acme-claude')).map((w) => w.window)).toEqual(['5h', 'weekly'])
+    // Cached for 45 s.
+    await reader.read('/tmp/acme-claude')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.[0]).toBe('https://api.anthropic.com/api/oauth/usage')
+    expect((calls[0]?.[1]?.headers as Record<string, string>)['Authorization']).toBe('Bearer tok-123')
+  })
+
+  it('reports a missing or expired login', async () => {
+    const none = new ClaudePlanUsageReader({ readCredentials: async () => null, platform: 'linux' })
+    await expect(none.read('/tmp/x')).rejects.toMatchObject({ code: 'noLogin' })
+    const expired = new ClaudePlanUsageReader({
+      readCredentials: async () => JSON.stringify({ claudeAiOauth: { accessToken: 't' } }),
+      fetch: (async () => new Response('', { status: 401 })) as unknown as typeof fetch
+    })
+    await expect(expired.read('/tmp/x')).rejects.toBeInstanceOf(PlanUsageError)
+  })
+
+  it('names Keychain items the way Claude Code does', () => {
+    expect(keychainServices('/u/.claude', '/u/.claude', '/u/.claude').at(-1)).toBe('Claude Code-credentials')
+    expect(keychainServices('/u/.claude-work', '/u/.claude-work', '/u/.claude')).toEqual([expect.stringMatching(/^Claude Code-credentials-[0-9a-f]{8}$/)])
+    expect(accessToken('not json')).toBeNull()
+  })
+})
+
+describe('Workhub 1 settings (read-only import)', () => {
+  const xml = readFileSync(join(fixtures, 'workhub1-defaults.plist'), 'utf8')
+
+  it('parses an XML property list', () => {
+    const root = parsePlist(xml) as Record<string, unknown>
+    expect(root['AppleLanguages']).toEqual(['es'])
+    expect(root['settings.prBabysitter']).toBe(false)
+    expect(root['terminal.fontSize']).toBe(14.5)
+    expect(root['title']).toBe('Fish & chips <3')
+    expect(root['empty']).toEqual({})
+  })
+
+  it('decodes the JSON values Workhub 1 keeps as data', () => {
+    const v1 = workhub1SettingsFromPlist(xml)
+    expect(v1.mainAccount).toEqual({ name: 'Personal', configDirectory: '~/.claude', command: '' })
+    expect(v1.secondAccount?.configDirectory).toBe('~/.claude-work')
+    expect(v1.profiles?.[0]).toMatchObject({ id: 'acme', githubScope: 'org:acme', folders: [{ path: '~/acme' }] })
+    expect(v1.jira?.['acme']?.site).toBe('acme.example.com')
+  })
+})

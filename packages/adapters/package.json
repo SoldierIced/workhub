@@ -9,13 +9,16 @@
     "./secrets-electron": "./src/secrets-electron/index.ts",
     "./agent-acp": "./src/agent-acp/index.ts",
     "./agent-terminal": "./src/agent-terminal/index.ts",
-    "./transcript-claude": "./src/transcript-claude/index.ts"
+    "./transcript-claude": "./src/transcript-claude/index.ts",
+    "./agent-claude-native": "./src/agent-claude-native/index.ts",
+    "./workhub1-import": "./src/workhub1-import/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.2",
+    "@anthropic-ai/claude-agent-sdk": "0.3.310",
     "@workhub/core": "0.0.0",
     "node-pty": "1.1.0",
     "zod": "4.6.7"

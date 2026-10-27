@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AppleLanguages</key>
+	<array>
+		<string>es</string>
+	</array>
+	<key>connections.jira</key>
+	<data>
+	eyJhY21lIjp7InNpdGUiOiJhY21lLmV4YW1wbGUuY29tIiwia2V5Y2hhaW5TZXJ2aWNlIjoid29ya2h1Yi1qaXJhLWFjbWUiLCJpZ25vcmVkU3RhdHVzZXMiOlsiRG9uZSJdfX0=
+	</data>
+	<key>profiles.definitions</key>
+	<data>
+	W3siaWQiOiJhY21lIiwibmFtZSI6IkFjbWUiLCJzeW1ib2wiOiJmb2xkZXIuZmlsbCIsImNvbG9yIjoiIzdBNkZGMCIsImZvbGRlcnMiOlt7InBhdGgiOiJ+L2FjbWUiLCJvbmx5R2l0UmVwb3MiOnRydWUsImlzQ29udGFpbmVyIjp0cnVlfV0sImdpdGh1YlNjb3BlIjoib3JnOmFjbWUiLCJ0aWNrZXRQcmVmaXhlcyI6WyJBQkMiXSwic2Vzc2lvbkVudmlyb25tZW50IjpbXX1d
+	</data>
+	<key>settings.claude.main</key>
+	<data>
+	eyJuYW1lIjoiUGVyc29uYWwiLCJjb25maWdEaXJlY3RvcnkiOiJ+Ly5jbGF1ZGUiLCJjb21tYW5kIjoiIn0=
+	</data>
+	<key>settings.claude.second</key>
+	<data>
+	eyJuYW1lIjoiV29yayIsImNvbmZpZ0RpcmVjdG9yeSI6In4vLmNsYXVkZS13b3JrIn0=
+	</data>
+	<key>settings.prBabysitter</key>
+	<false/>
+	<key>settings.usageRefreshMinutes</key>
+	<integer>5</integer>
+	<key>terminal.fontSize</key>
+	<real>14.5</real>
+	<key>title</key>
+	<string>Fish &amp; chips &lt;3</string>
+	<key>empty</key>
+	<dict/>
+</dict>
+</plist>
