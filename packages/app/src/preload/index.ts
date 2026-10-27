@@ -24,6 +24,7 @@ const api: HubApi = {
     deleteProfile: (id) => ipcRenderer.invoke('config:deleteProfile', id),
     setActiveProfile: (id) => ipcRenderer.invoke('config:setActiveProfile', id),
     saveOptions: (o) => ipcRenderer.invoke('config:saveOptions', o),
+    saveSessionGroups: (g) => ipcRenderer.invoke('config:saveSessionGroups', g),
     effectiveAgents: (profileId) => ipcRenderer.invoke('config:effectiveAgents', profileId),
     previewWorkhub1Import: () => ipcRenderer.invoke('config:previewWorkhub1Import'),
     applyWorkhub1Import: () => ipcRenderer.invoke('config:applyWorkhub1Import')
@@ -68,6 +69,10 @@ const api: HubApi = {
   usage: {
     get: (refresh) => ipcRenderer.invoke('usage:get', refresh),
     onChanged: (cb) => subscribe<[AccountUsage[]]>('usage:changed', cb)
+  },
+  notifications: {
+    show: (n) => ipcRenderer.send('notifications:show', n),
+    onOpen: (cb) => subscribe<[string]>('notifications:open', cb)
   },
   codeHost: {
     lists: (profileId, force) => ipcRenderer.invoke('codeHost:lists', profileId, force),

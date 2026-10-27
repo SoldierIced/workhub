@@ -20,3 +20,8 @@ export function useConfig(): ConfigSnapshot | null {
     () => snapshot
   )
 }
+
+/** The latest snapshot, for code that acts on it outside React (serialized writes). */
+export function currentConfig(): ConfigSnapshot | null {
+  return snapshot
+}

@@ -2,12 +2,13 @@ import { z } from 'zod'
 import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { CONNECTION_KINDS, type Connection } from '../domain/connection'
 import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
+import type { SessionGroups } from '../domain/session-groups'
 
 /**
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
  * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
  */
-export const CONFIG_VERSION = 2
+export const CONFIG_VERSION = 3
 
 export interface WorkhubConfig {
   version: typeof CONFIG_VERSION
@@ -19,6 +20,8 @@ export interface WorkhubConfig {
   activeProfileId?: string
   /** App-wide switches; see `appOptions` for the defaults. */
   options?: AppOptions
+  /** Sidebar session groups and the order of the Sessions section. */
+  sessionGroups?: SessionGroups
 }
 
 export interface AppOptions {
@@ -28,9 +31,15 @@ export interface AppOptions {
    * (PLAN section 6): the endpoint is not a public API and may change or be refused.
    */
   claudePlanUsage: boolean
+  /** OS notification when a session finishes a turn while it is not on screen. */
+  notifyReplied: boolean
+  /** OS notification when a session asks for a permission or an answer. */
+  notifyNeedsAnswer: boolean
+  /** OS notification when a session fails. */
+  notifyError: boolean
 }
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -121,6 +130,17 @@ const profile = z.object({
   folders: z.array(z.string().min(1)).optional()
 })
 
+const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string() })
+
+const sessionGroups = z.object({
+  groups: z
+    .array(z.object({ id: z.string().min(1), name: z.string(), collapsed: z.boolean().default(false), members: z.array(groupMember).default([]) }))
+    .default([]),
+  top: z
+    .array(z.discriminatedUnion('kind', [z.object({ kind: z.literal('group'), id: z.string().min(1) }), z.object({ kind: z.literal('session'), key: z.string().min(1) })]))
+    .default([])
+})
+
 export const configSchema = z.object({
   version: z.literal(CONFIG_VERSION),
   connections: z.array(connection).default([]),
@@ -128,7 +148,15 @@ export const configSchema = z.object({
   accounts: z.array(account).default([]),
   profiles: z.array(profile).default([]),
   activeProfileId: id.optional(),
-  options: z.object({ claudePlanUsage: z.boolean().default(false) }).optional()
+  options: z
+    .object({
+      claudePlanUsage: z.boolean().default(false),
+      notifyReplied: z.boolean().default(true),
+      notifyNeedsAnswer: z.boolean().default(true),
+      notifyError: z.boolean().default(true)
+    })
+    .optional(),
+  sessionGroups: sessionGroups.optional()
 })
 
 // Compile-time guard: the schema output must stay assignable to the domain types.

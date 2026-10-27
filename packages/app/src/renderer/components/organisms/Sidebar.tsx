@@ -1,5 +1,5 @@
 import { Folder, Plus } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { DragEvent, ReactNode } from 'react'
 import type { Profile } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -10,7 +10,6 @@ import { usePlatform } from '../../lib/platform'
 import { ROUTE_ICON, ROUTE_LABEL } from '../../lib/routes'
 import { IconButton } from '../atoms/IconButton'
 import { Kbd } from '../atoms/Kbd'
-import { STATE_TONE, StateDot } from '../atoms/StateDot'
 import { ProfileSwitcher } from './ProfileSwitcher'
 import { UsageCard } from './UsageCard'
 
@@ -25,7 +24,12 @@ export interface SidebarProps {
   onManageProfiles: () => void
   sessions: SessionView[]
   selectedSessionId: string | null
-  onSelectSession: (id: string) => void
+  /** The list of sessions and their groups (`SessionList`). */
+  sessionList: ReactNode
+  /** Sessions that need a look, for the total on the Sessions item. */
+  attentionCount: number
+  /** A session dropped on the Sessions item leaves its group. */
+  onDropOnSessions: (e: DragEvent) => void
   folders: string[]
   onNewSessionIn: (folder: string | null) => void
   usage: UsageGroup[]
@@ -40,13 +44,27 @@ function SectionTitle({ children, action }: { children: string; action?: ReactNo
   )
 }
 
-function NavButton({ item, active, onNavigate, badge }: { item: NavItem; active: boolean; onNavigate: (r: Route) => void; badge?: ReactNode }) {
+function NavButton({
+  item,
+  active,
+  onNavigate,
+  badge,
+  onDrop
+}: {
+  item: NavItem
+  active: boolean
+  onNavigate: (r: Route) => void
+  badge?: ReactNode
+  onDrop?: (e: DragEvent) => void
+}) {
   const { t } = useI18n()
   const Icon = ROUTE_ICON[item.route]
   return (
     <button
       type="button"
       onClick={() => onNavigate(item.route)}
+      onDragOver={onDrop ? (e) => e.preventDefault() : undefined}
+      onDrop={onDrop}
       aria-current={active ? 'page' : undefined}
       className={cn(
         'group flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-base transition-colors duration-150',
@@ -63,7 +81,7 @@ function NavButton({ item, active, onNavigate, badge }: { item: NavItem; active:
 
 /** Workhub 1's sidebar: profile switcher, navigation, sessions and folders, usage at the bottom. */
 export function Sidebar(props: SidebarProps) {
-  const { t } = useI18n()
+  const { t, tn } = useI18n()
   const platform = usePlatform()
   const running = props.sessions.filter((s) => s.state === 'starting' || s.state === 'busy' || s.state === 'ready').length
   return (
@@ -84,35 +102,24 @@ export function Sidebar(props: SidebarProps) {
           item={props.sessionsItem}
           active={props.route === 'sessions' && !props.selectedSessionId}
           onNavigate={props.onNavigate}
-          badge={running > 0 ? <span className="rounded-full bg-surface-hover px-1.5 text-xs tabular-nums text-muted">{running}</span> : undefined}
-        />
-        <ul className="mt-0.5 flex flex-col gap-0.5" aria-label={t('sidebar.sessionList')}>
-          {props.sessions.map((s) => {
-            const selected = props.route === 'sessions' && props.selectedSessionId === s.id
-            return (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => props.onSelectSession(s.id)}
-                  aria-current={selected ? 'true' : undefined}
-                  className={cn(
-                    'flex w-full items-center gap-2.5 rounded-md py-1.5 pr-2 pl-3.5 text-left transition-colors duration-150',
-                    selected ? 'bg-accent-soft text-text' : 'text-muted hover:bg-surface-hover hover:text-text'
-                  )}
+          onDrop={props.onDropOnSessions}
+          badge={
+            <>
+              {props.attentionCount > 0 && (
+                <span
+                  data-testid="sessions-attention"
+                  title={tn('sidebar.attention', props.attentionCount)}
+                  className="rounded-full bg-accent-soft px-1.5 text-xs font-medium tabular-nums text-accent"
                 >
-                  <StateDot tone={STATE_TONE[s.state]} pulse={s.state === 'busy' || s.state === 'starting'} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base">{s.agentName}</span>
-                    <span className="block truncate text-xs text-subtle">
-                      {folderName(s.cwd)} · {s.accountName ? `${s.accountName} · ` : ''}
-                      {t(`state.${s.state}`)}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+                  {props.attentionCount}
+                  <span className="sr-only"> {tn('sidebar.attention', props.attentionCount)}</span>
+                </span>
+              )}
+              {running > 0 && <span className="rounded-full bg-surface-hover px-1.5 text-xs tabular-nums text-muted">{running}</span>}
+            </>
+          }
+        />
+        {props.sessionList}
         <SectionTitle
           action={<IconButton size="sm" className="size-6" label={t('toolbar.newSession')} icon={<Plus className="size-3.5" />} onClick={() => props.onNewSessionIn(null)} />}
         >

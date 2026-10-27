@@ -86,6 +86,7 @@ class FakeNative extends FakeRuntime {
 }
 
 function setup(config: WorkhubConfig = emptyConfig(), transcriptExists = false) {
+  const replaceSessionIdentity = vi.fn(async () => undefined)
   const native = new FakeNative('native', caps())
   const acp = new FakeRuntime('acp', caps({ mcpControl: false }))
   const terminal = new FakeTerminal('terminal', caps({ appMode: false }))
@@ -99,7 +100,7 @@ function setup(config: WorkhubConfig = emptyConfig(), transcriptExists = false) 
     forget: () => {}
   }
   const manager = new SessionManager({
-    config: { current: async () => config } as unknown as ConfigurationService,
+    config: { current: async () => config, replaceSessionIdentity } as unknown as ConfigurationService,
     runtimes: { native, acp },
     terminal,
     transcripts: [transcript],
@@ -110,7 +111,7 @@ function setup(config: WorkhubConfig = emptyConfig(), transcriptExists = false) 
     pollMs: 60_000
   })
   const last = (id: string) => [...changed].reverse().find((s) => s.id === id)!
-  return { manager, native, acp, terminal, changed, events, replays, transcript, last }
+  return { manager, native, acp, terminal, changed, events, replays, transcript, last, replaceSessionIdentity }
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
@@ -192,6 +193,40 @@ describe('SessionManager', () => {
     await manager.setModel(view.id, 'haiku')
     expect(native.models).toEqual([[view.id, 'haiku']])
     expect(last(view.id).currentModelId).toBe('haiku')
+  })
+})
+
+describe('session identity', () => {
+  it('keys a Claude session by its own session id, which a resume keeps', async () => {
+    const { manager } = setup()
+    const fresh = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    expect(fresh.identity).toBe(fresh.agentSessionId)
+    const resumed = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' })
+    expect(resumed.identity).toBe('abc')
+    await flush()
+  })
+
+  it('gives a plain terminal an identity of its own, and reopens it under the old one', async () => {
+    const { manager } = setup()
+    const a = await manager.start({ profileId: null, agentKey: 'shell', cwd: '/tmp/demo' })
+    const b = await manager.start({ profileId: null, agentKey: 'shell', cwd: '/tmp/demo' })
+    expect(a.agentSessionId).toBeUndefined()
+    expect(a.identity).toMatch(/^[0-9a-f-]{36}$/)
+    expect(a.identity).not.toBe(b.identity)
+    expect(a.identity).not.toBe(a.id)
+    const again = await manager.start({ profileId: null, agentKey: 'shell', cwd: '/tmp/demo', identity: a.identity })
+    expect(again.identity).toBe(a.identity)
+    await flush()
+  })
+
+  it('moves the group place to the id an agent only reports once it has started', async () => {
+    const { manager, acp, last, replaceSessionIdentity } = setup()
+    acp.start = async () => ({ agentName: 'Fake', permissionMode: null, agentSessionId: 'acp-real' })
+    const view = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
+    const provisional = view.identity
+    await flush()
+    expect(replaceSessionIdentity).toHaveBeenCalledWith(provisional, 'acp-real')
+    expect(last(view.id)).toMatchObject({ identity: 'acp-real', agentSessionId: 'acp-real' })
   })
 })
 

@@ -2,6 +2,7 @@ import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { connectionSecretRef, type Connection } from '../domain/connection'
 import type { Profile } from '../domain/profile'
 import { appOptions, type AppOptions, type WorkhubConfig } from '../config/schema'
+import { EMPTY_SESSION_GROUPS, replaceSessionIdentity, type GroupMember, type SessionGroups } from '../domain/session-groups'
 import type { ConfigStore, SecretStore } from '../ports'
 import { fail, knownAgents, ok, validateConfig, type Result, type ValidationIssue } from './validation'
 
@@ -112,6 +113,26 @@ export function setActiveProfile(config: WorkhubConfig, id: string): Result<Work
 
 export function setOptions(config: WorkhubConfig, options: Partial<AppOptions>): Result<WorkhubConfig> {
   return commit(config, { ...config, options: { ...appOptions(config), ...options } })
+}
+
+/** Replaces the stored session groups (the renderer computes them with the pure functions of `session-groups`). */
+export function setSessionGroups(config: WorkhubConfig, groups: SessionGroups): Result<WorkhubConfig> {
+  return commit(config, { ...config, sessionGroups: groups })
+}
+
+/**
+ * Moves the group and position of one session to the session that replaces it (an automation, a
+ * move to another account). A session with no place leaves the config as it was.
+ */
+export function replaceStoredSessionIdentity(
+  config: WorkhubConfig,
+  oldKey: string,
+  newKey: string,
+  meta?: Partial<Omit<GroupMember, 'key'>>
+): Result<WorkhubConfig> {
+  const before = config.sessionGroups ?? EMPTY_SESSION_GROUPS
+  const after = replaceSessionIdentity(before, oldKey, newKey, meta)
+  return after === before ? ok(config) : commit(config, { ...config, sessionGroups: after })
 }
 
 /**
@@ -245,6 +266,18 @@ export class ConfigurationService {
 
   async saveOptions(options: Partial<AppOptions>): Promise<Result<WorkhubConfig>> {
     return this.persist(setOptions(await this.current(), options))
+  }
+
+  async saveSessionGroups(groups: SessionGroups): Promise<Result<WorkhubConfig>> {
+    return this.persist(setSessionGroups(await this.current(), groups))
+  }
+
+  /** For automations and account moves: the new session takes the old one's group and place. */
+  async replaceSessionIdentity(oldKey: string, newKey: string, meta?: Partial<Omit<GroupMember, 'key'>>): Promise<Result<WorkhubConfig>> {
+    const config = await this.current()
+    const result = replaceStoredSessionIdentity(config, oldKey, newKey, meta)
+    // Nothing to move (the usual case): do not rewrite the file.
+    return result.ok && result.value === config ? result : this.persist(result)
   }
 
   async addImported(additions: { profiles: Profile[]; accounts: AgentAccount[]; connections: Connection[] }): Promise<Result<WorkhubConfig>> {

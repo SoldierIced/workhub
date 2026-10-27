@@ -176,6 +176,19 @@ function GeneralSection({ snap, run }: SectionProps) {
           />
         </SwitchRow>
       </SettingsGroup>
+      <SettingsGroup title={t('settings.notifications')} footnote={t('settings.notificationsNote')}>
+        {(
+          [
+            ['notifyReplied', 'settings.notifyReplied', 'settings.notifyRepliedHint'],
+            ['notifyNeedsAnswer', 'settings.notifyNeedsAnswer', 'settings.notifyNeedsAnswerHint'],
+            ['notifyError', 'settings.notifyError', 'settings.notifyErrorHint']
+          ] as const
+        ).map(([option, label, hint]) => (
+          <SwitchRow key={option} label={t(label)} hint={t(hint)}>
+            <Switch checked={options[option]} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ [option]: on }))} />
+          </SwitchRow>
+        ))}
+      </SettingsGroup>
       {window.hub.platform === 'mac' && editable && (
         <SettingsGroup title={t('import.group')}>
           <Workhub1Import run={run} />

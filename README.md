@@ -77,6 +77,22 @@ To run the built app: `cd packages/app && npx electron .`
 - **Import from Workhub 1** (Settings → General, macOS) previews profiles, folders, Claude
   accounts and connections before saving. Workhub 1 is never written; secrets are not copied.
 
+### Session groups
+
+- Group sessions in the sidebar: **New group**, drag a session onto a group (or use **Move to group**
+  in its context menu or its options button), drag to reorder, **Move up / Move down** (also
+  `Alt+Up` / `Alt+Down` on a focused row). Groups collapse, rename and delete; deleting keeps open
+  sessions. Stored in `config.json` (`sessionGroups`, config version 3).
+- Membership follows the session's stable identity (the agent's own session id), so it survives
+  resume and the App/Terminal hand-over. A closed session stays in its group, dimmed; click it to
+  reopen it at its place, or remove it from the group yourself.
+- A session is flagged when it finishes a turn, asks for a permission or fails while it is not on
+  screen; viewing it clears the flag. A group shows the count and its most urgent state (error,
+  needs an answer, ready to review, working), folded or not; the Sessions item shows the total.
+  Terminal agents count a terminal bell as "replied".
+- OS notifications (named `<group> · <session>` for grouped sessions; click opens the session) can be
+  switched off per kind in Settings, General.
+
 ## Where data lives
 
 - `config.json`: connections, agent accounts, profiles. Never holds secrets, only `secretRef` keys.

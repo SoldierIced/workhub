@@ -1,0 +1,69 @@
+import {
+  aggregateAttention,
+  EMPTY_SESSION_GROUPS,
+  effectiveAgentKey,
+  reconcileTop,
+  sessionIdentity,
+  type AttentionSummary,
+  type GroupMember,
+  type SessionGroups
+} from '@workhub/core'
+import { currentConfig, refreshConfig } from '../configStore'
+import { awaitingAnswer, type SessionData } from '../store'
+
+/** A session as the sidebar lists it, with the identity groups know it by. */
+export interface ListedSession {
+  key: string
+  data: SessionData
+}
+
+const isLive = (s: SessionData): boolean => s.view.state !== 'stopped' && s.view.state !== 'error'
+
+/**
+ * One entry per identity: a session reopened (resumed from History, or from its group) replaces
+ * the stopped one it continues, so a conversation is never listed twice. Oldest first, which is
+ * where new sessions are added in the list.
+ */
+export function listSessions(all: readonly SessionData[]): ListedSession[] {
+  const best = new Map<string, SessionData>()
+  for (const s of all) {
+    const key = sessionIdentity(s.view)
+    const prev = best.get(key)
+    if (!prev || (isLive(s) && !isLive(prev)) || (isLive(s) === isLive(prev) && s.view.startedAt >= prev.view.startedAt)) best.set(key, s)
+  }
+  return [...best.entries()].map(([key, data]) => ({ key, data })).sort((a, b) => a.data.view.startedAt - b.data.view.startedAt)
+}
+
+/** What a group remembers about an open session. */
+export function memberOf(s: ListedSession): GroupMember {
+  return { key: s.key, title: s.data.view.agentName, agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
+}
+
+/** The badge count and top state dot of a set of open sessions. */
+export function summarize(sessions: readonly SessionData[]): AttentionSummary {
+  return aggregateAttention(sessions.map((s) => ({ state: s.view.state, unseen: s.unseen, awaitingAnswer: awaitingAnswer(s) })))
+}
+
+let writes: Promise<unknown> = Promise.resolve()
+
+/**
+ * Applies a change to the stored groups. Changes are applied one after the other on the latest
+ * config, so two quick drags never overwrite each other.
+ */
+export function updateGroups(change: (state: SessionGroups) => SessionGroups, liveKeys: readonly string[]): Promise<void> {
+  const run = async (): Promise<void> => {
+    const stored = currentConfig()?.config.sessionGroups ?? EMPTY_SESSION_GROUPS
+    const base = reconcileTop(stored, liveKeys)
+    const next = change(base)
+    if (next === base) return
+    const result = await window.hub.config.saveSessionGroups(next)
+    if (result.ok) await refreshConfig()
+  }
+  writes = writes.then(run, run)
+  return writes as Promise<void>
+}
+
+/** A new group id; unique enough for one machine's config. */
+export function newGroupId(): string {
+  return `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}

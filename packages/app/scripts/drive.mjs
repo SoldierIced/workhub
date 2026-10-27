@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs'
 //        | {click: "css selector" | ["css selector", "button text"]} | {waitFor: "js expr", ms?}
 //        | {wait: ms} | {shot: "file.png"}
 //        | {tap: "css selector" | ["css selector", "text"]}  real mouse press at the element's center (Radix triggers need it)
+//        | {focus: true|false}  make the page report itself focused (or not), so "viewed" rules can be exercised in a background window
 //        | {press: "Enter"}  a real key press (Enter, Escape, ArrowDown, Tab...)
 // Requires the app to be running with --remote-debugging-port (default 9222, or CDP_PORT).
 const port = process.env.CDP_PORT ?? '9222'
@@ -80,6 +81,9 @@ for (const step of JSON.parse(process.argv[2])) {
     for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased'])
       await call('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount: 1 })
     console.log('tap', JSON.stringify(step.tap))
+  } else if ('focus' in step) {
+    await call('Emulation.setFocusEmulationEnabled', { enabled: Boolean(step.focus) })
+    console.log('focus', Boolean(step.focus))
   } else if (step.press) {
     const code = KEYS[step.press] ?? 0
     for (const type of ['keyDown', 'keyUp'])

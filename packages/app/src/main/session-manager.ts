@@ -120,6 +120,8 @@ export class SessionManager {
 
     const view: SessionView = {
       id: randomUUID(),
+      // Sidebar groups key a session by this: the agent's own id when there is one.
+      identity: agentSessionId ?? input.identity ?? randomUUID(),
       agentId: agent.id,
       accountId: account?.id ?? null,
       accountName: account?.name,
@@ -257,6 +259,19 @@ export class SessionManager {
       rows: opts.rows
     })
     const patch: Partial<SessionView> = { agentSessionId: started.agentSessionId ?? s.view.agentSessionId, agentName: started.agentName }
+    // An agent that only reports its session id now (ACP) gives the session its real identity; the
+    // group place it may have been given under the provisional one moves with it.
+    if (patch.agentSessionId && patch.agentSessionId !== s.view.identity) {
+      const previous = s.view.identity
+      patch.identity = patch.agentSessionId
+      if (previous) {
+        try {
+          await this.deps.config.replaceSessionIdentity(previous, patch.agentSessionId)
+        } catch {
+          // The groups are a convenience; the session still starts.
+        }
+      }
+    }
     if (started.permissionMode) patch.permissionMode = started.permissionMode
     if (started.currentModeId) patch.currentModeId = started.currentModeId
     if (started.availableModes) patch.availableModes = started.availableModes
