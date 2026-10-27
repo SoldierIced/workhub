@@ -17,6 +17,7 @@ export const settingsHelpEs: Record<keyof typeof settingsHelpEn, string> = {
   'help.appearance.terminalFont': 'La fuente de las terminales de las sesiones (Consola y Shell). Si la familia no está instalada, se usa la fuente monoespaciada predeterminada.',
   'help.appearance.text': 'Los tamaños de texto de esta instalación. Se guardan en esta computadora, no en la configuración compartida.',
 
+  'help.general.sessions': 'Cada sesión se reabre en segundo plano con su agente, cuenta, carpeta y modo. Una conversación que todavía existe se retoma; una que nunca empezó arranca de nuevo con la misma sesión.',
   'help.general.interface': 'El idioma de los menús y pantallas. Los agentes responden en el idioma en que les escribes.',
   'help.general.notifications': 'Notificaciones del sistema operativo sobre sesiones que no estás mirando.',
   'help.general.updates': 'Workhub consulta GitHub para buscar una versión nueva solo si esto está activado o si haces clic en Buscar ahora.',

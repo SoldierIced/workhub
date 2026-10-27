@@ -15,6 +15,7 @@ export const settingsHelpEn = {
   'help.appearance.terminalFont': 'Font of the session terminals (Console and Shell). A family that is not installed falls back to the default monospace font.',
   'help.appearance.text': 'Text sizes of this install. They are kept on this computer, not in the shared config.',
 
+  'help.general.sessions': 'Each session is reopened in the background with its agent, account, folder and mode. A conversation that still exists is resumed; one that was never started begins again with the same session.',
   'help.general.interface': 'The language of menus and screens. Agents answer in the language you write to them.',
   'help.general.notifications': 'Operating system notifications about sessions you are not looking at.',
   'help.general.updates': 'Workhub contacts GitHub to look for a new version only when this is on or when you click Check now.',

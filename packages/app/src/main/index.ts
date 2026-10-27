@@ -100,6 +100,7 @@ import { spendSources, TokenSpendService } from './token-spend'
 import { UpdateService } from './updates'
 import { buildAppMenuTemplate } from './app-menu'
 import { SessionNames } from './session-names'
+import { OpenSessions, type SavedOpenSessions } from './open-sessions'
 import { boundsOnScreen, SessionWindows, type SavedSessionWindows, type WindowBounds } from './session-windows'
 import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 import { linkCommand } from './link-opener'
@@ -300,13 +301,27 @@ const sessions = new SessionManager({
     aiReview.onChanged(s)
     send('session:changed', s)
     sessionWindows.sessionChanged(s.id)
+    openSessions.changed()
   },
   emitRemoved: (id) => {
     send('session:removed', id)
     sessionWindows.closeSession(id)
+    openSessions.changed()
   },
   emitReplay: (id, messages) => send('session:replay', id, messages),
   emitConfigChanged: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+})
+// The sessions open at the last quit, reopened once the main window listens (Settings → General).
+const openSessions = new OpenSessions({
+  store: new StateFile<SavedOpenSessions>(join(dataDir, 'open-sessions.json'), 500),
+  list: () => sessions.list(),
+  engineOf: (id) => sessions.engineOf(id),
+  start: (input) => sessions.start(input, { restored: true }),
+  setMode: (id, mode) => sessions.setMode(id, mode),
+  folderExists: (path) => stat(path).then((s) => s.isDirectory(), () => false),
+  enabled: async () => appOptions(await configuration.current()).reopenSessions,
+  groups: async () => (await configuration.current()).sessionGroups,
+  log: (message, err) => console.error(message, err)
 })
 // Alerts found before the renderer listens (the first read runs at start-up) wait for it.
 let usageAlertsReady = false
@@ -782,6 +797,9 @@ function registerIpc(): void {
   }).openWindow
 
   ipc.handle('sessions:list', () => sessions.list())
+  ipc.on('sessions:ready', (e) => {
+    if (win && !win.isDestroyed() && e.sender === win.webContents) void openSessions.restore()
+  })
   ipc.handle('sessions:start', (_e, input) => sessions.start(input))
   ipc.handle('sessions:prompt', (_e, id: string, text: string, images) => sessions.prompt(id, text, images))
   ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode, options?: { now?: unknown }) => sessions.setMode(id, mode, { now: options?.now === true }))
@@ -1294,11 +1312,13 @@ let allowWindowClose = false
 nativeUpdater.on('before-quit-for-update', () => {
   allowWindowClose = true
   sessionWindows.suspend()
+  openSessions.freeze()
 })
 app.on('before-quit', (event) => {
   allowWindowClose = true
   // Session windows closing from here on stay remembered: the next launch reopens them.
   sessionWindows.suspend()
+  openSessions.freeze()
   if (quitting) return
   // Give agent processes a chance to exit before the app does.
   event.preventDefault()

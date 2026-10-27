@@ -76,6 +76,8 @@ function Shell() {
 
   useEffect(() => {
     startStore()
+    // Listening now: main reopens the sessions of the last run, whose resumed chats replay here.
+    window.hub.sessions.ready()
     startPromptQueue()
     void refreshConfig()
     // Main moves a session's group place to its real id by itself; the stale copy must not be saved back.

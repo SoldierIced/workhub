@@ -217,6 +217,25 @@ describe('SessionManager', () => {
     expect(acp.prompts[0]!.images).toBeUndefined()
   })
 
+  it('reopens a stored session resuming its conversation only when it still exists, and never prompts', async () => {
+    const gone = setup(emptyConfig(), false)
+    const fresh = await gone.manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' }, { restored: true })
+    await flush()
+    await flush()
+    // Never prompted before the quit: the same session id starts fresh.
+    expect(gone.native.started[0]).toMatchObject({ resume: false, agentSessionId: 'abc' })
+    expect(fresh).toMatchObject({ identity: 'abc', agentSessionId: 'abc' })
+    expect(gone.manager.engineOf(fresh.id)).toBe('app')
+
+    const kept = setup(emptyConfig(), true)
+    const view = await kept.manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' }, { restored: true })
+    await flush()
+    await flush()
+    expect(kept.native.started[0]).toMatchObject({ resume: true, agentSessionId: 'abc' })
+    expect(kept.replays).toEqual([[view.id, [{ kind: 'user', text: 'earlier' }]]])
+    expect(kept.native.prompts).toEqual([])
+  })
+
   it('follows what an ACP agent says at start about taking images', async () => {
     const { manager, acp, last } = setup()
     const start = acp.start.bind(acp)
