@@ -1,4 +1,4 @@
-import type { SessionState } from '@workhub/core'
+import { owningProfile, type FolderProfile, type SessionState } from '@workhub/core'
 import type { WorkspaceFolder } from '@shared/api'
 import { folderName } from './home'
 
@@ -90,4 +90,9 @@ export function folderSections({ workspaces, favorites, sessions, profileId, que
 export function toggleFavorite(favorites: readonly string[], path: string): string[] {
   const key = norm(path)
   return favorites.some((f) => norm(f) === key) ? favorites.filter((f) => norm(f) !== key) : [...favorites, key]
+}
+
+/** The profile a new session in `cwd` starts in: the one owning the folder (Workhub 1), else the active one. */
+export function newSessionProfile(cwd: string, activeProfileId: string | null, profiles: readonly FolderProfile[], home?: string): string | null {
+  return owningProfile(cwd, profiles, home)?.id ?? activeProfileId
 }

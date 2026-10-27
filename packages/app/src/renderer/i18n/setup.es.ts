@@ -160,7 +160,7 @@ export const setupEs: Record<keyof typeof setupEn, string> = {
   'profileExtra.folderFlagsEmpty': 'Agrega carpetas arriba para configurar sus opciones.',
   'profileExtra.onlyGitRepos': 'Solo repos git',
   'profileExtra.subfolders': 'Cada subcarpeta es un proyecto propio',
-  'profileExtra.subfoldersHint': 'Las sesiones de una subcarpeta se agrupan bajo un proyecto con su nombre, como ~/work/<repo>.',
+  'profileExtra.subfoldersHint': 'Las sesiones de una subcarpeta se agrupan bajo un proyecto con su nombre, como ~/work/<repo>. Si nunca se configuró, una carpeta que no es un repositorio git se divide así.',
   'profileExtra.links': 'Enlaces',
   'profileExtra.linkBrowser': 'Abrir enlaces con',
   'profileExtra.linkBrowserHint': 'El navegador que abre los enlaces de pull requests y tickets de este perfil. Vacío: el navegador predeterminado.',

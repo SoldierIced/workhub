@@ -7,10 +7,12 @@ import {
   historyInProfile,
   owningProfile,
   planWorkhub1Import,
+  fillWorkhub1FolderFlags,
   profileRootFor,
   projectChildren,
   spendKey,
-  type FolderProfile
+  type FolderProfile,
+  type Profile
 } from '../src'
 
 const work: FolderProfile = { id: 'work', folders: ['~/work'] }
@@ -74,9 +76,14 @@ describe('expandProfileFolders', () => {
     expect(list.map((p) => p.name)).toEqual(['work', 'api9', 'web', 'solo', 'src'])
   })
 
-  it('splits a folder into projects only when "Each subfolder is its own project" is on', () => {
-    const profile = { folders: ['~/work', '~/solo'], folderOptions: { '~/work': { subfoldersAreProjects: true, onlyGitRepos: true } } }
+  it('splits a folder into projects when "Each subfolder is its own project" is on, not when it is off', () => {
+    const profile = { folders: ['~/work', '~/solo'], folderOptions: { '~/work': { subfoldersAreProjects: true, onlyGitRepos: true }, '~/solo': { subfoldersAreProjects: false } } }
     expect(projectChildren(profile, listing, HOME)).toEqual({ '/home/u/work': ['api9', 'web'], '/home/u/solo': [] })
+  })
+
+  it('left unset, splits every folder that is not a repository, as before the switch existed', () => {
+    const profile = { folders: ['~/work', '~/solo'] }
+    expect(projectChildren(profile, listing, HOME, (p) => p === '/home/u/solo')).toEqual({ '/home/u/work': ['api9', 'api10', 'notes', 'web'], '/home/u/solo': [] })
   })
 })
 
@@ -121,5 +128,32 @@ describe('Workhub 1 import of the folder switches', () => {
     expect(a?.ownsOutside).toBe(true)
     expect(b?.folderOptions).toEqual({ '/home/u/b': { subfoldersAreProjects: true } })
     expect(b?.ownsOutside).toBeUndefined()
+  })
+})
+
+describe('fillWorkhub1FolderFlags', () => {
+  const v1 = {
+    profiles: [
+      { id: 'Wayni', name: 'Wayni', folders: [{ path: '~/wayni', onlyGitRepos: true, isContainer: true }, { path: '~/notes' }], catchesOtherFolders: true },
+      { id: 'other', name: 'Other', folders: [{ path: '~/o', isContainer: true }] }
+    ]
+  }
+  const base = (extra: Partial<Profile> = {}): Profile => ({ id: 'wayni', name: 'Wayni', connections: {}, accountIds: [], modules: {} as Profile['modules'], folders: ['/home/u/wayni/', '/home/u/notes'], ...extra })
+
+  it('fills the switches Workhub 1 turned on into profiles that leave them unset', () => {
+    const [filled, ...rest] = fillWorkhub1FolderFlags(v1, { profiles: [base()] }, HOME)
+    expect(rest).toEqual([])
+    expect(filled?.folderOptions).toEqual({ '/home/u/wayni/': { onlyGitRepos: true, subfoldersAreProjects: true } })
+    expect(filled?.ownsOutside).toBe(true)
+  })
+
+  it('never changes a value set in Workhub 2, on or off, and keeps one owner of the outside folders', () => {
+    const set = base({ folderOptions: { '/home/u/wayni': { subfoldersAreProjects: false } }, ownsOutside: false })
+    expect(fillWorkhub1FolderFlags(v1, { profiles: [set] }, HOME)[0]?.folderOptions).toEqual({ '/home/u/wayni': { subfoldersAreProjects: false, onlyGitRepos: true } })
+    expect(fillWorkhub1FolderFlags(v1, { profiles: [set] }, HOME)[0]?.ownsOutside).toBe(false)
+    const owner = { ...base({ id: 'x', folders: [] }), ownsOutside: true }
+    expect(fillWorkhub1FolderFlags(v1, { profiles: [base(), owner] }, HOME)[0]?.ownsOutside).toBeUndefined()
+    const done = base({ folderOptions: { '/home/u/wayni': { onlyGitRepos: true, subfoldersAreProjects: true } }, ownsOutside: true })
+    expect(fillWorkhub1FolderFlags(v1, { profiles: [done] }, HOME)).toEqual([])
   })
 })

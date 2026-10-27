@@ -408,6 +408,7 @@ function Shell() {
         preferredAgents={profile?.preferredAgents}
         initialCwd={dialog.cwd}
         folders={workspaces}
+        profiles={profiles}
         initialAgentKey={dialog.agentKey}
         onStarted={openSession}
       />

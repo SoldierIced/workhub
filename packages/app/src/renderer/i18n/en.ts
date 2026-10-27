@@ -127,6 +127,7 @@ export const en = {
   'newSession.title': 'New session',
   'newSession.description': 'The agent runs in the folder you choose, with the active profile.',
   'newSession.agent': 'Agent',
+  'newSession.otherProfile': 'This folder belongs to {name}: the session starts in that profile, with its agents.',
   'newSession.folder': 'Folder',
   'newSession.browse': 'Choose a folder',
   'newSession.start': 'Start session',

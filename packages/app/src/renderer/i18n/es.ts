@@ -126,6 +126,7 @@ export const es: Record<keyof typeof en, string> = {
   'newSession.title': 'Nueva sesión',
   'newSession.description': 'El agente trabaja en la carpeta que elijas, con el perfil activo.',
   'newSession.agent': 'Agente',
+  'newSession.otherProfile': 'Esta carpeta pertenece a {name}: la sesión se inicia en ese perfil, con sus agentes.',
   'newSession.folder': 'Carpeta',
   'newSession.browse': 'Elegir una carpeta',
   'newSession.start': 'Iniciar sesión',

@@ -48,7 +48,13 @@ export async function profileWorkspaces(profile: Pick<Profile, 'folders' | 'fold
   return expandProfileFolders(profile, listing, home).map(({ path, name, root }) => ({ path, name, root }))
 }
 
-/** The projects each profile folder splits into for token spend ("Each subfolder is its own project"). */
-export async function profileProjectChildren(profile: Pick<Profile, 'folders' | 'folderOptions'>, home: string, read?: ReadDir, hasGit?: Exists): Promise<Record<string, string[]>> {
-  return projectChildren(profile, await readProfileListing(profile, home, read, hasGit), home)
+/**
+ * The projects each profile folder splits into for token spend ("Each subfolder is its own
+ * project"; unset: every folder that is not a repository is split, as before the switch existed).
+ */
+export async function profileProjectChildren(profile: Pick<Profile, 'folders' | 'folderOptions'>, home: string, read?: ReadDir, hasGit: Exists = (p) => exists(join(p, '.git'))): Promise<Record<string, string[]>> {
+  const listing = await readProfileListing(profile, home, read, hasGit)
+  const repos = new Set<string>()
+  for (const { path } of profileFolderPaths(profile, home)) if (await hasGit(path)) repos.add(path)
+  return projectChildren(profile, listing, home, (path) => repos.has(path))
 }

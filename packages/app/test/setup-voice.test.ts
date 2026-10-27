@@ -143,7 +143,10 @@ describe('profile environment', () => {
     expect(envChanges(rows, ['TOKEN', 'GONE'])).toEqual({ values: { NEW: 'v' }, removed: ['GONE'] })
   })
   it('drops folder options of folders that left the profile and the empty ones', () => {
-    expect(prunedFolderOptions({ '/a': { onlyGitRepos: true }, '/b': { subfoldersAreProjects: true }, '/c': { onlyGitRepos: false } }, ['/a', ' /c '])).toEqual({ '/a': { onlyGitRepos: true } })
+    expect(prunedFolderOptions({ '/a': { onlyGitRepos: true }, '/b': { subfoldersAreProjects: true }, '/c': { onlyGitRepos: false }, '/d': {} }, ['/a', ' /c ', '/d'])).toEqual({
+      '/a': { onlyGitRepos: true },
+      '/c': { onlyGitRepos: false }
+    })
     expect(prunedFolderOptions(undefined, ['/a'])).toBeUndefined()
   })
 })

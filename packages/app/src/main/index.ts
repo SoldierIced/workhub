@@ -37,6 +37,8 @@ import {
   pendingWorkhub1Secrets,
   pauseUntil,
   planWorkhub1Import,
+  fillWorkhub1FolderFlags,
+  type Workhub1Settings,
   TRAY_ROUTES,
   resolveEffectiveAgents,
   startOfLocalDay,
@@ -678,7 +680,10 @@ function registerIpc(): void {
     guarded(async () => {
       const v1 = await readWorkhub1Settings()
       if (!v1) return { ok: false, issues: [{ path: 'import', message: 'Workhub 1 settings not found' }] }
-      return configuration.applyImport(planWorkhub1Import(v1, await configuration.current(), homedir()))
+      const result = await configuration.applyImport(planWorkhub1Import(v1, await configuration.current(), homedir()))
+      // Profiles imported earlier get the folder switches they still leave unset.
+      if (result.ok) return (await fillWorkhub1FolderFlagsFrom(v1)) ?? result
+      return result
     })
   )
   // Copies the tokens of Workhub 1's Keychain items into the SecretStore. Only statuses go back.
@@ -1249,6 +1254,34 @@ function startTray(): void {
   setInterval(scheduleTray, 60_000).unref?.()
 }
 
+/** Marks that Workhub 1's folder switches were filled into the profiles once (see `fillWorkhub1FolderFlags`). */
+const workhub1FolderFlags = new StateFile<{ done: boolean }>(join(dataDir, 'workhub1-folder-flags.json'), 0)
+
+/** Fills the folder switches Workhub 1 turned on into the profiles that leave them unset; the new config when one changed. */
+async function fillWorkhub1FolderFlagsFrom(v1: Workhub1Settings): Promise<Result<WorkhubConfig> | undefined> {
+  let last: Result<WorkhubConfig> | undefined
+  for (const profile of fillWorkhub1FolderFlags(v1, await configuration.current(), homedir())) {
+    last = await configuration.saveProfile(profile)
+    if (!last.ok) break
+  }
+  if (last?.ok) send('config:changed')
+  return last
+}
+
+/** Once, at the first launch that finds Workhub 1's settings: profiles imported before the folder switches were imported get them. */
+async function fillWorkhub1FolderFlagsOnce(): Promise<void> {
+  if (loadError || workhub1FolderFlags.load({ done: false }).done) return
+  try {
+    const v1 = await readWorkhub1Settings()
+    if (!v1) return
+    await fillWorkhub1FolderFlagsFrom(v1)
+    workhub1FolderFlags.save({ done: true })
+    workhub1FolderFlags.flush()
+  } catch {
+    // Tried again at the next launch.
+  }
+}
+
 void app.whenReady().then(async () => {
   if (!firstInstance) return
   try {
@@ -1260,6 +1293,7 @@ void app.whenReady().then(async () => {
   registerIpc()
   await refreshMenu()
   createWindow()
+  void fillWorkhub1FolderFlagsOnce()
   await refreshOptionsCache()
   try {
     startTray()
