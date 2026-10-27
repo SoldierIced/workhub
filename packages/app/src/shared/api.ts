@@ -15,6 +15,7 @@ import type {
   ValidationIssue,
   WorkhubConfig
 } from '@workhub/core'
+import type { TicketsApi } from './tickets-api'
 
 export interface ConfigSnapshot {
   config: WorkhubConfig
@@ -91,4 +92,5 @@ export interface HubApi {
   pickFolder(): Promise<string | null>
   config: ConfigApi
   sessions: SessionsApi
+  tickets: TicketsApi
 }

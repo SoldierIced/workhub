@@ -14,7 +14,8 @@
     "./workhub1-import": "./src/workhub1-import/index.ts",
     "./tracker-jira": "./src/tracker-jira/index.ts",
     "./tracker-linear": "./src/tracker-linear/index.ts",
-    "./tracker-demo": "./src/tracker-demo/index.ts"
+    "./tracker-demo": "./src/tracker-demo/index.ts",
+    "./http": "./src/shared/http.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

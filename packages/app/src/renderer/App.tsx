@@ -15,6 +15,7 @@ import { HomeScreen } from './screens/HomeScreen'
 import { PlaceholderScreen } from './screens/PlaceholderScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
+import { TicketsScreen } from './screens/TicketsScreen'
 import { startStore, useSessions } from './store'
 
 /** Applies the theme preference to <html> and tells the main process (native chrome). */
@@ -70,6 +71,8 @@ function Shell() {
     setSelectedSession(id)
     setRoute('sessions')
   }, [])
+  // A ticket window asked to show one of the sessions.
+  useEffect(() => window.hub.tickets.onOpenSession(openSession), [openSession])
   const openSettings = useCallback((tab?: string) => {
     if (tab) setSettingsTab(tab)
     setRoute('settings')
@@ -133,7 +136,9 @@ function Shell() {
           {route !== 'sessions' && (
             <div key={route} className="h-full animate-fade-in overflow-y-auto">
               {route === 'home' ? (
-                <HomeScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} />
+                <HomeScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} onNavigate={navigate} />
+              ) : route === 'tickets' ? (
+                <TicketsScreen profile={profile} sessions={sessions} onOpenSettings={openSettings} />
               ) : route === 'settings' ? (
                 <SettingsScreen snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
               ) : (

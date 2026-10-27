@@ -24,6 +24,21 @@ const api: HubApi = {
     setActiveProfile: (id) => ipcRenderer.invoke('config:setActiveProfile', id),
     effectiveAgents: (profileId) => ipcRenderer.invoke('config:effectiveAgents', profileId)
   },
+  tickets: {
+    status: (profileId) => ipcRenderer.invoke('tickets:status', profileId),
+    list: (profileId) => ipcRenderer.invoke('tickets:list', profileId),
+    get: (profileId, key) => ipcRenderer.invoke('tickets:get', profileId, key),
+    transitions: (profileId, key) => ipcRenderer.invoke('tickets:transitions', profileId, key),
+    transition: (profileId, key, id) => ipcRenderer.invoke('tickets:transition', profileId, key, id),
+    comment: (profileId, key, text) => ipcRenderer.invoke('tickets:comment', profileId, key, text),
+    assignToMe: (profileId, key) => ipcRenderer.invoke('tickets:assignToMe', profileId, key),
+    test: (connection, secret) => ipcRenderer.invoke('tickets:test', connection, secret),
+    openWindow: (profileId, key) => ipcRenderer.invoke('tickets:openWindow', profileId, key),
+    openExternal: (url) => ipcRenderer.invoke('tickets:openExternal', url),
+    openSession: (id) => ipcRenderer.send('tickets:openSession', id),
+    onChanged: (cb) => subscribe<[]>('tickets:changed', cb),
+    onOpenSession: (cb) => subscribe<[string]>('tickets:openSession', cb)
+  },
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list'),
     start: (input) => ipcRenderer.invoke('sessions:start', input),
