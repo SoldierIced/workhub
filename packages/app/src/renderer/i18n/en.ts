@@ -114,6 +114,8 @@ export const en = {
   'profile.connections.other': '{count} connections',
 
   'usage.title': 'Agent usage',
+  'usage.nextReset': 'Next reset',
+  'usage.spentToday': '{today} today',
   'usage.empty': 'Plan usage shows up when a running agent reports it.',
   'usage.running.one': '{count} open',
   'usage.running.other': '{count} open',

@@ -113,6 +113,8 @@ export const es: Record<keyof typeof en, string> = {
   'profile.connections.other': '{count} conexiones',
 
   'usage.title': 'Uso de agentes',
+  'usage.nextReset': 'Próximo reinicio',
+  'usage.spentToday': '{today} hoy',
   'usage.empty': 'El uso del plan aparece cuando un agente en ejecución lo informa.',
   'usage.running.one': '{count} abierta',
   'usage.running.other': '{count} abiertas',

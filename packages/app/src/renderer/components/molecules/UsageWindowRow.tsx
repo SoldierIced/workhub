@@ -10,41 +10,76 @@ const TONE_CLASS = { danger: 'bg-danger', warning: 'bg-warning', normal: 'brand-
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
+/** The hover text of a window: percent, credits, ceiling, full reset date and countdown, reading time. */
+export function useWindowHover(): (w: PlanUsageWindow, ceiling: number | undefined, now: number) => string {
+  const { t, formatDate, formatNumber } = useI18n()
+  return (w, ceiling, now) =>
+    [
+      `${w.window}: ${Math.round(w.percent)}%`,
+      w.used !== undefined && w.limit !== undefined
+        ? t('agentUsage.credits', { used: formatNumber(round2(w.used)), limit: formatNumber(w.limit), left: formatNumber(round2(Math.max(0, w.limit - w.used))) })
+        : '',
+      ceiling !== undefined ? t('agentUsage.ceiling', { ceiling }) : '',
+      w.resetsAt
+        ? t('agentUsage.resetsAt', { when: formatDate(w.resetsAt, { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), time: formatCountdown(w.resetsAt, now) })
+        : '',
+      w.asOf ? t('agentUsage.asOf', { when: formatDate(w.asOf, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) }) : ''
+    ]
+      .filter(Boolean)
+      .join('\n')
+}
+
+/** The short name of a window (`5h`, `week`, `Sonnet`). */
+export function useWindowLabel(): (window: string) => string {
+  const { t } = useI18n()
+  return (window) => (WINDOW_LABEL[window] ? t(WINDOW_LABEL[window]!) : window.replace(/^weekly /, ''))
+}
+
+function UsageBar({ percent, ceiling, label, tone, className }: { percent: number; ceiling?: number; label: string; tone: keyof typeof TONE_CLASS; className?: string }) {
+  return (
+    <span
+      className={cn('relative h-1.5 overflow-hidden rounded-full bg-surface-hover', className)}
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+    >
+      <span className={cn('block h-full rounded-full', TONE_CLASS[tone])} style={{ width: `${Math.min(100, Math.max(2, percent))}%` }} />
+      {ceiling !== undefined && <span className="absolute top-0 h-full w-0.5 bg-text/70" style={{ left: `calc(${Math.min(100, ceiling)}% - 1px)` }} aria-hidden />}
+    </span>
+  )
+}
+
+const TONE_TEXT = { danger: 'text-danger', warning: 'text-warning', normal: '' } as const
+
+/** A window in a few characters, to sit beside another one: `5h ▮▮▯ 47%`. Details on hover. */
+export function UsageWindowChip({ w, ceiling, now }: { w: PlanUsageWindow; ceiling?: number; now: number }) {
+  const hover = useWindowHover()
+  const label = useWindowLabel()(w.window)
+  const tone = usageTone(w.percent, ceiling)
+  return (
+    <span className="flex min-w-0 items-center gap-1 text-xs" title={hover(w, ceiling, now)} data-testid="usage-window">
+      <span className="shrink-0 text-subtle">{label}</span>
+      <UsageBar percent={w.percent} ceiling={ceiling} label={label} tone={tone} className="w-6 shrink-0" />
+      <span className={cn('shrink-0 font-medium tabular-nums', TONE_TEXT[tone])}>{Math.round(w.percent)}%</span>
+    </span>
+  )
+}
+
 /**
  * One plan usage window on one line: short name · bar (with the ceiling mark) · percent · short
  * reset (`18:59` today, `Thu 17:59` this week). The full reset date, credits and ceiling are on hover.
  */
 export function UsageWindowRow({ w, ceiling, now, className }: { w: PlanUsageWindow; ceiling?: number; now: number; className?: string }) {
-  const { t, formatDate, formatNumber } = useI18n()
+  const { formatDate } = useI18n()
   const tone = usageTone(w.percent, ceiling)
-  const label = WINDOW_LABEL[w.window] ? t(WINDOW_LABEL[w.window]!) : w.window.replace(/^weekly /, '')
-  const hover = [
-    `${w.window}: ${Math.round(w.percent)}%`,
-    w.used !== undefined && w.limit !== undefined
-      ? t('agentUsage.credits', { used: formatNumber(round2(w.used)), limit: formatNumber(w.limit), left: formatNumber(round2(Math.max(0, w.limit - w.used))) })
-      : '',
-    ceiling !== undefined ? t('agentUsage.ceiling', { ceiling }) : '',
-    w.resetsAt
-      ? t('agentUsage.resetsAt', { when: formatDate(w.resetsAt, { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), time: formatCountdown(w.resetsAt, now) })
-      : '',
-    w.asOf ? t('agentUsage.asOf', { when: formatDate(w.asOf, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) }) : ''
-  ]
-    .filter(Boolean)
-    .join('\n')
+  const label = useWindowLabel()(w.window)
+  const hover = useWindowHover()(w, ceiling, now)
   return (
     <span className={cn('flex items-center gap-1.5 text-xs', className)} title={hover} data-testid="usage-window">
       <span className="w-11 shrink-0 truncate text-subtle">{label}</span>
-      <span
-        className="relative h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-surface-hover"
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(w.percent)}
-      >
-        <span className={cn('block h-full rounded-full', TONE_CLASS[tone])} style={{ width: `${Math.min(100, Math.max(2, w.percent))}%` }} />
-        {ceiling !== undefined && <span className="absolute top-0 h-full w-0.5 bg-text/70" style={{ left: `calc(${Math.min(100, ceiling)}% - 1px)` }} aria-hidden />}
-      </span>
+      <UsageBar percent={w.percent} ceiling={ceiling} label={label} tone={tone} className="min-w-8 flex-1" />
       <span className={cn('w-8 shrink-0 text-right font-medium tabular-nums', tone === 'danger' && 'text-danger', tone === 'warning' && 'text-warning')}>{Math.round(w.percent)}%</span>
       <span className="w-16 shrink-0 truncate text-right text-2xs text-subtle tabular-nums">{w.resetsAt !== undefined ? shortReset(w.resetsAt, now, formatDate) : ''}</span>
     </span>
