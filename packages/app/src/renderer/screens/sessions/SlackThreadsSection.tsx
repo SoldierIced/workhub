@@ -18,7 +18,10 @@ export function SlackThreadsSection({ view }: { view: SessionView }) {
   return (
     <div data-testid="monitor-slack-threads">
       <MonitorSection id="slack" title={t('slack.monitor.title')} count={threads.length}>
-        <ThreadGroup threads={threads} me={snap.me} archiveMinutes={threadArchiveMinutes(profile)} now={Date.now()} actions={{ compact: true, channelName: (id) => snap.settings.channels.find((c) => c.id === id)?.name ?? id }} />
+        {/* Its own scroll past a fixed height, like the monitor's other lists. */}
+        <div className="-mr-1.5 max-h-96 overflow-y-auto overscroll-contain pr-1.5" data-monitor-scroll="slack">
+          <ThreadGroup threads={threads} me={snap.me} archiveMinutes={threadArchiveMinutes(profile)} now={Date.now()} actions={{ compact: true, channelName: (id) => snap.settings.channels.find((c) => c.id === id)?.name ?? id }} />
+        </div>
       </MonitorSection>
     </div>
   )

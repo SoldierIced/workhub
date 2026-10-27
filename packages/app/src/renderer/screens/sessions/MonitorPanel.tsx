@@ -42,6 +42,12 @@ function shortDuration(ms: number): string {
   return `${Math.floor(m / 60)} h ${m % 60} min`
 }
 
+/**
+ * Lists that can grow without bound (activity, MCP servers, subagents, pull requests, tickets)
+ * scroll inside their section past a fixed height, so one long list never stretches the panel.
+ */
+const SECTION_SCROLL = 'max-h-60 overflow-y-auto overscroll-contain'
+
 const TOOL_ICON: Record<string, LucideIcon> = {
   read: FileText,
   edit: FilePen,
@@ -169,7 +175,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
         {tickets.length > 0 && (
           <MonitorSection id="tickets" title={tn('monitor.ticketsCount', tickets.length)}>
-            <ul className="flex flex-wrap gap-1.5">
+            <ul className={cn('flex flex-wrap gap-1.5', SECTION_SCROLL)} data-monitor-scroll="tickets">
               {tickets.map((key) => (
                 <li key={key}>
                   <button
@@ -189,7 +195,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
         {prs.length > 0 && (
           <MonitorSection id="pullRequests" title={tn('monitor.prsCount', prs.length)}>
-            <ul className="flex flex-col gap-3 divide-border [&>li+li]:border-t [&>li+li]:pt-3">
+            <ul className={cn('-mr-1.5 flex flex-col gap-3 divide-border pr-1.5 [&>li+li]:border-t [&>li+li]:pt-3', SECTION_SCROLL)} data-monitor-scroll="pullRequests">
               {prs.map((item) => (
                 <PullRequestCard key={item.pr.url} item={item} profileId={profileId} />
               ))}
@@ -302,7 +308,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
             {tools.length === 0 ? (
               <p className="text-sm text-subtle">{t('monitor.noToolCalls')}</p>
             ) : (
-              <ul className="-mr-1.5 flex max-h-60 flex-col gap-2 overflow-y-auto pr-1.5">
+              <ul className={cn('-mr-1.5 flex flex-col gap-2 pr-1.5', SECTION_SCROLL)} data-monitor-scroll="activity">
                 {tools
                   .slice(-40)
                   .reverse()
@@ -336,7 +342,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
         {fields.includes('subagents') && (
           <MonitorSection id="subagents" title={t('monitor.subagents')} count={subagents.length}>
-            <ul className="-mx-1.5 flex flex-col gap-0.5">
+            <ul className={cn('-mx-1.5 flex flex-col gap-0.5', SECTION_SCROLL)} data-monitor-scroll="subagents">
               {subagents.map((s) => (
                 <li key={s.id} className="text-sm">
                   <button
@@ -361,7 +367,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
         {fields.includes('pullRequests') && (
           <MonitorSection id="touchedPrs" title={t('monitor.touchedPrs')} count={m.pullRequests!.length}>
-            <ul className="-mx-1.5 flex flex-col gap-0.5">
+            <ul className={cn('-mx-1.5 flex flex-col gap-0.5', SECTION_SCROLL)} data-monitor-scroll="touchedPrs">
               {m.pullRequests!.map((url) => (
                 <li key={url}>
                   <button
@@ -386,7 +392,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
             count={servers.length}
             action={controls ? <IconButton size="sm" className="size-6" label={t('monitor.mcpRefresh')} icon={<RefreshCw className="size-3" />} onClick={() => window.hub.sessions.mcp(v.id, 'refresh')} /> : undefined}
           >
-            <ul className="flex flex-col gap-1">
+            <ul className={cn('-mr-1.5 flex flex-col gap-1 pr-1.5', SECTION_SCROLL)} data-monitor-scroll="mcp">
               {servers.map((s) => (
                 <li key={s.name} className="flex items-center gap-2 text-sm" title={s.error ?? s.source}>
                   <StateDot tone={serverTone(s)} />
@@ -435,20 +441,22 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
                       </span>
                     )}
                   </div>
-                  {(changes.nested ? changes.repos : changes.repos.filter((r) => r.branch)).map((r) => (
-                    <div key={r.root} className="flex items-center gap-1.5 text-xs text-muted" title={r.root}>
-                      <GitBranch className="size-3 shrink-0" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate">
-                        {changes.nested && <span className="text-text">{r.name} </span>}
-                        {r.branch ?? '–'}
-                      </span>
-                      {changes.nested && (
-                        <span className="shrink-0 tabular-nums">
-                          {r.files} · <span className="text-success">+{r.additions}</span> <span className="text-danger">−{r.deletions}</span>
+                  <div className={cn('-mr-1.5 flex flex-col gap-2 pr-1.5', SECTION_SCROLL)} data-monitor-scroll="localChanges">
+                    {(changes.nested ? changes.repos : changes.repos.filter((r) => r.branch)).map((r) => (
+                      <div key={r.root} className="flex items-center gap-1.5 text-xs text-muted" title={r.root}>
+                        <GitBranch className="size-3 shrink-0" aria-hidden />
+                        <span className="min-w-0 flex-1 truncate">
+                          {changes.nested && <span className="text-text">{r.name} </span>}
+                          {r.branch ?? '–'}
                         </span>
-                      )}
-                    </div>
-                  ))}
+                        {changes.nested && (
+                          <span className="shrink-0 tabular-nums">
+                            {r.files} · <span className="text-success">+{r.additions}</span> <span className="text-danger">−{r.deletions}</span>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )
             )}
