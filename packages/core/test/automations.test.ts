@@ -208,6 +208,20 @@ describe('the engine', () => {
     expect(world.live).toHaveLength(2)
     expect(world.live[1]?.identity).toBe(first.identity)
   })
+
+  it('follows a session that gets its real identity after starting', async () => {
+    const { world, engine } = setup()
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    const first = world.live[0]!
+    engine.identityChanged(first.identity, 'acp-real-id')
+    first.identity = 'acp-real-id'
+    expect(engine.automationOf('acp-real-id')?.id).toBe('a1')
+    expect(engine.snapshot().sessions['a1']).toBe('acp-real-id')
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    expect(world.live).toHaveLength(1)
+  })
 })
 
 describe('new session each run (Workhub 1 bugs)', () => {

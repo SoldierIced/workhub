@@ -23,6 +23,7 @@ import type {
   ValidationIssue,
   WorkhubConfig
 } from '@workhub/core'
+import type { AutomationsApi, SlackApi } from './chat-api'
 import type { CodeHostApi } from './codehost-api'
 import type { HealthApi } from './health-api'
 import type { PrEventsApi } from './pr-events-api'
@@ -211,4 +212,6 @@ export interface HubApi {
   updates: UpdatesApi
   health: HealthApi
   prEvents: PrEventsApi
+  slack: SlackApi
+  automations: AutomationsApi
 }

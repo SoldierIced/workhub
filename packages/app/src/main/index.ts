@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { AcpRuntime, agentAvailability } from '@workhub/adapters/agent-acp'
 import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
+import { DemoChatSource, SlackAgentChatSource, SlackTrackingHook } from '@workhub/adapters/chat-slack'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
@@ -15,6 +16,7 @@ import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapt
 import { readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
 import {
   appOptions,
+  canonicalUrl,
   CONNECTION_PROVIDERS,
   ConfigurationService,
   knownAgents,
@@ -26,12 +28,17 @@ import {
 } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference } from '../shared/api'
 import type { PrNotification } from '../shared/pr-events-api'
+import { AutomationService } from './automations'
+import { registerChatIpc } from './chat-ipc'
 import { claudeAccounts, UsageService } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { HealthService } from './health-service'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
+import { SessionDriver } from './session-driver'
 import { SessionManager } from './session-manager'
+import { SlackWatcherService } from './slack-watcher'
+import { StateFile } from './state-file'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
 import { UpdateService } from './updates'
@@ -108,8 +115,14 @@ const sessions = new SessionManager({
   terminal,
   transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader(), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
   history: historySources,
-  emitEvent: (e) => send('session:event', e),
-  emitChanged: (s) => send('session:changed', s),
+  emitEvent: (e) => {
+    driver.onEvent(e)
+    send('session:event', e)
+  },
+  emitChanged: (s) => {
+    driver.onChanged(s)
+    send('session:changed', s)
+  },
   emitReplay: (id, messages) => send('session:replay', id, messages)
 })
 const usage = new UsageService(
@@ -122,6 +135,47 @@ const usage = new UsageService(
 )
 
 const updates = new UpdateService((s) => send('updates:changed', s))
+
+// Slack watcher and automations (P6a). WORKHUB_DEMO_SLACK=1 reads synthetic Slack instead of
+// asking an agent, and never touches a Claude account's settings.
+const driver = new SessionDriver(sessions, (id, text) => send('automations:prompted', id, text))
+const demoSlack = process.env['WORKHUB_DEMO_SLACK'] === '1' ? new DemoChatSource() : null
+const slack = new SlackWatcherService({
+  configuration,
+  source: demoSlack ?? new SlackAgentChatSource({ bridgeDir, cwd: dataDir }),
+  hook: new SlackTrackingHook({
+    dir: join(dataDir, 'slack-hook'),
+    sourceScript: app.isPackaged ? join(process.resourcesPath, 'chat-slack', 'slack-track-hook.mjs') : join(repoRoot, 'packages', 'adapters', 'src', 'chat-slack', 'hook', 'slack-track-hook.mjs')
+  }),
+  demo: demoSlack,
+  state: new StateFile(join(dataDir, 'slack-state.json'), 500),
+  driver,
+  startSession: (input) => sessions.start(input),
+  home: homedir(),
+  usage: () => usage.current(),
+  myPullRequests: async () => {
+    const lists = await codeHost.lists((await configuration.current()).activeProfileId ?? null)
+    return new Set(lists.mine.map((i) => canonicalUrl(i.pr.url)))
+  },
+  prState: async (url) => {
+    const r = await codeHost.view((await configuration.current()).activeProfileId ?? null, url)
+    return r.ok ? r.view.detail.state : undefined
+  },
+  emit: (snap) => send('slack:changed', snap),
+  notice: (n) => send('slack:notice', n)
+})
+const automations = new AutomationService({
+  configuration,
+  driver,
+  startSession: (input) => sessions.start(input),
+  watcher: slack,
+  state: new StateFile(join(dataDir, 'automations-state.json'), 300),
+  home: homedir(),
+  usage: () => usage.current(),
+  emit: (snap) => send('automations:changed', snap),
+  configChanged: () => send('config:changed'),
+  notice: (n) => send('slack:notice', n)
+})
 
 async function snapshot(): Promise<ConfigSnapshot> {
   const config = await configuration.current()
@@ -260,6 +314,7 @@ function registerIpc(): void {
   registerCodeHostIpc(ipcMain, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
   registerPrEventsIpc(ipcMain, { service: prEvents, notify: showPullRequestNotification })
   ipcMain.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
+  registerChatIpc(ipcMain, { slack, automations, configuration, guarded })
   ipcMain.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
 }
 
@@ -390,6 +445,8 @@ void app.whenReady().then(async () => {
   // Opt-in: nothing contacts GitHub unless the user turned this on (or presses "Check now").
   if (app.isPackaged && appOptions(await configuration.current()).checkForUpdates) setTimeout(() => void updates.check(), 10_000)
   prEvents.start()
+  slack.start()
+  void automations.start()
 })
 
 let quitting = false
@@ -400,6 +457,8 @@ app.on('before-quit', (event) => {
   quitting = true
   usage.stop()
   prEvents.stop()
+  slack.stop()
+  automations.stop()
   void sessions.stopAll().finally(() => app.quit())
 })
 app.on('window-all-closed', () => app.quit())

@@ -34,7 +34,11 @@ export default {
   // scripts/after-pack.mjs, because extraResources never copies node_modules).
   files: ['out/**', 'package.json', '!node_modules/**', 'node_modules/node-pty/**', '!node_modules/node-pty/{src,deps,scripts,typings,third_party}/**', '!**/*.{map,test.js}'],
   asarUnpack: ['node_modules/node-pty/**'],
-  extraResources: [{ from: '.stage/bridge', to: 'bridge', filter: ['**/*'] }],
+  extraResources: [
+    { from: '.stage/bridge', to: 'bridge', filter: ['**/*'] },
+    // The Slack tracking hook script, copied into the data folder when the user installs it.
+    { from: '../adapters/src/chat-slack/hook', to: 'chat-slack', filter: ['*.mjs'] }
+  ],
   extraMetadata: { name: BRAND.slug, productName: BRAND.productName, version, main: 'out/main/index.js' },
   afterPack: './scripts/after-pack.mjs',
   npmRebuild: true,

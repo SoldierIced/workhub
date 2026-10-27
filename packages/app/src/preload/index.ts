@@ -3,6 +3,7 @@ import type { AgentEvent, HistoryMessage } from '@workhub/core'
 import { toPlatform, type AccountUsage, type HubApi, type SessionView } from '../shared/api'
 import type { UpdateStatus } from '../shared/updates-api'
 import type { PrEventBatch } from '../shared/pr-events-api'
+import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -100,6 +101,36 @@ const api: HubApi = {
     onEvents: (cb) => subscribe<[PrEventBatch]>('prEvents:events', cb),
     notify: (n) => ipcRenderer.send('prEvents:notify', n),
     demoAdvance: () => ipcRenderer.invoke('prEvents:demoAdvance')
+  },
+  slack: {
+    get: () => ipcRenderer.invoke('slack:get'),
+    saveSettings: (s) => ipcRenderer.invoke('slack:saveSettings', s),
+    runNow: () => ipcRenderer.invoke('slack:runNow'),
+    track: (input) => ipcRenderer.invoke('slack:track', input),
+    trackMessage: (channelId, ts) => ipcRenderer.invoke('slack:trackMessage', channelId, ts),
+    setClosed: (id, closed) => ipcRenderer.invoke('slack:setClosed', id, closed),
+    setWake: (id, wake) => ipcRenderer.invoke('slack:setWake', id, wake),
+    remove: (id) => ipcRenderer.invoke('slack:remove', id),
+    sendToSession: (id) => ipcRenderer.invoke('slack:sendToSession', id),
+    markViewed: (ids) => ipcRenderer.invoke('slack:markViewed', ids),
+    setHook: (accountId, install) => ipcRenderer.invoke('slack:setHook', accountId, install),
+    demo: (input) => ipcRenderer.invoke('slack:demo', input),
+    openOwner: (id) => ipcRenderer.invoke('slack:openOwner', id),
+    onChanged: (cb) => subscribe<[SlackSnapshot]>('slack:changed', cb),
+    onNotice: (cb) => subscribe<[ChatNoticeEvent]>('slack:notice', cb)
+  },
+  automations: {
+    get: () => ipcRenderer.invoke('automations:get'),
+    save: (a) => ipcRenderer.invoke('automations:save', a),
+    remove: (id) => ipcRenderer.invoke('automations:remove', id),
+    setEnabled: (id, enabled) => ipcRenderer.invoke('automations:setEnabled', id, enabled),
+    runNow: (id) => ipcRenderer.invoke('automations:runNow', id),
+    stop: (id) => ipcRenderer.invoke('automations:stop', id),
+    openSession: (id) => ipcRenderer.invoke('automations:openSession', id),
+    setViewing: (id) => ipcRenderer.send('automations:setViewing', id),
+    onChanged: (cb) => subscribe<[AutomationsSnapshot]>('automations:changed', cb),
+    onPrompted: (cb) => subscribe<[string, string]>('automations:prompted', cb),
+    onConfigChanged: (cb) => subscribe<[]>('config:changed', cb)
   }
 }
 

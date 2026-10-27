@@ -214,6 +214,16 @@ export class AutomationEngine {
     this.save({ ...this.state, starts })
   }
 
+  /** A session got its real identity late (an ACP agent reports its id after starting): the records follow it. */
+  identityChanged(oldKey: string, newKey: string): void {
+    if (oldKey === newKey || !(oldKey in this.state.owned)) return
+    const owned = { ...this.state.owned, [newKey]: this.state.owned[oldKey]! }
+    delete owned[oldKey]
+    const sessions = Object.fromEntries(Object.entries(this.state.sessions).map(([id, key]) => [id, key === oldKey ? newKey : key]))
+    const retiring = this.state.retiring.map((key) => (key === oldKey ? newKey : key))
+    this.save({ ...this.state, owned, sessions, retiring })
+  }
+
   private enqueue(a: AutomationDefinition, trigger: AutomationTrigger, link?: string): void {
     const s = this.runState(a.id)
     const now = this.host.now()
