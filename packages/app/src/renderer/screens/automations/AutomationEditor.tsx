@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AUTOMATION_EFFORTS, CLAUDE_PERMISSION_MODES, type AutomationDefinition, type EffectiveAgent, type WatchedChannel } from '@workhub/core'
+import { AUTOMATION_EFFORTS, CLAUDE_PERMISSION_MODES, fillFromPreset, type AutomationDefinition, type EffectiveAgent, type WatchedChannel } from '@workhub/core'
 import type { AgentOptionsView } from '@shared/api'
 import { Button, Input, Select, Switch, Textarea } from '../../components/atoms'
 import { Dialog, Field, SwitchRow } from '../../components/molecules'
@@ -34,12 +34,14 @@ export interface AutomationEditorProps {
   automation: AutomationDefinition | null
   agents: EffectiveAgent[]
   channels: WatchedChannel[]
+  /** "Fill from preset": each builds a fresh automation whose content replaces the form (the id stays). */
+  presets?: { id: string; label: string; build: () => AutomationDefinition }[]
   onClose: () => void
   onSave: (a: AutomationDefinition) => Promise<boolean>
 }
 
 /** The automation's form: what it sends, where, when it fires, its limits and its session policy. */
-export function AutomationEditor({ automation, agents, channels, onClose, onSave }: AutomationEditorProps) {
+export function AutomationEditor({ automation, agents, channels, presets = [], onClose, onSave }: AutomationEditorProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<AutomationDefinition | null>(automation)
   const [otherChannel, setOtherChannel] = useState('')
@@ -70,6 +72,16 @@ export function AutomationEditor({ automation, agents, channels, onClose, onSave
       }
     >
       <div className="flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1">
+        {presets.length > 0 && (
+          <div className="flex items-center justify-end gap-2" data-testid="automation-presets">
+            <span className="text-sm text-muted">{t('automations.preset.fill')}</span>
+            {presets.map((p) => (
+              <Button key={p.id} size="sm" variant="secondary" onClick={() => setForm(fillFromPreset(form, p.build()))}>
+                {p.label}
+              </Button>
+            ))}
+          </div>
+        )}
         <Field label={t('automations.field.name')}>
           <Input value={form.name} onChange={(e) => set({ name: e.target.value })} />
         </Field>

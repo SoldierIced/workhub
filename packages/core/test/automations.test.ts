@@ -7,6 +7,7 @@ import {
   EMPTY_CHAT_STATE,
   EMPTY_SESSION_GROUPS,
   evaluatePendingGate,
+  fillFromPreset,
   groupOf,
   ingestRecord,
   limitWait,
@@ -17,6 +18,8 @@ import {
   reconcileTop,
   replaceSessionIdentity,
   transferThreads,
+  usageDelta,
+  usageOfSnapshot,
   windowReason,
   type AutomationDefinition,
   type AutomationHost,
@@ -246,6 +249,69 @@ describe('the engine', () => {
     engine.runNow('a1')
     await runOnce(world, engine)
     expect(world.live).toHaveLength(1)
+  })
+})
+
+describe('run cost', () => {
+  const usd = (amount: number) => ({ amount, currency: 'USD' })
+
+  it('reads usage from a monitor snapshot and subtracts what the session had before', () => {
+    expect(usageOfSnapshot({})).toBeUndefined()
+    expect(usageOfSnapshot({ tokens: { input: 10, output: 5, cacheRead: 100 } })).toEqual({ tokens: 115 })
+    expect(usageOfSnapshot({ cost: usd(1.5), tokens: { total: 40, input: 1 } })).toEqual({ cost: usd(1.5), tokens: 40 })
+    expect(usageDelta({ cost: usd(1), tokens: 10 }, { cost: usd(1.75), tokens: 30 })).toEqual({ cost: usd(0.75), tokens: 20 })
+    expect(usageDelta({}, { tokens: 7 })).toEqual({ tokens: 7 })
+    expect(usageDelta({ tokens: 10 }, undefined)).toEqual({})
+    expect(usageDelta({ cost: usd(5) }, { cost: usd(1) })).toEqual({ cost: usd(0) })
+  })
+
+  it('logs the cost of a run in a new session, and only the delta in a reused one', async () => {
+    const { world, engine } = setup()
+    engine.runNow('a1')
+    await engine.tick()
+    world.live[0]!.usage = { cost: usd(0.4), tokens: 1000 }
+    await runOnce(world, engine)
+    expect(engine.snapshot().runs[0]).toMatchObject({ outcome: 'ok', cost: usd(0.4), tokens: 1000 })
+    engine.runNow('a1')
+    await engine.tick()
+    world.live[0]!.usage = { cost: usd(1), tokens: 2500 }
+    await runOnce(world, engine)
+    expect(engine.snapshot().runs[0]).toMatchObject({ cost: usd(0.6), tokens: 1500 })
+  })
+
+  it('picks up usage the monitor reports a moment after the run ended, then stops watching', async () => {
+    const { world, engine } = setup()
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    expect(engine.snapshot().runs[0]).not.toHaveProperty('cost')
+    expect(engine.snapshot().runs[0]).not.toHaveProperty('tokens')
+    world.live[0]!.usage = { tokens: 300 }
+    world.time += 3_000
+    await engine.tick()
+    expect(engine.snapshot().runs[0]).toMatchObject({ tokens: 300 })
+    world.time += 60_000
+    world.live[0]!.usage = { tokens: 999 }
+    await engine.tick()
+    expect(engine.snapshot().runs[0]).toMatchObject({ tokens: 300 })
+  })
+
+  it('logs nothing for a reused session whose usage was unknown when the run began', async () => {
+    const { world, engine } = setup()
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    engine.runNow('a1')
+    await engine.tick()
+    world.live[0]!.usage = { tokens: 5000 }
+    await runOnce(world, engine)
+    expect(engine.snapshot().runs[0]).not.toHaveProperty('tokens')
+  })
+
+  it('fills an existing automation from a preset but keeps its id', () => {
+    const preset = prReviewsPreset('new', { profileId: null, agentKey: 'claude', folder: '~/w', channels: [{ id: 'C2', name: 'pr-reviews', purpose: '' }] })
+    const filled = fillFromPreset({ id: 'mine' }, preset)
+    expect(filled).toMatchObject({ id: 'mine', name: 'PR reviews', sessionPolicy: 'newEachRun', triggers: { chatChannelIds: ['C2'] } })
+    filled.triggers.chatChannelIds.push('X')
+    expect(preset.triggers.chatChannelIds).toEqual(['C2'])
   })
 })
 

@@ -1,4 +1,5 @@
 import type { EventLedger } from '../chat/ledger'
+import type { Money, SessionMonitorSnapshot } from '../domain/monitor'
 
 /**
  * An automation sends a prompt or slash command to a dedicated, visible session when a chat
@@ -106,6 +107,38 @@ export interface AutomationRun {
   session?: string
   /** Further triggers merged into this run while it waited. */
   merged: number
+  /** What the run spent, from the session's usage (end minus start); absent when the agent reports none. */
+  cost?: Money
+  /** Tokens the run used; absent when the agent reports none. */
+  tokens?: number
+}
+
+/** A session's cumulative usage, as its monitor reports it. */
+export interface SessionUsage {
+  cost?: Money
+  tokens?: number
+}
+
+/** The usage of a monitor snapshot; undefined when the agent reports neither cost nor tokens. */
+export function usageOfSnapshot(snapshot: Pick<SessionMonitorSnapshot, 'cost' | 'tokens'>): SessionUsage | undefined {
+  const t = snapshot.tokens
+  const tokens = t ? (t.total ?? (t.input ?? 0) + (t.output ?? 0) + (t.cacheRead ?? 0) + (t.cacheWrite ?? 0)) : undefined
+  const usage: SessionUsage = { ...(snapshot.cost ? { cost: snapshot.cost } : {}), ...(tokens ? { tokens } : {}) }
+  return usage.cost || usage.tokens ? usage : undefined
+}
+
+/**
+ * What a run spent: the session's usage now minus what it had when the run began (a reused or
+ * resumed session carries earlier runs' usage). Nothing when the session reports no usage.
+ */
+export function usageDelta(baseline: SessionUsage, now: SessionUsage | undefined): Pick<AutomationRun, 'cost' | 'tokens'> {
+  if (!now) return {}
+  const out: Pick<AutomationRun, 'cost' | 'tokens'> = {}
+  if (now.cost && (!baseline.cost || baseline.cost.currency === now.cost.currency)) {
+    out.cost = { amount: Math.max(0, now.cost.amount - (baseline.cost?.amount ?? 0)), currency: now.cost.currency }
+  }
+  if (now.tokens !== undefined) out.tokens = Math.max(0, now.tokens - (baseline.tokens ?? 0))
+  return out
 }
 
 /** What the engine keeps between launches (the app stores it in its data folder). */
@@ -148,6 +181,11 @@ export function newAutomation(id: string, fields: Partial<AutomationDefinition> 
     receivesChatReplies: true,
     ...fields
   }
+}
+
+/** "Fill from preset" on an existing automation: the preset's content under the automation's own id. */
+export function fillFromPreset(current: Pick<AutomationDefinition, 'id'>, preset: AutomationDefinition): AutomationDefinition {
+  return { ...(JSON.parse(JSON.stringify(preset)) as AutomationDefinition), id: current.id }
 }
 
 /**

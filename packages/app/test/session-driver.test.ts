@@ -89,6 +89,17 @@ describe('session driver', () => {
     expect(writes).toEqual([['v2:console', 'a\rb\r']])
   })
 
+  it('keeps the usage the session monitor reports and forgets it with the session', async () => {
+    const { views, driver } = setup()
+    views.push(view('v1', 'ready'), view('v2', 'stopped'))
+    views.forEach((v) => driver.onChanged(v))
+    driver.onEvent({ sessionId: 'v1', type: 'monitor', snapshot: { cost: { amount: 0.5, currency: 'USD' }, tokens: { total: 900 } } })
+    expect(driver.list()[0]?.usage).toEqual({ cost: { amount: 0.5, currency: 'USD' }, tokens: 900 })
+    expect(driver.list()[1]).not.toHaveProperty('usage')
+    driver.onEvent({ sessionId: 'v1', type: 'monitor', snapshot: { title: 'nothing to count' } })
+    expect(driver.list()[0]).not.toHaveProperty('usage')
+  })
+
   it('expands ~ in automation folders', () => {
     expect(expandHome('~', '/home/me')).toBe('/home/me')
     expect(expandHome('~/work', '/home/me')).toBe('/home/me/work')
