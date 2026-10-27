@@ -16,6 +16,11 @@ describe('pull request window hash', () => {
     expect(parsePrWindowHash(prWindowHash('work profile', url))).toEqual({ profileId: 'work profile', url })
     expect(parsePrWindowHash(prWindowHash(null, url))).toEqual({ profileId: null, url })
   })
+  it('carries the tab to open on and drops unknown ones', () => {
+    const url = 'https://github.com/acme/api/pull/4'
+    expect(parsePrWindowHash(prWindowHash('p', url, 'slack'))).toEqual({ profileId: 'p', url, tab: 'slack' })
+    expect(parsePrWindowHash(`#pr?profile=p&url=${encodeURIComponent(url)}&tab=evil`)).toEqual({ profileId: 'p', url })
+  })
   it('ignores other hashes', () => {
     expect(parsePrWindowHash('')).toBeNull()
     expect(parsePrWindowHash('#settings')).toBeNull()

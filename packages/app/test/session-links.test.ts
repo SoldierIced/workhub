@@ -148,6 +148,14 @@ describe('Start session about this ticket', () => {
     const { deps } = harness({ agents: [agent('shell', false)] })
     expect(await runIntent(deps, { kind: 'ticketSession', profileId: null, ticket: { key: 'A-1', title: 't' } })).toMatchObject({ kind: 'error', message: 'links.noAgent' })
   })
+  it('starts Claude for "Talk with Claude" even when another agent is preferred, and says so when there is none', async () => {
+    const { deps, starts } = harness({ agents: [agent('kiro'), agent('claude')], profile: { preferredAgents: ['kiro'] } })
+    await runIntent(deps, { kind: 'ticketSession', profileId: 'p', ticket: { key: 'A-1', title: 't' } })
+    await runIntent(deps, { kind: 'ticketSession', profileId: 'p', ticket: { key: 'A-1', title: 't' }, agent: 'claude' })
+    expect(starts.map((s) => s.agentKey)).toEqual(['kiro', 'claude'])
+    const none = harness({ agents: [agent('kiro')] })
+    expect(await runIntent(none.deps, { kind: 'ticketSession', profileId: null, ticket: { key: 'A-1', title: 't' }, agent: 'claude' })).toMatchObject({ kind: 'error', message: 'links.noClaude' })
+  })
   it('turns a failing start into an error outcome', async () => {
     const { deps } = harness({ start: vi.fn().mockRejectedValue(new Error('boom')) })
     expect(await runIntent(deps, { kind: 'ticketSession', profileId: null, ticket: { key: 'A-1', title: 't' } })).toEqual({ kind: 'error', message: 'links.failed', params: { message: 'boom' } })

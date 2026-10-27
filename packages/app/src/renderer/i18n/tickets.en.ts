@@ -93,5 +93,19 @@ export const ticketsEn = {
   'trackers.missing.email': 'Add the account email first.',
   'trackers.missing.token': 'Add the token or key first.',
   'trackers.demoNote': 'Demo mode: tickets are synthetic and no credentials are needed.',
-  'trackers.saved': 'Tracker saved'
+  'trackers.saved': 'Tracker saved',
+  'ticket.talkWithClaude': 'Talk with Claude',
+  'ticket.talkWithClaudeHint': 'Open a Claude session about this ticket, with a prompt for you to finish',
+  'ticket.newSession': 'New session about this ticket',
+  'ticket.newSessionHint': 'Start a session with your preferred agent, with a prompt about this ticket in the composer',
+  'ticket.openLinkedSession': 'Open session',
+  'ticket.openLinkedSessionHint': 'Go to the latest open session that works on this ticket',
+  'ticket.copyLink': 'Copy link',
+  'ticket.linkCopied': 'Link copied',
+  'ticket.reload': 'Reload',
+  'ticket.chip.open': 'Open ticket',
+  'ticket.chip.openHint': 'Open {key} in its own window',
+  'ticket.chip.loading': 'Loading {key}…',
+  'ticket.chip.error': 'Could not load {key}',
+  'ticket.chip.missing': '{key} was not found'
 } as const

@@ -18,7 +18,7 @@ applyAppearance(readPrefs(), matchMedia('(prefers-color-scheme: dark)').matches)
 function root(hash: string): ReactElement {
   if (hash === TRAY_POPOVER_HASH) return <TrayPopover />
   const pr = parsePrWindowHash(hash)
-  if (pr) return <PullRequestWindow profileId={pr.profileId} url={pr.url} />
+  if (pr) return <PullRequestWindow profileId={pr.profileId} url={pr.url} tab={pr.tab} />
   const ticket = parseTicketHash(hash)
   if (ticket) return <TicketWindowRoot profileId={ticket.profileId} ticketKey={ticket.key} />
   return <App />

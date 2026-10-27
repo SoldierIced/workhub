@@ -154,6 +154,31 @@ export async function postComment(host: CodeHost, ref: PullRequestRef, body: str
   await host.comment(ref, body.trim())
 }
 
+/** Long-lived branches Workhub never deletes when it closes a PR (Workhub 1's default list). */
+export const DEFAULT_PROTECTED_BRANCHES: readonly string[] = ['develop', 'development', 'dev', 'master', 'main', 'staging', 'stage', 'production', 'prod', 'qa', 'test']
+
+/** Whether closing a PR may delete this branch: never a listed long-lived one, nor any `release…` branch. */
+export function isLongLivedBranch(branch: string, protectedBranches: readonly string[] = DEFAULT_PROTECTED_BRANCHES): boolean {
+  const name = branch.trim().toLowerCase()
+  return name === '' || name.startsWith('release') || protectedBranches.some((b) => b.toLowerCase() === name)
+}
+
+export type CloseRefusal = 'notMine' | 'notOpen'
+
+/** Why the user cannot close this PR from Workhub: only their own open PRs (Workhub 1 offered it on "mine" only). */
+export function closeRefusal(pr: Pick<PullRequest, 'state'>, isMine: boolean): CloseRefusal | null {
+  if (!isMine) return 'notMine'
+  if (pr.state !== 'open') return 'notOpen'
+  return null
+}
+
+/** Closes a PR after `closeRefusal` allows it; a protected head branch is kept whatever was asked. */
+export async function closePullRequest(host: CodeHost, ref: PullRequestRef, pr: Pick<PullRequest, 'state' | 'branch'>, isMine: boolean, options: { comment: string; deleteBranch: boolean }): Promise<void> {
+  const refusal = closeRefusal(pr, isMine)
+  if (refusal) throw new CodeHostError(`close refused: ${refusal}`, 'unsupported')
+  await host.close(ref, { comment: options.comment.trim(), deleteBranch: options.deleteBranch && !isLongLivedBranch(pr.branch), branch: pr.branch })
+}
+
 export interface ReviewerState {
   name: string
   state: 'approved' | 'changesRequested' | 'dismissed' | 'requested'

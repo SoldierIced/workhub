@@ -1,4 +1,4 @@
-import { Check, Ear, EarOff, GitPullRequest, Hash, History, Inbox, MessagesSquare, Play, Plus, Settings, TriangleAlert } from 'lucide-react'
+import { Check, Ear, EarOff, GitPullRequest, Hash, History, Inbox, Link2, MessagesSquare, Play, Plus, Settings, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { hasUnread, plainText, sessionIdentity, threadArchiveMinutes, type ChatMessage, type Profile, type TrackedThread } from '@workhub/core'
 import type { SlackSnapshot } from '@shared/chat-api'
@@ -10,6 +10,7 @@ import { cn } from '../lib/cn'
 import { relativeTime } from '../lib/pullRequests'
 import type { SessionData } from '../store'
 import { LinkChip, shortPr, ThreadGroup } from './slack/ThreadList'
+import { TrackThreadDialog } from './slack/TrackThreadDialog'
 
 const HEALTH_TONE = { off: 'neutral', watching: 'success', checking: 'info', paused: 'warning', failing: 'danger' } as const
 
@@ -200,7 +201,12 @@ function ThreadsPane({
   const { t } = useI18n()
   const toast = useToast()
   const [link, setLink] = useState('')
+  const [sheet, setSheet] = useState(false)
   const [showClosed, setShowClosed] = useState(false)
+  // Sessions a tracked thread can wake: the live ones, by their sidebar label.
+  const liveSessions = sessions
+    .filter((s) => s.view.state !== 'stopped' && s.view.state !== 'error')
+    .map((s) => ({ id: s.view.id, label: `${s.view.label} · ${s.view.cwd.split(/[\\/]/).pop() ?? ''}` }))
   const visible = snap.threads.filter((th) => showClosed || !th.closed)
   const closedCount = snap.threads.length - snap.threads.filter((th) => !th.closed).length
   const track = async () => {
@@ -238,7 +244,17 @@ function ThreadsPane({
         <Button type="submit" size="sm" icon={<Plus className="size-3.5" aria-hidden />} disabled={!link.trim()}>
           {t('slack.track')}
         </Button>
+        <Button size="sm" variant="ghost" icon={<Link2 className="size-3.5" aria-hidden />} onClick={() => setSheet(true)}>
+          {t('slack.trackSheet.open')}
+        </Button>
       </form>
+      <TrackThreadDialog
+        open={sheet}
+        onOpenChange={setSheet}
+        onTracked={() => setLink('')}
+        initial={{ permalink: link.trim() }}
+        sessions={liveSessions}
+      />
       {visible.length === 0 ? (
         <EmptyState compact icon={<MessagesSquare className="size-5" aria-hidden />} title={t('slack.noThreadsTitle')} description={t('slack.noThreads')} />
       ) : (

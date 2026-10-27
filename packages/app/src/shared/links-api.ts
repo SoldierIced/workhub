@@ -26,13 +26,14 @@ export interface TicketTarget {
  * live sessions of their own, so they send an intent; the main window carries it out and shows the result.
  * - `pullRequestSession`: open the live session linked to the PR, else start one in the matching folder.
  * - `reviewPullRequest`: start a session with a review prompt drafted in the composer, not sent.
- * - `ticketSession`: start a session with a prompt about the ticket drafted in the composer, not sent.
+ * - `ticketSession`: start a session with a prompt about the ticket drafted in the composer, not sent;
+ *   `agent: 'claude'` asks for a Claude session ("Talk with Claude"), else the preferred agent.
  * - `resume`: open a past session again.
  */
 export type SessionIntent =
   | { kind: 'pullRequestSession'; profileId: string | null; pr: PullRequestTarget }
   | { kind: 'reviewPullRequest'; profileId: string | null; pr: PullRequestTarget }
-  | { kind: 'ticketSession'; profileId: string | null; ticket: TicketTarget }
+  | { kind: 'ticketSession'; profileId: string | null; ticket: TicketTarget; agent?: 'claude' }
   | { kind: 'resume'; profileId: string | null; entry: HistoryItem; mode: 'app' | 'console' }
 
 export interface LinksApi {
