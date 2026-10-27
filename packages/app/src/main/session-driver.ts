@@ -1,4 +1,4 @@
-import { sessionIdentity, type AgentEvent, type DrivenSession } from '@workhub/core'
+import { sessionIdentity, usageOfSnapshot, type AgentEvent, type DrivenSession, type SessionUsage } from '@workhub/core'
 import { terminalChannel, type SessionView, type StartSessionInput } from '../shared/api'
 
 /** What the driver needs from the session manager (its public surface). */
@@ -26,6 +26,7 @@ export class SessionDriver {
   private readonly engine = new Map<string, 'app' | 'console'>()
   private readonly lastOutput = new Map<string, number>()
   private readonly identities = new Map<string, string>()
+  private readonly usage = new Map<string, SessionUsage>()
   private viewing: string | null = null
   /** Called when a session gets its real identity after starting (ACP agents). */
   onIdentityChanged: (oldKey: string, newKey: string) => void = () => undefined
@@ -51,6 +52,11 @@ export class SessionDriver {
   }
 
   onEvent(e: AgentEvent): void {
+    if (e.type === 'monitor') {
+      const usage = usageOfSnapshot(e.snapshot)
+      if (usage) this.usage.set(e.sessionId, usage)
+      else this.usage.delete(e.sessionId)
+    }
     if (e.type === 'output' && e.sessionId.endsWith(':console')) this.lastOutput.set(e.sessionId.slice(0, -':console'.length), this.now())
   }
 
@@ -70,7 +76,8 @@ export class SessionDriver {
       turnsEnded: this.turns.get(v.id) ?? 0,
       ...(this.lastOutput.has(v.id) ? { lastOutputAt: this.lastOutput.get(v.id)! } : {}),
       ...(v.error ? { error: v.error } : {}),
-      onScreen: this.viewing === v.id
+      onScreen: this.viewing === v.id,
+      ...(this.usage.has(v.id) ? { usage: this.usage.get(v.id)! } : {})
     }))
   }
 
@@ -117,7 +124,7 @@ export class SessionDriver {
   /** Drops a stopped session the engine replaced: out of the list and out of the driver's own books. */
   async forget(sessionId: string): Promise<void> {
     if (!this.sessions.remove(sessionId)) return
-    for (const m of [this.turns, this.lastState, this.engine, this.lastOutput, this.identities]) m.delete(sessionId)
+    for (const m of [this.turns, this.lastState, this.engine, this.lastOutput, this.identities, this.usage]) m.delete(sessionId)
     if (this.viewing === sessionId) this.viewing = null
   }
 }

@@ -41,6 +41,10 @@ export interface CodeHostApi {
   close(profileId: string | null, url: string, comment: string, deleteBranch: boolean): Promise<CodeHostActionResult>
   /** Opens the PR in its own window (one per PR; an open one is focused), optionally on a tab. */
   openWindow(profileId: string | null, url: string, tab?: PullRequestWindowTab): Promise<void>
+  /** Focuses the main window on the Pull requests screen with this PR selected (the PR window's "Show in Workhub"). */
+  showInWorkhub(profileId: string | null, url: string): Promise<void>
+  /** Fires in the main window when a PR window asked to show a PR there, with the profile the PR window was opened for. */
+  onFocus(cb: (url: string, profileId: string | null) => void): () => void
   /** Opens a recognized PR URL in the browser. */
   openExternal(profileId: string | null, url: string): Promise<void>
   /** Fires in a PR window that was already open when it was asked to show a tab. */

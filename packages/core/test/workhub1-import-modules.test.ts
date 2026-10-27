@@ -235,6 +235,14 @@ describe('Workhub 1 import: modules and options', () => {
     expect(result.ok && result.value.options?.claudePlanUsage).toBe(false)
   })
 
+  it('imports the protected branch list only when the user changed it from the default', () => {
+    const def = 'develop, development, dev, master, main, staging, stage, production, prod, qa, test'
+    expect(planWorkhub1Import({ protectedBranches: def }, config(), home).options).toBeUndefined()
+    expect(planWorkhub1Import({ protectedBranches: 'TEST, qa,test,prod,production,stage,staging,main,master,dev,development,develop' }, config(), home).options).toBeUndefined()
+    expect(planWorkhub1Import({ protectedBranches: '' }, config(), home).options).toBeUndefined()
+    expect(planWorkhub1Import({ protectedBranches: 'Main, trunk\nhotfix' }, config(), home).options).toEqual({ protectedBranches: ['main', 'trunk', 'hotfix'] })
+  })
+
   it('turns the main notification switch off everywhere it maps', () => {
     const p = planWorkhub1Import({ notifications: { all: false } }, config(), home)
     expect(p.options).toMatchObject({ notifyReplied: false, notifyNeedsAnswer: false, notifyError: false, notifySlack: false, notifyTickets: false, notifyAutomations: false, notifyHealth: false })

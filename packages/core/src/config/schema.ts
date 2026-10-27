@@ -90,6 +90,11 @@ export interface AppOptions {
   speechRate: number
   /** The first-run welcome window was shown (or the user already had profiles). */
   welcomeDone: boolean
+  /**
+   * Branches Close PR never deletes (Settings → Pull requests). Unset: `DEFAULT_PROTECTED_BRANCHES`.
+   * `release…` branches are always kept.
+   */
+  protectedBranches?: string[]
   /** "Pause notifications": nothing is shown until this moment (epoch ms). Unset when not paused. */
   notificationsPausedUntil?: number
 }
@@ -359,6 +364,7 @@ export const configSchema = z.object({
       speechVoice: z.string().max(200).default(''),
       speechRate: z.number().int().min(SPEECH_RATE_RANGE[0]).max(SPEECH_RATE_RANGE[1]).default(DEFAULT_SPEECH_RATE),
       welcomeDone: z.boolean().default(false),
+      protectedBranches: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
       notificationsPausedUntil: z.number().int().nonnegative().optional()
     })
     .optional(),

@@ -4,6 +4,7 @@ import { createCliRunner, type CliRunner } from '@workhub/adapters/cli'
 import { GitHubCodeHost, createDemoRunner } from '@workhub/adapters/codehost-github'
 import { GitLabCodeHost } from '@workhub/adapters/codehost-gitlab'
 import {
+  appOptions,
   CodeHostError,
   githubScopeFromRemotes,
   loadMyPullRequests,
@@ -213,7 +214,8 @@ export class CodeHostService {
       const pr = await host.detail(ref)
       const login = this.logins.get(key)
       const isMine = Boolean(login) && login!.toLowerCase() === pr.author.toLowerCase()
-      await closePullRequest(host, ref, pr, isMine, { comment, deleteBranch })
+      const protectedBranches = appOptions(await this.loadConfig()).protectedBranches
+      await closePullRequest(host, ref, pr, isMine, { comment, deleteBranch, protectedBranches })
     })
   }
 
@@ -234,10 +236,12 @@ export class CodeHostService {
 export interface CodeHostIpcOptions {
   service: CodeHostService
   openWindow: (profileId: string | null, url: string, tab?: PullRequestWindowTab) => void
+  /** Brings the main window up on Pull requests with this PR selected. */
+  showInWorkhub: (url: string, profileId: string | null) => void
   openExternal: (url: string, profileId: string | null) => Promise<void>
 }
 
-export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, openExternal }: CodeHostIpcOptions): void {
+export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, showInWorkhub, openExternal }: CodeHostIpcOptions): void {
   ipc.handle('codeHost:lists', (_e, profileId: string | null, force?: boolean) => service.lists(profileId, force === true))
   ipc.handle('codeHost:view', (_e, profileId: string | null, url: string) => service.view(profileId, url))
   ipc.handle('codeHost:review', (_e, profileId: string | null, url: string, action: ReviewAction, body: string) =>
@@ -252,6 +256,9 @@ export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, op
   )
   ipc.handle('codeHost:openWindow', async (_e, profileId: string | null, url: string, tab?: unknown) => {
     if (await service.recognizes(profileId, url)) openWindow(profileId, url, isPullRequestWindowTab(tab) ? tab : undefined)
+  })
+  ipc.handle('codeHost:showInWorkhub', async (_e, profileId: string | null, url: string) => {
+    if (await service.recognizes(profileId, url)) showInWorkhub(url, profileId)
   })
   ipc.handle('codeHost:openExternal', async (_e, profileId: string | null, url: string) => {
     // Only pull request URLs of the connected host; the renderer never opens arbitrary links.
