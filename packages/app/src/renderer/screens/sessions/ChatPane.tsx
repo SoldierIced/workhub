@@ -281,7 +281,7 @@ export function ChatPane({ data }: { data: SessionData }) {
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite" aria-label={t('chat.log')} role="log">
+      <div className="min-h-0 flex-1 overflow-y-auto text-[length:var(--wh-chat-font-size,13px)]" aria-live="polite" aria-label={t('chat.log')} role="log">
         <div className="mx-auto flex max-w-3xl flex-col gap-3.5 px-6 py-5">
           {data.items.length === 0 && !v.origin && <p className="py-10 text-center text-sm text-subtle">{t('chat.empty')}</p>}
           {replayAt < 0 && originLine}

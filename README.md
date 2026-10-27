@@ -147,12 +147,18 @@ notarization (Apple Developer ID, a Windows code-signing certificate) are a late
   OpenCode were checked on a real install, Codex only from its documentation (no data here).
 - Plan usage per account comes from what running sessions report. Reading it from Anthropic's
   undocumented usage endpoint is an opt-in setting (Settings → General), off by default.
-- **Import from Workhub 1** (Settings → General, macOS) previews profiles, folders, Claude
+- **Import from Workhub 1** (Settings → General → "Migrate from Workhub 1", macOS, shown only when Workhub 1 settings are found on the machine) previews profiles, folders, Claude
   accounts and connections (GitHub, Jira, Elastic), automations, the Slack watcher, Health
   environments, the profile modules they use, notification and usage options, the model per
-  account and the sidebar session groups, before saving. Settings with no Workhub 2 equivalent are
+  account, the sidebar session groups and the appearance (terminal theme, font and size, text
+  sizes), before saving. Settings with no Workhub 2 equivalent are
   listed as not carried over. Applying twice adds nothing. Workhub 1 is never written; secrets are
   not copied (connections that need one are marked "re-enter").
+
+- **Appearance** (Settings → Appearance): light or dark, plus the 485 terminal color schemes
+  Workhub 1 offered (iTerm2-Color-Schemes, MIT; see `NOTICE`), searchable with a preview. "Use the
+  theme across the app" colors every screen with the chosen scheme. Terminal font family and size,
+  the app text size and the conversation text size are kept per install.
 
 ### Session groups
 

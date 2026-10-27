@@ -1,0 +1,7 @@
+Workhub 2 includes third-party material:
+
+Terminal color schemes (packages/app/src/renderer/themes/terminal-themes.json)
+  iTerm2-Color-Schemes, https://github.com/mbadolato/iTerm2-Color-Schemes
+  Copyright (c) 2011-present Mark Badolato
+  MIT License; the full text is in packages/app/src/renderer/themes/LICENSE.
+  Converted from the catalog bundled by libghostty-spm, which Workhub 1 used.

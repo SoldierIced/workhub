@@ -1,8 +1,10 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
+import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type {
   AppOptions,
   AgentCapabilities,
   BudgetStatus,
+  CreditSpend,
   AgentDefinition,
   AgentEvent,
   AgentAccount,
@@ -16,6 +18,7 @@ import type {
   ModelOption,
   PlanUsageWindow,
   Profile,
+  SessionModeOption,
   Result,
   SecretChange,
   Session,
@@ -23,6 +26,7 @@ import type {
   SessionOrigin,
   SessionScreen,
   ValidationIssue,
+  Workhub1SecretResult,
   WorkhubConfig
 } from '@workhub/core'
 import type { AiReviewApi } from './ai-review-api'
@@ -62,10 +66,15 @@ export interface ConfigApi {
   /** Stores the sidebar groups (computed in the renderer with the pure functions of core). */
   saveSessionGroups(groups: SessionGroups): Promise<Result<WorkhubConfig>>
   effectiveAgents(profileId: string | null): Promise<EffectiveAgent[]>
-  /** Workhub 1's settings mapped onto this config, read-only (macOS). `available: false` when Workhub 1 has none here. */
-  previewWorkhub1Import(): Promise<{ available: boolean; plan?: ImportPlan; error?: string }>
+  /**
+   * Workhub 1's settings mapped onto this config, read-only (macOS). `available: false` when Workhub 1
+   * has none here. `pendingSecrets`: the connections from Workhub 1 still missing their token (names only).
+   */
+  previewWorkhub1Import(): Promise<Workhub1Preview>
   /** Reads Workhub 1's settings again and adds what the preview showed. Never writes to Workhub 1. */
   applyWorkhub1Import(): Promise<Result<WorkhubConfig>>
+  /** macOS: copies the tokens of Workhub 1's Keychain items (macOS asks to allow each) into the secret store. Statuses only, never a secret. */
+  importWorkhub1Secrets(): Promise<Workhub1SecretResult[]>
   /** Main changed the config on its own (a session's group place moved to its real id). */
   onChanged(cb: () => void): () => void
 }
@@ -96,17 +105,30 @@ export interface SessionView extends Session {
   mode: SessionMode
   /** Whether the shell next to the agent is running. */
   shellRunning: boolean
-  /** Models the session can switch to (native Claude), and the current one. */
+  /** Models the session can switch to (native Claude, ACP agents that list them), and the current one. */
   models?: ModelOption[]
   currentModelId?: string
   /** The model asked for at start could not be applied: the agent runs with its default. */
   modelIgnored?: boolean
-  /** The runtime offers live controls: model switch and MCP reconnect/toggle. */
+  /** The mode (agent, persona) asked for at start is not offered: the agent runs in its default. */
+  modeIgnored?: boolean
+  /** The runtime offers live controls: model switch and MCP reconnect/toggle (native Claude). */
   controls: boolean
+  /** The model can be switched while the session runs (native Claude, ACP). */
+  modelControl?: boolean
+  /** The session mode (`availableModes`: agent, persona or approval preset) can be switched while it runs (ACP). */
+  modeControl?: boolean
   /** An AI reviewer session (read-only, started by the AI review). */
   readOnly?: boolean
   /** The session continues another one: moved from another account, or handed off from another agent. */
   origin?: SessionOrigin
+  /** The engine picked while a turn was running: the hand-over waits for the turn to end. */
+  pendingMode?: 'app' | 'console'
+}
+
+export interface SetModeOptions {
+  /** Hand over at once, even if that ends the turn in progress. */
+  now?: boolean
 }
 
 export interface StartSessionInput {
@@ -121,8 +143,10 @@ export interface StartSessionInput {
   resumeAgentSessionId?: string
   /** Reopen a session that has no agent session id (a plain terminal) under its old identity, so it keeps its group. */
   identity?: string
-  /** Model to start with (remembered per agent and account by the renderer). */
+  /** Model to start with (remembered per agent and account by the renderer); else the account's default. */
   model?: string
+  /** Session mode to start in: the agent or persona (Kiro, OpenCode), the approval preset (Codex); else the account's default. */
+  modeId?: string
   /** An AI reviewer: the agent's most read-only mode, chat only (see `StartSessionRequest.readOnly`). */
   readOnly?: boolean
 }
@@ -179,9 +203,16 @@ export interface SessionsApi {
   respondPermission(id: string, requestId: string, optionId: string | null): void
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
-  /** Switches what the session shows; app and console hand the same agent session over. */
-  setMode(id: string, mode: SessionMode): Promise<void>
+  /**
+   * Switches what the session shows; app and console hand the same agent session over. While a
+   * turn runs the hand-over waits for its end (`pendingMode`) unless `now` is set.
+   */
+  setMode(id: string, mode: SessionMode, options?: SetModeOptions): Promise<void>
+  /** Stops the session if it runs and drops it from the open sessions (it stays in History). */
+  close(id: string): Promise<void>
   setModel(id: string, modelId: string | null): Promise<void>
+  /** Switches the session's agent mode (an id of `availableModes`). */
+  setAgentMode(id: string, modeId: string): Promise<void>
   mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void
   onEvent(cb: (e: AgentEvent) => void): () => void
   onChanged(cb: (s: SessionView) => void): () => void
@@ -195,14 +226,38 @@ export interface HistoryApi {
   list(): Promise<HistoryResult>
 }
 
+/**
+ * What an agent offers before a session starts, for the New session dialog and Settings: Kiro's
+ * models and agents from its CLI, else what the agent's last session reported over ACP.
+ */
+export interface AgentOptionsView {
+  models: ModelOption[]
+  modes: SessionModeOption[]
+  defaultModelId?: string
+  defaultModeId?: string
+  /** `cli`: listed by the agent's CLI now. `session`: reported by its last session. `none`: nothing known yet. */
+  source: 'cli' | 'session' | 'none'
+  /** Epoch ms of the reading. */
+  at?: number
+  /** What the modes are: an agent's personas (Kiro, OpenCode) or permission presets. */
+  modeSemantics: AgentDefinition['modeSemantics']
+}
+
 export interface AgentsApi {
   /** For each known agent id, whether its executable is installed (found on PATH). */
   availability(): Promise<Record<string, boolean>>
+  /** Models and modes of an agent key (`kiro`, `kiro:<accountId>`); `refresh` lists them again. */
+  options(agentKey: string, refresh?: boolean): Promise<AgentOptionsView>
 }
 
 export interface UsageApi {
   /** The last reads, and a fresh read when `refresh` is set. Empty while the option is off. */
   get(refresh?: boolean): Promise<AccountUsage[]>
+  /**
+   * Kiro credits spent today and over the last 7 days, from its local session files. Kiro does
+   * not expose the credits left; null when no Kiro session data is found.
+   */
+  kiroSpend(): Promise<CreditSpend | null>
   onChanged(cb: (usage: AccountUsage[]) => void): () => void
   /** Threshold and ceiling crossings, once per window reset, while alerts are on. */
   onAlerts(cb: (alerts: UsageAlert[]) => void): () => void
@@ -229,6 +284,10 @@ export interface SessionNotification {
   title: string
   body: string
   sessionId: string
+  /** Which switch in Settings governs it; sessions' own kinds when unset. */
+  kind?: NotificationKind
+  /** A click opens this screen instead of a session (Slack, Automations). */
+  route?: TrayRoute
 }
 
 export interface NotificationsApi {
@@ -260,4 +319,13 @@ export interface HubApi {
   automations: AutomationsApi
   aiReview: AiReviewApi
   continuity: ContinuityApi
+  tray: TrayApi
+}
+
+/** What Settings knows about Workhub 1 on this machine (see `previewWorkhub1Import`). */
+export interface Workhub1Preview {
+  available: boolean
+  plan?: ImportPlan
+  error?: string
+  pendingSecrets?: { connectionId: string; name: string }[]
 }

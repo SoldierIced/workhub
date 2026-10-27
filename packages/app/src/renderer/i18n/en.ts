@@ -1,5 +1,6 @@
 import { linksEn } from './links.en'
 import { aiReviewEn } from './aiReview.en'
+import { sessionsUxEn } from './sessionsUx.en'
 import { healthEn } from './health.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
@@ -9,6 +10,10 @@ import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
 import { usageEn } from './usage.en'
 import { continuityEn } from './continuity.en'
+import { appearanceEn } from './appearance.en'
+import { settingsHelpEn } from './settingsHelp.en'
+import { trayEn } from './tray.en'
+import { agentsEn } from './agents.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -338,7 +343,7 @@ export const en = {
   'settings.foldersHint': 'Shown first in the sidebar for new sessions.',
   'import.group': 'Workhub 1',
   'import.title': 'Import from Workhub 1',
-  'import.hint': 'Reads profiles, folders, Claude accounts, connections, automations, the Slack watcher, Health, notifications and sidebar groups. Secrets are not copied and Workhub 1 is not changed.',
+  'import.hint': 'Reads profiles, folders, Claude accounts, connections, automations, the Slack watcher, Health, notifications and sidebar groups. Secrets are not part of this step (use the token import below) and Workhub 1 is not changed.',
   'import.preview': 'Preview',
   'import.previewLabel': 'What the import adds',
   'import.missing': 'No Workhub 1 settings were found on this Mac.',
@@ -363,6 +368,18 @@ export const en = {
   'import.defaultModel': 'Model for new sessions',
   'import.language': 'Interface language',
   'import.notCarried': 'Not carried over',
+  'import.secrets': 'Import tokens from Workhub 1',
+  'import.secretsHint': 'Workhub 1 kept your Jira and Elastic tokens in the macOS Keychain. This copies them here so you do not have to paste them again. macOS asks for permission once per token: choose Allow. The tokens are stored encrypted on this computer and are never shown.',
+  'import.secretsBanner': 'Some connections brought from Workhub 1 are missing their token. Workhub can copy them from the macOS Keychain, where Workhub 1 kept them; macOS asks you to allow each one, and the tokens are stored encrypted and never shown.',
+  'import.secretsDone': 'Tokens imported from Workhub 1: {count}.',
+  'import.secretsSomeLeft': 'Tokens that could not be imported: {count}. You can enter them by hand.',
+  'import.migrate': 'Migrate from Workhub 1',
+  'import.migrateHint': 'Workhub 1 was found on this Mac.',
+  'import.secretsNone': 'No connection from Workhub 1 is waiting for a token.',
+  'import.secretsImported': 'token imported',
+  'import.secretsNotFound': 'not found in the Workhub 1 Keychain',
+  'import.secretsDenied': 'access denied in the Keychain prompt',
+  'import.secretsError': 'could not be read ({code})',
   ...prEn,
   ...ticketsEn,
   ...updatesEn,
@@ -373,5 +390,10 @@ export const en = {
   ...automationsEn,
   ...usageEn,
   ...aiReviewEn,
-  ...continuityEn
+  ...continuityEn,
+  ...sessionsUxEn,
+  ...trayEn,
+  ...agentsEn,
+  ...appearanceEn,
+  ...settingsHelpEn
 } as const

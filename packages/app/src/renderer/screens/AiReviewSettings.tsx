@@ -28,7 +28,7 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
         </p>
       )}
       <div className="grid grid-cols-2 gap-4">
-        <Field label={t('aiReview.settings.reviewer')}>
+        <Field label={t('aiReview.settings.reviewer')} help={t('help.aiReview.reviewer')}>
           <Select
             value={s.reviewerAgent ?? ''}
             onChange={(v) => set({ reviewerAgent: v || null })}
@@ -45,10 +45,10 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
         <Field label={t('aiReview.settings.baseBranch')} hint={t('aiReview.settings.baseBranchHint')}>
           <Input value={s.baseBranch} spellCheck={false} placeholder="develop" onChange={(e) => set({ baseBranch: e.target.value })} onBlur={() => set({ baseBranch: s.baseBranch.trim() || 'develop' })} />
         </Field>
-        <Field label={t('aiReview.settings.maxRounds')}>
+        <Field label={t('aiReview.settings.maxRounds')} help={t('help.aiReview.maxRounds')}>
           <Input type="number" min={MIN_REVIEW_ROUNDS} max={MAX_REVIEW_ROUNDS} value={s.maxRounds} onChange={(e) => set({ maxRounds: clamp(e.target.valueAsNumber, MIN_REVIEW_ROUNDS, MAX_REVIEW_ROUNDS, s.maxRounds) })} />
         </Field>
-        <Field label={t('aiReview.settings.idleSeconds')}>
+        <Field label={t('aiReview.settings.idleSeconds')} help={t('help.aiReview.idleSeconds')}>
           <Input type="number" min={MIN_REVIEW_IDLE_SECONDS} max={MAX_REVIEW_IDLE_SECONDS} value={s.idleSeconds} onChange={(e) => set({ idleSeconds: clamp(e.target.valueAsNumber, MIN_REVIEW_IDLE_SECONDS, MAX_REVIEW_IDLE_SECONDS, s.idleSeconds) })} />
         </Field>
         <Field label={t('aiReview.settings.language')}>

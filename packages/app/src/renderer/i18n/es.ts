@@ -1,6 +1,7 @@
 import type { en } from './en'
 import { linksEs } from './links.es'
 import { aiReviewEs } from './aiReview.es'
+import { sessionsUxEs } from './sessionsUx.es'
 import { healthEs } from './health.es'
 import { prEventsEs } from './prEvents.es'
 import { slackEs } from './slack.es'
@@ -10,6 +11,10 @@ import { ticketsEs } from './tickets.es'
 import { updatesEs } from './updates.es'
 import { usageEs } from './usage.es'
 import { continuityEs } from './continuity.es'
+import { appearanceEs } from './appearance.es'
+import { settingsHelpEs } from './settingsHelp.es'
+import { trayEs } from './tray.es'
+import { agentsEs } from './agents.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -337,7 +342,7 @@ export const es: Record<keyof typeof en, string> = {
   'settings.foldersHint': 'Se muestran primero en la barra lateral para sesiones nuevas.',
   'import.group': 'Workhub 1',
   'import.title': 'Importar desde Workhub 1',
-  'import.hint': 'Lee perfiles, carpetas, cuentas de Claude, conexiones, automatizaciones, el lector de Slack, Salud, notificaciones y grupos de la barra lateral. Los secretos no se copian y Workhub 1 no se modifica.',
+  'import.hint': 'Lee perfiles, carpetas, cuentas de Claude, conexiones, automatizaciones, el lector de Slack, Salud, notificaciones y grupos de la barra lateral. Los secretos no forman parte de este paso (usa la importación de tokens) y Workhub 1 no se modifica.',
   'import.preview': 'Vista previa',
   'import.previewLabel': 'Lo que agrega la importación',
   'import.missing': 'No se encontraron ajustes de Workhub 1 en esta Mac.',
@@ -362,6 +367,18 @@ export const es: Record<keyof typeof en, string> = {
   'import.defaultModel': 'Modelo para sesiones nuevas',
   'import.language': 'Idioma de la interfaz',
   'import.notCarried': 'No se importa',
+  'import.secrets': 'Importar tokens de Workhub 1',
+  'import.secretsHint': 'Workhub 1 guardaba tus tokens de Jira y Elastic en el llavero de macOS. Esto los copia aquí para que no tengas que pegarlos de nuevo. macOS pide permiso una vez por cada token: elige Permitir. Los tokens se guardan cifrados en esta computadora y nunca se muestran.',
+  'import.secretsBanner': 'A algunas conexiones traídas de Workhub 1 les falta su token. Workhub puede copiarlos del llavero de macOS, donde los guardaba Workhub 1; macOS te pide permiso para cada uno, y los tokens se guardan cifrados y nunca se muestran.',
+  'import.secretsDone': 'Tokens importados de Workhub 1: {count}.',
+  'import.secretsSomeLeft': 'Tokens que no se pudieron importar: {count}. Puedes ingresarlos a mano.',
+  'import.migrate': 'Migrar desde Workhub 1',
+  'import.migrateHint': 'Se encontró Workhub 1 en esta Mac.',
+  'import.secretsNone': 'Ninguna conexión de Workhub 1 está esperando un token.',
+  'import.secretsImported': 'token importado',
+  'import.secretsNotFound': 'no se encontró en el llavero de Workhub 1',
+  'import.secretsDenied': 'acceso denegado en el aviso del llavero',
+  'import.secretsError': 'no se pudo leer ({code})',
   ...prEs,
   ...ticketsEs,
   ...updatesEs,
@@ -372,5 +389,10 @@ export const es: Record<keyof typeof en, string> = {
   ...automationsEs,
   ...usageEs,
   ...aiReviewEs,
-  ...continuityEs
+  ...continuityEs,
+  ...sessionsUxEs,
+  ...trayEs,
+  ...agentsEs,
+  ...appearanceEs,
+  ...settingsHelpEs
 }

@@ -1,5 +1,6 @@
 import { ArrowRight, Workflow } from 'lucide-react'
-import type { ConnectionKind, Profile } from '@workhub/core'
+import { useEffect, useState } from 'react'
+import type { ConnectionKind, CreditSpend, Profile } from '@workhub/core'
 import { Button, STATE_TONE, StateDot, type Tone } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, ListRow, StatTile } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
@@ -54,6 +55,26 @@ function ConnectionNote({ profile, kind, phase, onOpenSettings }: { profile: Pro
   )
 }
 
+/** Kiro credits spent today and this week, read from its session files when Home shows and every minute after. */
+function useKiroSpend(): CreditSpend | null {
+  const [spend, setSpend] = useState<CreditSpend | null>(null)
+  useEffect(() => {
+    let live = true
+    const read = () =>
+      void window.hub.usage.kiroSpend().then(
+        (s) => live && setSpend(s),
+        () => {}
+      )
+    read()
+    const timer = setInterval(read, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [])
+  return spend
+}
+
 export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession, onOpenSettings, onOpenPullRequest, onNavigate }: HomeScreenProps) {
   const { t, tn, formatDate } = useI18n()
   const pullRequests = usePullRequestLists(profile?.id ?? null)
@@ -64,6 +85,7 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
   const { budget, accountsOf } = useUsageSettings()
   const usageSections = agentUsageSections(sessions, reads, budget, accountsOf, now)
   const kiro = kiroUsageNote(sessions, accountsOf)
+  const kiroSpend = useKiroSpend()
   // The tile shows the highest window of any account (Usage by agent below lists them all).
   const usage = [...planUsage(sessions), ...usageSections.flatMap((s) => s.accounts.flatMap((a) => a.windows))].sort((a, b) => b.percent - a.percent)[0]
   const folders = tokensByFolder(sessions).slice(0, 8)
@@ -154,7 +176,7 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
           <PullRequestCard kind="toReview" lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
         </div>
         <div className="flex flex-col gap-3">
-          <AgentUsageCard sections={usageSections} kiro={kiro} ceilings={budget.ceilings} now={now} onOpenSettings={() => onOpenSettings('usage')} />
+          <AgentUsageCard sections={usageSections} kiro={kiro} kiroSpend={kiroSpend} ceilings={budget.ceilings} now={now} onOpenSettings={() => onOpenSettings('usage')} />
           <HomeTicketsCard
             profileId={profile?.id}
             status={tix.status}
