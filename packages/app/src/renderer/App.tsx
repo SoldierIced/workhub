@@ -22,6 +22,7 @@ import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage, useUsageAlerts } from './lib/usage'
 import { usePrEventNotifications } from './lib/usePrEventNotifications'
+import { useAiReviewNotices } from './lib/useAiReviewNotices'
 import { useChatNotices } from './lib/useChatNotices'
 import { AutomationsScreen } from './screens/AutomationsScreen'
 import { SlackScreen } from './screens/SlackScreen'
@@ -97,6 +98,7 @@ function Shell() {
   latest.current = { sessions, groups, snap, t, tn, liveKeys }
   usePrEventNotifications(() => latest.current)
   useChatNotices()
+  useAiReviewNotices()
   // An automation moved a session's sidebar place in the stored config.
   useEffect(() => window.hub.automations.onConfigChanged(() => void refreshConfig()), [])
 

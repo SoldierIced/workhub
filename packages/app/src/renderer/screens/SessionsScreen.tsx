@@ -10,6 +10,7 @@ import type { MessageKey } from '../i18n/translate'
 import { cn } from '../lib/cn'
 import { rememberModel } from '../lib/prefs'
 import { pushItem, type SessionData } from '../store'
+import { AiReviewAside, AiReviewButton } from './sessions/AiReviewPanel'
 import { ChatPane } from './sessions/ChatPane'
 import { MonitorPanel } from './sessions/MonitorPanel'
 import { TerminalPane } from './sessions/TerminalPane'
@@ -164,6 +165,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
             {t('session.permissionMode', { mode: mode ? mode.label : v.state === 'starting' ? t('session.pending') : t('session.unknown') })}
           </Badge>
           {v.currentModeId && v.permissionMode?.id === 'agent-managed' && <Badge>{t('session.agentMode', { mode: v.currentModeId })}</Badge>}
+          {live && <AiReviewButton view={v} />}
           {live && (
             <Button size="sm" variant="ghost" icon={<Square className="size-3" aria-hidden />} onClick={() => void window.hub.sessions.stop(v.id)}>
               {t('session.stop')}
@@ -201,7 +203,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
             </div>
           )}
         </div>
-        {v.screens.includes('monitor') && <MonitorPanel data={data} />}
+        {v.screens.includes('monitor') ? <MonitorPanel data={data} /> : <AiReviewAside view={v} />}
       </div>
     </>
   )

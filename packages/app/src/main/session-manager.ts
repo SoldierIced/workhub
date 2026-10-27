@@ -37,6 +37,8 @@ interface ManagedSession {
   switching: boolean
   /** The last transcript snapshot sent, to skip polls that found nothing new. */
   lastMonitor?: string
+  /** An AI reviewer: started in the agent's most read-only mode, chat only. */
+  readOnly: boolean
 }
 
 export interface SessionManagerDeps {
@@ -125,7 +127,8 @@ export class SessionManager {
     const capabilities = runtime.capabilities(agent)
     const modes: SessionMode[] = []
     if (agent.adapter !== 'terminal' && capabilities.appMode) modes.push('app')
-    if (agent.adapter === 'terminal' || agent.console) modes.push('console')
+    // A read-only reviewer has no console: the agent's own TUI would run with its usual permissions.
+    if ((agent.adapter === 'terminal' || agent.console) && !input.readOnly) modes.push('console')
     modes.push('shell')
     const engine: Engine = modes[0] === 'app' && input.mode !== 'console' ? 'app' : 'console'
     // Agents with a console share one session id between chat, console and transcript.
@@ -154,7 +157,7 @@ export class SessionManager {
       shellRunning: false,
       controls: hasSessionControls(runtime)
     }
-    const session: ManagedSession = { view, agent, account, env: launchEnvironment(agent, account), runtime, engine, switching: false }
+    const session: ManagedSession = { view, agent, account, env: launchEnvironment(agent, account), runtime, engine, switching: false, readOnly: input.readOnly === true }
     this.sessions.set(view.id, session)
     this.deps.emitChanged(view)
 
@@ -269,7 +272,8 @@ export class SessionManager {
       resume: opts.resume,
       model: opts.model,
       cols: opts.cols,
-      rows: opts.rows
+      rows: opts.rows,
+      ...(s.readOnly ? { readOnly: true } : {})
     })
     const patch: Partial<SessionView> = { agentSessionId: started.agentSessionId ?? s.view.agentSessionId, agentName: started.agentName }
     // An agent that only reports its session id now (ACP) gives the session its real identity; the

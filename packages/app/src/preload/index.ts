@@ -4,6 +4,7 @@ import { toPlatform, type AccountUsage, type UsageAlert, type HubApi, type Sessi
 import type { UpdateStatus } from '../shared/updates-api'
 import type { PrEventBatch } from '../shared/pr-events-api'
 import type { SessionIntent } from '../shared/links-api'
+import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
@@ -143,6 +144,17 @@ const api: HubApi = {
     onChanged: (cb) => subscribe<[AutomationsSnapshot]>('automations:changed', cb),
     onPrompted: (cb) => subscribe<[string, string]>('automations:prompted', cb),
     onConfigChanged: (cb) => subscribe<[]>('config:changed', cb)
+  },
+  aiReview: {
+    get: () => ipcRenderer.invoke('aiReview:get'),
+    start: (sessionId, override) => ipcRenderer.invoke('aiReview:start', sessionId, override),
+    continue: (reviewId) => ipcRenderer.invoke('aiReview:continue', reviewId),
+    setFindingStatus: (reviewId, ids, status) => ipcRenderer.invoke('aiReview:setFindingStatus', reviewId, ids, status),
+    opinion: (reviewId, text) => ipcRenderer.invoke('aiReview:opinion', reviewId, text),
+    stop: (reviewId) => ipcRenderer.invoke('aiReview:stop', reviewId),
+    dismissHold: (devIdentity) => ipcRenderer.invoke('aiReview:dismissHold', devIdentity),
+    onChanged: (cb) => subscribe<[AiReviewSnapshot]>('aiReview:changed', cb),
+    onNotice: (cb) => subscribe<[AiReviewNotice]>('aiReview:notice', cb)
   }
 }
 
