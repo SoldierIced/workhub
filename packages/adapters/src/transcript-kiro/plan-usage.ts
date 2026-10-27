@@ -57,6 +57,8 @@ export function parseKiroUsage(data: unknown): PlanUsageWindow[] {
   if (resetsAt !== undefined) window.resetsAt = resetsAt
   if (used !== undefined) window.used = used
   if (limit !== undefined) window.limit = limit
+  const plan = str(d?.['planName'])
+  if (plan) window.plan = plan
   return [window]
 }
 

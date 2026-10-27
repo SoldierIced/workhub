@@ -115,6 +115,7 @@ export const en = {
 
   'usage.title': 'Agent usage',
   'usage.nextReset': 'Next reset',
+  'usage.resetsShort': 'resets {when}',
   'usage.spentToday': '{today} today',
   'usage.empty': 'Plan usage shows up when a running agent reports it.',
   'usage.running.one': '{count} open',

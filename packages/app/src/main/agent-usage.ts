@@ -200,7 +200,7 @@ export class DemoUsageProvider implements UsageProvider {
       const reset = new Date(t)
       reset.setMonth(reset.getMonth() + 1, 1)
       reset.setHours(0, 0, 0, 0)
-      return [{ window: 'monthly', percent: 33.8, used: 3378.41, limit: 10000, resetsAt: reset.getTime() }]
+      return [{ window: 'monthly', percent: 33.8, used: 3378.41, limit: 10000, resetsAt: reset.getTime(), plan: 'Kiro Pro' }]
     }
     if (this.agentId === 'codex') {
       return [
