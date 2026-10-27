@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>apps</key>
+	<array>
+		<dict>
+			<key>auth</key>
+			<integer>7</integer>
+			<key>bundle-id</key>
+			<string>io.github.soldiericed.workhub2</string>
+			<key>flags</key>
+			<integer>41951246</integer>
+			<key>path</key>
+			<string>/Applications/Workhub 2.app</string>
+		</dict>
+		<dict>
+			<key>auth</key>
+			<integer>7</integer>
+			<key>bundle-id</key>
+			<string>com.github.Electron</string>
+			<key>flags</key>
+			<integer>8396814</integer>
+			<key>path</key>
+			<string>/tmp/Electron.app</string>
+		</dict>
+		<dict>
+			<key>bundle-id</key>
+			<string>com.example.noflags</string>
+		</dict>
+	</array>
+	<key>dnd_prefs</key>
+	<data>YnBsaXN0MDA=</data>
+</dict>
+</plist>

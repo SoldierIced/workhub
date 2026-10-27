@@ -29,6 +29,7 @@ import {
   windowReason,
   autoCloseReason,
   closeThread,
+  owningProfile,
   type BudgetStatus,
   type ChatNotice,
   type ChatReadResult,
@@ -377,7 +378,7 @@ export class SlackWatcherService {
         const config = await this.deps.configuration.current()
         try {
           await this.resumeOwner(owner, {
-            profileId: this.profileOf(owner, views, config),
+            profileId: this.profileOf(owner, views, config, plan.cwd),
             agentKey: plan.agentKey ?? this.agentKeyFor(config, located?.configDir) ?? 'claude',
             cwd: plan.cwd,
             mode: 'app',
@@ -500,7 +501,7 @@ export class SlackWatcherService {
     if (!located?.cwd) return views.filter((v) => sessionIdentity(v) === thread.owner).sort((a, b) => b.startedAt - a.startedAt)[0]?.id ?? null
     const config = await this.deps.configuration.current()
     const view = await this.resumeOwner(thread.owner, {
-      profileId: this.profileOf(thread.owner, views, config),
+      profileId: this.profileOf(thread.owner, views, config, located.cwd),
       agentKey: thread.ownerAgentKey ?? this.agentKeyFor(config, located.configDir) ?? 'claude',
       cwd: located.cwd,
       cols: 100,
@@ -517,10 +518,10 @@ export class SlackWatcherService {
     return this.ownerStarts.start(owner, { ...input, resumeAgentSessionId: owner })
   }
 
-  /** The profile the owner last ran in here (its sidebar place and colour stay), else the active one. */
-  private profileOf(owner: string, views: readonly SessionView[], config: WorkhubConfig): string | null {
+  /** The profile the owner last ran in here (its sidebar place and colour stay), else the one owning its folder, else the active one. */
+  private profileOf(owner: string, views: readonly SessionView[], config: WorkhubConfig, cwd?: string): string | null {
     const last = views.filter((v) => sessionIdentity(v) === owner).sort((a, b) => b.startedAt - a.startedAt)[0]
-    return last?.profileId ?? config.activeProfileId ?? null
+    return last?.profileId ?? owningProfile(cwd, config.profiles, this.deps.home)?.id ?? config.activeProfileId ?? null
   }
 
   // The tracking hook (Settings → Slack)

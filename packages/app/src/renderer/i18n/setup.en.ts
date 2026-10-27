@@ -165,7 +165,7 @@ export const setupEn = {
   'profileExtra.folderFlagsEmpty': 'Add folders above to set their options.',
   'profileExtra.onlyGitRepos': 'Only git repos',
   'profileExtra.subfolders': 'Each subfolder is its own project',
-  'profileExtra.subfoldersHint': 'Sessions in a subfolder group under a project named after it, like ~/work/<repo>.',
+  'profileExtra.subfoldersHint': 'Sessions in a subfolder group under a project named after it, like ~/work/<repo>. Never set: a folder that is not a git repository is split this way.',
   'profileExtra.links': 'Links',
   'profileExtra.linkBrowser': 'Open links with',
   'profileExtra.linkBrowserHint': 'The browser that opens this profile’s pull request and ticket links. Empty: the default browser.',

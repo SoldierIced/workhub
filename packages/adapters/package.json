@@ -19,6 +19,7 @@
     "./codehost-gitlab": "./src/codehost-gitlab/index.ts",
     "./cli": "./src/shared/cli.ts",
     "./login-path": "./src/shared/login-path.ts",
+    "./notification-permission": "./src/shared/notification-permission.ts",
     "./tracker-jira": "./src/tracker-jira/index.ts",
     "./tracker-linear": "./src/tracker-linear/index.ts",
     "./tracker-demo": "./src/tracker-demo/index.ts",

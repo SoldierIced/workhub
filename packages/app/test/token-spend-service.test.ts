@@ -4,9 +4,9 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { emptyConfig, type Profile, type WorkhubConfig } from '@workhub/core'
 import type { SpendCache } from '@workhub/adapters/token-spend'
-import { childFolders, spendSources, TokenSpendService } from '../src/main/token-spend'
+import { spendSources, TokenSpendService } from '../src/main/token-spend'
 
-const profile = (id: string, folders: string[]): Profile => ({ id, name: id, connections: {}, accountIds: [], modules: {} as Profile['modules'], folders })
+const profile = (id: string, folders: string[], extra: Partial<Profile> = {}): Profile => ({ id, name: id, connections: {}, accountIds: [], modules: {} as Profile['modules'], folders, ...extra })
 
 function memoryStore(initial: SpendCache | null = null) {
   let value = initial
@@ -45,7 +45,7 @@ describe('TokenSpendService', () => {
       JSON.stringify({ type: 'assistant', cwd, timestamp: new Date().toISOString(), message: { id, usage: { input_tokens: tokens, output_tokens: 0 } } })
     writeFileSync(join(project, 'a.jsonl'), [line(join(work, 'api'), 'm1', 10), line(join(work, 'web'), 'm2', 30), line(join(root, 'repo', 'src'), 'm3', 5)].join('\n') + '\n')
 
-    const config: WorkhubConfig = { ...emptyConfig(), profiles: [profile('one', [work]), profile('two', [join(root, 'repo')])], activeProfileId: 'one' }
+    const config: WorkhubConfig = { ...emptyConfig(), profiles: [profile('one', [work], { folderOptions: { [work]: { subfoldersAreProjects: true } } }), profile('two', [join(root, 'repo')])], activeProfileId: 'one' }
     const store = memoryStore()
     let emitted = 0
     const svc = new TokenSpendService({
@@ -80,15 +80,47 @@ describe('TokenSpendService', () => {
     expect((await svc.forProfile('one')).hasFolders).toBe(false)
   })
 
-  it('splits only folders that are not repositories, and lists every Claude install', async () => {
-    mkdirSync(join(root, 'box', 'api'), { recursive: true })
-    mkdirSync(join(root, 'box', '.hidden'), { recursive: true })
-    writeFileSync(join(root, 'box', 'file.txt'), '')
-    mkdirSync(join(root, 'repo', '.git'), { recursive: true })
-    mkdirSync(join(root, 'repo', 'src'), { recursive: true })
-    expect(await childFolders(join(root, 'box'))).toEqual(['api'])
-    expect(await childFolders(join(root, 'repo'))).toEqual([])
+  it('splits a folder into its subfolders only when they are projects, and leaves out what another profile owns', async () => {
+    const box = join(root, 'box')
+    for (const d of ['api', 'web', 'web/.git', '.hidden', 'other']) mkdirSync(join(box, d), { recursive: true })
+    const project = join(root, '.claude', 'projects', 'p')
+    mkdirSync(project, { recursive: true })
+    const line = (cwd: string, id: string, tokens: number) =>
+      JSON.stringify({ type: 'assistant', cwd, timestamp: new Date().toISOString(), message: { id, usage: { input_tokens: tokens, output_tokens: 0 } } })
+    const lines = [line(join(box, 'api'), 'm1', 10), line(join(box, 'web', 'src'), 'm2', 20), line(join(box, 'other'), 'm3', 40), line('/srv/elsewhere', 'm4', 7), line('/tmp/scratch', 'm5', 3)]
+    writeFileSync(join(project, 'a.jsonl'), lines.join('\n') + '\n')
+    const options = { [box]: { subfoldersAreProjects: true, onlyGitRepos: true } }
+    let config: WorkhubConfig = {
+      ...emptyConfig(),
+      profiles: [profile('one', [box], { folderOptions: options }), profile('two', [join(box, 'other')], { ownsOutside: true })],
+      activeProfileId: 'one'
+    }
+    const svc = new TokenSpendService({ config: async () => config, store: memoryStore(), sources: async () => ({ claudeDirs: [join(root, '.claude')], codexHomes: [], kiroDirs: [] }), emit: () => {} })
+    await svc.refresh()
+    // Only `web` is a git repository, so `api` work counts at the folder's root; `other` belongs to profile two.
+    expect((await svc.forProfile('one')).entries.map((e) => [e.name, e.root, e.tokens])).toEqual([
+      ['web', false, 20],
+      ['box', true, 10]
+    ])
+    // Profile two owns its folder and everything outside every profile (throwaway folders left out).
+    expect((await svc.forProfile('two')).entries.map((e) => [e.name, e.tokens])).toEqual([
+      ['other', 40],
+      ['elsewhere', 7]
+    ])
+    // Switched off, the folder is one project.
+    config = { ...config, profiles: [profile('one', [box], { folderOptions: { [box]: { subfoldersAreProjects: false } } }), config.profiles[1]!] }
+    expect((await svc.forProfile('one')).entries.map((e) => [e.name, e.tokens])).toEqual([['box', 30]])
+    // Never set (profiles imported before the switch): a folder that is not a repository is split, as before.
+    config = { ...config, profiles: [profile('one', [box]), config.profiles[1]!] }
+    expect((await svc.forProfile('one')).entries.map((e) => [e.name, e.tokens])).toEqual([
+      ['web', 20],
+      ['api', 10]
+    ])
+    mkdirSync(join(box, '.git'))
+    expect((await svc.forProfile('one')).entries.map((e) => [e.name, e.tokens])).toEqual([['box', 30]])
+  })
 
+  it('lists every Claude install', async () => {
     mkdirSync(join(root, '.claude-work'), { recursive: true })
     writeFileSync(join(root, '.claude.json'), '{}')
     const sources = await spendSources(emptyConfig(), root, undefined, {})
