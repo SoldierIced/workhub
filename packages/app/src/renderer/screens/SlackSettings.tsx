@@ -54,7 +54,8 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
     const settings = { ...form, channels: form.channels.map((c) => ({ ...c, id: c.id.trim(), name: c.name.trim() || c.id.trim() })) }
     if (await run(() => window.hub.slack.saveSettings(settings))) void reloadSlack()
   }
-  const accounts = slack.hooks.map((h) => ({ value: h.accountId ?? '', label: h.name }))
+  const accountName = (name: string) => name || t('slack.settings.defaultAccount')
+  const accounts = slack.hooks.map((h) => ({ value: h.accountId ?? '', label: accountName(h.name) }))
   const setHook = async (accountId: string | null, install: boolean) => {
     const r = await window.hub.slack.setHook(accountId, install)
     if (!r.ok) toast(r.error === 'demoMode' ? t('slack.hook.demoMode') : r.error, 'danger')
@@ -105,10 +106,10 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-muted">{t('slack.settings.channels')}</span>
             {form.channels.map((c, i) => (
-              <div key={i} className="flex gap-2">
-                <Input className="w-40" placeholder="C0123456789" aria-label={t('slack.settings.channelId')} value={c.id} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)) })} />
-                <Input className="w-40" placeholder={t('slack.settings.channelName')} aria-label={t('slack.settings.channelName')} value={c.name} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                <Input className="flex-1" placeholder={t('slack.settings.purpose')} aria-label={t('slack.settings.purpose')} value={c.purpose} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, purpose: e.target.value } : x)) })} />
+              <div key={i} className="grid grid-cols-[10rem_10rem_1fr_auto] gap-2">
+                <Input placeholder="C0123456789" aria-label={t('slack.settings.channelId')} value={c.id} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)) })} />
+                <Input placeholder={t('slack.settings.channelName')} aria-label={t('slack.settings.channelName')} value={c.name} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
+                <Input placeholder={t('slack.settings.purpose')} aria-label={t('slack.settings.purpose')} value={c.purpose} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, purpose: e.target.value } : x)) })} />
                 <IconButton label={t('common.delete')} icon={<Trash2 className="size-3.5" />} onClick={() => set({ channels: form.channels.filter((_, j) => j !== i) })} />
               </div>
             ))}
@@ -131,7 +132,7 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
             {slack.hooks.map((h) => (
               <li key={h.accountId ?? 'default'} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
                 <div className="min-w-0 flex-1">
-                  <div className="text-base">{h.name}</div>
+                  <div className="text-base">{accountName(h.name)}</div>
                   <div className="truncate text-xs text-subtle">{h.configDir}</div>
                 </div>
                 <Badge tone={h.status.state === 'installed' ? 'success' : h.status.state === 'unreadable' ? 'danger' : 'neutral'}>{t(`slack.hook.${h.status.state}`)}</Badge>

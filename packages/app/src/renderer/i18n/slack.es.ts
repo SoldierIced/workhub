@@ -56,6 +56,7 @@ export const slackEs: Record<keyof typeof slackEn, string> = {
   'slack.settings.explain': 'Workhub le pide a tu cuenta de Claude, mediante su propio conector de Slack, los mensajes nuevos de estos canales y las respuestas nuevas de los hilos seguidos. Solo lee: se rechazan las herramientas que publican o modifican algo. No hace falta una app ni un token de Slack.',
   'slack.settings.enabled': 'Vigilar Slack',
   'slack.settings.account': 'Cuenta de Claude',
+  'slack.settings.defaultAccount': 'Cuenta de Claude predeterminada',
   'slack.settings.model': 'Modelo para las lecturas',
   'slack.settings.interval': 'Cada (minutos)',
   'slack.settings.intervalHint': 'Al menos {min} minutos.',

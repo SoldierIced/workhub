@@ -54,6 +54,7 @@ export const slackEn = {
   'slack.settings.explain': 'Workhub asks your Claude account, through its own Slack connector, for new messages in these channels and new replies in followed threads. It only reads: tools that post or change anything are refused. No Slack app or token is needed.',
   'slack.settings.enabled': 'Watch Slack',
   'slack.settings.account': 'Claude account',
+  'slack.settings.defaultAccount': 'Default Claude account',
   'slack.settings.model': 'Model for the reads',
   'slack.settings.interval': 'Every (minutes)',
   'slack.settings.intervalHint': 'At least {min} minutes.',
