@@ -47,6 +47,9 @@ const api: HubApi = {
   history: {
     list: () => ipcRenderer.invoke('history:list')
   },
+  agents: {
+    availability: () => ipcRenderer.invoke('agents:availability')
+  },
   usage: {
     get: (refresh) => ipcRenderer.invoke('usage:get', refresh),
     onChanged: (cb) => subscribe<[AccountUsage[]]>('usage:changed', cb)

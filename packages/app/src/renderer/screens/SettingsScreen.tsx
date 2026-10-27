@@ -22,6 +22,7 @@ import { Workhub1Import } from '../components/organisms'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
+import { accountEnvHintKey } from '../lib/agents'
 import { setPrefs, usePrefs } from '../lib/prefs'
 
 const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
@@ -409,6 +410,7 @@ function AccountsSection({ snap, run }: SectionProps) {
     setEnvText(toLines(a?.env))
   }
   const agent = snap.agents.find((a) => a.id === form.agentId)
+  const envHintKey = accountEnvHintKey(form.agentId)
 
   const save = async () => {
     const account: AgentAccount = { ...form, env: fromLines(envText) }
@@ -452,7 +454,7 @@ function AccountsSection({ snap, run }: SectionProps) {
               spellCheck={false}
             />
           </Field>
-          <Field label={t('settings.envLines')} className="col-span-2">
+          <Field label={t('settings.envLines')} hint={envHintKey ? t(envHintKey) : undefined} className="col-span-2">
             <Textarea rows={3} value={envText} onChange={(e) => setEnvText(e.target.value)} placeholder="ACME_ACCOUNT=work" spellCheck={false} />
           </Field>
         </div>
