@@ -80,6 +80,8 @@ export class SafeStorageSecretStore implements SecretStore {
   }
 
   private async write(file: SecretsFile): Promise<void> {
+    // 0o600 applies on POSIX only. Windows has no file modes: there the file holds safeStorage (DPAPI)
+    // ciphertext and is protected by that encryption plus the ACL of the user profile folder.
     await writeFileAtomic(this.path, `${JSON.stringify(file, null, 2)}\n`, 0o600)
   }
 }

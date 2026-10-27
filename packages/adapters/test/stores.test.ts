@@ -39,7 +39,8 @@ describe('JsonConfigStore', () => {
     const store = new JsonConfigStore(path)
     await store.save(sample)
     expect(await new JsonConfigStore(path).load()).toEqual(sample)
-    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    // Windows has no POSIX file modes.
+    if (process.platform !== 'win32') expect((await stat(path)).mode & 0o777).toBe(0o600)
   })
 
   it('leaves no temp files behind, even with concurrent saves', async () => {
@@ -86,7 +87,8 @@ describe('SafeStorageSecretStore', () => {
     expect(await readFile(path, 'utf8')).not.toContain('dummy-token-123')
     expect(await new SafeStorageSecretStore(path, fakeSafeStorage()).get('connection/acme-github')).toBe('dummy-token-123')
     expect(await store.has('connection/acme-github')).toBe(true)
-    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    // Windows has no POSIX file modes.
+    if (process.platform !== 'win32') expect((await stat(path)).mode & 0o777).toBe(0o600)
   })
 
   it('deletes secrets and returns null for unknown refs', async () => {
