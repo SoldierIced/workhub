@@ -2,7 +2,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { ENV_NAME, type FolderOptions, type Profile } from '@workhub/core'
-import { Button, Input, Switch } from '../components/atoms'
+import { Button, Input, Select, Switch } from '../components/atoms'
 import { Field, HelpTip, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
@@ -175,6 +175,13 @@ export function prunedFolderOptions(options: Profile['folderOptions'], folders: 
   return Object.keys(out).length ? out : undefined
 }
 
+/**
+ * The "Each subfolder is its own project" choice as the form shows it. Unset is its own state
+ * (automatic): the folder is split unless it is a git repository (see `projectChildren`), so a
+ * plain on/off switch would show "off" for a folder that is in fact split.
+ */
+const subfolderMode = (value: boolean | undefined): 'auto' | 'on' | 'off' => (value === undefined ? 'auto' : value ? 'on' : 'off')
+
 /** Profile fields of Workhub 1's profile settings: symbol, folder switches, link browser, "owns outside" and variables. */
 export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onChange: (profile: Profile) => void; env: EnvDraft }) {
   const { t } = useI18n()
@@ -222,7 +229,16 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
               <Switch checked={form.folderOptions?.[folder]?.onlyGitRepos === true} onChange={(on) => setFolder(folder, { onlyGitRepos: on })} />
             </SwitchRow>
             <SwitchRow label={t('profileExtra.subfolders')} hint={t('profileExtra.subfoldersHint')}>
-              <Switch checked={form.folderOptions?.[folder]?.subfoldersAreProjects === true} onChange={(on) => setFolder(folder, { subfoldersAreProjects: on })} />
+              <Select
+                className="w-44"
+                value={subfolderMode(form.folderOptions?.[folder]?.subfoldersAreProjects)}
+                onChange={(v) => setFolder(folder, { subfoldersAreProjects: v === 'on' ? true : v === 'off' ? false : undefined })}
+                options={[
+                  { value: 'auto', label: t('profileExtra.subfoldersAuto') },
+                  { value: 'on', label: t('profileExtra.subfoldersOn') },
+                  { value: 'off', label: t('profileExtra.subfoldersOff') }
+                ]}
+              />
             </SwitchRow>
           </div>
         ))}
