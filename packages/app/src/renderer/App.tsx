@@ -193,6 +193,7 @@ function Shell() {
         cols: 100,
         rows: 30,
         model: readPrefs().models[member.agentKey],
+        modeId: readPrefs().modes[member.agentKey],
         ...(resumes ? { resumeAgentSessionId: member.key } : { identity: member.key })
       })
       openSession(view.id)

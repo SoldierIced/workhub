@@ -215,6 +215,7 @@ export class KiroChatParser {
     if (credits !== undefined) {
       out.credits = credits
       out.lastTurnCredits = this.credits[this.credits.length - 1]
+      out.turnCredits = [...this.credits]
     }
     if (this.contextPercent !== undefined) out.context = { percent: this.contextPercent }
     if (this.elapsedMs > 0) out.activeTimeMs = this.elapsedMs
@@ -307,6 +308,7 @@ export function parseKiroCliMeta(text: string): SessionMonitorSnapshot & { cwd?:
     out.credits = credits
     const last = turnCredits[turnCredits.length - 1]
     if (last !== undefined) out.lastTurnCredits = last
+    out.turnCredits = turnCredits.filter((c): c is number => c !== undefined)
   }
 
   const field = (key: string) => sum(turns.map((t) => num(t[key])))

@@ -4,6 +4,7 @@ import type {
   AppOptions,
   AgentCapabilities,
   BudgetStatus,
+  CreditSpend,
   AgentDefinition,
   AgentEvent,
   AgentAccount,
@@ -17,6 +18,7 @@ import type {
   ModelOption,
   PlanUsageWindow,
   Profile,
+  SessionModeOption,
   Result,
   SecretChange,
   Session,
@@ -98,13 +100,19 @@ export interface SessionView extends Session {
   mode: SessionMode
   /** Whether the shell next to the agent is running. */
   shellRunning: boolean
-  /** Models the session can switch to (native Claude), and the current one. */
+  /** Models the session can switch to (native Claude, ACP agents that list them), and the current one. */
   models?: ModelOption[]
   currentModelId?: string
   /** The model asked for at start could not be applied: the agent runs with its default. */
   modelIgnored?: boolean
-  /** The runtime offers live controls: model switch and MCP reconnect/toggle. */
+  /** The mode (agent, persona) asked for at start is not offered: the agent runs in its default. */
+  modeIgnored?: boolean
+  /** The runtime offers live controls: model switch and MCP reconnect/toggle (native Claude). */
   controls: boolean
+  /** The model can be switched while the session runs (native Claude, ACP). */
+  modelControl?: boolean
+  /** The session mode (`availableModes`: agent, persona or approval preset) can be switched while it runs (ACP). */
+  modeControl?: boolean
   /** An AI reviewer session (read-only, started by the AI review). */
   readOnly?: boolean
   /** The engine picked while a turn was running: the hand-over waits for the turn to end. */
@@ -128,8 +136,10 @@ export interface StartSessionInput {
   resumeAgentSessionId?: string
   /** Reopen a session that has no agent session id (a plain terminal) under its old identity, so it keeps its group. */
   identity?: string
-  /** Model to start with (remembered per agent and account by the renderer). */
+  /** Model to start with (remembered per agent and account by the renderer); else the account's default. */
   model?: string
+  /** Session mode to start in: the agent or persona (Kiro, OpenCode), the approval preset (Codex); else the account's default. */
+  modeId?: string
   /** An AI reviewer: the agent's most read-only mode, chat only (see `StartSessionRequest.readOnly`). */
   readOnly?: boolean
 }
@@ -194,6 +204,8 @@ export interface SessionsApi {
   /** Stops the session if it runs and drops it from the open sessions (it stays in History). */
   close(id: string): Promise<void>
   setModel(id: string, modelId: string | null): Promise<void>
+  /** Switches the session's agent mode (an id of `availableModes`). */
+  setAgentMode(id: string, modeId: string): Promise<void>
   mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void
   onEvent(cb: (e: AgentEvent) => void): () => void
   onChanged(cb: (s: SessionView) => void): () => void
@@ -207,14 +219,38 @@ export interface HistoryApi {
   list(): Promise<HistoryResult>
 }
 
+/**
+ * What an agent offers before a session starts, for the New session dialog and Settings: Kiro's
+ * models and agents from its CLI, else what the agent's last session reported over ACP.
+ */
+export interface AgentOptionsView {
+  models: ModelOption[]
+  modes: SessionModeOption[]
+  defaultModelId?: string
+  defaultModeId?: string
+  /** `cli`: listed by the agent's CLI now. `session`: reported by its last session. `none`: nothing known yet. */
+  source: 'cli' | 'session' | 'none'
+  /** Epoch ms of the reading. */
+  at?: number
+  /** What the modes are: an agent's personas (Kiro, OpenCode) or permission presets. */
+  modeSemantics: AgentDefinition['modeSemantics']
+}
+
 export interface AgentsApi {
   /** For each known agent id, whether its executable is installed (found on PATH). */
   availability(): Promise<Record<string, boolean>>
+  /** Models and modes of an agent key (`kiro`, `kiro:<accountId>`); `refresh` lists them again. */
+  options(agentKey: string, refresh?: boolean): Promise<AgentOptionsView>
 }
 
 export interface UsageApi {
   /** The last reads, and a fresh read when `refresh` is set. Empty while the option is off. */
   get(refresh?: boolean): Promise<AccountUsage[]>
+  /**
+   * Kiro credits spent today and over the last 7 days, from its local session files. Kiro does
+   * not expose the credits left; null when no Kiro session data is found.
+   */
+  kiroSpend(): Promise<CreditSpend | null>
   onChanged(cb: (usage: AccountUsage[]) => void): () => void
   /** Threshold and ceiling crossings, once per window reset, while alerts are on. */
   onAlerts(cb: (alerts: UsageAlert[]) => void): () => void

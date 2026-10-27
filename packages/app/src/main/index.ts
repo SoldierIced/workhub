@@ -3,16 +3,17 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { AcpRuntime, agentAvailability } from '@workhub/adapters/agent-acp'
+import { AcpRuntime, agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
 import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
 import { DemoChatSource, SlackAgentChatSource, SlackTrackingHook } from '@workhub/adapters/chat-slack'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
+import { createCliRunner } from '@workhub/adapters/cli'
 import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
 import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
-import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/transcript-kiro'
+import { KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
 import { GitReview } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
@@ -20,6 +21,7 @@ import { readKeychainItem, readWorkhub1Settings } from '@workhub/adapters/workhu
 import {
   appOptions,
   canonicalUrl,
+  creditSpend,
   CONNECTION_PROVIDERS,
   ConfigurationService,
   hasUnread,
@@ -30,9 +32,11 @@ import {
   planWorkhub1Import,
   TRAY_ROUTES,
   resolveEffectiveAgents,
+  startOfLocalDay,
   usageAccountKey,
   validateConfig,
   type HealthAlert,
+  type CreditSpend,
   type Result,
   type Workhub1SecretResult,
   type TicketChange,
@@ -54,6 +58,7 @@ import { HealthWatcher, TicketWatcher } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
+import { AgentOptionsService, runsKiroCli } from './agent-options'
 import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
 import { AiReviewService, registerAiReviewIpc, reviewBudgetGate } from './ai-review'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
@@ -63,7 +68,7 @@ import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionDriver } from './session-driver'
-import { SessionManager, ticketPrefixes } from './session-manager'
+import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
 import { SlackWatcherService } from './slack-watcher'
 import { StateFile } from './state-file'
@@ -181,14 +186,32 @@ const runtimes = {
   terminal
 }
 const claudeHistory = new ClaudeSessionHistory({ bridgeDir })
+// Kiro's data folder (~/.kiro); WORKHUB_KIRO_DIR points the readers elsewhere (smoke runs, demos).
+const kiroDir = process.env['WORKHUB_KIRO_DIR'] ? resolve(process.env['WORKHUB_KIRO_DIR']) : undefined
 // Past sessions per agent id; the readers behind them are kiro, opencode and codex (PLAN D9).
-const historySources = { claude: claudeHistory, kiro: new KiroSessionHistory(), opencode: new OpenCodeSessionHistory(), codex: new CodexSessionHistory() }
+const historySources = { claude: claudeHistory, kiro: new KiroSessionHistory({ kiroDir }), opencode: new OpenCodeSessionHistory(), codex: new CodexSessionHistory() }
+// Models and modes each agent offers before a session starts (Kiro: its listing commands; others: their last session).
+const agentOptions = new AgentOptionsService({
+  discover: (agent) => (runsKiroCli(agent) ? discoverKiroOptions(createCliRunner(cliPath.split(delimiter)), agent.command) : null),
+  state: new StateFile(join(dataDir, 'agent-options.json'), 500)
+})
+/** Kiro credits spent today and this week, read at most once a minute. */
+let kiroSpendCache: { at: number; value: CreditSpend | null } | null = null
+async function kiroSpend(): Promise<CreditSpend | null> {
+  const now = Date.now()
+  if (kiroSpendCache && now - kiroSpendCache.at < 60_000) return kiroSpendCache.value
+  const entries = await readKiroCreditEntries({ kiroDir, since: startOfLocalDay(now, 6) }).catch(() => [])
+  const value = entries.length ? creditSpend(entries, now) : null
+  kiroSpendCache = { at: now, value }
+  return value
+}
 const sessions = new SessionManager({
   config: configuration,
   runtimes,
   terminal,
-  transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader(), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
+  transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader({ kiroDir }), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
   history: historySources,
+  onAgentOptions: (agentId, accountId, options) => agentOptions.record(agentId, accountId, options),
   emitEvent: (e) => {
     driver.onEvent(e)
     aiReview.onEvent(e)
@@ -435,7 +458,14 @@ function registerIpc(): void {
       path: [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter)
     })
   )
+  ipc.handle('agents:options', async (_e, agentKey: string, refresh?: boolean) => {
+    const config = await configuration.current()
+    const choice = typeof agentKey === 'string' ? resolveChoice(config, config.activeProfileId ?? null, agentKey) : null
+    if (!choice) return { models: [], modes: [], source: 'none', modeSemantics: 'none' }
+    return agentOptions.get(choice.agent, choice.account, refresh === true)
+  })
   ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
+  ipc.handle('usage:kiroSpend', () => kiroSpend())
   ipc.on('usage:notify', (_e, n: { title: string; body: string }) => showUsageNotification(n))
   ipc.on('usage:ready', () => {
     usageAlertsReady = true
@@ -456,6 +486,10 @@ function registerIpc(): void {
   ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode, options?: { now?: unknown }) => sessions.setMode(id, mode, { now: options?.now === true }))
   ipc.handle('sessions:close', (_e, id: string) => sessions.close(id))
   ipc.handle('sessions:setModel', (_e, id: string, model: string | null) => sessions.setModel(id, model))
+  ipc.handle('sessions:setAgentMode', (_e, id: string, modeId: string) => {
+    if (typeof modeId !== 'string' || !modeId) throw new Error('a mode id is required')
+    return sessions.setAgentMode(id, modeId)
+  })
   ipc.on('sessions:mcp', (_e, id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string) => sessions.mcp(id, action, server))
   ipc.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
   ipc.handle('sessions:stop', (_e, id: string) => sessions.stop(id))

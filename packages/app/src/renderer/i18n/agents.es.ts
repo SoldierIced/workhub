@@ -1,0 +1,37 @@
+import type { agentsEn } from './agents.en'
+
+/** Spanish copy of agent controls (neutral). Same keys as `agentsEn`. */
+export const agentsEs: Record<keyof typeof agentsEn, string> = {
+  'agentControls.agent': 'Agente',
+  'agentControls.agentHint': 'El agente (persona) con el que corre esta sesión.',
+  'agentControls.permission': 'Modo',
+  'agentControls.permissionHint': 'Modo de permisos o aprobación de esta sesión.',
+  'agentControls.modelReported': '{model} (informado por el agente)',
+  'agentControls.agentDefault': 'Por defecto',
+  'agentControls.modelIgnored': 'Este agente no ofrece el modelo pedido; corre con su modelo por defecto.',
+  'agentControls.modeIgnored': 'El agente pedido no está disponible aquí; la sesión corre con el de por defecto.',
+  'newSession.model': 'Modelo',
+  'newSession.mode': 'Agente',
+  'newSession.permissionMode': 'Modo',
+  'newSession.loadingOptions': 'Leyendo lo que ofrece este agente…',
+  'newSession.optionsFromSession': 'De la última sesión de este agente.',
+  'newSession.optionsFromCli': 'Listado por el agente.',
+  'newSession.noOptions': 'Sus modelos y agentes aparecen aquí después de su primera sesión.',
+  'newSession.refreshOptions': 'Listar de nuevo',
+  'settings.accountCommand': 'Comando',
+  'settings.accountCommandHint': 'Ejecutable que se usa en lugar de "{command}" (una ruta completa u otra versión). Se mantienen los argumentos del agente.',
+  'settings.defaultModel': 'Modelo por defecto',
+  'settings.defaultModelHint': 'Se usa cuando una sesión nueva no elige uno.',
+  'settings.defaultMode': 'Agente o modo por defecto',
+  'settings.defaultModeHint': 'Kiro y OpenCode: el agente; Codex y Gemini: el modo de aprobación. Se usa cuando una sesión nueva no elige uno.',
+  'settings.agentDefaultOption': 'El del agente',
+  'settings.optionsSource': '{count} conocidos desde {source}.',
+  'settings.optionsSource.cli': 'el CLI del agente',
+  'settings.optionsSource.session': 'su última sesión',
+  'settings.optionsNone': 'Inicia una sesión una vez para listar sus modelos y modos, o escribe un id.',
+  'settings.otherValue': 'Otro id…',
+  'settings.otherValuePlaceholder': 'Id del modelo o del modo',
+  'monitor.turnCredits': 'Turnos: {list}',
+  'agentUsage.kiroSpend': 'Gastado hoy: {today} créditos · últimos 7 días: {week} ({turns} turnos)',
+  'agentUsage.kiroDays': 'Créditos por día, últimos 7 días'
+}

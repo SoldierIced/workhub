@@ -11,6 +11,7 @@ import { ticketsEs } from './tickets.es'
 import { updatesEs } from './updates.es'
 import { usageEs } from './usage.es'
 import { trayEs } from './tray.es'
+import { agentsEs } from './agents.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -381,5 +382,7 @@ export const es: Record<keyof typeof en, string> = {
   ...usageEs,
   ...aiReviewEs,
   ...sessionsUxEs,
-  ...trayEs
+  ...trayEs,
+  ...agentsEs,
+  ...aiReviewEs
 }
