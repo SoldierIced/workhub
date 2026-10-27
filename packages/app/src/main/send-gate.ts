@@ -9,6 +9,8 @@ export class PromptWithdrawnError extends Error {
 }
 
 interface Waiter {
+  /** Names the prompt so its sender can take it back while it waits. */
+  key?: string
   start(): void
   withdraw(): void
 }
@@ -32,8 +34,8 @@ export class SendGate {
     return this.lanes.has(sessionId)
   }
 
-  /** Runs `send` once no other prompt of the session is in flight. */
-  run<T>(sessionId: string, send: () => Promise<T>): Promise<T> {
+  /** Runs `send` once no other prompt of the session is in flight; `key` lets `withdrawOne` take it back while it waits. */
+  run<T>(sessionId: string, send: () => Promise<T>, key?: string): Promise<T> {
     const lane = this.lanes.get(sessionId)
     if (!lane) {
       const fresh: Lane = { waiting: [] }
@@ -42,6 +44,7 @@ export class SendGate {
     }
     return new Promise<T>((resolve, reject) => {
       lane.waiting.push({
+        ...(key !== undefined ? { key } : {}),
         start: () => void this.exec(sessionId, lane, send).then(resolve, reject),
         withdraw: () => reject(new PromptWithdrawnError())
       })
@@ -60,6 +63,16 @@ export class SendGate {
     const dropped = lane.waiting.splice(0)
     for (const w of dropped) w.withdraw()
     return dropped.length
+  }
+
+  /** Drops one waiting prompt by its key (the user removed it); false when it already runs or is gone. */
+  withdrawOne(sessionId: string, key: string): boolean {
+    const lane = this.lanes.get(sessionId)
+    const at = lane?.waiting.findIndex((w) => w.key === key) ?? -1
+    if (!lane || at < 0) return false
+    const [w] = lane.waiting.splice(at, 1)
+    w!.withdraw()
+    return true
   }
 
   private exec<T>(sessionId: string, lane: Lane, send: () => Promise<T>): Promise<T> {

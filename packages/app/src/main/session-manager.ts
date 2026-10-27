@@ -268,18 +268,20 @@ export class SessionManager {
   /**
    * Runs one prompt turn. An agent that takes no input mid-turn gets one prompt at a time: this
    * waits for the session's prompt in flight, whoever sent it. Claude folds a message sent during a
-   * turn into it, so its prompts go straight through.
+   * turn into it, so its prompts go straight through. `onStart` runs when the prompt actually goes
+   * out; `key` lets the sender take it back with `withdrawPrompt` while it waits.
    */
-  prompt(id: string, text: string, images?: ImageInput[]): Promise<string> {
+  prompt(id: string, text: string, images?: ImageInput[], options: { key?: string; onStart?: () => void } = {}): Promise<string> {
     try {
       const s = this.chatSession(id)
       const send = async () => {
         // The session may have handed over to its console while this prompt waited.
         const now = this.chatSession(id)
         const usable = now.view.capabilities.imageInput && images?.length ? images : undefined
+        options.onStart?.()
         return (await now.runtime.prompt(id, text, usable)).stopReason
       }
-      return s.view.capabilities.midTurnInput ? send() : this.sends.run(id, send)
+      return s.view.capabilities.midTurnInput ? send() : this.sends.run(id, send, options.key)
     } catch (e) {
       return Promise.reject(e)
     }
@@ -293,6 +295,11 @@ export class SessionManager {
     const s = this.chatSession(id)
     if (!s.view.capabilities.midTurnInput && this.sends.busy(id)) return null
     return this.prompt(id, text)
+  }
+
+  /** Takes back a prompt still waiting for its turn (the user removed it); false once it went out. */
+  withdrawPrompt(id: string, key: string): boolean {
+    return this.sends.withdrawOne(id, key)
   }
 
   private chatSession(id: string): ManagedSession {

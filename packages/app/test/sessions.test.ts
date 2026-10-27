@@ -579,6 +579,25 @@ describe('SessionManager prompt gate', () => {
     expect(manager.tryPrompt(view.id, 'next')).not.toBeNull()
   })
 
+  it('tells the sender when a held prompt goes out, and lets it take the prompt back until then', async () => {
+    const { manager, acp, endTurn } = gated()
+    const view = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
+    await flush()
+    const out: string[] = []
+    void manager.prompt(view.id, 'review findings', undefined, { onStart: () => out.push('review') })
+    const kept = manager.prompt(view.id, 'kept', undefined, { key: 'w:1', onStart: () => out.push('kept') })
+    const removed = manager.prompt(view.id, 'removed', undefined, { key: 'w:2', onStart: () => out.push('removed') })
+    expect(out).toEqual(['review'])
+    expect(manager.withdrawPrompt(view.id, 'w:2')).toBe(true)
+    await expect(removed).rejects.toThrow('workhub:prompt-withdrawn')
+    await endTurn()
+    expect(out).toEqual(['review', 'kept'])
+    expect(manager.withdrawPrompt(view.id, 'w:1')).toBe(false)
+    await endTurn()
+    await kept
+    expect(acp.prompts.map((p) => p.text)).toEqual(['review findings', 'kept'])
+  })
+
   it('lets agents that take input mid-turn get a prompt while one runs', async () => {
     const { manager, acp, ends } = gated(true)
     const view = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
