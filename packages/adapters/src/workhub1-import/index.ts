@@ -191,6 +191,8 @@ export function workhub1SettingsFromPlist(xml: string): Workhub1Settings {
   if (Object.keys(notifications).length) settings.notifications = notifications
   const healthAlerts = bool('settings.healthAlerts')
   if (healthAlerts !== undefined) settings.healthAlerts = healthAlerts
+  const protectedBranches = string('settings.protectedBranches')
+  if (protectedBranches !== undefined) settings.protectedBranches = protectedBranches
   const prBabysitter = bool('settings.prBabysitter')
   if (prBabysitter !== undefined) settings.prBabysitter = prBabysitter
   const healthRefresh = number('settings.healthRefreshMinutes')

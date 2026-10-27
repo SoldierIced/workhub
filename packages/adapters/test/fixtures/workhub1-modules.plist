@@ -43,6 +43,8 @@
 	</data>
 	<key>settings.healthAlerts</key>
 	<false/>
+	<key>settings.protectedBranches</key>
+	<string>main, trunk</string>
 	<key>settings.notifications.pullRequests</key>
 	<false/>
 	<key>settings.notifications.slack</key>

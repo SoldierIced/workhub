@@ -8,6 +8,7 @@ import {
   GitPullRequestClosed,
   Link,
   MessageSquare,
+  PanelLeft,
   RefreshCw,
   SquareTerminal,
   Sparkles,
@@ -389,6 +390,7 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
             {loading && <Spinner className="mr-1 size-4" />}
             <IconButton label={t('pr.detail.copyLink')} icon={<Link className="size-4" aria-hidden />} onClick={copyLink} />
             <IconButton label={t('pr.detail.openBrowser')} icon={<ExternalLink className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.openExternal(profileId, url)} />
+            {standalone && <IconButton label={t('pr.detail.showInWorkhub')} icon={<PanelLeft className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.showInWorkhub(profileId, url)} />}
             {onOpenWindow && <IconButton label={t('pr.detail.openWindow')} icon={<AppWindow className="size-4" aria-hidden />} onClick={onOpenWindow} />}
             <IconButton label={t('pr.refresh')} icon={<RefreshCw className="size-4" aria-hidden />} onClick={() => void afterWrite()} />
           </div>

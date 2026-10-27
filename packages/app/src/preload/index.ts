@@ -123,6 +123,8 @@ const api: HubApi = {
     reply: (profileId, url, threadId, body) => ipcRenderer.invoke('codeHost:reply', profileId, url, threadId, body),
     close: (profileId, url, comment, deleteBranch) => ipcRenderer.invoke('codeHost:close', profileId, url, comment, deleteBranch),
     openWindow: (profileId, url, tab) => ipcRenderer.invoke('codeHost:openWindow', profileId, url, tab),
+    showInWorkhub: (profileId, url) => ipcRenderer.invoke('codeHost:showInWorkhub', profileId, url),
+    onFocus: (cb) => subscribe<[string, string | null]>('codeHost:focus', cb),
     openExternal: (profileId, url) => ipcRenderer.invoke('codeHost:openExternal', profileId, url),
     onShowTab: (cb) => subscribe<[PullRequestWindowTab]>('codeHost:showTab', cb)
   },
