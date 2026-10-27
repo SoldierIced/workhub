@@ -16,18 +16,20 @@ import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/tran
 import { GitReview } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
-import { readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
+import { readKeychainItem, readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
 import {
   appOptions,
   canonicalUrl,
   CONNECTION_PROVIDERS,
   ConfigurationService,
   knownAgents,
+  importWorkhub1Secrets,
   planWorkhub1Import,
   resolveEffectiveAgents,
   usageAccountKey,
   validateConfig,
   type Result,
+  type Workhub1SecretResult,
   type WorkhubConfig
 } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference, UsageAlert } from '../shared/api'
@@ -351,6 +353,19 @@ function registerIpc(): void {
       return configuration.applyImport(planWorkhub1Import(v1, await configuration.current(), homedir()))
     })
   )
+  // Copies the tokens of Workhub 1's Keychain items into the SecretStore. Only statuses go back.
+  ipc.handle('config:importWorkhub1Secrets', async (): Promise<Workhub1SecretResult[]> => {
+    if (process.platform !== 'darwin' || loadError) return []
+    try {
+      const v1 = await readWorkhub1Settings()
+      if (!v1) return []
+      const results = await importWorkhub1Secrets(v1, configuration, secrets, (item) => readKeychainItem(item))
+      if (results.some((r) => r.status === 'imported')) send('config:changed')
+      return results
+    } catch {
+      return []
+    }
+  })
   ipc.on('hub:openExternal', (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })

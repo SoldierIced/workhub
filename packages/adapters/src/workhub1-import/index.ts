@@ -4,7 +4,7 @@
  * property list without changing anything. Its JSON values are stored as `<data>` (base64).
  */
 import { execFile } from 'node:child_process'
-import { WORKHUB1_APPEARANCE_KEYS, WORKHUB1_NOTIFICATION_CATEGORIES, type Workhub1Observability, type Workhub1Settings } from '@workhub/core'
+import { WORKHUB1_APPEARANCE_KEYS, type KeychainRead, WORKHUB1_NOTIFICATION_CATEGORIES, type Workhub1Observability, type Workhub1Settings } from '@workhub/core'
 
 export const WORKHUB1_DOMAIN = 'com.nehuenfortes.workhub'
 
@@ -233,4 +233,43 @@ export function readWorkhub1Settings(domain = WORKHUB1_DOMAIN): Promise<Workhub1
       }
     })
   })
+}
+
+/** Exit codes of `security` that mean "no such item" and "the user (or macOS) refused access". */
+const SECURITY_NOT_FOUND = 44
+const SECURITY_DENIED = new Set([36, 51, 128])
+
+export type SecurityRunner = (file: string, args: string[]) => Promise<{ code: number | null; stdout: string; timedOut?: boolean }>
+
+const runSecurity: SecurityRunner = (file, args) =>
+  new Promise((resolve) => {
+    // stdout holds the secret: it is returned to the caller only, never logged. stderr is dropped.
+    execFile(file, args, { maxBuffer: 1024 * 1024, timeout: 120_000, windowsHide: true }, (err, stdout) => {
+      if (!err) return resolve({ code: 0, stdout })
+      const e = err as NodeJS.ErrnoException & { killed?: boolean }
+      resolve({ code: typeof e.code === 'number' ? e.code : null, stdout: '', timedOut: e.killed === true })
+    })
+  })
+
+/**
+ * Reads one generic password of Workhub 1 from the login Keychain with
+ * `/usr/bin/security find-generic-password -s <service> [-a <account>] -w` (no shell). macOS asks
+ * the user to allow it. Only macOS; any other platform answers an error code. The value is only
+ * in the returned `found` result: errors carry a fixed code, never output.
+ */
+export async function readKeychainItem(
+  item: { service: string; account?: string },
+  platform: string = process.platform,
+  run: SecurityRunner = runSecurity
+): Promise<KeychainRead> {
+  if (platform !== 'darwin') return { status: 'error', code: 'unsupported-platform' }
+  const args = ['find-generic-password', '-s', item.service]
+  if (item.account) args.push('-a', item.account)
+  args.push('-w')
+  const r = await run('/usr/bin/security', args)
+  if (r.code === 0) return { status: 'found', value: r.stdout }
+  if (r.timedOut) return { status: 'error', code: 'timeout' }
+  if (r.code === SECURITY_NOT_FOUND) return { status: 'notFound' }
+  if (r.code !== null && SECURITY_DENIED.has(r.code)) return { status: 'denied' }
+  return { status: 'error', code: r.code === null ? 'spawn-failed' : `exit-${r.code}` }
 }

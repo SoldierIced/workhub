@@ -8,6 +8,7 @@ import type { MessageKey } from '../../i18n/translate'
 import { Badge } from '../atoms/Badge'
 import { Button } from '../atoms/Button'
 import { Spinner } from '../atoms/Spinner'
+import { Workhub1SecretsImport } from './Workhub1SecretsImport'
 
 const NOTE_LABEL: Record<ImportNote['code'], MessageKey> = {
   exists: 'import.noteExists',
@@ -174,6 +175,7 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
           {t('import.preview')}
         </Button>
       </div>
+      <Workhub1SecretsImport />
       {state.kind === 'missing' && <p className="text-sm text-muted">{t('import.missing')}</p>}
       {state.kind === 'done' && <p className="text-sm text-success">{t('import.done')}</p>}
       {state.kind === 'error' && (
