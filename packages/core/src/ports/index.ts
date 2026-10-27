@@ -1,4 +1,5 @@
 import type { PlanUsageWindow, SessionMonitorSnapshot } from '../domain/monitor'
+import type { SubagentConversation, ToolResultView, ToolView } from '../domain/tool-view'
 import type { WorkhubConfig } from '../config/schema'
 
 export * from './agent-runtime'
@@ -26,6 +27,8 @@ export interface TranscriptReader {
   exists(query: TranscriptQuery): Promise<boolean>
   /** Drops the incremental state kept for a session. */
   forget(agentSessionId: string): void
+  /** One subagent's conversation (prompt, steps, answer); null when the agent has none on disk. */
+  subagent?(query: TranscriptQuery, subagentId: string): Promise<SubagentConversation | null>
 }
 
 /** One past session of an agent account, for the session history screen. */
@@ -47,7 +50,7 @@ export interface HistoryEntry {
 export type HistoryMessage =
   | { kind: 'user'; text: string; images?: number }
   | { kind: 'agent'; text: string }
-  | { kind: 'tool'; id: string; title: string; detail?: string; failed?: boolean }
+  | { kind: 'tool'; id: string; title: string; detail?: string; failed?: boolean; view?: ToolView; result?: ToolResultView }
 
 /** Lists and reads past sessions of one agent account (Claude: the Agent SDK's session store). */
 export interface SessionHistorySource {

@@ -13,6 +13,7 @@ import {
   type PlanUsageWindow,
   type SessionMonitorSnapshot
 } from '@workhub/core'
+import { claudeToolResult, claudeToolView } from '../shared/claude-tool-view'
 import { describeTool, toolKind } from '../shared/claude-tools'
 
 type Obj = Record<string, unknown>
@@ -109,6 +110,8 @@ export function permissionResult(optionId: string | null, input: unknown, sugges
 /** One session's mapping state: which assistant messages already streamed their text. */
 export class ClaudeBridgeMapper {
   private readonly streamed = new Set<string>()
+  /** Tool name per call id, to read each result the way its tool writes it. */
+  private readonly toolNames = new Map<string, string>()
   private streaming: string | undefined
   private notices = 0
   private readonly permissions = new Map<string, { input: unknown; suggestions: unknown }>()
@@ -199,8 +202,20 @@ export class ClaudeBridgeMapper {
           const b = obj(raw)
           if (!b) continue
           if (b['type'] === 'tool_use' && str(b['id']) && str(b['name'])) {
-            const { title, detail } = describeTool(b['name'] as string, obj(b['input']) ?? {})
-            events.push({ sessionId, type: 'tool', toolCallId: b['id'] as string, title, detail: detail || undefined, kind: toolKind(b['name'] as string), status: 'in_progress' })
+            const name = b['name'] as string
+            const input = obj(b['input']) ?? {}
+            const { title, detail } = describeTool(name, input)
+            this.toolNames.set(b['id'] as string, name)
+            events.push({
+              sessionId,
+              type: 'tool',
+              toolCallId: b['id'] as string,
+              title,
+              detail: detail || undefined,
+              kind: toolKind(name),
+              status: 'in_progress',
+              view: claudeToolView(name, input)
+            })
           } else if (b['type'] === 'text' && str(b['text']) && !(id && this.streamed.has(id))) {
             // Text that did not stream (a synthetic answer such as a usage-limit message).
             events.push({ sessionId, type: 'message', role: 'agent', text: b['text'] as string })
@@ -212,11 +227,19 @@ export class ClaudeBridgeMapper {
       }
       case 'user': {
         const message = obj(m['message']) ?? {}
-        return arr(message['content']).flatMap((raw): AgentEvent[] => {
+        const blocks = arr(message['content'])
+        // The structured result belongs to the message's only tool result; with several it is ambiguous.
+        const extra = blocks.filter((b) => obj(b)?.['type'] === 'tool_result').length === 1 ? m['tool_use_result'] : undefined
+        return blocks.flatMap((raw): AgentEvent[] => {
           const b = obj(raw)
           const id = str(b?.['tool_use_id'])
           if (b?.['type'] !== 'tool_result' || !id) return []
-          return [{ sessionId, type: 'tool', toolCallId: id, status: b['is_error'] === true ? 'failed' : 'completed' }]
+          const failed = b['is_error'] === true
+          const name = this.toolNames.get(id)
+          this.toolNames.delete(id)
+          const event: AgentEvent = { sessionId, type: 'tool', toolCallId: id, status: failed ? 'failed' : 'completed' }
+          if (name) event.result = claudeToolResult(name, b['content'], failed, extra)
+          return [event]
         })
       }
       case 'system':

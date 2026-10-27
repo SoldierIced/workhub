@@ -31,6 +31,7 @@ import { findExecutable } from './availability'
 import { pathKeyOf } from '../shared/login-path'
 import { AcpMonitor, permissionMode, readModes } from './monitor-mapping'
 import { planSpawn } from './spawn-plan'
+import { acpToolResult, acpToolView } from './tool-view'
 
 export type AcpDirection = 'client->agent' | 'agent->client'
 
@@ -308,7 +309,9 @@ export class AcpRuntime implements AgentRuntime {
           toolCallId: String(u['toolCallId'] ?? ''),
           title: typeof u['title'] === 'string' ? u['title'] : undefined,
           status: typeof u['status'] === 'string' ? u['status'] : undefined,
-          kind: typeof u['kind'] === 'string' ? u['kind'] : undefined
+          kind: typeof u['kind'] === 'string' ? u['kind'] : undefined,
+          view: acpToolView(u),
+          result: acpToolResult(u)
         })
         break
       case 'current_mode_update':

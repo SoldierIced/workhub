@@ -6,7 +6,16 @@
 import { open, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { mergeMonitor, type Money, type SessionMonitorSnapshot, type SubagentSummary, type TranscriptQuery, type TranscriptReader } from '@workhub/core'
+import {
+  mergeMonitor,
+  type Money,
+  type SessionMonitorSnapshot,
+  type SubagentConversation,
+  type SubagentSummary,
+  type TranscriptQuery,
+  type TranscriptReader
+} from '@workhub/core'
+import { SubagentConversationBuilder } from './conversation'
 import {
   ClaudeTranscriptParser,
   parseSubagentMeta,
@@ -21,9 +30,17 @@ import {
 class Tail {
   private offset = 0
   private partial = ''
+  private queue: Promise<unknown> = Promise.resolve()
   constructor(readonly path: string) {}
 
-  async read(onLine: (line: string) => void): Promise<boolean> {
+  /** One read at a time: the monitor poll and the subagent view share a tail. */
+  read(onLine: (line: string) => void): Promise<boolean> {
+    const run = this.queue.then(() => this.readNow(onLine))
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  private async readNow(onLine: (line: string) => void): Promise<boolean> {
     let handle
     try {
       handle = await open(this.path, 'r')
@@ -55,6 +72,8 @@ interface SubagentState {
   parser: SubagentParser
   meta: SubagentMeta
   modified: number
+  /** Built the first time the subagent view opens: a second tail over the same file. */
+  conversation?: { tail: Tail; builder: SubagentConversationBuilder }
 }
 
 interface SessionState {
@@ -95,7 +114,7 @@ export class ClaudeTranscriptReader implements TranscriptReader {
     this.sessions.delete(agentSessionId)
   }
 
-  async read(query: TranscriptQuery): Promise<SessionMonitorSnapshot | null> {
+  private async session(query: TranscriptQuery): Promise<SessionState | null> {
     let state = this.sessions.get(query.agentSessionId)
     if (!state) {
       const path = await this.locate(query)
@@ -103,6 +122,12 @@ export class ClaudeTranscriptReader implements TranscriptReader {
       state = { tail: new Tail(path), parser: new ClaudeTranscriptParser({ ticketPrefixes: query.ticketPrefixes, now: this.now }), subagents: new Map() }
       this.sessions.set(query.agentSessionId, state)
     }
+    return state
+  }
+
+  async read(query: TranscriptQuery): Promise<SessionMonitorSnapshot | null> {
+    const state = await this.session(query)
+    if (!state) return null
     const parser = state.parser
     if (!(await state.tail.read((line) => parser.ingest(line)))) return null
     const snap = parser.snapshot()
@@ -114,6 +139,42 @@ export class ClaudeTranscriptReader implements TranscriptReader {
     const patch: SessionMonitorSnapshot = { subagents, tokens }
     if (costs.length) patch.cost = { amount: costs.reduce((sum, c) => sum + c.amount, 0), currency: 'USD' }
     return mergeMonitor(snap, patch)
+  }
+
+  async subagent(query: TranscriptQuery, subagentId: string): Promise<SubagentConversation | null> {
+    if (!safeId(subagentId)) return null
+    const state = await this.session(query)
+    if (!state) return null
+    const parser = state.parser
+    if (!(await state.tail.read((line) => parser.ingest(line)))) return null
+    const summary = (await this.readSubagents(state, parser.snapshot().model)).find((s) => s.id === subagentId)
+    const sub = state.subagents.get(`agent-${subagentId}.jsonl`)
+    if (!summary || !sub) return null
+    sub.conversation ??= { tail: new Tail(sub.tail.path), builder: new SubagentConversationBuilder() }
+    const { builder } = sub.conversation
+    await sub.conversation.tail.read((line) => builder.ingest(line))
+    const snap = builder.snapshot()
+    // A Task call inside the subagent started another one: link it by the call id its meta names.
+    const byCall = new Map<string, string>()
+    for (const [file, s] of state.subagents) if (s.meta.toolUseId) byCall.set(s.meta.toolUseId, basename(file, '.jsonl').replace(/^agent-/, ''))
+    for (const e of snap.entries) {
+      const agentId = e.kind === 'tool' && e.view.kind === 'task' ? byCall.get(e.id) : undefined
+      if (e.kind === 'tool' && agentId) e.result = { ...e.result, agentId }
+    }
+    const out: SubagentConversation = { id: summary.id, entries: snap.entries }
+    if (summary.type) out.type = summary.type
+    if (summary.description) out.description = summary.description
+    if (summary.model) out.model = summary.model
+    if (summary.status) out.status = summary.status
+    if (summary.tokens) out.tokens = summary.tokens
+    if (summary.startedAt !== undefined) out.startedAt = summary.startedAt
+    if (summary.lastActivityAt !== undefined) out.lastActivityAt = summary.lastActivityAt
+    const cwd = snap.cwd ?? query.cwd
+    if (cwd) out.cwd = cwd
+    if (snap.prompt !== undefined) out.prompt = snap.prompt
+    if (snap.result !== undefined) out.result = snap.result
+    if (snap.omitted) out.omitted = snap.omitted
+    return out
   }
 
   /** The transcript path: `<config>/projects/*\/<id>.jsonl`, the cwd-derived folder tried first. */

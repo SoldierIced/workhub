@@ -1,6 +1,7 @@
 import type { AgentAccount, AgentAdapterKind, AgentCapabilities, AgentDefinition } from '../domain/agent'
 import type { SessionMonitorSnapshot } from '../domain/monitor'
 import type { PermissionModeInfo, SessionModeOption, SessionState } from '../domain/session'
+import type { ToolResultView, ToolView } from '../domain/tool-view'
 
 export interface StartSessionRequest {
   /** Workhub's session id; every event of the session carries it. */
@@ -67,7 +68,8 @@ export interface PromptResult {
 export type AgentEvent =
   | { sessionId: string; type: 'state'; state: SessionState; error?: string }
   | { sessionId: string; type: 'message'; role: 'agent' | 'thought'; text: string }
-  | { sessionId: string; type: 'tool'; toolCallId: string; title?: string; status?: string; kind?: string; detail?: string }
+  /** `view` and `result`: what the call did, per tool (a diff, a command's output), when the agent says. */
+  | { sessionId: string; type: 'tool'; toolCallId: string; title?: string; status?: string; kind?: string; detail?: string; view?: ToolView; result?: ToolResultView }
   | { sessionId: string; type: 'permission'; requestId: string; title: string; options: PermissionOption[]; detail?: string }
   /** The agent withdrew a permission request (the turn was interrupted). */
   | { sessionId: string; type: 'permissionCancelled'; requestId: string }
