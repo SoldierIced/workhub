@@ -37,11 +37,13 @@ export function menuTemplate(items: readonly TrayItem[], perform: (action: TrayA
 }
 
 /**
- * What a click on the icon does. macOS and Windows open the popover (when there is one) and keep
- * the native menu on a right click; Linux (AppIndicator sends no clicks) always shows the menu.
+ * What a click on the icon does. macOS opens the popover on any click (it holds everything the
+ * native menu offered: quit, pause, updates), so it shows no native menu. Windows opens the
+ * popover (or the window) on a click and keeps the native menu on a right click; Linux
+ * (AppIndicator sends no clicks) always shows the menu. Without a popover macOS shows the menu.
  */
-export function trayClickBehavior(platform: NodeJS.Platform, hasPopover: boolean): { click: 'popover' | 'activate' | 'menu'; menu: 'attached' | 'rightClick' } {
-  if (platform === 'darwin') return hasPopover ? { click: 'popover', menu: 'rightClick' } : { click: 'menu', menu: 'attached' }
+export function trayClickBehavior(platform: NodeJS.Platform, hasPopover: boolean): { click: 'popover' | 'activate' | 'menu'; menu: 'attached' | 'none' } {
+  if (platform === 'darwin') return hasPopover ? { click: 'popover', menu: 'none' } : { click: 'menu', menu: 'attached' }
   if (platform === 'win32') return { click: hasPopover ? 'popover' : 'activate', menu: 'attached' }
   return { click: 'menu', menu: 'attached' }
 }
@@ -76,7 +78,6 @@ export class TrayService {
   private refreshing = false
   private again = false
   private lastAttention: boolean | null = null
-  private menu: Menu | null = null
 
   constructor(private readonly deps: TrayServiceDeps) {}
 
@@ -88,24 +89,18 @@ export class TrayService {
     this.tray = new Tray(image)
     this.tray.setToolTip(this.deps.appName)
     if (this.deps.platform === 'darwin') this.tray.setIgnoreDoubleClickEvents(true)
-    // A click opens the popover (Windows without one: the window) and a right click the menu.
+    // A click opens the popover (Windows without one: the window); Windows and Linux attach the menu.
     const behavior = trayClickBehavior(this.deps.platform, Boolean(this.deps.popover))
     if (behavior.click === 'popover') this.tray.on('click', (_event, bounds) => this.deps.popover?.toggle(bounds))
     if (behavior.click === 'activate') this.tray.on('click', () => this.deps.activate())
-    if (behavior.menu === 'rightClick') this.tray.on('right-click', () => this.showMenu())
+    // macOS: a right click opens the same popover, never the native menu.
+    if (behavior.click === 'popover' && behavior.menu === 'none') this.tray.on('right-click', (_event, bounds) => this.deps.popover?.toggle(bounds))
     void this.refresh()
   }
 
   /** The icon's bounds (empty where the platform does not tell). */
   bounds(): Rectangle {
     return this.tray && !this.tray.isDestroyed() ? this.tray.getBounds() : { x: 0, y: 0, width: 0, height: 0 }
-  }
-
-  /** The native menu at the icon (right click, or the popover's "…" button). */
-  showMenu(): void {
-    if (!this.tray || this.tray.isDestroyed() || !this.menu) return
-    this.deps.popover?.hide()
-    this.tray.popUpContextMenu(this.menu)
   }
 
   stop(): void {
@@ -138,8 +133,7 @@ export class TrayService {
       if (!tray || tray.isDestroyed()) return
       const badge = trayBadge(state, text)
       const items = buildTrayMenu(state, text)
-      this.menu = Menu.buildFromTemplate(menuTemplate(items, this.deps.perform))
-      if (trayClickBehavior(this.deps.platform, Boolean(this.deps.popover)).menu === 'attached') tray.setContextMenu(this.menu)
+      if (trayClickBehavior(this.deps.platform, Boolean(this.deps.popover)).menu === 'attached') tray.setContextMenu(Menu.buildFromTemplate(menuTemplate(items, this.deps.perform)))
       this.deps.onState?.(state)
       if (this.deps.logPath) writeFileSync(this.deps.logPath, JSON.stringify({ badge, items, popover: buildTrayPopover(state) }, null, 2))
       tray.setToolTip(badge.tooltip)
