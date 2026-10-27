@@ -21,6 +21,11 @@ export interface StartSessionRequest {
   resume?: boolean
   /** Model to start with; the agent's default when unset. */
   model?: string
+  /**
+   * Start in the most read-only mode the agent supports (an AI reviewer): Claude's `plan` mode
+   * with edit tools denied, or an ACP permission mode such as `plan` / `read-only`.
+   */
+  readOnly?: boolean
 }
 
 /** An image pasted into a prompt, base64 without the `data:` prefix. */
