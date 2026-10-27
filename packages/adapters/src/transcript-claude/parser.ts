@@ -328,6 +328,7 @@ export function subagentSummary(
     stepCount: parser.stepCount
   }
   if (meta.description) summary.description = meta.description
+  if (meta.toolUseId) summary.toolUseId = meta.toolUseId
   if (model) summary.model = model
   const cost = estimateCost(model ?? fallbackModel, tokens)
   if (cost) summary.cost = cost

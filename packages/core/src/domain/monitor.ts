@@ -48,6 +48,8 @@ export interface SubagentSummary {
   /** Subagent type, e.g. `general-purpose`. */
   type?: string
   description?: string
+  /** The parent's tool call that started it (Claude's Agent/Task call id), when known. */
+  toolUseId?: string
   model?: string
   tokens?: TokenUsage
   cost?: Money

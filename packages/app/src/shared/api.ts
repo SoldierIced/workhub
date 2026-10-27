@@ -13,6 +13,7 @@ import type {
   EffectiveAgent,
   HistoryEntry,
   HistoryMessage,
+  SubagentConversation,
   ImageInput,
   ImportPlan,
   ModelOption,
@@ -214,6 +215,10 @@ export interface SessionsApi {
   /** Switches the session's agent mode (an id of `availableModes`). */
   setAgentMode(id: string, modeId: string): Promise<void>
   mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void
+  /** One subagent's conversation (prompt, steps, answer); null when the agent keeps none. */
+  subagent(id: string, subagentId: string): Promise<SubagentConversation | null>
+  /** Shows a file the session's agent touched in the file manager; false when it is outside the session's folder or missing. */
+  revealFile(id: string, path: string): Promise<boolean>
   onEvent(cb: (e: AgentEvent) => void): () => void
   onChanged(cb: (s: SessionView) => void): () => void
   /** A finished session left the list (an automation replaced it). */

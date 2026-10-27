@@ -6,6 +6,7 @@
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import type { HistoryEntry, HistoryMessage, SessionHistorySource } from '@workhub/core'
+import { claudeToolResult, claudeToolView } from '../shared/claude-tool-view'
 import { describeTool } from '../shared/claude-tools'
 
 type Obj = Record<string, unknown>
@@ -54,6 +55,7 @@ function typedText(text: string): string | undefined {
 export function toHistoryMessages(raw: unknown): HistoryMessage[] {
   const out: HistoryMessage[] = []
   const tools = new Map<string, Extract<HistoryMessage, { kind: 'tool' }>>()
+  const names = new Map<string, string>()
   for (const x of arr(raw)) {
     const m = obj(x)
     // Subagent turns belong to their Agent call.
@@ -70,9 +72,14 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
       const text = typedText(blocks.filter((b) => b['type'] === 'text').map((b) => str(b['text']) ?? '').join('\n'))
       const images = blocks.filter((b) => b['type'] === 'image').length
       if (text || images) out.push(images ? { kind: 'user', text: text ?? '', images } : { kind: 'user', text: text! })
-      for (const b of blocks) {
-        const tool = b['type'] === 'tool_result' ? tools.get(str(b['tool_use_id']) ?? '') : undefined
-        if (tool && b['is_error'] === true) tool.failed = true
+      const results = blocks.filter((b) => b['type'] === 'tool_result')
+      for (const b of results) {
+        const id = str(b['tool_use_id']) ?? ''
+        const tool = tools.get(id)
+        if (!tool) continue
+        if (b['is_error'] === true) tool.failed = true
+        const extra = results.length === 1 ? (m['toolUseResult'] ?? m['tool_use_result']) : undefined
+        tool.result = claudeToolResult(names.get(id) ?? '', b['content'], b['is_error'] === true, extra)
       }
     } else if (m['type'] === 'assistant') {
       for (const raw of arr(content)) {
@@ -82,8 +89,10 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
           if (last?.kind === 'agent') last.text += `\n\n${b['text'] as string}`
           else out.push({ kind: 'agent', text: b['text'] as string })
         } else if (b?.['type'] === 'tool_use' && str(b['id']) && str(b['name'])) {
-          const { title, detail } = describeTool(b['name'] as string, obj(b['input']) ?? {})
-          const tool: Extract<HistoryMessage, { kind: 'tool' }> = { kind: 'tool', id: b['id'] as string, title }
+          const input = obj(b['input']) ?? {}
+          const { title, detail } = describeTool(b['name'] as string, input)
+          const tool: Extract<HistoryMessage, { kind: 'tool' }> = { kind: 'tool', id: b['id'] as string, title, view: claudeToolView(b['name'] as string, input) }
+          names.set(tool.id, b['name'] as string)
           if (detail) tool.detail = detail
           tools.set(tool.id, tool)
           out.push(tool)

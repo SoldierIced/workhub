@@ -1,9 +1,9 @@
-import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, FileText, History, Info, Pencil, Search, ShieldAlert, Square, SquareTerminal, TriangleAlert, Webhook, Wrench, X, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { gatePrompt, setCeiling, type ImageInput } from '@workhub/core'
-import { Badge, Button, IconButton, Spinner } from '../../components/atoms'
+import { gatePrompt, setCeiling, type ImageInput, type SubagentSummary } from '@workhub/core'
+import { Button, IconButton } from '../../components/atoms'
 import { Markdown } from '../../components/molecules'
-import { BrandMark } from '../../components/organisms'
+import { BrandMark, ToolCallCard } from '../../components/organisms'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
@@ -17,8 +17,8 @@ import { BudgetNotice } from './BudgetNotice'
 import type { ContinuityOptions } from '@shared/continuity-api'
 import { dismissOffer, originText, useContinuityActions, useContinuityOffer } from '../../lib/continuity'
 import { ContinuityNotice } from './ContinuityNotice'
+import { openSubagent, subagentOfCall } from '../../lib/subagentView'
 
-const TOOL_ICON: Record<string, LucideIcon> = { read: FileText, edit: Pencil, execute: SquareTerminal, search: Search, think: Brain }
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
 
 function Disclosure({ icon: Icon, title, tone, children, testId }: { icon: LucideIcon; title: string; tone?: 'danger' | 'warning'; children: ReactNode; testId?: string }) {
@@ -34,7 +34,15 @@ function Disclosure({ icon: Icon, title, tone, children, testId }: { icon: Lucid
   )
 }
 
-function ChatBlock({ item, onAnswer }: { item: ChatItem; onAnswer: (requestId: string, optionId: string | null, label: string) => void }) {
+interface ChatBlockProps {
+  item: ChatItem
+  onAnswer: (requestId: string, optionId: string | null, label: string) => void
+  sessionId: string
+  cwd: string
+  subagents?: SubagentSummary[]
+}
+
+function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps) {
   const { t, tn } = useI18n()
   switch (item.kind) {
     case 'user':
@@ -71,22 +79,20 @@ function ChatBlock({ item, onAnswer }: { item: ChatItem; onAnswer: (requestId: s
         </Disclosure>
       )
     case 'tool': {
-      const Icon = TOOL_ICON[item.toolKind ?? ''] ?? Wrench
-      const done = item.status === 'completed'
-      const failed = item.status === 'failed'
+      const agent = item.view?.kind === 'task' ? subagentOfCall(subagents, item.toolCallId) : undefined
+      const agentId = item.result?.agentId ?? agent?.id
       return (
-        <div className="ml-8 flex items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm" title={item.detail}>
-          <Icon className="size-3.5 shrink-0 text-muted" aria-hidden />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate">{item.title}</span>
-            {item.detail && item.detail !== item.title && <span className="block truncate font-mono text-2xs text-subtle">{item.detail}</span>}
-          </span>
-          {item.status && (
-            <Badge tone={failed ? 'danger' : done ? 'success' : 'info'} icon={!done && !failed ? <Spinner className="size-3 text-info" /> : undefined}>
-              {item.status}
-            </Badge>
-          )}
-        </div>
+        <ToolCallCard
+          title={item.title}
+          detail={item.detail}
+          status={item.status}
+          toolKind={item.toolKind}
+          view={item.view}
+          result={item.result}
+          cwd={cwd}
+          onReveal={(path) => void window.hub.sessions.revealFile(sessionId, path)}
+          onOpenAgent={agentId && subagents?.some((s) => s.id === agentId) ? () => openSubagent(sessionId, agentId) : undefined}
+        />
       )
     }
     case 'permission':
@@ -287,7 +293,7 @@ export function ChatPane({ data }: { data: SessionData }) {
           {replayAt < 0 && originLine}
           {data.items.map((i, n) => (
             <Fragment key={i.id}>
-              <ChatBlock item={i} onAnswer={answer} />
+              <ChatBlock item={i} onAnswer={answer} sessionId={v.id} cwd={v.cwd} subagents={data.monitor.subagents} />
               {n === replayAt && originLine}
             </Fragment>
           ))}

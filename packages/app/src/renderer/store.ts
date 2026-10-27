@@ -7,7 +7,9 @@ import {
   type AttentionKind,
   type HistoryMessage,
   type PermissionOption,
-  type SessionMonitorSnapshot
+  type SessionMonitorSnapshot,
+  type ToolResultView,
+  type ToolView
 } from '@workhub/core'
 import { containsBell } from './lib/attention'
 import type { SessionView } from '@shared/api'
@@ -20,7 +22,8 @@ export type ChatItem =
   | { id: number; kind: 'turnEnd'; stopReason: string }
   /** The agent process exited; `code` is null when a signal ended it. */
   | { id: number; kind: 'exit'; code: number | null }
-  | { id: number; kind: 'tool'; toolCallId: string; title: string; status: string; toolKind?: string; detail?: string }
+  /** `view`/`result`: what the call did per tool (diff, command output), when the agent reports it. */
+  | { id: number; kind: 'tool'; toolCallId: string; title: string; status: string; toolKind?: string; detail?: string; view?: ToolView; result?: ToolResultView }
   | { id: number; kind: 'permission'; requestId: string; title: string; detail?: string; options: PermissionOption[]; answer?: string }
   /** A hook's output or a harness banner: its own block, never part of the agent's reply. */
   | { id: number; kind: 'notice'; noticeKind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
@@ -139,7 +142,7 @@ export function replayItems(messages: HistoryMessage[], next: () => number): Cha
       case 'agent':
         return { id: next(), kind: 'agent', text: m.text }
       case 'tool':
-        return { id: next(), kind: 'tool', toolCallId: m.id, title: m.title, detail: m.detail, status: m.failed ? 'failed' : 'completed' }
+        return { id: next(), kind: 'tool', toolCallId: m.id, title: m.title, detail: m.detail, status: m.failed ? 'failed' : 'completed', view: m.view, result: m.result }
     }
   })
 }
@@ -187,10 +190,21 @@ export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): S
       const items = existing
         ? s.items.map((i) =>
             i.kind === 'tool' && i.toolCallId === e.toolCallId
-              ? { ...i, title: e.title ?? i.title, status: e.status ?? i.status, toolKind: e.kind ?? i.toolKind, detail: e.detail ?? i.detail }
+              ? {
+                  ...i,
+                  title: e.title ?? i.title,
+                  status: e.status ?? i.status,
+                  toolKind: e.kind ?? i.toolKind,
+                  detail: e.detail ?? i.detail,
+                  view: e.view ?? i.view,
+                  result: e.result ?? i.result
+                }
               : i
           )
-        : [...s.items, { id: next(), kind: 'tool' as const, toolCallId: e.toolCallId, title: e.title ?? e.toolCallId, status: e.status ?? '', toolKind: e.kind, detail: e.detail }]
+        : [
+            ...s.items,
+            { id: next(), kind: 'tool' as const, toolCallId: e.toolCallId, title: e.title ?? e.toolCallId, status: e.status ?? '', toolKind: e.kind, detail: e.detail, view: e.view, result: e.result }
+          ]
       return { ...s, items }
     }
     case 'permission':
