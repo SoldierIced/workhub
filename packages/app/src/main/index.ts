@@ -14,7 +14,7 @@ import { createCliRunner } from '@workhub/adapters/cli'
 import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
-import { KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
+import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
 import { GitReview } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
@@ -50,6 +50,8 @@ import {
   type TrayRoute,
   type TraySession,
   type TrayState,
+  setSessionCeiling,
+  type SessionCeilings,
   type WorkhubConfig
 } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference, UsageAlert } from '../shared/api'
@@ -241,19 +243,49 @@ const pendingUsageAlerts: UsageAlert[] = []
 // Plan usage per Claude and Codex account (Settings → Usage, opt-in per agent). WORKHUB_DEMO_USAGE=1
 // serves synthetic windows instead, so the cards, budgets and gate can be shown without accounts.
 const demoUsage = process.env['WORKHUB_DEMO_USAGE'] === '1'
+// The Kiro usage session's id (one session reused across reads, see KiroPlanUsageReader).
+const kiroUsageState = new StateFile<{ sessionId: string | null }>(join(dataDir, 'kiro-usage.json'), 200)
+let configCache: WorkhubConfig | null = null
+// Each session's own usage ceilings, by session identity (set from the session's side panel).
+const sessionBudgets = new StateFile<Record<string, SessionCeilings>>(join(dataDir, 'session-budgets.json'), 200)
+/** Only windows with a valid ceiling (1-100) from what the renderer sent. */
+function cleanSessionCeilings(raw: unknown): SessionCeilings {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  let out: SessionCeilings = {}
+  for (const [window, value] of Object.entries(raw)) if (typeof value === 'number') out = setSessionCeiling(out, window, value)
+  return out
+}
 const usage = new AgentUsageService({
   providers: demoUsage
-    ? [new DemoUsageProvider('claude'), new DemoUsageProvider('codex')]
-    : [new ClaudePlanUsageReader({ userAgent: `workhub/${app.getVersion()}` }), new CodexPlanUsageReader()],
+    ? [new DemoUsageProvider('claude'), new DemoUsageProvider('codex'), new DemoUsageProvider('kiro')]
+    : [
+        new ClaudePlanUsageReader({ userAgent: `workhub/${app.getVersion()}` }),
+        new CodexPlanUsageReader(),
+        new KiroPlanUsageReader({
+          command: () => {
+            const kiro = configCache && knownAgents(configCache).find((a) => a.id === 'kiro')
+            return kiro && runsKiroCli(kiro) ? kiro.command : 'kiro-cli'
+          },
+          probeDir: join(dataDir, 'kiro-usage'),
+          state: {
+            load: () => kiroUsageState.load({ sessionId: null }).sessionId,
+            save: (sessionId) => kiroUsageState.save({ sessionId })
+          },
+          path: () => cliPath
+        })
+      ],
   load: async () => {
     const config = await configuration.current()
+    configCache = config
     const options = appOptions(config)
     const claude = usageAccounts(config, 'claude', homedir())
     const codex = usageAccounts(config, 'codex', homedir())
+    // Kiro has one sign-in per machine: a single default account.
+    const kiro = knownAgents(config).some((a) => a.id === 'kiro') ? [{ agentId: 'kiro', accountId: null, name: '' }] : []
     return {
-      accounts: [...(options.claudePlanUsage ? claude : []), ...(options.codexUsage ? codex : [])],
+      accounts: [...(options.claudePlanUsage ? claude : []), ...(options.codexUsage ? codex : []), ...(options.kiroUsage ? kiro : [])],
       budget: options.usageBudget,
-      knownKeys: [...claude, ...codex].map((a) => usageAccountKey(a.agentId, a.accountId))
+      knownKeys: [...claude, ...codex, ...kiro].map((a) => usageAccountKey(a.agentId, a.accountId))
     }
   },
   emit: (u: AccountUsage[]) => {
@@ -521,6 +553,18 @@ function registerIpc(): void {
   })
   ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
   ipc.handle('usage:kiroSpend', () => kiroSpend())
+  ipc.handle('usage:sessionBudgets', () => sessionBudgets.load({}))
+  ipc.handle('usage:setSessionBudget', (_e, identity: unknown, ceilings: unknown) => {
+    if (typeof identity !== 'string' || !identity) return
+    const all = sessionBudgets.load({})
+    const own = cleanSessionCeilings(ceilings)
+    if (Object.keys(own).length) all[identity] = own
+    else delete all[identity]
+    // `load` merges over the fallback, so a removed entry must be written as a whole new object.
+    sessionBudgets.save({ ...all })
+    sessionBudgets.flush()
+    send('usage:sessionBudgetsChanged', all)
+  })
   ipc.on('usage:notify', (_e, n: { title: string; body: string }) => showUsageNotification(n))
   ipc.on('usage:ready', () => {
     usageAlertsReady = true

@@ -19,7 +19,7 @@ import type { AccountUsage, UsageAlert } from '../shared/api'
 
 /** One account whose plan usage is read. */
 export interface UsageAccountRef {
-  /** The agent the accounts belong to (`claude`, `codex`). */
+  /** The agent the accounts belong to (`claude`, `codex`, `kiro`). */
   agentId: string
   /** Null: the agent's own default folder, used by sessions without an account. */
   accountId: string | null
@@ -170,6 +170,13 @@ export class DemoUsageProvider implements UsageProvider {
     // A second account (any config folder) reads a little lower than the default one.
     const shift = configDir ? -20 : 0
     const hours = (h: number) => t + h * 3_600_000
+    if (this.agentId === 'kiro') {
+      // A monthly credit allowance, as Kiro's `/usage` reports it.
+      const reset = new Date(t)
+      reset.setMonth(reset.getMonth() + 1, 1)
+      reset.setHours(0, 0, 0, 0)
+      return [{ window: 'monthly', percent: 33.8, used: 3378.41, limit: 10000, resetsAt: reset.getTime() }]
+    }
     if (this.agentId === 'codex') {
       return [
         { window: '5h', percent: Math.max(0, 34 + shift), resetsAt: hours(2.5) },

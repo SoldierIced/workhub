@@ -231,7 +231,7 @@ export const en = {
   'settings.appearance': 'Appearance',
   'settings.profiles': 'Profiles',
   'settings.connections': 'Connections',
-  'settings.accounts': 'Agent accounts',
+  'settings.accounts': 'Agents',
   'settings.interface': 'Interface',
   'settings.language': 'Language',
   'settings.languageHint': 'System follows the language of your operating system.',

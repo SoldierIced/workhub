@@ -30,12 +30,13 @@ export const usageEn = {
   'agentUsage.settings.codexHint': "Every 5 minutes, with each account's own Codex sign-in, else from its newest session files.",
   'agentUsage.settings.codexNote':
     "Off by default. It calls an undocumented ChatGPT endpoint with the sign-in stored in the account's Codex folder (auth.json); it can change or stop working at any time. The sign-in is never refreshed or stored by Workhub. Without one, or when the endpoint fails, the newest limits Codex wrote in its session files are shown.",
-  'agentUsage.settings.kiro': 'Kiro',
-  'agentUsage.settings.kiroNote': 'Not available: Kiro reports the credits each turn used, but not the credits or limits left.',
+  'agentUsage.settings.kiro': 'Read Kiro credits left',
+  'agentUsage.settings.kiroNote':
+    "Asks kiro-cli for its own /usage (Kiro's sign-in; Workhub never reads it), at most every 15 minutes. Each read starts Kiro briefly, with its MCP servers, in a session Workhub keeps for this and reuses: you will see one empty session named after Workhub's folder in Kiro's list. Credits spent per day come from Kiro's session files either way.",
   'agentUsage.settings.budgets': 'Budgets',
   'agentUsage.settings.budgetsNote':
     'Past a ceiling, prompts sent from Workhub to that account need "Send anyway", and automations, Slack wakes and Slack reads on it wait until the window resets or the ceiling is raised or cleared. "Run now" on an automation still runs once. Nothing is installed in the agents: the gate lives only in Workhub, and lets everything through while the usage is unknown.',
-  'agentUsage.settings.noAccounts': 'Turn on reading for Claude or Codex to set budgets.',
+  'agentUsage.settings.noAccounts': 'Turn on reading for Claude, Codex or Kiro to set budgets.',
   'agentUsage.settings.ceiling': '{window} ceiling (%)',
   'agentUsage.settings.none': 'No ceiling',
   'agentUsage.settings.clear': 'Clear',
@@ -51,5 +52,21 @@ export const usageEn = {
 
   'agentUsage.alert.title': 'Usage: {account}',
   'agentUsage.alert.threshold': '{window} window at {percent}% (threshold {threshold}%), resets in {time}.',
-  'agentUsage.alert.ceiling': '{window} window at {percent}%: the {threshold}% ceiling is reached. Automatic work on this account waits; resets in {time}.'
+  'agentUsage.alert.ceiling': '{window} window at {percent}%: the {threshold}% ceiling is reached. Automatic work on this account waits; resets in {time}.',
+  'agentUsage.window.5h': '5h',
+  'agentUsage.window.weekly': 'week',
+  'agentUsage.window.monthly': 'month',
+  'agentUsage.credits': '{used} of {limit} credits used, {left} left',
+  'agentUsage.resetsAt': 'Resets {when} (in {time})',
+  'agentUsage.kiroSpentShort': 'spent {today} today · {week} in 7 days',
+  'agentUsage.kiroRemainingUnknown': 'credits left: not read',
+  'agentUsage.kiroNoRemaining': 'Credits left are not read: turn on "Read Kiro credits left" in Settings → Usage. Kiro reports them only when asked through kiro-cli, never in its local files.',
+  'agentUsage.settings.kiroHint': 'Credits used and left this billing cycle, with the reset day.',
+  'agentUsage.session.title': 'Usage limit for this session',
+  'agentUsage.session.help':
+    'A ceiling for this session only, per window. It replaces the account\'s ceiling (Settings → Usage) for that window, higher or lower; 100 lifts it. Past it, prompts need "Send anyway". Kept with the session, also after a restart.',
+  'agentUsage.session.account': 'Account: {value}',
+  'agentUsage.session.noRead': 'Turn on usage reading for this agent in Settings → Usage to set a limit.',
+  'agentUsage.session.reset': "Use the account's limits",
+  'agentUsage.session.now': 'now {percent}%'
 } as const

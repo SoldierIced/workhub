@@ -10,7 +10,7 @@
 import type { PlanUsageWindow } from '../domain/monitor'
 
 /** Agents whose plan usage Workhub reads per account. */
-export const USAGE_AGENTS = ['claude', 'codex'] as const
+export const USAGE_AGENTS = ['claude', 'codex', 'kiro'] as const
 export type UsageAgentId = (typeof USAGE_AGENTS)[number]
 
 export const DEFAULT_WARN_MARGIN = 5
@@ -125,9 +125,35 @@ export function gatePrompt(status: BudgetStatus, origin: PromptOrigin, override 
   return origin === 'user' ? { kind: 'confirm', status } : { kind: 'pause', status }
 }
 
-/** The budget verdict of one account from the options and its latest windows. */
-export function accountBudgetStatus(budget: UsageBudgetOptions, key: string, windows: readonly PlanUsageWindow[], now: number): BudgetStatus {
-  return evaluateBudget(windows, budget.ceilings[key], budget.warnMargin, now)
+/**
+ * A session's own ceilings, per window, overriding its account's ones (set from the session). A
+ * window the session sets replaces the account's ceiling for that window, higher or lower; the
+ * other windows keep the account's. 100 lifts the limit for that session.
+ */
+export type SessionCeilings = Record<string, number>
+
+/** The ceilings that apply to one session: its account's, with the session's own on top. Undefined when neither sets any. */
+export function effectiveCeilings(account: Readonly<Record<string, number>> | undefined, session: Readonly<SessionCeilings> | undefined): Record<string, number> | undefined {
+  const own = Object.fromEntries(Object.entries(session ?? {}).filter(([, v]) => validCeiling(v) !== null))
+  if (!Object.keys(own).length) return account ? { ...account } : undefined
+  return { ...account, ...own }
+}
+
+/**
+ * The budget verdict of one account from the options and its latest windows; `session` is the
+ * session's own ceilings (`effectiveCeilings`) when the verdict is for one session.
+ */
+export function accountBudgetStatus(budget: UsageBudgetOptions, key: string, windows: readonly PlanUsageWindow[], now: number, session?: Readonly<SessionCeilings>): BudgetStatus {
+  return evaluateBudget(windows, effectiveCeilings(budget.ceilings[key], session), budget.warnMargin, now)
+}
+
+/** Sets or clears (null) one window of a session's own ceilings; an empty result means "use the account's". */
+export function setSessionCeiling(session: Readonly<SessionCeilings> | undefined, window: string, value: number | null): SessionCeilings {
+  const next: SessionCeilings = { ...session }
+  const ceiling = value === null ? null : validCeiling(Math.round(value))
+  if (ceiling === null) delete next[window]
+  else next[window] = ceiling
+  return next
 }
 
 /**

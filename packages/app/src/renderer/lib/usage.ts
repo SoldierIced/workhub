@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { accountAgentId, appOptions, type UsageBudgetOptions } from '@workhub/core'
+import { accountAgentId, appOptions, type CreditSpend, type SessionCeilings, type UsageBudgetOptions } from '@workhub/core'
 import type { AccountUsage, UsageAlert } from '@shared/api'
 import { useConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
@@ -14,6 +14,36 @@ export function useAccountUsage(): AccountUsage[] {
     return window.hub.usage.onChanged(setUsage)
   }, [])
   return usage
+}
+
+/** Every session's own ceilings, by session identity (`sessionBudgetId`). */
+export function useSessionCeilings(): Record<string, SessionCeilings> {
+  const [budgets, setBudgets] = useState<Record<string, SessionCeilings>>({})
+  useEffect(() => {
+    void window.hub.usage.sessionBudgets().then(setBudgets, () => undefined)
+    return window.hub.usage.onSessionBudgetsChanged(setBudgets)
+  }, [])
+  return budgets
+}
+
+/** Kiro credits spent today and this week, from its session files; read on mount and every minute. */
+export function useKiroSpend(): CreditSpend | null {
+  const [spend, setSpend] = useState<CreditSpend | null>(null)
+  useEffect(() => {
+    let live = true
+    const read = () =>
+      void window.hub.usage.kiroSpend().then(
+        (s) => live && setSpend(s),
+        () => undefined
+      )
+    read()
+    const timer = setInterval(read, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [])
+  return spend
 }
 
 /** The current time, updated every `everyMs` (reset countdowns, windows that reset meanwhile). */
@@ -41,7 +71,7 @@ export function useUsageSettings(): { budget: UsageBudgetOptions; accountsOf: (a
   }, [snap])
 }
 
-const AGENT_NAME: Record<string, MessageKey> = { claude: 'agentUsage.agent.claude', codex: 'agentUsage.agent.codex' }
+const AGENT_NAME: Record<string, MessageKey> = { claude: 'agentUsage.agent.claude', codex: 'agentUsage.agent.codex', kiro: 'agentUsage.agent.kiro' }
 
 /** "Codex · Work", or "Claude · Default account". */
 export function useAccountLabel(): (agentId: string, name: string) => string {

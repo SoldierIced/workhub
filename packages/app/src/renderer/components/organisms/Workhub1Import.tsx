@@ -200,7 +200,7 @@ export function Workhub1Import({ run, showTokens }: { run: (op: () => Promise<Re
                 }))}
               />
               <Group
-                title={t('settings.accounts')}
+                title={t('settings.accountsList')}
                 rows={state.plan.accounts.map((a) => ({ id: a.id, name: a.name, meta: a.configDir ?? t('import.defaultFolder'), notes: notesFor(state.plan, `accounts.${a.id}`) }))}
               />
               <Group

@@ -68,6 +68,9 @@ export interface PlanUsageWindow {
   resetsAt?: number
   /** When the agent reported this figure (epoch ms), for a reading taken from an older local file. */
   asOf?: number
+  /** Amount used and the plan's limit, when the agent reports units rather than only a percent (Kiro credits). */
+  used?: number
+  limit?: number
 }
 
 export type McpServerState = 'loading' | 'running' | 'needs-auth' | 'failed' | 'disabled' | 'unknown'
