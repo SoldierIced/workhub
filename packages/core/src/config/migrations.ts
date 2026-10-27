@@ -33,9 +33,10 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // agent, profile colour, session group member profile, profile symbol, folder switches, link
   // browser, "owns outside" and environment variable names (values go to the secret store), the
   // master notification switch, the read-aloud options, the welcome flag, the Health refresh floor
-  // (`options.healthRefreshFloorMinutes`) and each automation's `effort` and `permissionMode`. All
-  // optional and default, so the document is unchanged; the bump keeps an older Workhub from
-  // loading the file and dropping them on its next save.
+  // (`options.healthRefreshFloorMinutes`), each automation's `effort` and `permissionMode`, reopening
+  // the sessions open at quit (`options.reopenSessions`) and the branches Close PR keeps
+  // (`options.protectedBranches`). All optional and default, so the document is unchanged; the bump
+  // keeps an older Workhub from loading the file and dropping them on its next save.
   6: (raw) => raw
 }
 

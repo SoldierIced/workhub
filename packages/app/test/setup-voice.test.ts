@@ -149,6 +149,11 @@ describe('profile environment', () => {
     })
     expect(prunedFolderOptions(undefined, ['/a'])).toBeUndefined()
   })
+  it('saves "Automatic" as an unset subfolder switch', () => {
+    expect(prunedFolderOptions({ '/a': { onlyGitRepos: true, subfoldersAreProjects: undefined }, '/b': { subfoldersAreProjects: undefined } }, ['/a', '/b'])).toEqual({
+      '/a': { onlyGitRepos: true }
+    })
+  })
 })
 
 describe('link opener', () => {
