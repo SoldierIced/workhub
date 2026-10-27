@@ -24,7 +24,7 @@ export const setupEs: Record<keyof typeof setupEn, string> = {
   'setup.tab.connections': 'Conexiones',
   'setup.tab.trackers': 'Trackers',
   'setup.tab.health': 'Health',
-  'setup.tab.accounts': 'Cuentas',
+  'setup.tab.accounts': 'Agentes',
   'setup.tab.usage': 'Uso',
   'setup.link.installGuide': 'Guía de instalación',
   'setup.link.downloadNode': 'Descargar Node.js',
