@@ -1,8 +1,9 @@
-import { Bot, MessagesSquare } from 'lucide-react'
+import { MessagesSquare } from 'lucide-react'
 import { useState } from 'react'
 import type { LinkReason } from '@workhub/core'
 import type { HistoryItem } from '@shared/api'
 import { useI18n } from '../../i18n/I18nProvider'
+import { AgentIcon } from '../atoms/AgentIcon'
 import { Badge } from '../atoms/Badge'
 import { Button } from '../atoms/Button'
 import { Spinner } from '../atoms/Spinner'
@@ -39,7 +40,7 @@ export function PastSessions({ items, loading, error, onResume, className }: Pas
               <div className="truncate text-base">{entry.title || t('history.untitled')}</div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-subtle">
                 <span>{formatDate(entry.lastModified, { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                <Badge icon={<Bot className="size-3" aria-hidden />} className="h-4">
+                <Badge icon={<AgentIcon agentId={entry.agentId} className="size-4 rounded-sm text-[9px]" />} className="h-5">
                   {entry.agentName}
                 </Badge>
                 {reason && <Badge tone="accent" className="h-4">{t(`links.reason.${reason}`)}</Badge>}

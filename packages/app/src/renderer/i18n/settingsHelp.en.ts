@@ -44,6 +44,7 @@ export const settingsHelpEn = {
   'help.account.configDir': 'The folder that keeps this account\'s login and settings (for Claude, something like ~/.claude-work). A different folder is a different account.',
   'help.account.env': 'Extra environment variables for this account\'s sessions, such as an API key.',
   'help.general.otherNotifications': "Desktop notifications that are not about one session: Slack replies, automation runs, ticket changes and health alerts. Pause silences all of them for a while.",
+  'help.general.appBadge': "Puts the number of sessions that need you (an unread reply, a question waiting for an answer, or an error) on the app icon: the Dock on macOS, the taskbar button on Windows, the launcher on Linux. It goes away as you look at the sessions.",
   'help.general.menuBar': "When on, closing the window keeps Workhub running in the menu bar (or notification area), so sessions, Slack and automations keep working.",
   'help.account.command': "The program started for this account's sessions. Leave it empty to use the agent's own command; set it when this account needs a different binary or wrapper.",
   'help.account.defaultModel': "The model new sessions of this account start with. Empty keeps the agent's default; you can still change it from the session header.",

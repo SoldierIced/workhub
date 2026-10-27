@@ -17,6 +17,8 @@ export interface GroupMember {
   /** `effectiveAgentKey(agentId, accountId)` of the agent that ran it. */
   agentKey: string
   cwd: string
+  /** The profile it ran in: its colour marks the row while the session is closed too. */
+  profileId?: string
 }
 
 export interface SessionGroup {
@@ -196,13 +198,15 @@ export function removeMember(state: SessionGroups, key: string): SessionGroups {
 export function replaceSessionIdentity(state: SessionGroups, oldKey: string, newKey: string, meta?: Partial<Omit<GroupMember, 'key'>>): SessionGroups {
   if (oldKey === newKey) return state
   if (!groupOf(state, oldKey) && !state.top.some((s) => same(s, sessionSlot(oldKey)))) return state
-  const alreadyThere = groupOf(state, newKey) !== undefined || state.top.some((s) => same(s, sessionSlot(newKey)))
-  if (alreadyThere) return detach(state, oldKey)
+  // A replacement already in a group was put there on purpose: it keeps that place. One that only
+  // sits on the top level got there by itself (an open session nobody placed yet, saved while it
+  // started): the old place wins, so a replaced session never falls out of its group.
+  if (groupOf(state, newKey) !== undefined) return detach(state, oldKey)
   return {
     groups: state.groups.map((g) =>
       g.members.some((m) => m.key === oldKey) ? { ...g, members: g.members.map((m) => (m.key === oldKey ? { ...m, ...meta, key: newKey } : m)) } : g
     ),
-    top: state.top.map((s) => (s.kind === 'session' && s.key === oldKey ? sessionSlot(newKey) : s))
+    top: state.top.filter((s) => !same(s, sessionSlot(newKey))).map((s) => (s.kind === 'session' && s.key === oldKey ? sessionSlot(newKey) : s))
   }
 }
 
@@ -261,7 +265,7 @@ export function refreshMembers(state: SessionGroups, live: readonly GroupMember[
     let touched = false
     const members = g.members.map((m) => {
       const l = byKey.get(m.key)
-      if (!l || (l.title === m.title && l.agentKey === m.agentKey && l.cwd === m.cwd)) return m
+      if (!l || (l.title === m.title && l.agentKey === m.agentKey && l.cwd === m.cwd && l.profileId === m.profileId)) return m
       touched = true
       return l
     })

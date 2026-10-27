@@ -15,7 +15,6 @@ import type { SessionData } from '../../store'
 import { AiReviewSection } from './AiReviewPanel'
 import { Legend, MetricBox, MetricRow, MonitorSection, SegmentBar } from './MonitorSection'
 import { SlackThreadsSection } from './SlackThreadsSection'
-import { SubagentSheet } from './SubagentView'
 
 /** The last turns' credits, newest last: `0.25 · 1.04 · 0.5`, with `…` when older turns are left out. */
 export function turnCreditsList(credits: readonly number[], max = 6): string {
@@ -472,7 +471,6 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
         <AiReviewSection view={v} />
       </div>
-      <SubagentSheet sessionId={v.id} />
     </aside>
   )
 }

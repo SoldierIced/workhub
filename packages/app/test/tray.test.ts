@@ -238,4 +238,9 @@ describe('tray sessions from the renderer', () => {
     const out = traySessions([data('a', { unseen: 'replied' }), data('b', { readOnly: true })], { groups: [], top: [] })
     expect(out).toEqual([{ id: 'a', title: 'Claude · api', state: 'ready', unseen: 'replied' }])
   })
+
+  it('names a session after what it was asked once there is a prompt, like its sidebar row', () => {
+    const asked = { view: { id: 'a', agentName: 'Claude', cwd: '/Users/x/api/', state: 'ready', identity: 'a' }, items: [{ id: 1, kind: 'user', text: 'Fix the login bug\nmore' }] } as unknown as SessionData
+    expect(traySessions([asked], { groups: [], top: [] })[0]?.title).toBe('Fix the login bug')
+  })
 })

@@ -42,4 +42,22 @@ export interface Profile {
   aiReview?: AiReviewSettings
   /** What happens when a Claude account runs out of usage (see `failoverMode`; default `ask`). */
   accountFailover?: 'ask' | 'automatic' | 'off'
+  /** The profile's colour (`#rrggbb`), down the left edge of its sessions in the sidebar. Unset: `profileColor` picks one. */
+  color?: string
+}
+
+/** Colours a profile without one of its own takes, by its place in the list (Workhub 1's accent palette). */
+export const PROFILE_COLORS = ['#3b82f6', '#a855f7', '#f97316', '#10b981', '#ec4899', '#eab308', '#06b6d4', '#ef4444'] as const
+
+/** The colour a profile without one of its own takes at this place in the list. */
+export function automaticProfileColor(index: number): string {
+  return PROFILE_COLORS[Math.max(0, index) % PROFILE_COLORS.length]!
+}
+
+/** A profile's colour: its own, else the palette colour of its place among the profiles. */
+export function profileColor(profiles: readonly Pick<Profile, 'id' | 'color'>[], profileId: string | null | undefined): string | undefined {
+  if (!profileId) return undefined
+  const index = profiles.findIndex((p) => p.id === profileId)
+  if (index < 0) return undefined
+  return profiles[index]!.color ?? automaticProfileColor(index)
 }

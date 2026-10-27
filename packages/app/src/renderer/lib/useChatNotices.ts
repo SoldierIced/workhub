@@ -10,7 +10,8 @@ const NOT_WOKEN: Record<string, MessageKey> = {
   automationOff: 'slack.notice.notWoken.automationOff',
   noReplies: 'slack.notice.notWoken.noReplies',
   openElsewhere: 'slack.notice.notWoken.openElsewhere',
-  budget: 'slack.notice.notWoken.budget'
+  budget: 'slack.notice.notWoken.budget',
+  openFailed: 'slack.notice.notWoken.openFailed'
 }
 
 /**

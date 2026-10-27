@@ -1,4 +1,5 @@
-import { Bot, CircleAlert, Folder, History, MessagesSquare, RefreshCw, Search, SquareTerminal, UserRound } from 'lucide-react'
+import { CircleAlert, Folder, History, MessagesSquare, RefreshCw, Search, SquareTerminal, UserRound } from 'lucide-react'
+import { AgentIcon } from '../components/atoms/AgentIcon'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { groupHistory } from '@workhub/core'
 import type { HistoryItem, HistoryResult } from '@shared/api'
@@ -146,7 +147,7 @@ export function HistoryScreen({ profileId, onOpened }: HistoryScreenProps) {
                     <div className="flex items-center gap-2 text-xs text-subtle">
                       <span>{formatDate(e.lastModified, { dateStyle: 'medium', timeStyle: 'short' })}</span>
                       {e.gitBranch && e.gitBranch !== 'HEAD' && <span className="truncate font-mono">{e.gitBranch}</span>}
-                      <Badge icon={<Bot className="size-3" aria-hidden />} className="h-4" data-testid="history-agent">
+                      <Badge icon={<AgentIcon agentId={e.agentId} className="size-4 rounded-sm text-[9px]" />} className="h-5" data-testid="history-agent">
                         {e.agentName}
                       </Badge>
                       {accountName && (

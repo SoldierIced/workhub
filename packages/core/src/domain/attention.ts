@@ -56,7 +56,10 @@ export function statusLevel(s: AttentionInput): StatusLevel | null {
 }
 
 export interface AttentionSummary {
-  /** Sessions with an unseen flag. */
+  /**
+   * Sessions that need you: an error, a question or permission still waiting (seen or not), an
+   * unread reply. The rule the app icon badge and the menu bar icon count by; working ones do not count.
+   */
   count: number
   /** The highest-priority state among the sessions, null when none shows one. */
   level: StatusLevel | null
@@ -66,8 +69,8 @@ export function aggregateAttention(sessions: readonly AttentionInput[]): Attenti
   let level: StatusLevel | null = null
   let count = 0
   for (const s of sessions) {
-    if (s.unseen) count += 1
     const l = statusLevel(s)
+    if (l && l !== 'working') count += 1
     if (l && (!level || STATUS_PRIORITY.indexOf(l) < STATUS_PRIORITY.indexOf(level))) level = l
   }
   return { count, level }

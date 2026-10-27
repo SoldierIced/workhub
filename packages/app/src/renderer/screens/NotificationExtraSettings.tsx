@@ -73,3 +73,16 @@ export function MenuBarRows({ config, editable, run }: RowsProps) {
     </SwitchRow>
   )
 }
+
+const BADGE_LABEL: Record<string, MessageKey> = { mac: 'settings.appBadgeMac', windows: 'settings.appBadgeWindows', linux: 'settings.appBadgeLinux' }
+
+/** Settings → General: the count of sessions that need a look on the app icon. */
+export function AppBadgeRows({ config, editable, run }: RowsProps) {
+  const { t } = useI18n()
+  const options = appOptions(config)
+  return (
+    <SwitchRow label={t('settings.appBadge')} hint={t(BADGE_LABEL[window.hub.platform] ?? 'settings.appBadgeMac')} help={t('help.general.appBadge')}>
+      <Switch checked={options.showAppBadge} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ showAppBadge: on }))} />
+    </SwitchRow>
+  )
+}

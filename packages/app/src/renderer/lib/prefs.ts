@@ -29,6 +29,8 @@ export interface Prefs {
   monitorWidth: number
   /** Monitor sections the user folded (section ids). */
   monitorCollapsed: string[]
+  /** Folders starred in the sidebar (Workhub 1's Favorites), in the order they were added. */
+  favoriteFolders: string[]
 }
 
 /** Ranges of the size preferences, as Workhub 1 offered them. */
@@ -49,7 +51,8 @@ export const DEFAULT_PREFS: Prefs = {
   chatFontSize: BASE_TEXT_SIZE,
   textSize: BASE_TEXT_SIZE,
   monitorWidth: 320,
-  monitorCollapsed: []
+  monitorCollapsed: [],
+  favoriteFolders: []
 }
 
 /** A size clamped into its range, rounded; the default for anything that is not a number. */
@@ -77,7 +80,8 @@ export function parsePrefs(raw: string | null): Prefs {
       chatFontSize: clampSize('chatFontSize', v.chatFontSize),
       textSize: clampSize('textSize', v.textSize),
       monitorWidth: clampSize('monitorWidth', v.monitorWidth),
-      monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : []
+      monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
+      favoriteFolders: Array.isArray(v.favoriteFolders) ? [...new Set(v.favoriteFolders.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, 100) : []
     }
   } catch {
     return DEFAULT_PREFS
