@@ -78,6 +78,8 @@ export interface AppOptions {
   healthRefreshFloorMinutes: number
   /** Closing the main window keeps the app running in the menu bar / notification area. */
   keepInTray: boolean
+  /** The sessions open when the app quit are reopened (resumed) at the next launch. */
+  reopenSessions: boolean
   /** A badge on the app icon (Dock, taskbar, launcher) with the number of sessions that need a look. */
   showAppBadge: boolean
   /** Master switch: off silences every OS notification, whatever the per-kind switches say. */
@@ -98,7 +100,7 @@ export interface AppOptions {
 export const SPEECH_RATE_RANGE = [120, 300] as const
 export const DEFAULT_SPEECH_RATE = 190
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -353,6 +355,7 @@ export const configSchema = z.object({
         .default(DEFAULT_HEALTH_FLOOR_MINUTES)
         .catch(DEFAULT_HEALTH_FLOOR_MINUTES),
       keepInTray: z.boolean().default(true),
+      reopenSessions: z.boolean().default(true),
       showAppBadge: z.boolean().default(true),
       notificationsEnabled: z.boolean().default(true),
       readAloud: z.boolean().default(false),

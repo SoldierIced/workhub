@@ -208,6 +208,8 @@ export interface UsageAlert {
 
 export interface SessionsApi {
   list(): Promise<SessionView[]>
+  /** The main window follows session events now: the sessions open at the last quit are reopened then. */
+  ready(): void
   /** Returns at once with the session in `starting`; progress arrives through onChanged. */
   start(input: StartSessionInput): Promise<SessionView>
   prompt(id: string, text: string, images?: ImageInput[]): Promise<string>
