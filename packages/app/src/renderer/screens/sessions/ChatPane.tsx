@@ -52,7 +52,7 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
           {Array.isArray(item.images) && (
             <div className="flex flex-wrap justify-end gap-1.5">
               {item.images.map((src, i) => (
-                <img key={i} src={src} alt={t('chat.imageAlt', { n: i + 1 })} className="size-16 rounded-md border border-border object-cover" />
+                <img key={i} src={src} alt={t('chat.imageAlt', { n: i + 1 })} className="max-h-64 max-w-full rounded-md border border-border object-contain" />
               ))}
             </div>
           )}
@@ -289,7 +289,7 @@ export function ChatPane({ data }: { data: SessionData }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto text-[length:var(--wh-chat-font-size,13px)]" aria-live="polite" aria-label={t('chat.log')} role="log">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3.5 px-6 py-5">
+        <div className="flex w-full flex-col gap-3.5 px-6 py-5">
           {data.items.length === 0 && !v.origin && <p className="py-10 text-center text-sm text-subtle">{t('chat.empty')}</p>}
           {replayAt < 0 && originLine}
           {data.items.map((i, n) => (
@@ -302,7 +302,7 @@ export function ChatPane({ data }: { data: SessionData }) {
         </div>
       </div>
       <div className="shrink-0 px-6 pb-5">
-        <div className="mx-auto max-w-3xl rounded-xl border border-border bg-surface shadow-md transition-colors focus-within:border-accent/60">
+        <div className="w-full rounded-xl border border-border bg-surface shadow-md transition-colors focus-within:border-accent/60">
           <BudgetNotice
             status={gate.status}
             account={accountLabel(usageSettings.accountsOf(v.agentId), reads.find((r) => r.key === gate.key)?.name ?? v.accountName ?? '')}
