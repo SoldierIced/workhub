@@ -1,12 +1,15 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { AcpRuntime } from '@workhub/adapters/agent-acp'
+import { AcpRuntime, agentAvailability } from '@workhub/adapters/agent-acp'
 import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
 import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
+import { CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
+import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/transcript-kiro'
+import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
 import {
   appOptions,
@@ -19,9 +22,10 @@ import {
   type Result,
   type WorkhubConfig
 } from '@workhub/core'
-import type { AccountUsage, ConfigSnapshot, HistoryItem, HistoryResult, SessionMode, ThemePreference } from '../shared/api'
+import type { AccountUsage, ConfigSnapshot, SessionMode, ThemePreference } from '../shared/api'
 import { claudeAccounts, UsageService } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
+import { listAllHistory } from './history'
 import { SessionManager } from './session-manager'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
@@ -63,23 +67,26 @@ const send = (channel: string, ...args: unknown[]) => {
 // Workhub 1's Agent SDK bridge, run with Electron's own Node (dev layout; packaging is P8).
 const bridgeDir = join(repoRoot, 'packages', 'adapters', 'src', 'agent-claude-native', 'bridge')
 const terminal = new TerminalRuntime()
+// Agent adapters installed with the app (claude-agent-acp) are found through PATH.
+const extraPath = [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
 const runtimes = {
   native: new ClaudeNativeRuntime({ bridgeDir }),
   acp: new AcpRuntime({
     clientName: 'workhub',
     clientVersion: app.getVersion(),
-    // Agent adapters installed with the app (claude-agent-acp) are found through PATH.
-    extraPath: [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
+    extraPath
   }),
   terminal
 }
 const claudeHistory = new ClaudeSessionHistory({ bridgeDir })
+// Past sessions per agent id; the readers behind them are kiro, opencode and codex (PLAN D9).
+const historySources = { claude: claudeHistory, kiro: new KiroSessionHistory(), opencode: new OpenCodeSessionHistory(), codex: new CodexSessionHistory() }
 const sessions = new SessionManager({
   config: configuration,
   runtimes,
   terminal,
-  transcripts: [new ClaudeTranscriptReader()],
-  history: { claude: claudeHistory },
+  transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader(), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
+  history: historySources,
   emitEvent: (e) => send('session:event', e),
   emitChanged: (s) => send('session:changed', s),
   emitReplay: (id, messages) => send('session:replay', id, messages)
@@ -92,24 +99,6 @@ const usage = new UsageService(
   },
   (u: AccountUsage[]) => send('usage:changed', u)
 )
-
-/** Every session of every Claude account, newest first. Accounts that fail are reported, not fatal. */
-async function listHistory(): Promise<HistoryResult> {
-  const config = await configuration.current()
-  const result: HistoryResult = { entries: [], errors: [] }
-  await Promise.all(
-    claudeAccounts(config, homedir()).map(async (a) => {
-      try {
-        const entries = await claudeHistory.list({ agentId: 'claude', accountId: a.accountId, configDir: a.configDir })
-        result.entries.push(...entries.map((e): HistoryItem => ({ ...e, accountName: a.name || undefined })))
-      } catch (err) {
-        result.errors.push({ account: a.name, message: err instanceof Error ? err.message : String(err) })
-      }
-    })
-  )
-  result.entries.sort((x, y) => y.lastModified - x.lastModified)
-  return result
-}
 
 async function snapshot(): Promise<ConfigSnapshot> {
   const config = await configuration.current()
@@ -214,7 +203,8 @@ function registerIpc(): void {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })
 
-  ipcMain.handle('history:list', () => listHistory())
+  ipcMain.handle('history:list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
+  ipcMain.handle('agents:availability', async () => agentAvailability(knownAgents(await configuration.current()), { extraPath }))
   ipcMain.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
 
   registerTicketIpc({

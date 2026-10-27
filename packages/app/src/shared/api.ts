@@ -103,9 +103,12 @@ export interface StartSessionInput {
   model?: string
 }
 
-/** A past session, plus its account's name for the history screen. */
+/** A past session, plus its agent and account names for the history screen. */
 export interface HistoryItem extends HistoryEntry {
   accountName?: string
+  agentName: string
+  /** Whether Workhub can open the session again; other agents' sessions are listed only. */
+  resumable: boolean
 }
 
 export interface HistoryResult {
@@ -148,6 +151,11 @@ export interface HistoryApi {
   list(): Promise<HistoryResult>
 }
 
+export interface AgentsApi {
+  /** For each known agent id, whether its executable is installed (found on PATH). */
+  availability(): Promise<Record<string, boolean>>
+}
+
 export interface UsageApi {
   /** The last reads, and a fresh read when `refresh` is set. Empty while the option is off. */
   get(refresh?: boolean): Promise<AccountUsage[]>
@@ -175,6 +183,7 @@ export interface HubApi {
   config: ConfigApi
   sessions: SessionsApi
   history: HistoryApi
+  agents: AgentsApi
   usage: UsageApi
   codeHost: CodeHostApi
   tickets: TicketsApi

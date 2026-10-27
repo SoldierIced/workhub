@@ -20,9 +20,10 @@ packages/
                 agent-claude-native  AgentRuntime on Workhub 1's Claude Agent SDK bridge (default for Claude):
                                   MCP status/reconnect/toggle, hooks, permissions, model switch, usage;
                                   also the session history and the opt-in plan usage read
-                agent-acp         AgentRuntime over the Agent Client Protocol (Kiro, Claude via claude-agent-acp, OpenCode)
+                agent-acp         AgentRuntime over the Agent Client Protocol (Kiro, OpenCode, Codex via codex-acp, Gemini CLI, Claude via claude-agent-acp)
                 agent-terminal    AgentRuntime over a PTY (node-pty) for any CLI
                 transcript-claude TranscriptReader for Claude's JSONL transcripts (tokens, cost, tools, subagents, PRs, tickets)
+                transcript-kiro / -opencode / -codex  TranscriptReader and history for Kiro, OpenCode (SQLite) and Codex rollouts
                 workhub1-import   Reads Workhub 1's settings read-only (`defaults export`, macOS)
                 codehost-github   CodeHost over the `gh` CLI (your own login, no token stored)
                 codehost-gitlab   CodeHost over the `glab` CLI (fixture-tested only so far)
@@ -42,8 +43,9 @@ the app bundles them with electron-vite, so there is no separate build step for 
 
 - macOS (Windows and Linux are planned, not tested yet)
 - Node.js 22 and npm 10
-- The agents you want to run, on your PATH (for example `kiro-cli`). The Claude ACP adapter is
-  installed with the app.
+- The agents you want to run, on your PATH (for example `kiro-cli`, `opencode`, `gemini`);
+  Codex runs through `npx`. The Claude ACP adapter is installed with the app. An agent that is not
+  installed shows as such in New session, with how to install it.
 
 ## Install, run, test
 
@@ -65,6 +67,11 @@ To run the built app: `cd packages/app && npx electron .`
   `claude --resume <id>`, the same conversation) and **Shell** (a shell in the session folder).
 - The monitor reads Claude's transcript every 3 s. **Session history** lists every Claude session
   of the configured accounts, grouped by folder, resumable in the app or the terminal.
+- **Other agents** (Kiro, OpenCode, Codex over ACP; Gemini CLI over `gemini --acp`) fill the monitor
+  from their own files: Kiro credits and context, OpenCode cost and tokens (read-only SQLite),
+  Codex tokens and 5 h / weekly rate limits. The history lists their sessions with an agent badge
+  and filter; only Claude sessions can be resumed so far. These formats are internal: Kiro and
+  OpenCode were checked on a real install, Codex only from its documentation (no data here).
 - Plan usage per account comes from what running sessions report. Reading it from Anthropic's
   undocumented usage endpoint is an opt-in setting (Settings → General), off by default.
 - **Import from Workhub 1** (Settings → General, macOS) previews profiles, folders, Claude

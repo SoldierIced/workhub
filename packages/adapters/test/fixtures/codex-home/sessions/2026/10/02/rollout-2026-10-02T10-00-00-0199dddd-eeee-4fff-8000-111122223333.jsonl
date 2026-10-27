@@ -1,0 +1,2 @@
+{"timestamp":"2026-10-02T10:00:00.000Z","type":"session_meta","payload":{"id":"0199dddd-eeee-4fff-8000-111122223333","timestamp":"2026-10-02T10:00:00.000Z","cwd":"/tmp/acme-api","source":{"subagent":{"thread_spawn":{"parent_thread_id":"0199cccc-dddd-4eee-8fff-000011112222"}}}}}
+{"timestamp":"2026-10-02T10:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"Explore the routes"}}

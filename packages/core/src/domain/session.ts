@@ -52,7 +52,7 @@ export interface Session {
 }
 
 /** The permission-mode ids Workhub treats as "tools run without asking". */
-const UNATTENDED_MODES = new Set(['bypassPermissions', 'yolo', 'full-auto', 'dangerously-skip-permissions'])
+const UNATTENDED_MODES = new Set(['bypassPermissions', 'yolo', 'full-auto', 'full-access', 'dangerously-skip-permissions'])
 
 export function isUnattendedMode(id: string): boolean {
   return UNATTENDED_MODES.has(id)

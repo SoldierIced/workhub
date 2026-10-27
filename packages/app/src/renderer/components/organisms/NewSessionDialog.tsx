@@ -2,6 +2,7 @@ import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { EffectiveAgent } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
+import { installHintKey } from '../../lib/agents'
 import { readPrefs } from '../../lib/prefs'
 import { Button } from '../atoms/Button'
 import { IconButton } from '../atoms/IconButton'
@@ -27,6 +28,8 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, initia
   const [cwd, setCwd] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Agent id -> installed; an agent missing from the answer is treated as installed.
+  const [installed, setInstalled] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!open) return
@@ -41,6 +44,13 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, initia
     if (initialCwd) setCwd(initialCwd)
     else void window.hub.getDefaultCwd().then((d) => setCwd((c) => c || d))
   }, [open, initialAgentKey, initialCwd, agents])
+
+  useEffect(() => {
+    if (open) void window.hub.agents.availability().then(setInstalled, () => setInstalled({}))
+  }, [open])
+
+  const chosen = agents.find((a) => a.key === agentKey)
+  const missing = chosen !== undefined && installed[chosen.agent.id] === false
 
   const start = async () => {
     setError('')
@@ -67,7 +77,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, initia
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" disabled={!agentKey || !cwd || busy} onClick={() => void start()}>
+          <Button variant="primary" disabled={!agentKey || !cwd || busy || missing} onClick={() => void start()}>
             {t('newSession.start')}
           </Button>
         </>
@@ -77,11 +87,27 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, initia
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault()
-          if (agentKey && cwd && !busy) void start()
+          if (agentKey && cwd && !busy && !missing) void start()
         }}
       >
-        <Field label={t('newSession.agent')} hint={agents.length === 0 ? t('session.noAgents') : undefined}>
-          <Select value={agentKey} onChange={setAgentKey} options={agents.map((a) => ({ value: a.key, label: a.label }))} placeholder={t('session.noAgents')} />
+        <Field
+          label={t('newSession.agent')}
+          hint={
+            agents.length === 0 ? (
+              t('session.noAgents')
+            ) : missing ? (
+              <span className="text-warning" data-testid="agent-install-hint">
+                {t(installHintKey(chosen.agent.id), { command: chosen.agent.command })}
+              </span>
+            ) : undefined
+          }
+        >
+          <Select
+            value={agentKey}
+            onChange={setAgentKey}
+            options={agents.map((a) => ({ value: a.key, label: installed[a.agent.id] === false ? `${a.label} (${t('newSession.notInstalled')})` : a.label }))}
+            placeholder={t('session.noAgents')}
+          />
         </Field>
         <Field label={t('newSession.folder')}>
           <div className="flex gap-2">

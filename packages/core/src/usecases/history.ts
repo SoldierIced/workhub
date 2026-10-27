@@ -1,9 +1,9 @@
 import type { HistoryEntry } from '../ports'
 
-export interface HistoryGroup {
+export interface HistoryGroup<T extends HistoryEntry = HistoryEntry> {
   /** The folder the sessions ran in; empty when the agent did not record one. */
   folder: string
-  entries: HistoryEntry[]
+  entries: T[]
   /** Newest `lastModified` of the group, for ordering. */
   lastModified: number
 }
@@ -28,14 +28,14 @@ export function matchesHistory(entry: HistoryEntry, query: string): boolean {
  * newest group first and newest session first inside each. The same session listed by two
  * accounts (a copied transcript) is kept once, the most recent copy.
  */
-export function groupHistory(entries: HistoryEntry[], query = ''): HistoryGroup[] {
-  const unique = new Map<string, HistoryEntry>()
+export function groupHistory<T extends HistoryEntry>(entries: T[], query = ''): HistoryGroup<T>[] {
+  const unique = new Map<string, T>()
   for (const e of entries) {
     const key = `${e.agentId}\u0000${e.agentSessionId}`
     const prev = unique.get(key)
     if (!prev || e.lastModified > prev.lastModified) unique.set(key, e)
   }
-  const groups = new Map<string, HistoryEntry[]>()
+  const groups = new Map<string, T[]>()
   for (const e of unique.values()) {
     if (!matchesHistory(e, query)) continue
     const folder = e.cwd ?? ''

@@ -4,7 +4,7 @@ import { safeHref } from '../src/renderer/components/molecules/Markdown'
 import { isEmptyPlan, notesFor } from '../src/renderer/components/organisms/Workhub1Import'
 import { recentFolders, usageGroups, type SessionSummary } from '../src/renderer/lib/home'
 import { imageInputFromDataUrl } from '../src/renderer/lib/images'
-import { historyAccounts } from '../src/renderer/screens/HistoryScreen'
+import { historyAccounts, historyAgents } from '../src/renderer/screens/HistoryScreen'
 import { formatDuration } from '../src/renderer/screens/sessions/MonitorPanel'
 import { applyEvent, replayItems, type SessionData } from '../src/renderer/store'
 
@@ -109,7 +109,7 @@ describe('chat store', () => {
 
 describe('history and monitor helpers', () => {
   it('lists each account of the history once', () => {
-    const base = { agentId: 'claude', title: '', lastModified: 0 }
+    const base = { agentId: 'claude', agentName: 'Claude Code', resumable: true, title: '', lastModified: 0 }
     expect(
       historyAccounts([
         { ...base, agentSessionId: '1', accountId: null },
@@ -119,6 +119,20 @@ describe('history and monitor helpers', () => {
     ).toEqual([
       { id: '', name: '' },
       { id: 'work', name: 'Work' }
+    ])
+  })
+
+  it('lists each agent of the history once, in the order it first appears', () => {
+    const base = { title: '', lastModified: 0, accountId: null, resumable: false }
+    expect(
+      historyAgents([
+        { ...base, agentId: 'codex', agentName: 'Codex', agentSessionId: '1' },
+        { ...base, agentId: 'kiro', agentName: 'Kiro', agentSessionId: '2' },
+        { ...base, agentId: 'codex', agentName: 'Codex', agentSessionId: '3' }
+      ])
+    ).toEqual([
+      { id: 'codex', name: 'Codex' },
+      { id: 'kiro', name: 'Kiro' }
     ])
   })
 

@@ -1,0 +1,3 @@
+{"id":"s1","timestamp":"2026-10-01T12:00:15.000Z","payload":{"type":"tool_call","toolCallId":"x1","title":"Read forms.ts","kind":"read"}}
+{"id":"s2","timestamp":"2026-10-01T12:00:16.000Z","payload":{"type":"tool_result","toolCallId":"x1","success":true}}
+{"id":"s3","timestamp":"2026-10-01T12:00:17.000Z","payload":{"type":"tool_call","toolCallId":"x2","title":"Search for forms","kind":"search"}}
