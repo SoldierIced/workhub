@@ -86,6 +86,7 @@ import { SlackWatcherService } from './slack-watcher'
 import { StateFile } from './state-file'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
+import { spendSources, TokenSpendService } from './token-spend'
 import { UpdateService } from './updates'
 
 // Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
@@ -221,6 +222,13 @@ async function kiroSpend(): Promise<CreditSpend | null> {
   kiroSpendCache = { at: now, value }
   return value
 }
+// Token spend per folder for Home: scanned in the background from start-up, cached on disk.
+const tokenSpend = new TokenSpendService({
+  config: () => configuration.current(),
+  store: new StateFile(join(dataDir, 'token-spend.json'), 2_000),
+  sources: async () => spendSources(await configuration.current(), homedir(), kiroDir),
+  emit: () => send('usage:folderSpendChanged')
+})
 const sessions = new SessionManager({
   config: configuration,
   runtimes,
@@ -530,6 +538,7 @@ function registerIpc(): void {
   })
   ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
   ipc.handle('usage:kiroSpend', () => kiroSpend())
+  ipc.handle('usage:folderSpend', (_e, profileId?: string | null) => tokenSpend.forProfile(typeof profileId === 'string' ? profileId : null))
   ipc.on('usage:notify', (_e, n: { title: string; body: string }) => showUsageNotification(n))
   ipc.on('usage:ready', () => {
     usageAlertsReady = true
@@ -933,6 +942,7 @@ void app.whenReady().then(async () => {
     trayPopover = null
   }
   usage.start()
+  tokenSpend.start()
   // Opt-in: nothing contacts GitHub unless the user turned this on (or presses "Check now").
   if (app.isPackaged && appOptions(await configuration.current()).checkForUpdates) setTimeout(() => void updates.check(), 10_000)
   prEvents.start()
@@ -960,6 +970,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   quitting = true
   usage.stop()
+  tokenSpend.stop()
   prEvents.stop()
   slack.stop()
   automations.stop()

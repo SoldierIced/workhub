@@ -29,7 +29,8 @@ export interface CreditSpend {
 
 const DAYS = 7
 
-function dayKey(d: Date): string {
+/** Local calendar day of a date, `YYYY-MM-DD`. */
+export function localDayKey(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${m}-${day}`
@@ -46,7 +47,7 @@ export function startOfLocalDay(now: number, daysBack = 0): number {
 /** Today's and the last 7 days' spend. Entries in the future or with no positive credits are skipped. */
 export function creditSpend(entries: readonly CreditEntry[], now: number): CreditSpend {
   const days: CreditDay[] = []
-  for (let i = DAYS - 1; i >= 0; i--) days.push({ day: dayKey(new Date(startOfLocalDay(now, i))), credits: 0 })
+  for (let i = DAYS - 1; i >= 0; i--) days.push({ day: localDayKey(new Date(startOfLocalDay(now, i))), credits: 0 })
   const since = startOfLocalDay(now, DAYS - 1)
   const todayStart = startOfLocalDay(now)
   let today = 0
@@ -57,7 +58,7 @@ export function creditSpend(entries: readonly CreditEntry[], now: number): Credi
     week += e.credits
     turns++
     if (e.at >= todayStart) today += e.credits
-    const slot = days.find((d) => d.day === dayKey(new Date(e.at)))
+    const slot = days.find((d) => d.day === localDayKey(new Date(e.at)))
     if (slot) slot.credits += e.credits
   }
   return { today, week, days, turns }

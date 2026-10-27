@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { NO_MODULES } from '@workhub/core'
 import type { Profile } from '@workhub/core'
-import { attentionOf, folderName, formatTokens, groupByAttention, hasConnection, planUsage, recentFolders, tokensByFolder, type SessionSummary } from '../src/renderer/lib/home'
+import { attentionOf, folderName, formatTokens, groupByAttention, hasConnection, planUsage, recentFolders, type SessionSummary } from '../src/renderer/lib/home'
 import { allNavItems, visibleNavItems } from '../src/renderer/lib/nav'
 import { DEFAULT_PREFS, parsePrefs, resolveTheme } from '../src/renderer/lib/prefs'
 import type { ChatItem } from '../src/renderer/store'
@@ -68,19 +68,6 @@ describe('home figures', () => {
   it('reads folder names from POSIX and Windows paths', () => {
     expect(folderName('/Users/acme/work/api')).toBe('api')
     expect(folderName('C:\\work\\acme\\web\\')).toBe('web')
-  })
-
-  it('sums tokens per folder, largest first, skipping sessions without data', () => {
-    const list = [
-      session('ready', [], { monitor: { tokens: { total: 100 } } }),
-      { ...session('ready', [], { monitor: { tokens: { input: 300, output: 50 } } }), view: { id: 'x', state: 'ready' as const, cwd: '/work/web', startedAt: 1 } },
-      session('ready', [], { monitor: { tokens: { total: 20 } } }),
-      session('ready')
-    ]
-    expect(tokensByFolder(list)).toEqual([
-      { path: '/work/web', folder: 'web', tokens: 350 },
-      { path: '/work/acme', folder: 'acme', tokens: 120 }
-    ])
   })
 
   it('keeps the highest percent per plan window', () => {

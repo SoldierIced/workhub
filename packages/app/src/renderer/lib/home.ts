@@ -57,25 +57,6 @@ export function folderName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path
 }
 
-export interface FolderTokens {
-  folder: string
-  path: string
-  tokens: number
-}
-
-/** Tokens reported by the sessions of this run, summed per folder, largest first. Sessions without token data are left out. */
-export function tokensByFolder(sessions: SessionSummary[]): FolderTokens[] {
-  const byPath = new Map<string, number>()
-  for (const s of sessions) {
-    const t = s.monitor.tokens
-    const total = t?.total ?? (t ? (t.input ?? 0) + (t.output ?? 0) : 0)
-    if (total > 0) byPath.set(s.view.cwd, (byPath.get(s.view.cwd) ?? 0) + total)
-  }
-  return [...byPath.entries()]
-    .map(([path, tokens]) => ({ path, folder: folderName(path), tokens }))
-    .sort((a, b) => b.tokens - a.tokens)
-}
-
 /** Plan usage windows reported by any session, keeping the highest percent per window. */
 export function planUsage(sessions: SessionSummary[]): PlanUsageWindow[] {
   const byWindow = new Map<string, PlanUsageWindow>()
