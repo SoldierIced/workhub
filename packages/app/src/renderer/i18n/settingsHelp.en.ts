@@ -29,6 +29,7 @@ export const settingsHelpEn = {
   'help.profile.agentsOffered': 'Which agents (Claude Code, Kiro, Codex…) appear in the New session menu of this profile.',
   'help.profile.agentOrder': 'Move an agent up to make it the default. Workhub uses the first one when it picks an agent on its own.',
   'help.profile.modules': 'Optional screens for this profile, such as Health, the Slack (chat) watcher and Automations. Off hides them from the sidebar.',
+  'help.profile.accountFailover': 'When a Claude account runs out of usage, its session can continue in another Claude account of this profile: ask first, switch by itself, or do nothing.',
   'help.profile.aiReview': 'Before you open a pull request, a reviewer agent reviews the branch of an idle dev session and sends what to fix to that session.',
   'help.profile.slack': 'How long a thread stays quiet before it folds into "Archived (n)" on the Slack screen and in the session monitor.',
 

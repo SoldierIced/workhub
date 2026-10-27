@@ -22,6 +22,7 @@ import {
   type ImageInput,
   type ModelOption,
   type SessionHistorySource,
+  type SessionOrigin,
   type SessionModeOption,
   type TranscriptReader,
   type WorkhubConfig
@@ -152,7 +153,7 @@ export class SessionManager {
    * `internal` is for the main process only (never the renderer's IPC input): extra environment
    * for the agent process, e.g. the AI review's push block.
    */
-  async start(input: StartSessionInput, internal: { env?: Record<string, string> } = {}): Promise<SessionView> {
+  async start(input: StartSessionInput, internal: { env?: Record<string, string>; origin?: SessionOrigin } = {}): Promise<SessionView> {
     const config = await this.deps.config.current()
     const choice = resolveChoice(config, input.profileId, input.agentKey)
     if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
@@ -196,7 +197,8 @@ export class SessionManager {
       controls: hasSessionControls(runtime),
       modelControl: canSetModel(runtime),
       modeControl: canSetSessionMode(runtime),
-      ...(input.readOnly ? { readOnly: true } : {})
+      ...(input.readOnly ? { readOnly: true } : {}),
+      ...(internal.origin ? { origin: internal.origin } : {})
     }
     const session: ManagedSession = {
       view,

@@ -7,6 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { isUsageLimitText, limitResetFromText } from '@workhub/core'
 import type {
   AgentCapabilities,
   AgentDefinition,
@@ -242,6 +243,12 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
   private onLine(s: NativeSession, line: Obj): void {
     const message = line['type'] === 'sdk' ? (line['message'] as Obj | undefined) : undefined
     if (message?.['type'] === 'result') {
+      // A turn refused by a usage limit ends with an error result carrying Claude Code's message.
+      const text = typeof message['result'] === 'string' ? message['result'] : ''
+      if (message['is_error'] === true && isUsageLimitText(text)) {
+        const resetsAt = limitResetFromText(text)
+        this.emit({ sessionId: s.id, type: 'usageLimit', message: text.slice(0, 500), ...(resetsAt !== undefined ? { resetsAt } : {}) })
+      }
       this.finishPending(s, resultStopReason(message, s.cancelled))
       s.cancelled = false
       if (this.sessions.has(s.id)) this.emit({ sessionId: s.id, type: 'state', state: 'ready' })

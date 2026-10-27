@@ -10,6 +10,7 @@ import { prEs } from './pullRequests.es'
 import { ticketsEs } from './tickets.es'
 import { updatesEs } from './updates.es'
 import { usageEs } from './usage.es'
+import { continuityEs } from './continuity.es'
 import { appearanceEs } from './appearance.es'
 import { settingsHelpEs } from './settingsHelp.es'
 import { trayEs } from './tray.es'
@@ -388,6 +389,7 @@ export const es: Record<keyof typeof en, string> = {
   ...automationsEs,
   ...usageEs,
   ...aiReviewEs,
+  ...continuityEs,
   ...sessionsUxEs,
   ...trayEs,
   ...agentsEs,

@@ -213,7 +213,8 @@ const profile = z.object({
   folders: z.array(z.string().min(1)).optional(),
   health: healthSettings.optional(),
   slackArchiveMinutes: z.number().int().min(1).optional(),
-  aiReview: aiReview.optional()
+  aiReview: aiReview.optional(),
+  accountFailover: z.enum(['ask', 'automatic', 'off']).optional()
 })
 
 const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string() })

@@ -25,6 +25,7 @@ import { useAccountUsage, useUsageAlerts } from './lib/usage'
 import { usePrEventNotifications } from './lib/usePrEventNotifications'
 import { useAiReviewNotices } from './lib/useAiReviewNotices'
 import { useChatNotices } from './lib/useChatNotices'
+import { useContinuity } from './lib/continuity'
 import { useTraySync } from './lib/useTraySync'
 import { AutomationsScreen } from './screens/AutomationsScreen'
 import { SlackScreen } from './screens/SlackScreen'
@@ -103,6 +104,8 @@ function Shell() {
     const group = view && groupOf(latest.current.groups, sessionIdentity(view))
     if (group?.collapsed) void updateGroups((g) => setGroupCollapsed(g, group.id, false), latest.current.liveKeys)
   }, [])
+  // Usage-limit offers, and following a session main moved to another account by itself.
+  useContinuity(openSession, selectedSession)
 
   // A session counts as seen only while its screen is up (and the window focused: the store tracks that).
   useEffect(() => {

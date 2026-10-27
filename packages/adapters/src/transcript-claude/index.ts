@@ -1,3 +1,5 @@
 export * from './parser'
 export * from './reader'
 export * from './locate'
+export * from './session-copy'
+export * from './handoff'

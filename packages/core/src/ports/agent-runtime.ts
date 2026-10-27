@@ -89,6 +89,11 @@ export type AgentEvent =
    */
   | { sessionId: string; type: 'notice'; noticeId: string; kind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
   | { sessionId: string; type: 'permissionMode'; mode: PermissionModeInfo; currentModeId?: string }
+  /**
+   * The agent's account ran out of usage (a plan or rate limit refused the turn). `window` and
+   * `resetsAt` (epoch ms) when the agent said; `message` is its own text, for the record.
+   */
+  | { sessionId: string; type: 'usageLimit'; window?: string; resetsAt?: number; message?: string }
   /** Partial monitor update; the receiver merges it (see `mergeMonitor`). */
   | { sessionId: string; type: 'monitor'; snapshot: SessionMonitorSnapshot }
   /** Raw terminal output (terminal adapter). */

@@ -23,6 +23,7 @@ import type {
   SecretChange,
   Session,
   SessionGroups,
+  SessionOrigin,
   SessionScreen,
   ValidationIssue,
   Workhub1SecretResult,
@@ -31,6 +32,7 @@ import type {
 import type { AiReviewApi } from './ai-review-api'
 import type { AutomationsApi, SlackApi } from './chat-api'
 import type { CodeHostApi } from './codehost-api'
+import type { ContinuityApi } from './continuity-api'
 import type { HealthApi } from './health-api'
 import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
@@ -118,6 +120,8 @@ export interface SessionView extends Session {
   modeControl?: boolean
   /** An AI reviewer session (read-only, started by the AI review). */
   readOnly?: boolean
+  /** The session continues another one: moved from another account, or handed off from another agent. */
+  origin?: SessionOrigin
   /** The engine picked while a turn was running: the hand-over waits for the turn to end. */
   pendingMode?: 'app' | 'console'
 }
@@ -314,6 +318,7 @@ export interface HubApi {
   slack: SlackApi
   automations: AutomationsApi
   aiReview: AiReviewApi
+  continuity: ContinuityApi
   tray: TrayApi
 }
 

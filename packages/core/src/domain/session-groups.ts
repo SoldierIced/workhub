@@ -206,6 +206,30 @@ export function replaceSessionIdentity(state: SessionGroups, oldKey: string, new
   }
 }
 
+/**
+ * Puts a session right after `anchorKey`, in the anchor's container (its group, or the top level
+ * when the anchor is ungrouped and placed): a session handed off from another one sits next to it.
+ * Unchanged when the anchor has no place or the session already sits in the anchor's group.
+ */
+export function placeBeside(state: SessionGroups, member: GroupMember, anchorKey: string): SessionGroups {
+  if (member.key === anchorKey) return state
+  const group = groupOf(state, anchorKey)
+  if (group) {
+    if (group.members.some((m) => m.key === member.key)) return state
+    const detached = detach(state, member.key)
+    return mapGroup(detached, group.id, (g) => {
+      const members = [...g.members]
+      members.splice(members.findIndex((m) => m.key === anchorKey) + 1, 0, member)
+      return { ...g, members }
+    })
+  }
+  if (!state.top.some((s) => same(s, sessionSlot(anchorKey)))) return state
+  const detached = detach(state, member.key)
+  const top = [...detached.top]
+  top.splice(top.findIndex((s) => same(s, sessionSlot(anchorKey))) + 1, 0, sessionSlot(member.key))
+  return { ...detached, top }
+}
+
 // Keeping the layout in line with the open sessions
 
 /**

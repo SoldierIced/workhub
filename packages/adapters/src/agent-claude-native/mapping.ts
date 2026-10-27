@@ -4,6 +4,8 @@
  */
 import {
   isUnattendedMode,
+  isUsageLimitText,
+  limitResetFromText,
   type AgentEvent,
   type McpServerState,
   type McpServerStatus,
@@ -89,6 +91,23 @@ export function rateLimitWindow(info: unknown): PlanUsageWindow | null {
   const resets = num(i['resetsAt'])
   if (resets !== undefined) window.resetsAt = resets > 1e11 ? resets : resets * 1000
   return window
+}
+
+/**
+ * A `rate_limit_event` that refused the request: the plan window is spent and no extra usage
+ * (overage) covers it. The window and reset when the CLI says; null while the account may go on.
+ */
+export function rejectedLimit(info: unknown): { window?: string; resetsAt?: number } | null {
+  const i = obj(info)
+  if (!i || i['status'] !== 'rejected') return null
+  const overage = i['overageStatus']
+  if (overage === 'allowed' || overage === 'allowed_warning') return null
+  const out: { window?: string; resetsAt?: number } = {}
+  const type = str(i['rateLimitType'])
+  if (type && WINDOW[type]) out.window = WINDOW[type]
+  const resets = num(i['resetsAt'])
+  if (resets !== undefined) out.resetsAt = resets > 1e11 ? resets : resets * 1000
+  return out
 }
 
 export const PERMISSION_OPTIONS = {
@@ -208,6 +227,9 @@ export class ClaudeBridgeMapper {
         }
         const model = str(message['model'])
         if (model && model !== '<synthetic>') events.push({ sessionId, type: 'monitor', snapshot: { model } })
+        // A usage or rate limit: the SDK flags it (`error: 'rate_limit'`) or Claude Code answers with a synthetic message.
+        const text = arr(message['content']).map((b) => str(obj(b)?.['text']) ?? '').join('\n')
+        if (m['error'] === 'rate_limit' || (model === '<synthetic>' && isUsageLimitText(text))) events.push(this.usageLimit(text))
         return events
       }
       case 'user': {
@@ -222,10 +244,16 @@ export class ClaudeBridgeMapper {
       case 'system':
         return this.system(m)
       case 'rate_limit_event': {
-        const w = rateLimitWindow(m['rate_limit_info'])
-        if (!w) return []
-        this.windows.set(w.window, w)
-        return [{ sessionId, type: 'monitor', snapshot: { planUsage: [...this.windows.values()] } }]
+        const info = obj(m['rate_limit_info'])
+        const w = rateLimitWindow(info)
+        const events: AgentEvent[] = []
+        if (w) {
+          this.windows.set(w.window, w)
+          events.push({ sessionId, type: 'monitor', snapshot: { planUsage: [...this.windows.values()] } })
+        }
+        const limit = rejectedLimit(info)
+        if (limit) events.push({ sessionId, type: 'usageLimit', ...limit })
+        return events
       }
       default:
         return []
@@ -265,6 +293,11 @@ export class ClaudeBridgeMapper {
       default:
         return []
     }
+  }
+
+  private usageLimit(text: string): AgentEvent {
+    const resetsAt = limitResetFromText(text)
+    return { sessionId: this.sessionId, type: 'usageLimit', ...(resetsAt !== undefined ? { resetsAt } : {}), ...(text.trim() ? { message: text.trim().slice(0, 500) } : {}) }
   }
 
   private notice(kind: 'hook' | 'info' | 'warning', title: string, text: string, failed = false): AgentEvent {
