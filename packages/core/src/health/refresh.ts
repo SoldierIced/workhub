@@ -17,7 +17,7 @@ export function dueTiers(signals: Pick<HealthSignals, 'trendFetchedAt' | 'slowFe
 /** The signals each tier owns, so a tier that was not read keeps its previous figures and failures. */
 const TIER_SIGNALS: Record<HealthTier, readonly HealthSignal[]> = {
   fast: ['pods', 'reporting'],
-  trend: ['errors', 'events'],
+  trend: ['errors', 'events', 'stderr'],
   slow: ['slow']
 }
 
@@ -41,6 +41,7 @@ export function mergeSignals(previous: HealthSignals | undefined, read: Partial<
   keep('errors', 'errors')
   keep('events', 'events')
   keep('slow', 'slow')
+  keep('stderr', 'stderr')
   return next
 }
 

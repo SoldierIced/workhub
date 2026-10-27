@@ -4,7 +4,6 @@ import {
   dueTiers,
   emptySignals,
   HealthConnectionError,
-  investigateSlowEndpointPrompt,
   makeSnapshot,
   mergePods,
   mergeSignals,
@@ -210,17 +209,6 @@ describe('refresh tiers', () => {
     const r = await refreshEnvironment(provider, env(), undefined, 0)
     expect(r.snapshot.state).toBe('unreachable')
     expect(r.snapshot.stale).toBe(false)
-  })
-})
-
-describe('investigateSlowEndpointPrompt', () => {
-  it('summarizes the endpoint and asks for analysis without changing anything', () => {
-    const prompt = investigateSlowEndpointPrompt({ name: 'Develop', slowFlowHours: 24 }, { service: 'checkout', name: 'POST /orders', calls: 1200, p50Ms: 80.4, p95Ms: 2310.7, p99Ms: 4000, failureRate: 0.031 })
-    expect(prompt).toContain('"POST /orders"')
-    expect(prompt).toContain('"checkout"')
-    expect(prompt).toContain('p95 2311 ms')
-    expect(prompt).toContain('3.1% failures')
-    expect(prompt).toContain('Do not change anything')
   })
 })
 

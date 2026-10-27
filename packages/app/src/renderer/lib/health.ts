@@ -1,4 +1,4 @@
-import type { BlindSpot, HealthReason, HealthReasonCode, HealthSignal, HealthState, PodKind, TrendState } from '@workhub/core'
+import { matchFolder, type BlindSpot, type ErrorGroup, type HealthReason, type HealthReasonCode, type HealthSignal, type HealthState, type PodKind, type PodVisibility, type TrendState, type TrendStats, type WindowRegression, type WindowVerdict } from '@workhub/core'
 import type { Tone } from '../components/atoms'
 import type { I18n } from '../i18n/I18nProvider'
 import type { MessageKey, PluralKey } from '../i18n/translate'
@@ -42,7 +42,8 @@ const SIGNAL_LABEL: Record<HealthSignal, MessageKey> = {
   events: 'health.signal.events',
   pods: 'health.signal.pods',
   reporting: 'health.signal.reporting',
-  slow: 'health.signal.slow'
+  slow: 'health.signal.slow',
+  stderr: 'health.signal.stderr'
 }
 
 export const reasonText = (reason: HealthReason, tn: I18n['tn']): string => tn(REASON_KEY[reason.code], reason.count)
@@ -83,14 +84,85 @@ export function visibleBlindSpots(spots: BlindSpot[]): BlindSpot[] {
 /** Worst state first, for the Home strip. */
 export const STATE_ORDER: readonly HealthState[] = ['degraded', 'unreachable', 'blind', 'healthy']
 
-const lastSegment = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path
-
 /**
  * The folder to investigate a service in: the profile folder named like the service (case and
- * separators ignored), else the only folder, else the first one. Undefined when the profile has none.
+ * separators ignored), else the first one. Undefined when the profile has none.
  */
 export function folderForService(folders: string[], service: string): string | undefined {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const wanted = norm(service)
-  return folders.find((f) => wanted !== '' && norm(lastSegment(f)) === wanted) ?? folders[0]
+  return matchFolder(folders, service) ?? folders[0]
+}
+
+type Words = Pick<I18n, 't' | 'tn' | 'formatNumber'>
+
+const daysText = (w: Words, count: number, truncated = false) => (truncated ? w.t('health.why.daysPlus', { count }) : w.tn('health.why.days', count))
+
+/** Why a signal is listed, from the numbers its row already has: "Why worsening: 2,380 in 24 h vs about 26 a day over the previous 13 days." */
+export function whyText(stats: TrendStats & { state: TrendState }, hours: number, w: Words): string {
+  const recent = w.t('health.why.recent', { count: w.formatNumber(stats.recent), hours })
+  const previous = Math.max(stats.daysWithData - 1, 0)
+  const typical = w.formatNumber(stats.typicalDay)
+  const streak = daysText(w, stats.streakDays, stats.streakTruncated)
+  switch (stats.state) {
+    case 'worsening':
+      return previous > 0 ? w.t('health.why.worsening', { recent, typical, days: daysText(w, previous) }) : w.t('health.why.worseningNoHistory', { recent })
+    case 'new':
+      if (previous === 0) return w.t('health.why.newNoHistory', { recent })
+      return stats.typicalDay > 0 ? w.t('health.why.newAfterQuiet', { recent, days: daysText(w, previous), typical }) : w.t('health.why.newNone', { recent, days: daysText(w, previous) })
+    case 'ongoing':
+      return stats.typicalDay > 0 ? w.t('health.why.ongoing', { streak, recent, typical }) : w.t('health.why.ongoingPlain', { streak, recent })
+    case 'chronic':
+      return stats.typicalDay > 0 ? w.t('health.why.chronic', { streak, recent, typical }) : w.t('health.why.chronicPlain', { streak, recent })
+  }
+}
+
+/** `System.NullReferenceException` -> `NullReferenceException`; a type with spaces is left whole. */
+export function shortType(type: string): string {
+  if (type.includes(' ')) return type
+  return type.split('.').filter(Boolean).pop() ?? type
+}
+
+export const groupTitle = (g: Pick<ErrorGroup, 'exceptionType' | 'culprit' | 'groupingKey'>): string => g.exceptionType ?? g.culprit ?? g.groupingKey.slice(0, 8)
+
+/** What the top group explains: "NullReferenceException at POST /orders is 81% of them." Null without groups. */
+export function leadGroupText(groups: ErrorGroup[], total: number, w: Words): string | null {
+  const top = groups[0]
+  if (!top || total <= 0) return null
+  const share = formatRate(Math.min(top.recent / total, 1))
+  const type = shortType(groupTitle(top))
+  return top.endpoint ? w.t('health.errors.lead', { type, endpoint: top.endpoint, share }) : w.t('health.errors.leadNoEndpoint', { type, share })
+}
+
+/** What "Copy request for infra" copies, for a person at infra, in the interface language. */
+export function infraRequest(env: { name: string; k8sIndexSuffix: string }, t: I18n['t']): string {
+  const parts = [t('health.pods.request', { environment: env.name })]
+  if (env.k8sIndexSuffix) parts.push(t('health.pods.requestStreams', { suffix: env.k8sIndexSuffix }))
+  parts.push(t('health.pods.requestWhy'))
+  return parts.join(' ')
+}
+
+/** Why the pods card has nothing to say, and whether infra can be asked about it. */
+export function noPodMetrics(env: { hasKubeState: boolean; k8sIndexSuffix: string }, visibility: PodVisibility): { title: MessageKey; hint: MessageKey; askInfra: boolean } {
+  if (!env.hasKubeState) return { title: 'health.pods.noKubeState.title', hint: 'health.pods.noKubeState.hint', askInfra: true }
+  if (visibility === 'missing') return { title: 'health.pods.missing.title', hint: 'health.pods.missing.hint', askInfra: true }
+  return { title: 'health.pods.noSuffix.title', hint: 'health.pods.noSuffix.hint', askInfra: false }
+}
+
+/** One reason a window is worse than the one before, in words. */
+export function regressionText(r: WindowRegression, w: Words): string {
+  switch (r.code) {
+    case 'errors':
+      return w.t('health.slow.reason.errors', { before: w.formatNumber(r.before), after: w.formatNumber(r.after) })
+    case 'failureRate':
+      return w.t('health.slow.reason.failureRate', { before: formatRate(r.before), after: formatRate(r.after) })
+    case 'latency':
+      return w.t('health.slow.reason.latency', { before: formatMs(r.before), after: formatMs(r.after) })
+    case 'newErrorTypes':
+      return w.tn('health.slow.reason.newErrorTypes', r.count)
+  }
+}
+
+export function verdictText(v: WindowVerdict, w: Words): string {
+  if (v.kind === 'clean') return w.t('health.slow.verdict.clean')
+  if (v.kind === 'noSignal') return w.t('health.slow.verdict.noSignal')
+  return w.t('health.slow.verdict.regressed', { reasons: v.reasons.map((r) => regressionText(r, w)).join(', ') })
 }

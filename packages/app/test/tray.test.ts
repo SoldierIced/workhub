@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
-import { appOptions, buildTrayMenu, type AppOptions, type TrayItem, type TrayState } from '@workhub/core'
+import { appOptions, buildTrayMenu, DEFAULT_HEALTH_THRESHOLDS, type AppOptions, type TrayItem, type TrayState } from '@workhub/core'
 
 vi.mock('electron', () => ({ Menu: {}, nativeImage: {}, Tray: class {} }))
 
 import { menuTemplate, trayIconFiles } from '../src/main/tray'
 import { Notifier, RECENT_NOTIFICATIONS, type NotificationLike } from '../src/main/notifier'
-import { trayText } from '../src/main/tray-text'
+import { healthAlertWords, trayText } from '../src/main/tray-text'
 import { HealthWatcher, TicketWatcher, TICKET_INTERVAL_MS } from '../src/main/watchers'
 import { traySessions } from '../src/renderer/lib/useTraySync'
 import { trayEn } from '../src/renderer/i18n/tray.en'
@@ -150,8 +150,13 @@ const view = (state: HealthView['state'], envs: { id: string; state: 'healthy' |
     snapshot: { environmentId: e.id, state: e.state, blindSpots: e.unread ? [{ code: 'notReadYet' }] : [] } as never,
     kibanaUrl: null,
     serviceUrls: {},
+    errorUrls: {},
+    podUrls: {},
     slowFlowHours: 1,
-    errorWindowHours: 1
+    errorWindowHours: 1,
+    thresholds: DEFAULT_HEALTH_THRESHOLDS,
+    hasKubeState: true,
+    k8sIndexSuffix: ''
   }))
 })
 
@@ -182,6 +187,55 @@ describe('health watcher', () => {
     current = view('moduleOff', [])
     await w.tick()
     expect(w.summary()).toBeNull()
+  })
+})
+
+describe('health watcher subject alerts', () => {
+  const silent = (service: string) => ({ service, lastSeen: 0, silentMinutes: 30, isReporting: false })
+  const withSilent = (services: string[]): HealthView => {
+    const v = view('ready', [{ id: 'prod', state: 'healthy' }])
+    v.environments[0]!.snapshot = { environmentId: 'prod', state: 'healthy', blindSpots: [], silentServices: services.map(silent), pods: [], errorServices: [], podVisibility: 'visible' } as never
+    return v
+  }
+
+  it('announces a service that stops reporting once an hour, across restarts', async () => {
+    let now = 1_000_000
+    let current = withSilent([])
+    let saved: Record<string, number> = {}
+    const cooldowns = { load: () => saved, save: (v: Record<string, number>) => (saved = v) }
+    const alerts: string[] = []
+    const deps = { activeProfileId: async () => 'p', read: async () => current, alert: (a: { kind: string; subject: string }) => alerts.push(`${a.kind}:${a.subject}`), changed: () => {}, cooldowns, now: () => now }
+    const w = new HealthWatcher(deps)
+    await w.tick()
+    current = withSilent(['api'])
+    await w.tick()
+    expect(alerts).toEqual(['stoppedReporting:api'])
+    // It recovers and stops again ten minutes later: the same subject inside the hour is not repeated, even after a restart.
+    current = withSilent([])
+    now += 5 * 60_000
+    await w.tick()
+    const restarted = new HealthWatcher(deps)
+    current = withSilent([])
+    await restarted.tick()
+    current = withSilent(['api'])
+    now += 5 * 60_000
+    await restarted.tick()
+    expect(alerts).toEqual(['stoppedReporting:api'])
+    current = withSilent([])
+    await restarted.tick()
+    now += 60 * 60_000
+    current = withSilent(['api'])
+    await restarted.tick()
+    expect(alerts).toEqual(['stoppedReporting:api', 'stoppedReporting:api'])
+  })
+
+  it('words each kind of alert', () => {
+    const { t } = trayText('en')
+    const base = { environmentId: 'prod', environmentName: 'Prod' }
+    expect(healthAlertWords({ ...base, kind: 'podDown', subject: 'api-1', crashLoop: true }, t).title).toBe('api-1 is crash-looping (Prod)')
+    expect(healthAlertWords({ ...base, kind: 'errorsWorsening', subject: 'api', count: 120, hours: 24, factor: 12 }, t).body).toBe('120 in 24 h, ×12 a typical day')
+    expect(healthAlertWords({ ...base, kind: 'stoppedReporting', subject: '+more', others: ['a', 'b'] }, t)).toEqual({ title: 'More services stopped reporting (Prod)', body: 'a, b' })
+    expect(healthAlertWords({ ...base, kind: 'degraded', subject: '' }, trayText('es').t).title).toBe('Prod está degradado')
   })
 })
 
