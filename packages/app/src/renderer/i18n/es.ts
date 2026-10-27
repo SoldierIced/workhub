@@ -15,6 +15,7 @@ import { appearanceEs } from './appearance.es'
 import { settingsHelpEs } from './settingsHelp.es'
 import { trayEs } from './tray.es'
 import { appBadgeEs } from './appBadge.es'
+import { sidebarEs } from './sidebar.es'
 import { agentsEs } from './agents.es'
 import { toolViewEs } from './toolView.es'
 
@@ -48,7 +49,7 @@ export const es: Record<keyof typeof en, string> = {
   'sidebar.navigation': 'Navegación',
   'sidebar.sessionList': 'Sesiones abiertas',
   'sidebar.folders': 'Carpetas',
-  'sidebar.foldersEmpty': 'Aquí aparecen las carpetas en las que inicias sesiones.',
+  'sidebar.foldersEmpty': 'Aquí aparecen las carpetas del perfil y las carpetas en las que inicias sesiones.',
   'sidebar.newSessionIn': 'Nueva sesión en {folder}',
   'groups.new': 'Nuevo grupo',
   'groups.newTitle': 'Nuevo grupo',
@@ -395,6 +396,7 @@ export const es: Record<keyof typeof en, string> = {
   ...sessionsUxEs,
   ...trayEs,
   ...appBadgeEs,
+  ...sidebarEs,
   ...agentsEs,
   ...appearanceEs,
   ...settingsHelpEs,

@@ -47,10 +47,16 @@ export function liveSessionOf(sessions: readonly WakeCandidate[], identity: stri
   return sessions.filter((s) => s.identity === identity && live(s)).sort((a, b) => b.startedAt - a.startedAt)[0]
 }
 
+/** Whether a session of the identity was started at or after `since` (and, being here, is no longer live). */
+function openedSince(sessions: readonly WakeCandidate[], identity: string, since: number): boolean {
+  return sessions.some((s) => s.identity === identity && !live(s) && s.startedAt >= since)
+}
+
 /**
  * Where the replies waiting on a thread go. Replies reach exactly one session: the thread's
  * owner, open in Workhub (delivered when idle), else opened once (a second wake while it starts
- * waits instead of opening another copy). A reopened session runs in the folder its transcript
+ * waits instead of opening another copy, and one that failed to open is not opened again for the
+ * same replies). A reopened session runs in the folder its transcript
  * records, never in the folder the message was sent from.
  */
 export function planWake(thread: Pick<TrackedThread, 'owner' | 'ownerAgentKey' | 'closed' | 'wake'>, ctx: WakeContext): WakePlan {
@@ -58,6 +64,9 @@ export function planWake(thread: Pick<TrackedThread, 'owner' | 'ownerAgentKey' |
   if (ctx.blocked) return { kind: 'notifyOnly', reason: ctx.blocked }
   const open = liveSessionOf(ctx.sessions, thread.owner)
   if (open) return open.state === 'ready' ? { kind: 'deliver', sessionId: open.id } : { kind: 'wait', reason: 'busy' }
+  // The session Workhub opened for these replies failed or was stopped: opening it again would leave
+  // one more chat behind on every try. The replies are notified; the next ones try once more.
+  if (ctx.openingSince !== undefined && openedSince(ctx.sessions, thread.owner, ctx.openingSince)) return { kind: 'notifyOnly', reason: 'openFailed' }
   if (ctx.openingSince !== undefined && ctx.now - ctx.openingSince < WAKE_OPENING_GRACE_MS) return { kind: 'wait', reason: 'opening' }
   if (ctx.openElsewhere) return { kind: 'notifyOnly', reason: ctx.openElsewhere }
   if (!ctx.transcriptCwd) return { kind: 'missing' }

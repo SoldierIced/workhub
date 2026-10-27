@@ -1,4 +1,4 @@
-import { ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, X } from 'lucide-react'
+import { Bot, ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, X } from 'lucide-react'
 import { ContextMenu, DropdownMenu } from 'radix-ui'
 import { useMemo, useState, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
 import {
@@ -10,6 +10,7 @@ import {
   moveGroupOnto,
   moveOnto,
   moveToGroup,
+  profileColor,
   reconcileTop,
   removeMember,
   renameGroup,
@@ -18,15 +19,19 @@ import {
   statusLevel,
   ungroup,
   type GroupMember,
+  type Profile,
   type SessionGroup,
   type SessionGroups,
+  type SubagentSummary,
   type TopSlot
 } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { LEVEL_LABEL, LEVEL_TONE } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 import { folderName } from '../../lib/home'
-import { listSessions, memberOf, newGroupId, sessionName, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
+import { groupSummary, listSessions, memberOf, newGroupId, sessionName, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
+import { openSubagent, visibleSubagents } from '../../lib/subagentView'
+import { useNow } from '../../lib/usage'
 import { awaitingAnswer, pushItem } from '../../store'
 import { AgentIcon } from '../atoms/AgentIcon'
 import { Badge } from '../atoms/Badge'
@@ -55,6 +60,8 @@ export interface SessionListProps {
   onSelect: (id: string) => void
   /** Opens a closed member again (resumes it, or starts it fresh when the agent cannot resume). */
   onReopen: (member: GroupMember) => void
+  /** The profiles: each session row carries its profile's colour down its left edge. */
+  profiles?: readonly Pick<Profile, 'id' | 'name' | 'color'>[]
 }
 
 type MenuItem = { label: string; hint?: string; onSelect: () => void } | { separator: true } | { label: string; items: MenuItem[] }
@@ -118,7 +125,7 @@ function readMember(e: DragEvent): GroupMember | null {
  * the user arranged them. Groups hold sessions by their stable identity, so a closed session
  * stays listed (dimmed, reopenable) until it is removed.
  */
-export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen }: SessionListProps) {
+export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [] }: SessionListProps) {
   const { t, tn } = useI18n()
   const listed = useMemo(() => listSessions(sessions), [sessions])
   const liveKeys = useMemo(() => listed.map((s) => s.key), [listed])
@@ -127,6 +134,15 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
   const [dialog, setDialog] = useState<Dialogs>(null)
   const [over, setOver] = useState<string | null>(null)
   const [closing, setClosing] = useState<SessionData | null>(null)
+  // Sessions whose sub-agents are listed under them; the clock lets ended ones drop out.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const now = useNow(15_000)
+  const toggleSubagents = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
 
   const act = (change: (s: SessionGroups) => SessionGroups) => void updateGroups(change, liveKeys)
   const live = useMemo(() => new Set(liveKeys), [liveKeys])
@@ -207,10 +223,26 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     if (over !== id) setOver(id)
   }
 
+  const profileOf = (member: GroupMember, entry: ListedSession | undefined) => {
+    const id = entry?.data.view.profileId ?? member.profileId
+    const color = profileColor(profiles, id)
+    const name = profiles.find((p) => p.id === id)?.name
+    return color && name ? { color, name } : undefined
+  }
+
   const sessionItem = (member: GroupMember, entry: ListedSession | undefined, nested: boolean) => (
     <SessionItem
       key={member.key}
       member={member}
+      profile={profileOf(member, entry)}
+      subagents={entry ? visibleSubagents(entry.data.monitor.subagents, now) : []}
+      subagentsOpen={expanded.has(member.key)}
+      onToggleSubagents={() => toggleSubagents(member.key)}
+      onOpenSubagent={(id) => {
+        if (!entry) return
+        onSelect(entry.data.view.id)
+        openSubagent(entry.data.view.id, id)
+      }}
       entry={entry}
       nested={nested}
       selected={active && entry !== undefined && selectedId === entry.data.view.id}
@@ -231,10 +263,9 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
         {rows.map((row) => {
           if (row.type === 'session') return sessionItem(memberOf(row.session), row.session, false)
           const { group } = row
-          const open = row.members.map((m) => m.session?.data).filter((d): d is SessionData => d !== undefined)
-          const summary = summarize(open)
+          const summary = groupSummary(row.members)
           return (
-            <li key={group.id} data-testid="group" data-group={group.name}>
+            <li key={group.id} data-testid="group" data-group={group.name} data-attention={summary.count || undefined}>
               <GroupHeader
                 group={group}
                 summary={summary}
@@ -316,6 +347,13 @@ export function dropOnSessionsTitle(e: DragEvent, liveKeys: readonly string[]): 
 function SessionItem(props: {
   member: GroupMember
   entry: ListedSession | undefined
+  /** The session's profile, for the colour bar down the row's left edge. */
+  profile?: { color: string; name: string }
+  /** Its sub-agents at work or recently ended, listed under the row while `subagentsOpen`. */
+  subagents: SubagentSummary[]
+  subagentsOpen: boolean
+  onToggleSubagents: () => void
+  onOpenSubagent: (subagentId: string) => void
   nested: boolean
   selected: boolean
   dropping: boolean
@@ -328,7 +366,7 @@ function SessionItem(props: {
   onDragLeave: () => void
   onDrop: (e: DragEvent) => void
 }) {
-  const { t } = useI18n()
+  const { t, tn } = useI18n()
   const { member, entry } = props
   const data = entry?.data
   const level = data ? statusLevel({ state: data.view.state, unseen: data.unseen, awaitingAnswer: awaitingAnswer(data) }) : null
@@ -364,6 +402,7 @@ function SessionItem(props: {
             data-testid={closed ? 'closed-member' : 'session-row'}
             data-key={member.key}
             data-unseen={data?.unseen}
+            data-profile={props.profile?.name}
             onDragStart={(e) => {
               e.dataTransfer.setData(SESSION_DRAG, JSON.stringify(member))
               e.dataTransfer.effectAllowed = 'move'
@@ -372,18 +411,35 @@ function SessionItem(props: {
             onDragLeave={props.onDragLeave}
             onDrop={props.onDrop}
             className={cn(
-              'group/row flex items-center rounded-md transition-colors duration-150',
+              'group/row relative flex items-center rounded-md transition-colors duration-150',
               props.selected ? 'bg-accent-soft text-text' : 'text-muted hover:bg-surface-hover hover:text-text',
               props.dropping && 'ring-2 ring-accent/60',
               (closed || stopped) && 'opacity-60'
             )}
           >
+            {props.profile && (
+              <Tooltip side="right" content={t('sidebar.profileBar', { name: props.profile.name })}>
+                <span
+                  data-testid="profile-bar"
+                  role="img"
+                  aria-label={t('sidebar.profileBar', { name: props.profile.name })}
+                  style={{ backgroundColor: props.profile.color }}
+                  className="absolute inset-y-1 left-0.5 w-1 rounded-full"
+                />
+              </Tooltip>
+            )}
             <Tooltip
               side="right"
               content={
                 <span className="block max-w-xs break-words">
                   <span className="block font-medium">{title}</span>
                   <span className="block text-xs text-muted">{details}</span>
+                  {props.profile && (
+                    <span className="flex items-center gap-1.5 text-xs text-muted">
+                      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: props.profile.color }} aria-hidden />
+                      {t('sidebar.profileBar', { name: props.profile.name })}
+                    </span>
+                  )}
                   <span className="block text-xs text-subtle">{closed ? t('groups.reopen') : cwd}</span>
                 </span>
               }
@@ -419,6 +475,20 @@ function SessionItem(props: {
                 )}
               </button>
             </Tooltip>
+            {props.subagents.length > 0 && (
+              <button
+                type="button"
+                data-testid="subagents-toggle"
+                aria-expanded={props.subagentsOpen}
+                aria-label={tn(props.subagentsOpen ? 'sidebar.subagents.hide' : 'sidebar.subagents.show', props.subagents.length)}
+                title={tn(props.subagentsOpen ? 'sidebar.subagents.hide' : 'sidebar.subagents.show', props.subagents.length)}
+                onClick={props.onToggleSubagents}
+                className="mr-0.5 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-sm px-1 text-xs tabular-nums text-subtle hover:bg-surface-hover hover:text-text"
+              >
+                <ChevronRight className={cn('size-3 transition-transform duration-150', props.subagentsOpen && 'rotate-90')} aria-hidden />
+                {props.subagents.length}
+              </button>
+            )}
             {props.onClose && (
               <button
                 type="button"
@@ -438,6 +508,44 @@ function SessionItem(props: {
           <ContextMenu.Content className={MENU_CONTENT}>{renderMenu(ContextMenu as unknown as MenuKit, props.menu)}</ContextMenu.Content>
         </ContextMenu.Portal>
       </ContextMenu.Root>
+      {props.subagentsOpen && props.subagents.length > 0 && (
+        <ul className="mt-0.5 ml-6 flex flex-col gap-0.5" aria-label={tn('sidebar.subagents.list', props.subagents.length, { name: title })} data-testid="subagent-rows">
+          {props.subagents.map((s) => (
+            <SubagentRow key={s.id} subagent={s} onOpen={() => props.onOpenSubagent(s.id)} />
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+/** A sub-agent under its session's row: its state, kind and task; a click opens its conversation. */
+function SubagentRow({ subagent: s, onOpen }: { subagent: SubagentSummary; onOpen: () => void }) {
+  const { t } = useI18n()
+  const name = s.description ?? s.name ?? s.type ?? s.id
+  const running = s.status === undefined || s.status === 'running' || s.status === 'background'
+  const tone = s.status === 'failed' ? 'danger' : running ? 'info' : s.status === 'completed' ? 'success' : 'neutral'
+  return (
+    <li>
+      <button
+        type="button"
+        data-testid="sidebar-subagent"
+        onClick={onOpen}
+        aria-label={t('subagent.open', { name })}
+        title={s.lastStep ? `${name}\n${s.lastStep}` : name}
+        className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 pr-1 pl-2 text-left text-sm text-muted hover:bg-surface-hover hover:text-text"
+      >
+        <Bot className="size-3.5 shrink-0 text-subtle" aria-hidden />
+        <StateDot tone={tone} pulse={running} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">
+            {s.type && <span className="font-medium text-text">{s.type}</span>}
+            {s.type && s.description ? ' ' : ''}
+            {s.description ?? (s.type ? '' : name)}
+          </span>
+          {s.lastStep && <span className="block truncate text-xs text-subtle">{s.lastStep}</span>}
+        </span>
+      </button>
     </li>
   )
 }
@@ -509,7 +617,11 @@ function GroupHeader(props: {
             <Icon className="size-3.5 shrink-0 text-subtle" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-base font-medium">{group.name}</span>
             {summary.count > 0 && (
-              <Badge tone="accent" data-testid="group-badge" title={tn('groups.badge', summary.count)}>
+              <Badge
+                tone={summary.level && summary.level !== 'working' ? LEVEL_TONE[summary.level] : 'accent'}
+                data-testid="group-badge"
+                title={tn('groups.badge', summary.count)}
+              >
                 {summary.count}
                 <span className="sr-only"> {tn('groups.badge', summary.count)}</span>
               </Badge>

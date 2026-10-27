@@ -97,6 +97,7 @@ export const slackEs: Record<keyof typeof slackEn, string> = {
   'slack.notice.notWoken.automationOff': 'su automatización está apagada',
   'slack.notice.notWoken.noReplies': 'su automatización no recibe respuestas',
   'slack.notice.notWoken.openElsewhere': 'está abierta en otra terminal',
+  'slack.notice.notWoken.openFailed': 'la sesión que se abrió para ellas falló o se detuvo; la próxima respuesta lo intenta de nuevo',
   'slack.notice.notWoken.budget': 'su cuenta superó su techo de uso; las respuestas esperan hasta que se restablezca o cambie el techo',
   'slack.notice.automationFailed': 'La automatización "{name}" falló',
   'slack.auto': 'auto',

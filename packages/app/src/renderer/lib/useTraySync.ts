@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { groupOf, notificationTitle, sessionIdentity, TRAY_ROUTES, type SessionGroups, type TrayRoute, type TraySession } from '@workhub/core'
 import { awaitingAnswer, type SessionData } from '../store'
+import { sessionLabel } from './sessionGroups'
 import type { Locale } from '../i18n/translate'
 
-const folderName = (cwd: string) => cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd
-
 /**
- * The sessions as the menu bar icon lists them: named like their sidebar row ("<agent> · <folder>",
+ * The sessions as the menu bar icon lists them: named like their sidebar row (`sessionLabel`,
  * after the group's name when grouped), with the unseen flag only the renderer keeps. AI reviewer
  * sessions are left out: their review reports them.
  */
@@ -15,7 +14,7 @@ export function traySessions(sessions: readonly SessionData[], groups: SessionGr
     .filter((s) => !s.view.readOnly)
     .map((s) => {
       const group = groupOf(groups, sessionIdentity(s.view))
-      const out: TraySession = { id: s.view.id, title: notificationTitle(`${s.view.agentName} · ${folderName(s.view.cwd)}`, group?.name), state: s.view.state }
+      const out: TraySession = { id: s.view.id, title: notificationTitle(sessionLabel(s), group?.name), state: s.view.state }
       if (s.unseen) out.unseen = s.unseen
       if (awaitingAnswer(s)) out.awaitingAnswer = true
       return out

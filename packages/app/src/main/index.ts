@@ -60,6 +60,7 @@ import { Notifier } from './notifier'
 import { TrayService } from './tray'
 import { isLocale, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
+import { profileWorkspaces } from './workspaces'
 import { HealthWatcher, TicketWatcher } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
@@ -449,6 +450,12 @@ function registerIpc(): void {
   ipc.handle('hub:pickFolder', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], defaultPath: homedir() })
     return r.canceled ? null : (r.filePaths[0] ?? null)
+  })
+  // Only the folders the profile lists (and their children) are read: never a path the renderer names.
+  ipc.handle('hub:profileFolders', async (_e, profileId: unknown) => {
+    const config = await configuration.current()
+    const profile = typeof profileId === 'string' ? config.profiles.find((p) => p.id === profileId) : undefined
+    return profile ? profileWorkspaces(profile.folders ?? [], homedir()) : []
   })
 
   ipc.handle('config:get', () => snapshot())

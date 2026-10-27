@@ -300,12 +300,22 @@ export interface NotificationsApi {
   onOpen(cb: (sessionId: string) => void): () => void
 }
 
+/** A folder of a profile, as the sidebar's folder list shows it. */
+export interface WorkspaceFolder {
+  path: string
+  name: string
+  /** One of the profile's own folders (the folders inside it follow it). */
+  root: boolean
+}
+
 export interface HubApi {
   platform: Platform
   /** Tells the main process the theme preference so native chrome (title bar, dialogs) follows it. */
   setTheme(theme: ThemePreference): void
   getDefaultCwd(): Promise<string>
   pickFolder(): Promise<string | null>
+  /** The profile's folders and the folders inside each (Workhub 1's "All folders"); empty without a profile. */
+  profileFolders(profileId: string | null): Promise<WorkspaceFolder[]>
   /** Opens an http(s) link in the default browser. */
   openExternal(url: string): void
   config: ConfigApi

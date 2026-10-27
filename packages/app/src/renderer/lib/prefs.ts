@@ -25,6 +25,8 @@ export interface Prefs {
   chatFontSize: number
   /** Base text size of the whole app in px; every text style scales with it. */
   textSize: number
+  /** Folders starred in the sidebar (Workhub 1's Favorites), in the order they were added. */
+  favoriteFolders: string[]
 }
 
 /** Ranges of the size preferences, as Workhub 1 offered them. */
@@ -43,7 +45,8 @@ export const DEFAULT_PREFS: Prefs = {
   terminalFontFamily: '',
   terminalFontSize: 13,
   chatFontSize: BASE_TEXT_SIZE,
-  textSize: BASE_TEXT_SIZE
+  textSize: BASE_TEXT_SIZE,
+  favoriteFolders: []
 }
 
 /** A size clamped into its range, rounded; the default for anything that is not a number. */
@@ -69,7 +72,8 @@ export function parsePrefs(raw: string | null): Prefs {
       terminalFontFamily: str(v.terminalFontFamily),
       terminalFontSize: clampSize('terminalFontSize', v.terminalFontSize),
       chatFontSize: clampSize('chatFontSize', v.chatFontSize),
-      textSize: clampSize('textSize', v.textSize)
+      textSize: clampSize('textSize', v.textSize),
+      favoriteFolders: Array.isArray(v.favoriteFolders) ? [...new Set(v.favoriteFolders.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, 100) : []
     }
   } catch {
     return DEFAULT_PREFS
