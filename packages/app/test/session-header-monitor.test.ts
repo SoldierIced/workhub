@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PullRequestItem } from '@workhub/core'
-import { changesTotal, contextView, dragWidth, pullRequestLabel, requestBars, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
+import { changesTotal, contextView, pullRequestLabel, requestBars, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
+import { paneDragWidth, paneKeyWidth } from '../src/renderer/lib/paneResize'
 import { DEFAULT_PREFS, parsePrefs } from '../src/renderer/lib/prefs'
 import { abbreviateFolder, activityElapsed, activityOf, formatClock, formatSince, headerDensity, permissionModeLabel } from '../src/renderer/lib/sessionHeader'
 
@@ -92,16 +93,36 @@ describe('monitor view model', () => {
     expect(sessionTicketKeys(found, ['XYZ-9', 'ABC-1'])).toEqual(['ABC-1', 'XYZ-9'])
   })
 
-  it('resizes the panel from its left edge within bounds', () => {
-    expect(dragWidth(320, 1000, 950, 240, 560)).toBe(370)
-    expect(dragWidth(320, 1000, 1200, 240, 560)).toBe(240)
-    expect(dragWidth(320, 1000, 500, 240, 560)).toBe(560)
+  it('resizes the monitor from its left edge within bounds', () => {
+    expect(paneDragWidth('left', 320, 1000, 950, 240, 560)).toBe(370)
+    expect(paneDragWidth('left', 320, 1000, 1200, 240, 560)).toBe(240)
+    expect(paneDragWidth('left', 320, 1000, 500, 240, 560)).toBe(560)
   })
 
-  it('keeps the monitor width and folded sections in the preferences', () => {
+  it('resizes the sidebar from its right edge within bounds', () => {
+    expect(paneDragWidth('right', 256, 256, 300, 200, 420)).toBe(300)
+    expect(paneDragWidth('right', 256, 256, 100, 200, 420)).toBe(200)
+    expect(paneDragWidth('right', 256, 256, 900, 200, 420)).toBe(420)
+  })
+
+  it('widens a pane with the arrow pointing away from it, and jumps to the bounds with Home and End', () => {
+    expect(paneKeyWidth('right', 256, 'ArrowRight', 200, 420)).toBe(272)
+    expect(paneKeyWidth('right', 256, 'ArrowLeft', 200, 420)).toBe(240)
+    expect(paneKeyWidth('left', 320, 'ArrowLeft', 240, 560)).toBe(336)
+    expect(paneKeyWidth('left', 248, 'ArrowRight', 240, 560)).toBe(240)
+    expect(paneKeyWidth('left', 320, 'Home', 240, 560)).toBe(240)
+    expect(paneKeyWidth('right', 256, 'End', 200, 420)).toBe(420)
+    expect(paneKeyWidth('right', 256, 'Enter', 200, 420)).toBeNull()
+  })
+
+  it('keeps the side pane widths and folded sections in the preferences', () => {
     expect(DEFAULT_PREFS.monitorWidth).toBe(320)
+    expect(DEFAULT_PREFS.sidebarWidth).toBe(256)
     expect(parsePrefs('{"monitorWidth":2000,"monitorCollapsed":["tokens",3]}')).toMatchObject({ monitorWidth: 560, monitorCollapsed: ['tokens'] })
     expect(parsePrefs('{"monitorWidth":"x"}').monitorWidth).toBe(320)
+    expect(parsePrefs('{"sidebarWidth":50}').sidebarWidth).toBe(200)
+    expect(parsePrefs('{"sidebarWidth":333.4}').sidebarWidth).toBe(333)
+    expect(parsePrefs('{}').sidebarWidth).toBe(256)
   })
 })
 

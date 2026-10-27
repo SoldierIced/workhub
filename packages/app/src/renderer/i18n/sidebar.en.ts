@@ -23,5 +23,7 @@ export const sidebarEn = {
   'sidebar.subagents.list.one': '{count} sub-agent of {name}',
   'sidebar.subagents.list.other': '{count} sub-agents of {name}',
   'sidebar.account': 'Account {name}',
-  'sidebar.clickToReopen': 'Click to reopen'
+  'sidebar.clickToReopen': 'Click to reopen',
+  'sidebar.resize': 'Resize the sidebar',
+  'pane.resizeHint': 'Drag to resize. Double-click to reset.'
 } as const

@@ -25,5 +25,7 @@ export const sidebarEs: Record<keyof typeof sidebarEn, string> = {
   'sidebar.subagents.list.one': '{count} subagente de {name}',
   'sidebar.subagents.list.other': '{count} subagentes de {name}',
   'sidebar.account': 'Cuenta {name}',
-  'sidebar.clickToReopen': 'Clic para reabrir'
+  'sidebar.clickToReopen': 'Clic para reabrir',
+  'sidebar.resize': 'Cambiar el ancho de la barra lateral',
+  'pane.resizeHint': 'Arrastra para cambiar el ancho. Doble clic para restablecerlo.'
 }
