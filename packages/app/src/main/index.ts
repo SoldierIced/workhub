@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -56,6 +56,7 @@ import {
   type TrayRoute,
   type TraySession,
   type TrayState,
+  sessionIdentity,
   setSessionCeiling,
   type SessionCeilings,
   type WorkhubConfig
@@ -99,7 +100,7 @@ import { spendSources, TokenSpendService } from './token-spend'
 import { UpdateService } from './updates'
 import { buildAppMenuTemplate } from './app-menu'
 import { SessionNames } from './session-names'
-import { SessionWindows } from './session-windows'
+import { boundsOnScreen, SessionWindows, type SavedSessionWindows, type WindowBounds } from './session-windows'
 import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 import { linkCommand } from './link-opener'
 import { profileSessionEnv, saveProfileEnv, storedProfileEnvNames } from './profile-env'
@@ -163,10 +164,16 @@ const send = (channel: string, ...args: unknown[]) => {
 }
 // Sessions in windows of their own ("Open in New Window"); the session's runtime stays here, shared.
 const sessionWindows = new SessionWindows({
-  create: (hash, size) => createAuxWindow(hash, 'Workhub 2', size),
+  create: (hash, size, bounds) =>
+    createAuxWindow(hash, 'Workhub 2', size, boundsOnScreen(bounds, screen.getAllDisplays().map((d) => d.workArea), size)),
   mainWindow: () => (win && !win.isDestroyed() ? win : null),
   showMain: () => showMain(),
-  exists: (id) => sessions.list().some((s) => s.id === id)
+  exists: (id) => sessions.list().some((s) => s.id === id),
+  identityOf: (id) => {
+    const view = sessions.list().find((s) => s.id === id)
+    return view ? sessionIdentity(view) : undefined
+  },
+  store: new StateFile<SavedSessionWindows>(join(dataDir, 'session-windows.json'), 500)
 })
 
 // Menu bar / notification area icon (tray.ts) and what it shows that main does not keep elsewhere.
@@ -292,6 +299,7 @@ const sessions = new SessionManager({
     continuity.onChanged(s)
     aiReview.onChanged(s)
     send('session:changed', s)
+    sessionWindows.sessionChanged(s.id)
   },
   emitRemoved: (id) => {
     send('session:removed', id)
@@ -826,7 +834,8 @@ function registerIpc(): void {
     home: homedir(),
     showItemInFolder: (path) => shell.showItemInFolder(path),
     openPath: (path) => shell.openPath(path),
-    writeClipboard: (text) => clipboard.writeText(text)
+    writeClipboard: (text) => clipboard.writeText(text),
+    pastedImagesDir: join(dataDir, 'pasted-images')
   })
   ipc.handle('continuity:options', (_e, id: string) => continuity.options(id))
   ipc.handle('continuity:failover', (_e, id: string, request) => continuity.failover(id, request))
@@ -1071,9 +1080,10 @@ const TICKET_WINDOW_SIZE: AuxWindowSize = { width: 820, height: 760, minWidth: 5
 const FILE_WINDOW_SIZE: AuxWindowSize = { width: 900, height: 760, minWidth: 420, minHeight: 320 }
 
 /** A secondary window (a pull request, a ticket) on the same renderer, routed by its hash. */
-function createAuxWindow(hash: string, title: string, size: AuxWindowSize = TICKET_WINDOW_SIZE): BrowserWindow {
+function createAuxWindow(hash: string, title: string, size: AuxWindowSize = TICKET_WINDOW_SIZE, bounds?: WindowBounds): BrowserWindow {
   const aux = new BrowserWindow({
     ...size,
+    ...(bounds ?? {}),
     title,
     backgroundColor: chromeColors().color,
     ...windowChrome(),
@@ -1283,9 +1293,12 @@ let allowWindowClose = false
 // macOS installs an update by closing every window before 'before-quit'.
 nativeUpdater.on('before-quit-for-update', () => {
   allowWindowClose = true
+  sessionWindows.suspend()
 })
 app.on('before-quit', (event) => {
   allowWindowClose = true
+  // Session windows closing from here on stay remembered: the next launch reopens them.
+  sessionWindows.suspend()
   if (quitting) return
   // Give agent processes a chance to exit before the app does.
   event.preventDefault()

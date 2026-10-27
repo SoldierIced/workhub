@@ -283,6 +283,16 @@ describe('Claude session history', () => {
     const messages = toHistoryMessages([
       { type: 'user', message: { content: '<command-name>/clear</command-name>' } },
       { type: 'user', message: { content: [{ type: 'text', text: 'Look at this' }, { type: 'image', source: {} }] } },
+      {
+        type: 'user',
+        message: {
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/PNG', data: 'iVBORw0K' } },
+            { type: 'image', source: { type: 'url', url: 'https://example.com/a.png' } },
+            { type: 'image', source: { type: 'base64', media_type: 'image/bmp', data: 'Qk0=' } }
+          ]
+        }
+      },
       { type: 'assistant', message: { content: [{ type: 'text', text: 'Sure.' }, { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/a/b.ts' } }] } },
       { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true }] } },
       { type: 'assistant', parent_tool_use_id: 't9', message: { content: [{ type: 'text', text: 'subagent' }] } },
@@ -290,6 +300,8 @@ describe('Claude session history', () => {
     ])
     expect(messages).toEqual([
       { kind: 'user', text: 'Look at this', images: 1 },
+      // Only the stored images that can be shown again come back; the count keeps all of them.
+      { kind: 'user', text: '', images: 3, imageData: [{ mediaType: 'image/png', data: 'iVBORw0K' }] },
       { kind: 'agent', text: 'Sure.' },
       { kind: 'tool', id: 't1', title: 'Read b.ts', detail: '/a/b.ts', failed: true, view: { kind: 'read', path: '/a/b.ts' }, result: { isError: true } },
       { kind: 'agent', text: 'Done.' }

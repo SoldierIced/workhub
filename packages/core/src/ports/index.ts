@@ -1,6 +1,7 @@
 import type { PlanUsageWindow, SessionMonitorSnapshot } from '../domain/monitor'
 import type { SubagentConversation, ToolResultView, ToolView } from '../domain/tool-view'
 import type { WorkhubConfig } from '../config/schema'
+import type { ImageInput } from './agent-runtime'
 
 export * from './agent-runtime'
 
@@ -48,7 +49,8 @@ export interface HistoryEntry {
 
 /** A message of a past session, enough to replay the conversation when it is resumed in the app. */
 export type HistoryMessage =
-  | { kind: 'user'; text: string; images?: number }
+  /** `images`: how many the message carried; `imageData`: the ones that could be read back, to show them again. */
+  | { kind: 'user'; text: string; images?: number; imageData?: ImageInput[] }
   | { kind: 'agent'; text: string }
   | { kind: 'tool'; id: string; title: string; detail?: string; failed?: boolean; view?: ToolView; result?: ToolResultView }
 

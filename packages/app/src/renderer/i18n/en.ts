@@ -319,6 +319,8 @@ export const en = {
   'session.model': 'Model',
   'session.modelDefault': 'Default model',
   'chat.imageAlt': 'Pasted image {n}',
+  'chat.imageOpen': 'Click to view',
+  'chat.imageOpenLabel': 'Open pasted image {n} in the file viewer',
   'chat.images.one': '{count} image',
   'chat.images.other': '{count} images',
   'chat.noticeEmpty': 'No output',
