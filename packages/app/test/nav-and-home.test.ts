@@ -3,7 +3,7 @@ import { NO_MODULES } from '@workhub/core'
 import type { Profile } from '@workhub/core'
 import { attentionOf, folderName, formatTokens, groupByAttention, hasConnection, planUsage, recentFolders, tokensByFolder, type SessionSummary } from '../src/renderer/lib/home'
 import { allNavItems, visibleNavItems } from '../src/renderer/lib/nav'
-import { parsePrefs, resolveTheme } from '../src/renderer/lib/prefs'
+import { DEFAULT_PREFS, parsePrefs, resolveTheme } from '../src/renderer/lib/prefs'
 import type { ChatItem } from '../src/renderer/store'
 
 describe('navigation', () => {
@@ -118,10 +118,16 @@ describe('home figures', () => {
 
 describe('preferences', () => {
   it('parse stored values and fall back on anything unexpected', () => {
-    expect(parsePrefs(null)).toEqual({ theme: 'system', language: 'system', models: {} })
-    expect(parsePrefs('{"theme":"light","language":"es"}')).toEqual({ theme: 'light', language: 'es', models: {} })
-    expect(parsePrefs('{"theme":"neon","language":"fr","models":[1]}')).toEqual({ theme: 'system', language: 'system', models: {} })
-    expect(parsePrefs('not json')).toEqual({ theme: 'system', language: 'system', models: {} })
+    expect(parsePrefs(null)).toEqual(DEFAULT_PREFS)
+    expect(parsePrefs('{"theme":"light","language":"es"}')).toEqual({ ...DEFAULT_PREFS, theme: 'light', language: 'es' })
+    expect(parsePrefs('{"theme":"neon","language":"fr","models":[1]}')).toEqual(DEFAULT_PREFS)
+    expect(parsePrefs('not json')).toEqual(DEFAULT_PREFS)
+  })
+
+  it('keep the appearance choices, clamping sizes into their ranges', () => {
+    const p = parsePrefs('{"terminalTheme":"Dracula","themeApp":true,"terminalFontFamily":"Menlo","terminalFontSize":40,"chatFontSize":14.6,"textSize":"big"}')
+    expect(p).toMatchObject({ terminalTheme: 'Dracula', themeApp: true, terminalFontFamily: 'Menlo', terminalFontSize: 24, chatFontSize: 15, textSize: 13 })
+    expect(parsePrefs('{"themeApp":"yes","terminalTheme":3}')).toMatchObject({ themeApp: false, terminalTheme: '' })
   })
 
   it('keep the remembered model per agent key and drop anything that is not a model id', () => {

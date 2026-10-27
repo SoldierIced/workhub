@@ -33,6 +33,8 @@ import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
 import { TrackerSettings } from './TrackerSettings'
 import { UpdatesSettings } from './UpdatesSettings'
 import { UsageSettings } from './UsageSettings'
+import { AppearanceSettings } from './AppearanceSettings'
+import { SettingRow, SettingsGroup } from './settings/SettingsLayout'
 
 const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
   codeHost: 'kind.codeHost',
@@ -125,7 +127,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
         }}
         items={[
           { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} />) },
-          { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: <AppearanceSection /> },
+          { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: <AppearanceSettings /> },
           { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection snap={snap} run={run} />) },
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection snap={snap} run={run} />) },
           { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings snap={snap} run={run} />) },
@@ -135,25 +137,6 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
           { value: 'usage', label: t('agentUsage.settings.tab'), icon: <Gauge className="size-4" aria-hidden />, content: section(<UsageSettings snap={snap} run={run} />) }
         ]}
       />
-    </div>
-  )
-}
-
-function SettingsGroup({ title, children, footnote }: { title: string; children: ReactNode; footnote?: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h2 className="px-1 text-md font-semibold">{title}</h2>
-      <Card className="divide-y divide-border px-4">{children}</Card>
-      {footnote && <p className="px-1 text-xs text-subtle">{footnote}</p>}
-    </section>
-  )
-}
-
-function SettingRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-6 py-3">
-      <span className="text-base">{label}</span>
-      <div className="w-56">{children}</div>
     </div>
   )
 }
@@ -211,29 +194,6 @@ function GeneralSection({ snap, run }: SectionProps) {
             {snap.dataDir}
           </code>
         </div>
-      </SettingsGroup>
-    </div>
-  )
-}
-
-function AppearanceSection() {
-  const { t } = useI18n()
-  const { theme } = usePrefs()
-  return (
-    <div className="flex flex-col gap-6">
-      <SettingsGroup title={t('settings.appearance')} footnote={t('settings.themeHint')}>
-        <SettingRow label={t('settings.theme')}>
-          <Select
-            aria-label={t('settings.theme')}
-            value={theme}
-            onChange={(v) => setPrefs({ theme: v as typeof theme })}
-            options={[
-              { value: 'system', label: t('settings.system') },
-              { value: 'light', label: t('settings.light') },
-              { value: 'dark', label: t('settings.dark') }
-            ]}
-          />
-        </SettingRow>
       </SettingsGroup>
     </div>
   )

@@ -16,7 +16,8 @@ import { recentFolders, usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
 import { NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
-import { resolveTheme, readPrefs, usePrefs, useSystemDark } from './lib/prefs'
+import { readPrefs } from './lib/prefs'
+import { useAppearance } from './lib/appearance'
 import { listSessions, memberOf, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
@@ -36,18 +37,9 @@ import { SettingsScreen } from './screens/SettingsScreen'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, setViewing, startStore, useSessions } from './store'
 
-/** Applies the theme preference to <html> and tells the main process (native chrome). */
+/** Applies the appearance preferences to <html> and tells the main process (native chrome). */
 function useTheme(): 'light' | 'dark' {
-  const { theme } = usePrefs()
-  const systemDark = useSystemDark()
-  const resolved = resolveTheme(theme, systemDark)
-  useEffect(() => {
-    window.hub.setTheme(theme)
-  }, [theme])
-  useEffect(() => {
-    document.documentElement.dataset['theme'] = resolved
-  }, [resolved])
-  return resolved
+  return useAppearance()
 }
 
 function Shell() {

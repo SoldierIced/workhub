@@ -11,22 +11,64 @@ export interface Prefs {
   language: LanguagePreference
   /** The model last picked per agent key (`claude`, `claude:work`), used for the next session. */
   models: Record<string, string>
+  /** Terminal color scheme by name (lib/terminalThemes); '' keeps Workhub's own colors. */
+  terminalTheme: string
+  /** Whether the whole app takes the terminal theme's colors (and its light or dark look). */
+  themeApp: boolean
+  /** Terminal font family; '' is the default monospace stack. */
+  terminalFontFamily: string
+  /** Terminal font size in px. */
+  terminalFontSize: number
+  /** Conversation (chat) text size in px. */
+  chatFontSize: number
+  /** Base text size of the whole app in px; every text style scales with it. */
+  textSize: number
 }
 
+/** Ranges of the size preferences, as Workhub 1 offered them. */
+export const SIZE_RANGES = { terminalFontSize: [10, 24], chatFontSize: [11, 20], textSize: [11, 20] } as const
+/** The app's base text size (styles.css `--text-base`). */
+export const BASE_TEXT_SIZE = 13
+
 const KEY = 'workhub.prefs'
-const DEFAULTS: Prefs = { theme: 'system', language: 'system', models: {} }
+export const DEFAULT_PREFS: Prefs = {
+  theme: 'system',
+  language: 'system',
+  models: {},
+  terminalTheme: '',
+  themeApp: false,
+  terminalFontFamily: '',
+  terminalFontSize: 13,
+  chatFontSize: BASE_TEXT_SIZE,
+  textSize: BASE_TEXT_SIZE
+}
+
+/** A size clamped into its range, rounded; the default for anything that is not a number. */
+export function clampSize(key: keyof typeof SIZE_RANGES, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_PREFS[key]
+  const [min, max] = SIZE_RANGES[key]
+  return Math.min(max, Math.max(min, Math.round(value)))
+}
+
+const str = (v: unknown, max = 120) => (typeof v === 'string' ? v.slice(0, max) : '')
 
 export function parsePrefs(raw: string | null): Prefs {
-  if (!raw) return DEFAULTS
+  if (!raw) return DEFAULT_PREFS
   try {
     const v = JSON.parse(raw) as Partial<Prefs>
     return {
-      theme: v.theme === 'light' || v.theme === 'dark' || v.theme === 'system' ? v.theme : DEFAULTS.theme,
-      language: v.language === 'en' || v.language === 'es' || v.language === 'system' ? v.language : DEFAULTS.language,
-      models: modelMap(v.models)
+      theme: v.theme === 'light' || v.theme === 'dark' || v.theme === 'system' ? v.theme : DEFAULT_PREFS.theme,
+      language: v.language === 'en' || v.language === 'es' || v.language === 'system' ? v.language : DEFAULT_PREFS.language,
+      models: modelMap(v.models),
+      terminalTheme: str(v.terminalTheme),
+      themeApp: v.themeApp === true,
+      terminalFontFamily: str(v.terminalFontFamily),
+      terminalFontSize: clampSize('terminalFontSize', v.terminalFontSize),
+      chatFontSize: clampSize('chatFontSize', v.chatFontSize),
+      textSize: clampSize('textSize', v.textSize)
     }
   } catch {
-    return DEFAULTS
+    return DEFAULT_PREFS
   }
 }
 
@@ -35,7 +77,7 @@ function modelMap(raw: unknown): Record<string, string> {
   return Object.fromEntries(Object.entries(raw).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== ''))
 }
 
-let prefs: Prefs = typeof localStorage === 'undefined' ? DEFAULTS : parsePrefs(localStorage.getItem(KEY))
+let prefs: Prefs = typeof localStorage === 'undefined' ? DEFAULT_PREFS : parsePrefs(localStorage.getItem(KEY))
 const listeners = new Set<() => void>()
 
 export function readPrefs(): Prefs {
