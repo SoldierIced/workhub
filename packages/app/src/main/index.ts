@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { appendFileSync, existsSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -401,6 +402,13 @@ function registerIpc(): void {
   ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode) => sessions.setMode(id, mode))
   ipc.handle('sessions:setModel', (_e, id: string, model: string | null) => sessions.setModel(id, model))
   ipc.on('sessions:mcp', (_e, id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string) => sessions.mcp(id, action, server))
+  ipc.handle('sessions:subagent', (_e, id: string, subagentId: string) => sessions.subagent(id, subagentId))
+  ipc.handle('sessions:revealFile', async (_e, id: string, path: string) => {
+    const target = sessions.fileInSession(id, path)
+    if (!target || !(await stat(target).then(() => true, () => false))) return false
+    shell.showItemInFolder(target)
+    return true
+  })
   ipc.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
   ipc.handle('sessions:stop', (_e, id: string) => sessions.stop(id))
   ipc.on('sessions:permission', (_e, id: string, requestId: string, optionId: string | null) =>

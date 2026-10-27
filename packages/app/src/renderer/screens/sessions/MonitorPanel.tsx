@@ -8,6 +8,8 @@ import { formatTokens } from '../../lib/home'
 import type { SessionData } from '../../store'
 import { AiReviewSection } from './AiReviewPanel'
 import { SlackThreadsSection } from './SlackThreadsSection'
+import { openSubagent } from '../../lib/subagentView'
+import { SubagentSheet } from './SubagentView'
 
 const FIELD_LABEL: Record<MonitorField, MessageKey> = {
   title: 'monitor.title',
@@ -141,12 +143,20 @@ export function MonitorPanel({ data }: { data: SessionData }) {
         <ListSection title={t('monitor.subagents')} count={subagents.length}>
           {subagents.map((s) => (
             <li key={s.id} className="text-sm">
-              <div className="flex items-center gap-2">
-                <StateDot tone={s.status === 'failed' ? 'danger' : s.status === 'running' ? 'info' : s.status === 'completed' ? 'success' : 'neutral'} pulse={s.status === 'running'} />
-                <span className="min-w-0 flex-1 truncate">{s.description ?? s.name ?? s.type ?? s.id}</span>
-                {s.tokens?.total !== undefined && <span className="text-xs text-subtle tabular-nums">{formatTokens(s.tokens.total)}</span>}
-              </div>
-              {s.lastStep && <div className="ml-4 truncate text-xs text-subtle">{s.lastStep}</div>}
+              <button
+                type="button"
+                className="-mx-1.5 block w-[calc(100%+0.75rem)] rounded-md px-1.5 py-0.5 text-left hover:bg-surface-hover"
+                aria-label={t('subagent.open', { name: s.description ?? s.name ?? s.type ?? s.id })}
+                data-testid="subagent-row"
+                onClick={() => openSubagent(v.id, s.id)}
+              >
+                <div className="flex items-center gap-2">
+                  <StateDot tone={s.status === 'failed' ? 'danger' : s.status === 'running' ? 'info' : s.status === 'completed' ? 'success' : 'neutral'} pulse={s.status === 'running'} />
+                  <span className="min-w-0 flex-1 truncate">{s.description ?? s.name ?? s.type ?? s.id}</span>
+                  {s.tokens?.total !== undefined && <span className="text-xs text-subtle tabular-nums">{formatTokens(s.tokens.total)}</span>}
+                </div>
+                {s.lastStep && <div className="ml-4 truncate text-xs text-subtle">{s.lastStep}</div>}
+              </button>
             </li>
           ))}
         </ListSection>
@@ -191,6 +201,7 @@ export function MonitorPanel({ data }: { data: SessionData }) {
           ))}
         </ListSection>
       )}
+      <SubagentSheet sessionId={v.id} />
       <SlackThreadsSection view={v} />
       <AiReviewSection view={v} />
     </aside>
