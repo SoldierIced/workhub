@@ -22,7 +22,7 @@ describe('resolveEffectiveAgents', () => {
 
   it('expands an agent into one entry per bound account', () => {
     const c = config({ accounts: [claudeA, claudeB, kiroWork], profiles: [profile({ accountIds: ['claude-a', 'claude-b'] })] })
-    expect(keys(c, 'acme')).toEqual(['claude:claude-a', 'claude:claude-b', 'claude-acp:claude-a', 'claude-acp:claude-b', 'kiro', 'opencode', 'shell'])
+    expect(keys(c, 'acme')).toEqual(['claude:claude-a', 'claude:claude-b', 'claude-acp:claude-a', 'claude-acp:claude-b', 'kiro', 'opencode', 'codex', 'gemini', 'shell'])
   })
 
   it('limits to the allowed agents, plus agents of bound accounts', () => {
@@ -40,6 +40,43 @@ describe('resolveEffectiveAgents', () => {
   it('labels account entries with the account name', () => {
     const c = config({ accounts: [claudeA], profiles: [profile({ accountIds: ['claude-a'], agentIds: [] })] })
     expect(resolveEffectiveAgents(c, 'acme').map((e) => e.label)).toEqual(['Claude Code - Account A'])
+  })
+})
+
+describe('built-in agents over ACP', () => {
+  const agent = (id: string) => BUILTIN_AGENTS.find((a) => a.id === id)!
+
+  it('start every agent with the command its ACP mode needs', () => {
+    expect([agent('kiro'), agent('opencode'), agent('codex'), agent('gemini')].map((a) => [a.adapter, a.command, ...a.args])).toEqual([
+      ['acp', 'kiro-cli', 'acp'],
+      ['acp', 'opencode', 'acp'],
+      ['acp', 'npx', '-y', '@agentclientprotocol/codex-acp@2.3.0'],
+      ['acp', 'gemini', '--acp']
+    ])
+  })
+
+  it('claim a transcript reader only where one exists', () => {
+    expect(BUILTIN_AGENTS.filter((a) => a.transcript).map((a) => [a.id, a.transcript])).toEqual([
+      ['claude', 'claude'],
+      ['claude-acp', 'claude'],
+      ['kiro', 'kiro'],
+      ['opencode', 'opencode'],
+      ['codex', 'codex']
+    ])
+    expect(agent('gemini').capabilities.transcript).toBe(false)
+    for (const a of BUILTIN_AGENTS) expect(a.capabilities.transcript).toBe(Boolean(a.transcript))
+  })
+
+  it('show only the monitor data each reader provides', () => {
+    const tokens = { total: 10 }
+    const snapshot = { tokens, cost: { amount: 1, currency: 'USD' }, credits: 2, planUsage: [{ window: '5h', percent: 10 }] }
+    expect(visibleMonitorFields(agent('opencode').capabilities, snapshot)).toEqual(['tokens', 'cost', 'credits'])
+    expect(visibleMonitorFields(agent('codex').capabilities, snapshot)).toEqual(['tokens', 'cost', 'credits', 'planUsage'])
+    expect(visibleMonitorFields(agent('gemini').capabilities, snapshot)).toEqual([])
+  })
+
+  it('pass the Codex account folder through CODEX_HOME', () => {
+    expect(launchEnvironment(agent('codex'), { id: 'c', agentId: 'codex', name: 'C', configDir: '/tmp/codex-a' })).toEqual({ CODEX_HOME: '/tmp/codex-a' })
   })
 })
 
@@ -84,7 +121,7 @@ describe('monitor view', () => {
   })
 
   it('lists screens from capabilities', () => {
-    expect(sessionScreens(kiro)).toEqual(['chat', 'monitor', 'history', 'mcp'])
+    expect(sessionScreens(kiro)).toEqual(['chat', 'monitor', 'history', 'transcript', 'mcp'])
     expect(sessionScreens(NO_CAPABILITIES)).toEqual(['terminal'])
   })
 

@@ -13,7 +13,7 @@ const CLAUDE_CONSOLE: ConsoleLaunch = {
  * custom agent with the same id replaces the built-in one.
  *
  * Capabilities list only what was observed (P0 spike, spike/README.md) or what the native Claude
- * adapter and the Claude transcript reader provide (P2); the other transcript readers arrive in P5.
+ * adapter and the Claude transcript reader provide (P2), plus the Kiro, OpenCode and Codex readers (P5).
  */
 export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
   {
@@ -79,6 +79,7 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
     capabilities: {
       ...NO_CAPABILITIES,
       appMode: true,
+      transcript: true,
       usage: true,
       history: true,
       models: true,
@@ -87,6 +88,7 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
       permissionRequests: true
     },
     modeSemantics: 'persona',
+    transcript: 'kiro',
     builtIn: true
   },
   {
@@ -95,8 +97,57 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
     adapter: 'acp',
     command: 'opencode',
     args: ['acp'],
+    // Cost, tokens, tool calls and subagents come from the OpenCode database (transcript-opencode).
+    capabilities: {
+      ...NO_CAPABILITIES,
+      appMode: true,
+      transcript: true,
+      usage: true,
+      history: true,
+      models: true,
+      subagents: true,
+      permissionRequests: true
+    },
+    // OpenCode's modes are agents (build, plan), not permission levels.
+    modeSemantics: 'persona',
+    transcript: 'opencode',
+    builtIn: true
+  },
+  {
+    id: 'codex',
+    name: 'Codex',
+    adapter: 'acp',
+    // The ACP adapter bundles the Codex CLI, so it runs through npx. @zed-industries/codex-acp is
+    // deprecated in favor of @agentclientprotocol/codex-acp (npm, 2026-10-27).
+    command: 'npx',
+    args: ['-y', '@agentclientprotocol/codex-acp@2.3.0'],
+    // Token counts and the 5 h / weekly rate limits come from the rollout files (transcript-codex).
+    capabilities: {
+      ...NO_CAPABILITIES,
+      appMode: true,
+      transcript: true,
+      usage: true,
+      planUsage: true,
+      history: true,
+      models: true,
+      permissionRequests: true
+    },
+    // Codex's ACP modes are approval presets (read-only, auto, full-access); not verified live.
+    modeSemantics: 'permission',
+    accountConfigEnv: 'CODEX_HOME',
+    transcript: 'codex',
+    builtIn: true
+  },
+  {
+    id: 'gemini',
+    name: 'Gemini CLI',
+    adapter: 'acp',
+    // `gemini --acp` starts the Agent Client Protocol server (Gemini CLI docs, acp-mode.md).
+    // No transcript reader yet: only what the ACP stream reports.
+    command: 'gemini',
+    args: ['--acp'],
     capabilities: { ...NO_CAPABILITIES, appMode: true, permissionRequests: true },
-    modeSemantics: 'none',
+    modeSemantics: 'permission',
     builtIn: true
   },
   {

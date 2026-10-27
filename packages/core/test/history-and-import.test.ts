@@ -66,9 +66,9 @@ describe('built-in Claude agents', () => {
   it('shows pull requests and tickets only for agents with a transcript reader', () => {
     const snap = { pullRequests: ['https://github.com/acme/web/pull/1'], ticketKeys: ['ABC-1'] }
     const native = BUILTIN_AGENTS.find((a) => a.id === 'claude')!.capabilities
-    const kiro = BUILTIN_AGENTS.find((a) => a.id === 'kiro')!.capabilities
+    const gemini = BUILTIN_AGENTS.find((a) => a.id === 'gemini')!.capabilities
     expect(visibleMonitorFields(native, snap)).toEqual(['pullRequests', 'tickets'])
-    expect(visibleMonitorFields(kiro, snap)).toEqual([])
+    expect(visibleMonitorFields(gemini, snap)).toEqual([])
   })
 })
 
