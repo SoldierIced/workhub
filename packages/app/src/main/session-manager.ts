@@ -24,11 +24,13 @@ import {
   type SessionHistorySource,
   type SessionOrigin,
   type SessionModeOption,
+  type SubagentConversation,
   type TranscriptReader,
   type WorkhubConfig
 } from '@workhub/core'
 import { terminalChannel, type SessionMode, type SessionView, type SetModeOptions, type StartSessionInput } from '../shared/api'
 import { ConsoleActivity } from './console-activity'
+import { pathInsideFolder } from './reveal'
 
 /** What runs the session right now: the agent's runtime (app) or the agent's own TUI in a PTY (console). */
 type Engine = 'app' | 'console'
@@ -393,6 +395,20 @@ export class SessionManager {
     if (action === 'refresh') s.runtime.refreshMcp(id)
     else if (server && action === 'reconnect') s.runtime.reconnectMcp(id, server)
     else if (server) s.runtime.toggleMcp(id, server, action === 'enable')
+  }
+
+  /** One subagent's conversation, read from the session's transcript; null when there is none. */
+  async subagent(id: string, subagentId: string): Promise<SubagentConversation | null> {
+    const s = this.sessions.get(id)
+    const reader = s && this.reader(s)
+    if (!s || !reader?.subagent || !s.view.agentSessionId || typeof subagentId !== 'string') return null
+    return reader.subagent({ agentSessionId: s.view.agentSessionId, cwd: s.view.cwd, configDir: s.account?.configDir }, subagentId).catch(() => null)
+  }
+
+  /** A file the session's agent named, when it lies inside the session's folder (to reveal it). */
+  fileInSession(id: string, path: string): string | null {
+    const s = this.sessions.get(id)
+    return s ? pathInsideFolder(s.view.cwd, path) : null
   }
 
   respondPermission(id: string, requestId: string, optionId: string | null): void {

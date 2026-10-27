@@ -14,6 +14,7 @@ import { appearanceEn } from './appearance.en'
 import { settingsHelpEn } from './settingsHelp.en'
 import { trayEn } from './tray.en'
 import { agentsEn } from './agents.en'
+import { toolViewEn } from './toolView.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -395,5 +396,6 @@ export const en = {
   ...trayEn,
   ...agentsEn,
   ...appearanceEn,
-  ...settingsHelpEn
+  ...settingsHelpEn,
+  ...toolViewEn
 } as const

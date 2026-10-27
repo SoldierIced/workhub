@@ -241,7 +241,7 @@ describe('Claude session history', () => {
     expect(messages).toEqual([
       { kind: 'user', text: 'Look at this', images: 1 },
       { kind: 'agent', text: 'Sure.' },
-      { kind: 'tool', id: 't1', title: 'Read b.ts', detail: '/a/b.ts', failed: true },
+      { kind: 'tool', id: 't1', title: 'Read b.ts', detail: '/a/b.ts', failed: true, view: { kind: 'read', path: '/a/b.ts' }, result: { isError: true } },
       { kind: 'agent', text: 'Done.' }
     ])
   })
