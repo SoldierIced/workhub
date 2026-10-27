@@ -122,3 +122,29 @@ export type MonitorField =
   | 'mcpServers'
   | 'pullRequests'
   | 'tickets'
+
+/** Uncommitted changes of one repository (staged, unstaged and untracked, against HEAD). */
+export interface RepoChanges {
+  /** The repository folder's name. */
+  name: string
+  root: string
+  branch: string | null
+  /** Changed paths, untracked ones included. */
+  files: number
+  /** Lines added and removed in tracked files; untracked files are not counted. */
+  additions: number
+  deletions: number
+}
+
+/**
+ * The monitor's "Local changes": the session folder's repository, or, for a folder of
+ * repositories, each one right inside it that has changes.
+ */
+export interface LocalChanges {
+  /** The folder is a folder of repositories, not a repository itself. */
+  nested: boolean
+  /** Repositories read (for a folder of repositories, all of them, with or without changes). */
+  scanned: number
+  /** Repositories with changes; for a single repository, it is listed even when clean. */
+  repos: RepoChanges[]
+}

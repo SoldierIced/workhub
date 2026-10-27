@@ -188,6 +188,7 @@ export class SessionManager {
       agentSessionId,
       permissionMode: null,
       startedAt: Date.now(),
+      stateSince: Date.now(),
       label: choice.label,
       agentName: agent.name,
       adapter: agent.adapter,
@@ -660,8 +661,15 @@ export class SessionManager {
     if ((s.view.state === 'stopped' || s.view.state === 'error') && patch.state && patch.state !== s.view.state) {
       if (patch.state !== 'stopped' && patch.state !== 'error' && patch.state !== 'starting') return
     }
-    s.view = { ...s.view, ...patch }
+    // When the state began, for the header's "Working 1:23" / "Idle 2 min".
+    const since = patch.state && patch.state !== s.view.state ? { stateSince: Date.now() } : {}
+    s.view = { ...s.view, ...patch, ...since }
     this.deps.emitChanged(s.view)
+  }
+
+  /** The session's folder, for reads main does on its behalf (local changes). */
+  cwdOf(id: string): string | null {
+    return this.sessions.get(id)?.view.cwd ?? null
   }
 
   private require(id: string): ManagedSession {

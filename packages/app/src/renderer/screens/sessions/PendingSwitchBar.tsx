@@ -14,7 +14,7 @@ export function PendingSwitchBar({ view }: { view: SessionView }) {
   const run = (mode: 'app' | 'console', now: boolean) =>
     void window.hub.sessions.setMode(view.id, mode, now ? { now: true } : undefined).catch((e: unknown) => pushItem(view.id, 'error', errorText(e)))
   return (
-    <div role="status" data-testid="pending-switch" className="flex shrink-0 items-center gap-2.5 border-b border-border bg-accent-soft px-5 py-2 text-sm text-text">
+    <div role="status" data-testid="pending-switch" className="flex shrink-0 items-center gap-2.5 border-b border-border bg-accent-soft px-4 py-1.5 text-sm text-text">
       <History className="size-4 shrink-0 text-accent" aria-hidden />
       <span className="min-w-0 flex-1" title={t('session.pendingSwitchHint')}>
         {t('session.pendingSwitch', { mode: t(target === 'app' ? 'session.modeApp' : 'session.modeConsole') })}

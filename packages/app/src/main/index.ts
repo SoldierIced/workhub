@@ -331,6 +331,9 @@ const automations = new AutomationService({
   notice: (n) => send('slack:notice', n)
 })
 
+// The monitor's "Local changes" of a session's folder (read-only git commands).
+const localGit = new GitReview()
+
 // AI review before a pull request: a reviewer agent on a separate checkout of the dev session's branch.
 const aiReview = new AiReviewService({
   config: () => configuration.current(),
@@ -570,6 +573,10 @@ function registerIpc(): void {
     if (!target || !(await stat(target).then(() => true, () => false))) return false
     shell.showItemInFolder(target)
     return true
+  })
+  ipc.handle('sessions:localChanges', async (_e, id: string) => {
+    const cwd = sessions.cwdOf(id)
+    return cwd ? localGit.localChanges(cwd) : null
   })
   ipc.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
   ipc.handle('sessions:stop', (_e, id: string) => sessions.stop(id))
