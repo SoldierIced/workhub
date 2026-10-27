@@ -6,7 +6,7 @@ import { homedir } from 'node:os'
 import { delimiter, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { AcpRuntime, agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
-import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
+import { CLAUDE_PERMISSION_MODES, ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
 import { DemoChatSource, SlackAgentChatSource, SlackTrackingHook } from '@workhub/adapters/chat-slack'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
@@ -271,6 +271,8 @@ const historySources = { claude: claudeHistory, kiro: new KiroSessionHistory({ k
 // Models and modes each agent offers before a session starts (Kiro: its listing commands; others: their last session).
 const agentOptions = new AgentOptionsService({
   discover: (agent) => (runsKiroCli(agent) ? discoverKiroOptions(createCliRunner(cliPath.split(delimiter)), agent.command) : null),
+  // Claude Code's permission modes are known before any session: Settings and the New session dialog offer them.
+  fixedModes: (agent) => (agent.adapter === 'native' ? CLAUDE_PERMISSION_MODES : undefined),
   state: new StateFile(join(dataDir, 'agent-options.json'), 500)
 })
 /** Kiro credits spent today and this week, read at most once a minute. */
