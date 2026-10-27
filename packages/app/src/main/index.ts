@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { appendFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { AcpRuntime } from '@workhub/adapters/agent-acp'
@@ -250,6 +251,9 @@ const liveNotifications = new Set<Notification>()
 /** An OS notification (Electron's, on macOS, Windows and Linux); a click brings the window up and opens the session. */
 function showSessionNotification(n: SessionNotification): void {
   if (!Notification.isSupported() || typeof n.title !== 'string' || typeof n.sessionId !== 'string') return
+  // Test hook: a run can read back what was shown without reading the OS notification center.
+  const log = process.env['WORKHUB_NOTIFICATION_LOG']
+  if (log) appendFileSync(log, `${JSON.stringify({ title: n.title, body: n.body, sessionId: n.sessionId })}\n`)
   const notification = new Notification({ title: n.title.slice(0, 200), body: String(n.body ?? '').slice(0, 400) })
   liveNotifications.add(notification)
   notification.on('close', () => liveNotifications.delete(notification))

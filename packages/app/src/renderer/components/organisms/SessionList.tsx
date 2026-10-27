@@ -126,8 +126,9 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
   const sessionMenu = (member: GroupMember): MenuItem[] => {
     const inGroup = groupOf(state, member.key)
     const isLive = live.has(member.key)
+    const entry = listed.find((l) => l.key === member.key)
     const items: MenuItem[] = []
-    if (!isLive) items.push({ label: t('groups.reopen'), onSelect: () => onReopen(member) }, { separator: true })
+    if (!entry || entry.data.view.state === 'stopped') items.push({ label: t('groups.reopen'), onSelect: () => onReopen(member) }, { separator: true })
     items.push(
       { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveBy(s, member.key, -1)) },
       { label: t('groups.moveDown'), hint: 'Alt+↓', onSelect: () => act((s) => moveBy(s, member.key, 1)) },
@@ -142,7 +143,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     )
     if (inGroup) {
       items.push({ separator: true })
-      items.push(isLive ? { label: t('groups.ungroup'), onSelect: () => act((s) => ungroup(s, member.key)) } : { label: t('groups.forget'), onSelect: () => act((s) => removeMember(s, member.key)) })
+      if (isLive) items.push({ label: t('groups.ungroup'), onSelect: () => act((s) => ungroup(s, member.key)) })
+      if (!entry || entry.data.view.state === 'stopped') items.push({ label: t('groups.forget'), onSelect: () => act((s) => removeMember(s, member.key)) })
     }
     return items
   }
@@ -288,6 +290,8 @@ function SessionItem(props: {
   const level = data ? statusLevel({ state: data.view.state, unseen: data.unseen, awaitingAnswer: awaitingAnswer(data) }) : null
   const tone = data ? (level ? LEVEL_TONE[level] : STATE_TONE[data.view.state]) : 'neutral'
   const closed = !data
+  // A session that was stopped is as good as closed: dimmed, and the row reopens it.
+  const stopped = data?.view.state === 'stopped'
   const status = data ? (data.unseen && level ? t(LEVEL_LABEL[level]) : t(`state.${data.view.state}`)) : t('groups.closed')
   const title = data ? data.view.agentName : member.title
   const cwd = data ? data.view.cwd : member.cwd
@@ -316,7 +320,7 @@ function SessionItem(props: {
               'group/row flex items-center rounded-md transition-colors duration-150',
               props.selected ? 'bg-accent-soft text-text' : 'text-muted hover:bg-surface-hover hover:text-text',
               props.dropping && 'ring-2 ring-accent/60',
-              closed && 'opacity-60'
+              (closed || stopped) && 'opacity-60'
             )}
           >
             <button
