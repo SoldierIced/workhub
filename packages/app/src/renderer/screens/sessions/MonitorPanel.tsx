@@ -30,6 +30,12 @@ const FIELD_LABEL: Record<MonitorField, MessageKey> = {
 /** Fields shown as their own collapsible list under the values. */
 const LISTS: MonitorField[] = ['toolCalls', 'subagents', 'mcpServers']
 
+/** The last turns' credits, newest last: `0.25 · 1.04 · 0.5`, with `…` when older turns are left out. */
+export function turnCreditsList(credits: readonly number[], max = 6): string {
+  const shown = credits.slice(-max).map((c) => (c >= 10 ? c.toFixed(1) : c.toFixed(2)))
+  return `${credits.length > max ? '… ' : ''}${shown.join(' · ')}`
+}
+
 /** 75 s → "1 min 15 s"; under a minute, seconds with one decimal. */
 export function formatDuration(ms: number): string {
   const s = ms / 1000
@@ -77,7 +83,16 @@ export function MonitorPanel({ data }: { data: SessionData }) {
       case 'cost':
         return m.cost ? formatNumber(m.cost.amount, { style: 'currency', currency: m.cost.currency, maximumFractionDigits: 4 }) : ''
       case 'credits':
-        return t('monitor.creditsValue', { total: (m.credits ?? 0).toFixed(3), last: (m.lastTurnCredits ?? 0).toFixed(3) })
+        return (
+          <>
+            {t('monitor.creditsValue', { total: (m.credits ?? 0).toFixed(3), last: (m.lastTurnCredits ?? 0).toFixed(3) })}
+            {(m.turnCredits?.length ?? 0) > 1 && (
+              <span className="mt-0.5 block text-xs text-subtle" data-testid="monitor-turn-credits" title={m.turnCredits!.map((c) => c.toFixed(3)).join(' · ')}>
+                {t('monitor.turnCredits', { list: turnCreditsList(m.turnCredits!) })}
+              </span>
+            )}
+          </>
+        )
       case 'context':
         return m.context?.percent !== undefined ? `${m.context.percent.toFixed(1)}%` : `${n(m.context?.used)} / ${n(m.context?.size)}`
       case 'activeTime':

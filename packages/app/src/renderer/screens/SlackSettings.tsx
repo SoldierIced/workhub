@@ -10,7 +10,7 @@ import {
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Switch } from '../components/atoms'
-import { Card, CardBody, CardHeader, Field, SwitchRow, useToast } from '../components/molecules'
+import { Card, CardBody, CardHeader, Field, HelpTip, SwitchRow, useToast } from '../components/molecules'
 import { reloadSlack, useSlack } from '../chatStore'
 import { useI18n } from '../i18n/I18nProvider'
 
@@ -65,17 +65,17 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardHeader title={t('slack.settings.watcher')} meta={slack.demo ? <Badge tone="info">{t('slack.demo')}</Badge> : undefined} />
+        <CardHeader title={t('slack.settings.watcher')} help={t('help.slack.watcher')} meta={slack.demo ? <Badge tone="info">{t('slack.demo')}</Badge> : undefined} />
         <CardBody className="flex flex-col gap-3">
           <p className="text-sm text-muted">{t('slack.settings.explain')}</p>
           <SwitchRow label={t('slack.settings.enabled')}>
             <Switch checked={form.enabled} onChange={(enabled) => set({ enabled })} />
           </SwitchRow>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t('slack.settings.account')}>
+            <Field label={t('slack.settings.account')} help={t('help.slack.account')}>
               <Select value={form.accountId ?? ''} onChange={(v) => set({ accountId: v || null })} options={accounts} />
             </Field>
-            <Field label={t('slack.settings.model')}>
+            <Field label={t('slack.settings.model')} help={t('help.slack.model')}>
               <Input value={form.model} onChange={(e) => set({ model: e.target.value })} />
             </Field>
             <Field label={t('slack.settings.interval')} hint={t('slack.settings.intervalHint', { min: MIN_WATCH_INTERVAL_MINUTES })}>
@@ -84,7 +84,7 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
             <Field label={t('slack.settings.usage')} hint={t('slack.settings.usageHint')}>
               <Input type="number" min={1} max={100} value={form.usageThreshold} onChange={(e) => set({ usageThreshold: Math.min(100, Math.max(1, Number(e.target.value) || 85)) })} />
             </Field>
-            <Field label={t('slack.settings.hours')}>
+            <Field label={t('slack.settings.hours')} help={t('help.slack.hours')}>
               <div className="flex items-center gap-2">
                 <Input type="number" min={0} max={23} className="w-20" aria-label={t('slack.settings.from')} value={form.startHour} onChange={(e) => set({ startHour: Number(e.target.value) })} />
                 <span className="text-sm text-muted">–</span>
@@ -104,9 +104,12 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
             })}
           </fieldset>
           <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-muted">{t('slack.settings.channels')}</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-muted">
+              {t('slack.settings.channels')}
+              <HelpTip text={t('help.slack.channels')} label={t('slack.settings.channels')} />
+            </span>
             {form.channels.map((c, i) => (
-              <div key={i} className="grid grid-cols-[10rem_10rem_1fr_auto] gap-2">
+              <div key={i} className="grid grid-cols-[minmax(0,10rem)_minmax(0,10rem)_minmax(0,1fr)_auto] gap-2">
                 <Input placeholder="C0123456789" aria-label={t('slack.settings.channelId')} value={c.id} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)) })} />
                 <Input placeholder={t('slack.settings.channelName')} aria-label={t('slack.settings.channelName')} value={c.name} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
                 <Input placeholder={t('slack.settings.purpose')} aria-label={t('slack.settings.purpose')} value={c.purpose} onChange={(e) => set({ channels: form.channels.map((x, j) => (j === i ? { ...x, purpose: e.target.value } : x)) })} />
@@ -124,7 +127,7 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
       </Card>
 
       <Card>
-        <CardHeader title={t('slack.hook.title')} />
+        <CardHeader title={t('slack.hook.title')} help={t('help.slack.hook')} />
         <CardBody className="flex flex-col gap-3">
           <p className="text-sm text-muted">{t('slack.hook.explain')}</p>
           {slack.demo && <p className="text-sm text-warning">{t('slack.hook.demoMode')}</p>}
