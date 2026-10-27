@@ -10,7 +10,7 @@ import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
 import { sessionModelPicker, sessionModePicker } from '../../lib/agent-pickers'
 import { readPrefs, rememberMode, rememberModel, setPrefs } from '../../lib/prefs'
-import { abbreviateFolder, activityElapsed, activityOf, headerDensity, isClockActivity, permissionModeLabel, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
+import { abbreviateFolder, activityElapsed, activityOf, foldDensity, headerDensity, isClockActivity, permissionModeLabel, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
 import { useNow } from '../../lib/usage'
 import { awaitingAnswer, pushItem, type SessionData } from '../../store'
 import { AiReviewButton } from './AiReviewPanel'
@@ -167,18 +167,25 @@ function SlackChip({ view }: { view: SessionView }) {
   )
 }
 
-function PermissionChip({ view: v }: { view: SessionView }) {
+/**
+ * The permission mode. On the row it shows the mode's name only ("Bypass permissions"), with the
+ * full "Permission mode: …" and its source on hover; in the "More" menu (`full`) it spells it out.
+ */
+function PermissionChip({ view: v, full }: { view: SessionView; full?: boolean }) {
   const { t } = useI18n()
   const mode = v.permissionMode
+  const name = mode ? permissionModeLabel(mode, v.currentModeId, t) : v.state === 'starting' ? t('session.pending') : t('session.unknown')
+  const text = t('session.permissionMode', { mode: name })
   return (
     <Badge
       tone={mode?.unattended ? 'warning' : 'neutral'}
       data-testid="permission-mode"
-      title={mode ? t('session.permissionSource', { source: mode.source }) : undefined}
-      icon={mode?.unattended ? <ShieldAlert className="size-3" aria-hidden /> : undefined}
-      className="shrink-0"
+      aria-label={text}
+      title={mode ? `${text}\n${t('session.permissionSource', { source: mode.source })}` : text}
+      icon={mode?.unattended ? <ShieldAlert className="size-3 shrink-0" aria-hidden /> : undefined}
+      className={cn('min-w-0', full ? 'max-w-full' : 'max-w-44 shrink-0')}
     >
-      {t('session.permissionMode', { mode: mode ? permissionModeLabel(mode, v.currentModeId, t) : v.state === 'starting' ? t('session.pending') : t('session.unknown') })}
+      <span className="truncate">{full ? text : name}</span>
     </Badge>
   )
 }
@@ -239,7 +246,20 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
   const { t } = useI18n()
   const v = data.view
   const [ref, width] = useWidth<HTMLElement>()
-  const density: HeaderDensity = headerDensity(width)
+  const identityRef = useRef<HTMLDivElement>(null)
+  // Levels folded past the width's density because the row still overflowed at this width.
+  const [fold, setFold] = useState({ width: 0, steps: 0 })
+  const steps = fold.width === width ? fold.steps : 0
+  const density: HeaderDensity = foldDensity(headerDensity(width), steps)
+  // Before paint: if the row does not fit (long labels, an account name, many controls), fold one
+  // more level into "More", so items never overlap. A new width starts over from its density.
+  useLayoutEffect(() => {
+    const header = ref.current
+    const identity = identityRef.current
+    if (!header || !identity || density === 'narrow') return
+    const overflows = identity.scrollWidth > identity.clientWidth + 1 || header.scrollWidth > header.clientWidth + 1
+    if (overflows) setFold({ width, steps: steps + 1 })
+  })
   const live = v.state === 'ready' || v.state === 'busy' || v.state === 'starting'
   const showModePicker = sessionModePicker(v).visible
   const showModelPicker = sessionModelPicker(v).visible
@@ -248,6 +268,8 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
   const unattended = v.permissionMode?.unattended === true
 
   const chipsInline = density === 'full'
+  // The review tools, the AI review and "Continue" fold before the pickers do.
+  const actionsInline = density === 'full' || density === 'compact'
   const controlsInline = density !== 'narrow'
   const agentMode = showAgentMode && <Badge className="shrink-0">{t('session.agentMode', { mode: v.currentModeId! })}</Badge>
   const overflow = (
@@ -256,16 +278,16 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
       {!controlsInline && showModelPicker && <ModelPicker view={v} wide />}
       {!chipsInline && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <PermissionChip view={v} />
+          <PermissionChip view={v} full />
           {agentMode}
         </div>
       )}
-      {!controlsInline && !v.readOnly && (
+      {!actionsInline && !v.readOnly && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
           <SessionReviewTools data={data} />
         </div>
       )}
-      {!controlsInline && live && (
+      {!actionsInline && live && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
           <AiReviewButton view={v} />
           {showContinue && <ContinueMenu view={v} />}
@@ -273,13 +295,14 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
       )}
     </>
   )
-  const hasOverflow = !chipsInline || (!controlsInline && (showModePicker || showModelPicker || live || !v.readOnly))
+  const hasOverflow = !chipsInline || (!actionsInline && (live || !v.readOnly)) || (!controlsInline && (showModePicker || showModelPicker))
 
   return (
-    <header ref={ref} className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-surface/60 px-4" data-testid="session-header">
-      <div className="flex min-w-0 flex-1 items-center gap-2.5 text-sm" data-testid="session-identity">
+    <header ref={ref} className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-surface/60 px-4" data-testid="session-header" data-density={density}>
+      {/* Clips rather than spills: nothing here is ever drawn under the controls on the right. */}
+      <div ref={identityRef} className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-sm" data-testid="session-identity">
         <SquareTerminal className="size-4 shrink-0 text-accent" aria-hidden />
-        <h1 className="max-w-48 shrink-0 truncate font-semibold" title={v.agentName}>
+        <h1 className={cn('max-w-48 truncate font-semibold', density === 'narrow' ? 'min-w-12 shrink' : 'shrink-0')} title={v.agentName}>
           {v.agentName}
         </h1>
         {v.accountName && (
@@ -288,7 +311,7 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
           </Badge>
         )}
         <ActivityPill data={data} visible={visible} />
-        <span className="flex min-w-20 shrink items-center gap-1 text-xs text-subtle" title={v.cwd} data-testid="session-folder">
+        <span className={cn('flex shrink items-center gap-1 text-xs text-subtle', density === 'narrow' ? 'min-w-0' : 'min-w-16')} title={v.cwd} data-testid="session-folder">
           <Folder className="size-3.5 shrink-0" aria-hidden />
           {/* Truncates from the start, so the folder's own name stays readable. */}
           <span className="truncate font-mono [direction:rtl]">
@@ -308,9 +331,9 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
         {v.modes.length > 1 && <ModeSwitch view={v} iconsOnly={density === 'narrow'} />}
         {controlsInline && showModePicker && <ModePicker view={v} />}
         {controlsInline && showModelPicker && <ModelPicker view={v} />}
-        {controlsInline && <SessionReviewTools data={data} />}
-        {controlsInline && live && <AiReviewButton view={v} />}
-        {controlsInline && showContinue && <ContinueMenu view={v} />}
+        {actionsInline && <SessionReviewTools data={data} />}
+        {actionsInline && live && <AiReviewButton view={v} />}
+        {actionsInline && showContinue && <ContinueMenu view={v} />}
         {live && (
           <Button size="sm" variant="ghost" icon={<Square className="size-3" aria-hidden />} onClick={() => void window.hub.sessions.stop(v.id)}>
             {t('session.stop')}
