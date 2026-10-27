@@ -7,7 +7,7 @@ import type { SessionIntent } from '../shared/links-api'
 import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 import type { ContinuityMoved, ContinuityOffer } from '../shared/continuity-api'
-import type { TrayRoute } from '../shared/tray-api'
+import type { TrayPopoverView, TrayRoute } from '../shared/tray-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -175,7 +175,16 @@ const api: HubApi = {
   tray: {
     setState: (state) => ipcRenderer.send('tray:state', state),
     onNavigate: (cb) => subscribe<[TrayRoute]>('tray:navigate', cb),
-    onNewSession: (cb) => subscribe<[]>('tray:newSession', cb)
+    onNewSession: (cb) => subscribe<[]>('tray:newSession', cb),
+    popover: {
+      get: () => ipcRenderer.invoke('trayPopover:get'),
+      onView: (cb) => subscribe<[TrayPopoverView]>('trayPopover:view', cb),
+      onShown: (cb) => subscribe<[]>('trayPopover:shown', cb),
+      perform: (action) => ipcRenderer.send('trayPopover:perform', action),
+      resize: (height) => ipcRenderer.send('trayPopover:resize', height),
+      hide: () => ipcRenderer.send('trayPopover:hide'),
+      openMenu: () => ipcRenderer.send('trayPopover:menu')
+    }
   }
 }
 

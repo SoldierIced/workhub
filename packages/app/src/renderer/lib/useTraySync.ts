@@ -16,6 +16,7 @@ export function traySessions(sessions: readonly SessionData[], groups: SessionGr
     .map((s) => {
       const group = groupOf(groups, sessionIdentity(s.view))
       const out: TraySession = { id: s.view.id, title: notificationTitle(`${s.view.agentName} · ${folderName(s.view.cwd)}`, group?.name), state: s.view.state }
+      if (s.view.agentId) out.agentId = s.view.agentId
       if (s.unseen) out.unseen = s.unseen
       if (awaitingAnswer(s)) out.awaitingAnswer = true
       return out
