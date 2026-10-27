@@ -123,7 +123,7 @@ export function HistoryScreen({ profileId, onOpened }: HistoryScreenProps) {
                     <div className="truncate text-base">{e.title || t('history.untitled')}</div>
                     <div className="flex items-center gap-2 text-xs text-subtle">
                       <span>{formatDate(e.lastModified, { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                      {e.gitBranch && <span className="truncate font-mono">{e.gitBranch}</span>}
+                      {e.gitBranch && e.gitBranch !== 'HEAD' && <span className="truncate font-mono">{e.gitBranch}</span>}
                       {accountName && (
                         <Badge icon={<UserRound className="size-3" aria-hidden />} className="h-4">
                           {accountName}

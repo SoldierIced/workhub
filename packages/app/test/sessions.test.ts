@@ -125,7 +125,7 @@ describe('SessionManager', () => {
     expect(view.controls).toBe(true)
     expect(native.started[0]).toMatchObject({ sessionId: view.id, cwd: '/tmp/demo', model: 'haiku', resume: false })
     expect(native.started[0]!.agentSessionId).toMatch(/^[0-9a-f-]{36}$/)
-    expect(last(view.id).state).toBe('ready')
+    expect(last(view.id)).toMatchObject({ state: 'ready', currentModelId: 'haiku' })
   })
 
   it('hands the session to the console with --resume once the transcript exists, and back', async () => {

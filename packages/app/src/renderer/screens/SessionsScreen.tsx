@@ -113,7 +113,7 @@ function ModelPicker({ data }: { data: SessionData }) {
       onChange={change}
       disabled={v.state !== 'ready'}
       options={[{ value: '', label: t('session.modelDefault') }, ...models.map((m) => ({ value: m.id, label: m.name }))]}
-      className="h-7 w-auto min-w-32 text-sm"
+      className="h-7 w-44! text-sm"
     />
   )
 }

@@ -260,6 +260,8 @@ export class SessionManager {
     if (started.permissionMode) patch.permissionMode = started.permissionMode
     if (started.currentModeId) patch.currentModeId = started.currentModeId
     if (started.availableModes) patch.availableModes = started.availableModes
+    // The model asked for is the current one until the agent reports otherwise.
+    if (opts.model) patch.currentModelId = opts.model
     this.update(s.view.id, patch)
   }
 
