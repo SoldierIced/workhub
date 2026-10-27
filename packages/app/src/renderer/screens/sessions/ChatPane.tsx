@@ -153,9 +153,9 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
       )
     case 'turnEnd':
       return (
-        <div className="flex items-center gap-3 text-2xs tracking-wide text-subtle uppercase" aria-label={t('chat.turnEnded', { reason: item.stopReason })}>
+        <div className="flex items-center gap-3 text-2xs tracking-wide text-subtle uppercase" aria-label={turnEndLabel(t, item.stopReason)}>
           <span className="h-px flex-1 bg-border" />
-          {item.stopReason === 'end_turn' ? t('chat.turnDone') : t('chat.turnEnded', { reason: item.stopReason })}
+          {turnEndLabel(t, item.stopReason)}
           <span className="h-px flex-1 bg-border" />
         </div>
       )
@@ -496,4 +496,18 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
       </div>
     </div>
   )
+}
+
+const STOP_REASON_KEYS: Record<string, MessageKey> = {
+  cancelled: 'chat.stop.cancelled',
+  max_tokens: 'chat.stop.maxTokens',
+  max_turn_requests: 'chat.stop.maxTurnRequests',
+  refusal: 'chat.stop.refusal'
+}
+
+/** A turn end divider's text: "Done", a readable reason, or the agent's own reason when it is unknown. */
+export function turnEndLabel(t: (key: MessageKey, params?: Record<string, string | number>) => string, stopReason: string): string {
+  if (stopReason === 'end_turn') return t('chat.turnDone')
+  const key = STOP_REASON_KEYS[stopReason]
+  return key ? t(key) : t('chat.turnEnded', { reason: stopReason })
 }

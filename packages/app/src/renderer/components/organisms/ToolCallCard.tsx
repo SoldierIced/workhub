@@ -3,6 +3,7 @@ import {
   Brain,
   Check,
   ChevronRight,
+  CircleSlash,
   CircleAlert,
   ExternalLink,
   FilePlus,
@@ -82,6 +83,7 @@ function StatusMark({ status }: { status: string }) {
   if (status === 'failed') return <CircleAlert className="size-3.5 shrink-0 text-danger" aria-label={t('tool.failed')} />
   if (status === 'completed') return <Check className="size-3.5 shrink-0 text-success" aria-label={t('tool.done')} />
   if (status === 'pending' || status === 'in_progress') return <Spinner className="size-3 shrink-0 text-info" label={t('tool.running')} />
+  if (status === 'cancelled') return <CircleSlash className="size-3.5 shrink-0 text-subtle" aria-label={t('tool.cancelled')} />
   return null
 }
 

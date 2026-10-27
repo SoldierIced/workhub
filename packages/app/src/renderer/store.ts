@@ -201,7 +201,12 @@ export function pushTurnEnd(id: string, stopReason: string): void {
 export function withTurnEnd(s: SessionData, stopReason: string, next: () => number): SessionData {
   const last = s.items[s.items.length - 1]
   if (last?.kind === 'turnEnd' && last.stopReason === stopReason) return s
-  return { ...s, items: [...s.items, { id: next(), kind: 'turnEnd', stopReason }] }
+  // A turn that did not end normally leaves its unfinished tool calls cancelled, not spinning forever.
+  const items =
+    stopReason === 'end_turn'
+      ? s.items
+      : s.items.map((i) => (i.kind === 'tool' && (i.status === 'pending' || i.status === 'in_progress') ? { ...i, status: 'cancelled' } : i))
+  return { ...s, items: [...items, { id: next(), kind: 'turnEnd', stopReason }] }
 }
 
 export function markPermission(id: string, requestId: string, answer: string): void {
