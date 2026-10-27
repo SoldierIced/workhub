@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SubagentSummary } from '@workhub/core'
 import { profileWorkspaces } from '../src/main/workspaces'
-import { folderSections, RECENT_FOLDERS, toggleFavorite, type FolderSessionInfo } from '../src/renderer/lib/folders'
+import { folderSections, newSessionProfile, RECENT_FOLDERS, toggleFavorite, type FolderSessionInfo } from '../src/renderer/lib/folders'
 import { parsePrefs } from '../src/renderer/lib/prefs'
 import { SUBAGENT_RETENTION_MS, visibleSubagents } from '../src/renderer/lib/subagentView'
 
@@ -100,5 +100,18 @@ describe('sub-agents under a session row', () => {
     )
     expect(list.map((s) => s.id)).toEqual(['recent', 'unknown', 'running'])
     expect(visibleSubagents(undefined, now)).toEqual([])
+  })
+})
+
+describe('the profile of a new session', () => {
+  const profiles = [
+    { id: 'work', folders: ['~/work'] },
+    { id: 'home', folders: ['/srv/home'], ownsOutside: true }
+  ]
+  it('starts in the profile that owns the folder, else the active one', () => {
+    expect(newSessionProfile('/u/work/api', 'home', profiles, '/u')).toBe('work')
+    expect(newSessionProfile('/elsewhere', 'work', profiles, '/u')).toBe('home')
+    expect(newSessionProfile('/elsewhere', 'work', [profiles[0]!], '/u')).toBe('work')
+    expect(newSessionProfile('', null, profiles, '/u')).toBeNull()
   })
 })

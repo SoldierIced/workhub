@@ -1,6 +1,7 @@
 import type { AgentAccount } from '../domain/agent'
 import { findProvider, type Connection } from '../domain/connection'
 import { NO_MODULES, OPTIONAL_MODULES, type FolderOptions, type Profile } from '../domain/profile'
+import { normalizeFolder } from '../domain/profile-folders'
 import { EMPTY_SESSION_GROUPS, type GroupMember, type SessionGroup, type SessionGroups, type TopSlot } from '../domain/session-groups'
 import { DEFAULT_OPTIONS, type AppOptions, type WorkhubConfig } from '../config/schema'
 import type { AutomationDefinition, PendingGate } from '../automations/types'
@@ -267,6 +268,47 @@ export function expandHome(path: string, home: string): string {
 
 function normalizedDir(path: string): string {
   return path.replace(/\/+$/, '')
+}
+
+/**
+ * Workhub 1's folder switches ("Only git repos", "Each subfolder is its own project") and "also
+ * owns everything outside" for profiles imported before those were imported: the profiles with the
+ * same id get each switch Workhub 1 turned on, only where the Workhub 2 profile leaves it unset (a
+ * value set in Workhub 2, on or off, is never changed). Returns the profiles that changed.
+ */
+export function fillWorkhub1FolderFlags(v1: Workhub1Settings, config: Pick<WorkhubConfig, 'profiles'>, home: string): Profile[] {
+  const changed: Profile[] = []
+  let ownerTaken = config.profiles.some((p) => p.ownsOutside === true)
+  for (const [index, p] of (v1.profiles ?? []).entries()) {
+    const target = config.profiles.find((x) => x.id === slugId(p.id ?? p.name ?? '', `profile-${index + 1}`))
+    if (!target) continue
+    let next = target
+    const options: Record<string, FolderOptions> = { ...target.folderOptions }
+    let touched = false
+    for (const f of p.folders ?? []) {
+      const path = f.path?.trim()
+      if (!path || (!f.onlyGitRepos && !f.isContainer)) continue
+      const dir = normalizeFolder(normalizedDir(expandHome(path, home)), home)
+      const folder = (target.folders ?? []).find((x) => normalizeFolder(x, home) === dir)
+      if (folder === undefined) continue
+      const key = Object.keys(options).find((k) => normalizeFolder(k, home) === dir) ?? folder
+      const current = options[key] ?? {}
+      const patch: FolderOptions = {
+        ...(f.onlyGitRepos && current.onlyGitRepos === undefined ? { onlyGitRepos: true } : {}),
+        ...(f.isContainer && current.subfoldersAreProjects === undefined ? { subfoldersAreProjects: true } : {})
+      }
+      if (!Object.keys(patch).length) continue
+      options[key] = { ...current, ...patch }
+      touched = true
+    }
+    if (touched) next = { ...next, folderOptions: options }
+    if (p.catchesOtherFolders && !ownerTaken && target.ownsOutside === undefined) {
+      next = { ...next, ownsOutside: true }
+      ownerTaken = true
+    }
+    if (next !== target) changed.push(next)
+  }
+  return changed
 }
 
 function siteUrl(site: string): string {

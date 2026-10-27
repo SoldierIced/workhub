@@ -137,14 +137,22 @@ export function expandProfileFolders(profile: Pick<Profile, 'folders' | 'folderO
 
 /**
  * The projects each profile folder is split into ("Each subfolder is its own project"), by
- * normalized folder path: its listed child folders when the switch is on, none otherwise (the
- * folder is one project).
+ * normalized folder path: its listed child folders when the switch is on, none when it is off (the
+ * folder is one project). Left unset, the folder keeps the behaviour it had before the switch
+ * existed (Workhub 1's token spend): a folder that is a repository (`isRepo`) is one project, any
+ * other folder is split into its child folders.
  */
-export function projectChildren(profile: Pick<Profile, 'folders' | 'folderOptions'>, listing: Readonly<Record<string, readonly FolderChild[] | null | undefined>>, home?: string): Record<string, string[]> {
+export function projectChildren(
+  profile: Pick<Profile, 'folders' | 'folderOptions'>,
+  listing: Readonly<Record<string, readonly FolderChild[] | null | undefined>>,
+  home?: string,
+  isRepo: (path: string) => boolean = () => false
+): Record<string, string[]> {
   const out: Record<string, string[]> = {}
   for (const { folder, path } of profileFolderPaths(profile, home)) {
     const options = folderOptionsOf(profile, folder, home)
-    out[path] = options.subfoldersAreProjects ? visibleChildren(listing[path] ?? [], options) : []
+    const split = options.subfoldersAreProjects ?? !isRepo(path)
+    out[path] = split ? visibleChildren(listing[path] ?? [], options) : []
   }
   return out
 }

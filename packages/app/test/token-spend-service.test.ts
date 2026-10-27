@@ -107,8 +107,16 @@ describe('TokenSpendService', () => {
       ['other', 40],
       ['elsewhere', 7]
     ])
-    // Without the switch the folder is one project.
+    // Switched off, the folder is one project.
+    config = { ...config, profiles: [profile('one', [box], { folderOptions: { [box]: { subfoldersAreProjects: false } } }), config.profiles[1]!] }
+    expect((await svc.forProfile('one')).entries.map((e) => [e.name, e.tokens])).toEqual([['box', 30]])
+    // Never set (profiles imported before the switch): a folder that is not a repository is split, as before.
     config = { ...config, profiles: [profile('one', [box]), config.profiles[1]!] }
+    expect((await svc.forProfile('one')).entries.map((e) => [e.name, e.tokens])).toEqual([
+      ['web', 20],
+      ['api', 10]
+    ])
+    mkdirSync(join(box, '.git'))
     expect((await svc.forProfile('one')).entries.map((e) => [e.name, e.tokens])).toEqual([['box', 30]])
   })
 
