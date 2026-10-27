@@ -106,13 +106,29 @@ export function attributeFolder(
 }
 
 /**
+ * A path inside a git worktree that lives elsewhere, moved to the same place in its main
+ * repository (`aliases`: worktree root -> main worktree root, the deepest root wins); the path
+ * itself when no alias covers it.
+ */
+export function aliasPath(path: string, aliases: Readonly<Record<string, string>>): string {
+  const target = norm(path)
+  let best: string | undefined
+  for (const root of Object.keys(aliases)) {
+    const r = norm(root)
+    if (r && (target === r || target.startsWith(`${r}/`)) && (!best || r.length > norm(best).length)) best = root
+  }
+  return best === undefined ? path : `${norm(aliases[best]!)}${target.slice(norm(best).length)}`
+}
+
+/**
  * Tokens per folder of a profile over the days from `sinceDay` on, largest first. Work outside
- * the profile's folders is left out, so each profile shows only its own spend.
+ * the profile's folders is left out, so each profile shows only its own spend, except in a git
+ * worktree whose main repository is inside them (`aliases`, see `aliasPath`): it counts there.
  */
 export function folderSpend(
   buckets: SpendBuckets,
   folders: readonly string[],
-  options: { sinceDay: string; children?: Readonly<Record<string, readonly string[]>> }
+  options: { sinceDay: string; children?: Readonly<Record<string, readonly string[]>>; aliases?: Readonly<Record<string, string>> }
 ): FolderSpendEntry[] {
   const byPath = new Map<string, FolderSpendEntry>()
   const placeOf = new Map<string, ReturnType<typeof attributeFolder>>()
@@ -122,6 +138,10 @@ export function folderSpend(
     let place = placeOf.get(parsed.path)
     if (place === undefined) {
       place = attributeFolder(parsed.path, folders, options.children)
+      if (!place && options.aliases) {
+        const moved = aliasPath(parsed.path, options.aliases)
+        if (moved !== parsed.path) place = attributeFolder(moved, folders, options.children)
+      }
       placeOf.set(parsed.path, place)
     }
     if (!place) continue

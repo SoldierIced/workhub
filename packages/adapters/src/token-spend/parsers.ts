@@ -114,14 +114,17 @@ export interface CodexSpendState {
   cwd?: string
   /** Fresh tokens (input without cached + output) of the session so far, as last reported. */
   fresh?: number
+  /** Totals come from `token_usage_record` lines (newer Codex) once one was seen. */
+  records?: boolean
 }
 
 /**
- * One line of a Codex rollout. `token_count` events carry the session's running totals, so the
- * spend is the growth of the fresh total since the previous event: a repeated event adds nothing.
+ * One line of a Codex rollout. `token_count` events (and, in newer rollouts, `token_usage_record`
+ * lines, which then win) carry the session's running totals, so the spend is the growth of the
+ * fresh total since the previous one: a repeated total adds nothing.
  */
 export function codexSpendLine(line: string, state: CodexSpendState, buckets: SpendBuckets): void {
-  if (!line.includes('session_meta') && !line.includes('turn_context') && !line.includes('token_count')) return
+  if (!line.includes('session_meta') && !line.includes('turn_context') && !line.includes('token_count') && !line.includes('token_usage_record')) return
   const entry = parseLine(line)
   const payload = obj(entry?.['payload'])
   if (!entry || !payload) return
@@ -129,8 +132,14 @@ export function codexSpendLine(line: string, state: CodexSpendState, buckets: Sp
     state.cwd = str(payload['cwd']) ?? state.cwd
     return
   }
-  if (entry['type'] !== 'event_msg' || payload['type'] !== 'token_count') return
-  const total = obj(obj(payload['info'])?.['total_token_usage'])
+  let total: Obj | undefined
+  if (entry['type'] === 'token_usage_record') {
+    total = obj(payload['thread_token_usage'])
+    // The same running total as token_count's: the growth carries on from it.
+    if (total) state.records = true
+  } else if (entry['type'] === 'event_msg' && payload['type'] === 'token_count' && !state.records) {
+    total = obj(obj(payload['info'])?.['total_token_usage'])
+  }
   if (!total) return
   const input = num(total['input_tokens']) ?? 0
   const cached = num(total['cached_input_tokens']) ?? 0

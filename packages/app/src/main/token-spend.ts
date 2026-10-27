@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { emptySpendCache, TokenSpendScanner, type SpendCache, type SpendSources } from '@workhub/adapters/token-spend'
-import { folderSpend, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
+import { emptySpendCache, TokenSpendScanner, worktreeAliases, type SpendCache, type SpendSources, type WorktreeLink } from '@workhub/adapters/token-spend'
+import { attributeFolder, folderSpend, parseSpendKey, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
 import type { FolderSpendResult } from '../shared/api'
 import { usageAccounts } from './agent-usage'
 
@@ -31,6 +31,8 @@ export class TokenSpendService {
   private scannedAt: number | null = null
   private scanning = false
   private timer: ReturnType<typeof setInterval> | null = null
+  /** Linked git worktree of each path looked up (null: none); emptied by each scan. */
+  private worktrees = new Map<string, WorktreeLink | null>()
 
   constructor(private readonly deps: TokenSpendDeps) {
     this.scanner = new TokenSpendScanner(deps.store.load(emptySpendCache()))
@@ -62,6 +64,7 @@ export class TokenSpendService {
       const sources = await this.deps.sources()
       this.buckets = await this.scanner.scan(sources, startOfLocalDay(now, SPEND_DAYS - 1), spendWindowStart(now))
       this.scannedAt = this.now()
+      this.worktrees = new Map()
       this.deps.store.save(this.scanner.snapshot())
     } catch {
       // A failed scan keeps the previous figures; the next one tries again.
@@ -78,7 +81,15 @@ export class TokenSpendService {
     const folders = (profile?.folders ?? []).filter(Boolean)
     const children: Record<string, string[]> = {}
     for (const f of folders) children[f] = await childFolders(f)
-    const entries = folderSpend(this.buckets, folders, { sinceDay: spendWindowStart(this.now()), children })
+    const sinceDay = spendWindowStart(this.now())
+    // Worktrees outside the folders count for their repository when it is inside them.
+    const outside = new Set<string>()
+    for (const key of Object.keys(this.buckets)) {
+      const parsed = parseSpendKey(key)
+      if (parsed && parsed.day >= sinceDay && !outside.has(parsed.path) && !attributeFolder(parsed.path, folders, children)) outside.add(parsed.path)
+    }
+    const aliases = folders.length ? await worktreeAliases(outside, this.worktrees) : {}
+    const entries = folderSpend(this.buckets, folders, { sinceDay, children, aliases })
     return { entries, days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders: folders.length > 0 }
   }
 }
