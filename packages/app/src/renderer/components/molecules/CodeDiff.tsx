@@ -23,7 +23,7 @@ export function CodeDiff({ hunks, numbered, label }: { hunks: DiffHunk[]; number
   return (
     <div className="overflow-hidden rounded-md border border-border bg-surface">
       <div className="max-h-[32rem] overflow-auto">
-        <table className="w-full border-collapse font-mono text-xs leading-5" aria-label={label}>
+        <table className="w-full border-collapse font-mono text-chat-xs leading-[1.55]" aria-label={label}>
           <tbody>
             {hunks.map((hunk, hi) => {
               if (budget <= 0) return null
@@ -54,7 +54,7 @@ export function CodeDiff({ hunks, numbered, label }: { hunks: DiffHunk[]; number
         </table>
       </div>
       {!all && total > DIFF_PREVIEW_LINES && (
-        <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-xs text-muted">
+        <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-chat-xs text-muted">
           <Button size="sm" variant="ghost" onClick={() => setAll(true)}>
             {t('tool.showAll', { total })}
           </Button>
