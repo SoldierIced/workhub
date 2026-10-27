@@ -35,9 +35,10 @@ describe('per-session usage ceilings', () => {
 })
 
 describe('Kiro usage option', () => {
-  it('is off by default and kept when stored', () => {
-    expect(appOptions({ options: undefined }).kiroUsage).toBe(false)
-    const config = parseConfig({ version: 6, options: { kiroUsage: true } })
-    expect(appOptions(config).kiroUsage).toBe(true)
+  it('is on by default, and a stored choice (off) is kept', () => {
+    expect(appOptions({ options: undefined }).kiroUsage).toBe(true)
+    expect(appOptions(parseConfig({ version: 6, options: {} })).kiroUsage).toBe(true)
+    const config = parseConfig({ version: 6, options: { kiroUsage: false } })
+    expect(appOptions(config).kiroUsage).toBe(false)
   })
 })

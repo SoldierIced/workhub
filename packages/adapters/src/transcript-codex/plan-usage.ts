@@ -14,11 +14,11 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import type { PlanUsageWindow, UsageProvider } from '@workhub/core'
+import type { PlanUsageWindow, UsageProvider, PlanUsageReadOptions } from '@workhub/core'
 import { PlanUsageError } from '../shared/plan-usage-error'
 import { num, obj, parseLine, str, toMillis } from '../shared/reader-utils'
 import { defaultCodexHome, readRollout, rolloutFiles } from './files'
-import { rateWindow, windowLabel } from './parser'
+import { mainLimit, rateWindow, windowLabel } from './parser'
 
 const ENDPOINT = 'https://chatgpt.com/backend-api/codex/usage'
 
@@ -53,9 +53,13 @@ export function codexCredentials(authJson: string): { accessToken: string; accou
   }
 }
 
-/** The last `rate_limits` of a rollout's text, with the time they were written. */
+/**
+ * The last `rate_limits` of a rollout's text, with the time they were written: the main Codex
+ * limit's (no `limit_id`, or `codex`) when there is one, else the last of any bucket.
+ */
 export function lastRateLimits(text: string): PlanUsageWindow[] {
   const lines = text.split('\n')
+  let other: PlanUsageWindow[] = []
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]
     if (!line || !line.includes('rate_limits')) continue
@@ -66,9 +70,11 @@ export function lastRateLimits(text: string): PlanUsageWindow[] {
     const at = toMillis(entry['timestamp'])
     const windows = [rateWindow(limits['primary'], at), rateWindow(limits['secondary'], at)].filter((w): w is PlanUsageWindow => !!w)
     if (!windows.length) continue
-    return windows.map((w) => ({ ...w, percent: Math.min(100, Math.max(0, w.percent)), ...(at !== undefined ? { asOf: at } : {}) }))
+    const out = windows.map((w) => ({ ...w, percent: Math.min(100, Math.max(0, w.percent)), ...(at !== undefined ? { asOf: at } : {}) }))
+    if (mainLimit(limits)) return out
+    if (!other.length) other = out
   }
-  return []
+  return other
 }
 
 export interface CodexPlanUsageOptions {
@@ -90,12 +96,12 @@ export class CodexPlanUsageReader implements UsageProvider {
 
   constructor(private readonly options: CodexPlanUsageOptions = {}) {}
 
-  async read(configDir: string | undefined): Promise<PlanUsageWindow[]> {
+  async read(configDir: string | undefined, options: PlanUsageReadOptions = {}): Promise<PlanUsageWindow[]> {
     const now = this.options.now?.() ?? Date.now()
     const home = resolve(configDir || this.options.defaultHome || defaultCodexHome())
     const cached = this.cache.get(home)
     const retry = this.retryAt.get(home) ?? 0
-    if (cached && (now - cached.at < 45_000 || now < retry)) return cached.windows
+    if (cached && ((!options.force && now - cached.at < 45_000) || now < retry)) return cached.windows
 
     const read = this.options.readFile ?? ((p: string) => readFile(p, 'utf8').catch(() => null))
     const auth = await read(join(home, 'auth.json'))

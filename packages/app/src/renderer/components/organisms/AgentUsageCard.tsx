@@ -1,9 +1,11 @@
 import { ArrowRight, Gauge } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { CreditSpend } from '@workhub/core'
+import type { ApiAgentSpend, CreditSpend } from '@workhub/core'
 import { Badge, Button } from '../atoms'
 import { Card, CardBody, CardHeader } from '../molecules/Card'
 import { accountTitle, UsageWindowRow } from '../molecules/UsageWindowRow'
+import { UsageRefreshButton } from '../molecules/UsageRefreshButton'
+import { ApiSpendList } from '../molecules/ApiSpendList'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import type { AgentAccountUsage, AgentUsageSection, KiroUsageNote } from '../../lib/agent-usage'
@@ -67,6 +69,7 @@ export function AgentUsageCard({
   sections,
   kiro,
   kiroSpend = null,
+  apiSpend = [],
   ceilings,
   now,
   onOpenSettings
@@ -75,6 +78,8 @@ export function AgentUsageCard({
   kiro: KiroUsageNote | null
   /** Kiro credits spent today and over the last 7 days, from its session files. */
   kiroSpend?: CreditSpend | null
+  /** Spend of agents billed by API key, per agent over the last 7 days. */
+  apiSpend?: readonly ApiAgentSpend[]
   ceilings: Record<string, Record<string, number>>
   now: number
   onOpenSettings: () => void
@@ -89,14 +94,17 @@ export function AgentUsageCard({
         title={t('agentUsage.title')}
         icon={<Gauge className="size-4" aria-hidden />}
         actions={
-          <Button size="sm" variant="ghost" className="text-accent hover:text-accent" onClick={onOpenSettings}>
-            {t('agentUsage.openSettings')}
-            <ArrowRight className="size-3.5" aria-hidden />
-          </Button>
+          <span className="flex items-center gap-1">
+            <UsageRefreshButton />
+            <Button size="sm" variant="ghost" className="text-accent hover:text-accent" onClick={onOpenSettings}>
+              {t('agentUsage.openSettings')}
+              <ArrowRight className="size-3.5" aria-hidden />
+            </Button>
+          </span>
         }
       />
       <CardBody className="pt-0 pb-2">
-        {others.length === 0 && !kiroSection && !kiro && !kiroSpend && <p className="pb-2 text-sm text-subtle">{t('agentUsage.empty')}</p>}
+        {others.length === 0 && !kiroSection && !kiro && !kiroSpend && !apiSpend.length && <p className="pb-2 text-sm text-subtle">{t('agentUsage.empty')}</p>}
         <ul className="flex flex-col divide-y divide-border">
           {others.flatMap((s) => s.accounts.map((a) => <AccountRow key={a.key} agentId={s.agentId} account={a} ceilings={ceilings[a.key]} now={now} />))}
           {kiroSection?.accounts.map((a) => (
@@ -115,6 +123,7 @@ export function AgentUsageCard({
             </li>
           )}
         </ul>
+        <ApiSpendList spend={apiSpend} className="border-t border-border pt-1.5 pb-1" />
       </CardBody>
     </Card>
   )

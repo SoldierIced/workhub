@@ -97,5 +97,9 @@ describe('Codex plan usage', () => {
     ].join('\n')
     expect(lastRateLimits(text)).toEqual([{ window: '5h', percent: 30, resetsAt: 1_790_000_000_000, asOf: Date.parse('2026-10-01T11:00:00Z') }])
     expect(lastRateLimits('')).toEqual([])
+    // A per-model bucket written after the main limit does not replace it.
+    const tc = (id: string | null, p: number) => JSON.stringify({ timestamp: '2026-10-20T08:00:00Z', type: 'event_msg', payload: { type: 'token_count', info: null, rate_limits: { limit_id: id, primary: { used_percent: p, window_minutes: 300 } } } })
+    expect(lastRateLimits([tc(null, 20), tc('codex_bengalfox', 2)].join('\n'))[0]?.percent).toBe(20)
+    expect(lastRateLimits(tc('codex_bengalfox', 2))[0]?.percent).toBe(2)
   })
 })

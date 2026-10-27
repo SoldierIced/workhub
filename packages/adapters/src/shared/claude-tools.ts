@@ -83,25 +83,57 @@ export function toolKind(tool: string): string {
 }
 
 /**
- * List prices in USD per million tokens (Workhub 1's table, the same as `/monitor`). Claude Code
- * writes the prompt cache with a 1-hour TTL, billed at twice the input price. First match wins.
+ * Claude list prices in USD per million tokens. Verified 2026-10-27 against Anthropic's official
+ * pricing page, https://platform.claude.com/docs/en/about-claude/pricing (docs.anthropic.com
+ * redirects there), with model ids from https://platform.claude.com/docs/en/about-claude/models/overview.
+ *
+ * Claude Code writes the prompt cache with a 1-hour TTL, billed at twice the input price (true for
+ * every row of that page). Cache reads are 0.1x input, except Fable 5.1 / Mythos 5.1 (0.025x) and
+ * Opus 5.5 / Sonnet 5.5 (0.05x). Claude Haiku 5.5 costs more for prompts over 100,000 tokens
+ * (`long`, applied per request); the other 4.6+ models bill the full 1M context at one price. Not
+ * modelled: fast mode, `inference_geo` US-only (1.1x) and Batch. Ids are matched by substring,
+ * first match wins, so specific ids come before their family.
  */
-const PRICES: readonly { match: string; input: number; output: number; cacheRead: number }[] = [
+interface ClaudePrice {
+  match: string
+  input: number
+  output: number
+  cacheRead: number
+  /** Prices of a request whose prompt is over `over` tokens. */
+  long?: { over: number; input: number; output: number; cacheRead: number }
+}
+const PRICES: readonly ClaudePrice[] = [
   { match: 'fable-5-1', input: 10, output: 50, cacheRead: 0.25 },
   { match: 'mythos-5-1', input: 10, output: 50, cacheRead: 0.25 },
   { match: 'fable', input: 10, output: 50, cacheRead: 1 },
   { match: 'mythos', input: 10, output: 50, cacheRead: 1 },
   { match: 'opus-5-5', input: 4, output: 20, cacheRead: 0.2 },
+  // Opus 4.1 and Opus 4 (`claude-opus-4-20250514`), retired on the Claude API.
+  { match: 'opus-4-1', input: 15, output: 75, cacheRead: 1.5 },
+  { match: 'opus-4-2025', input: 15, output: 75, cacheRead: 1.5 },
+  // Opus 5, 4.8, 4.7, 4.6, 4.5.
   { match: 'opus', input: 5, output: 25, cacheRead: 0.5 },
+  { match: 'sonnet-5-5', input: 2, output: 10, cacheRead: 0.1 },
   { match: 'sonnet-5', input: 2, output: 10, cacheRead: 0.2 },
+  // Sonnet 4.6, 4.5, 4.
   { match: 'sonnet', input: 3, output: 15, cacheRead: 0.3 },
+  { match: 'haiku-5-5', input: 0.1, output: 0.5, cacheRead: 0.01, long: { over: 100_000, input: 0.5, output: 2.5, cacheRead: 0.05 } },
+  // Haiku 3.5 (`claude-3-5-haiku-…`), retired on the Claude API.
+  { match: '3-5-haiku', input: 0.8, output: 4, cacheRead: 0.08 },
+  // Haiku 4.5.
   { match: 'haiku', input: 1, output: 5, cacheRead: 0.1 }
 ]
 
-/** Estimated cost at list prices; undefined for a model missing from the table. */
-export function estimateCost(model: string | undefined, tokens: TokenUsage): Money | undefined {
-  const price = model ? PRICES.find((p) => model.includes(p.match)) : undefined
-  if (!price) return undefined
+/**
+ * Estimated cost at list prices; undefined for a model missing from the table. With `perRequest`
+ * (the tokens of one API request) a model's long-prompt price applies when the prompt (input,
+ * cache writes and reads) is over its threshold; session totals always use the base price.
+ */
+export function estimateCost(model: string | undefined, tokens: TokenUsage, perRequest = false): Money | undefined {
+  const found = model ? PRICES.find((p) => model.includes(p.match)) : undefined
+  if (!found) return undefined
+  const prompt = (tokens.input ?? 0) + (tokens.cacheWrite ?? 0) + (tokens.cacheRead ?? 0)
+  const price = perRequest && found.long && prompt > found.long.over ? found.long : found
   const total =
     (tokens.input ?? 0) * price.input +
     (tokens.cacheWrite ?? 0) * price.input * 2 +

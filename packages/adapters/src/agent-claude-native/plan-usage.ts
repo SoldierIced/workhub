@@ -9,7 +9,7 @@ import { execFile } from 'node:child_process'
 import { readFile, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { PlanUsageWindow, UsageProvider } from '@workhub/core'
+import type { PlanUsageWindow, UsageProvider, PlanUsageReadOptions } from '@workhub/core'
 import { PlanUsageError } from '../shared/plan-usage-error'
 
 type Obj = Record<string, unknown>
@@ -93,13 +93,13 @@ export class ClaudePlanUsageReader implements UsageProvider {
 
   constructor(private readonly options: ClaudePlanUsageOptions = {}) {}
 
-  async read(configDir: string | undefined): Promise<PlanUsageWindow[]> {
+  async read(configDir: string | undefined, options: PlanUsageReadOptions = {}): Promise<PlanUsageWindow[]> {
     const now = this.options.now?.() ?? Date.now()
     const defaultFolder = join(homedir(), '.claude')
     const folder = resolve(configDir || defaultFolder)
     const cached = this.cache.get(folder)
     const retry = this.retryAt.get(folder) ?? 0
-    if (cached && (now - cached.at < 45_000 || now < retry)) return cached.windows
+    if (cached && ((!options.force && now - cached.at < 45_000) || now < retry)) return cached.windows
     if (now < retry) throw new PlanUsageError('rateLimited', 'Anthropic is rate limiting usage reads; retrying later')
 
     const token = await this.token(folder, defaultFolder)

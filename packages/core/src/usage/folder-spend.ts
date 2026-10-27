@@ -107,17 +107,41 @@ export function attributeFolder(
 }
 
 /**
+ * A path inside a git worktree that lives elsewhere, moved to the same place in its main
+ * repository (`aliases`: worktree root -> main worktree root, the deepest root wins); the path
+ * itself when no alias covers it.
+ */
+export function aliasPath(path: string, aliases: Readonly<Record<string, string>>): string {
+  const target = norm(path)
+  let best: string | undefined
+  for (const root of Object.keys(aliases)) {
+    const r = norm(root)
+    if (r && (target === r || target.startsWith(`${r}/`)) && (!best || r.length > norm(best).length)) best = root
+  }
+  return best === undefined ? path : `${norm(aliases[best]!)}${target.slice(norm(best).length)}`
+}
+
+/**
  * Tokens per folder of a profile over the days from `sinceDay` on, largest first. Work outside
  * the profile's folders is left out, so each profile shows only its own spend.
  *
+ * `aliases` (see `aliasPath`) first moves work in a git worktree that lives outside the folders to
+ * the same place in its main repository, so it counts there.
+ *
  * `owns` (see `owningProfile`) narrows that to the work the profile owns: a deeper folder of another
  * profile is left out, and work it owns outside its folders (the profile that "also owns everything
- * outside") counts under that work's own folder. Throwaway folders never count there.
+ * outside") counts under that work's own folder. Throwaway folders never count there. Ownership is
+ * judged on the moved path, so an outside worktree counts only for its repository's profile.
  */
 export function folderSpend(
   buckets: SpendBuckets,
   folders: readonly string[],
-  options: { sinceDay: string; children?: Readonly<Record<string, readonly string[]>>; owns?: (path: string) => boolean }
+  options: {
+    sinceDay: string
+    children?: Readonly<Record<string, readonly string[]>>
+    owns?: (path: string) => boolean
+    aliases?: Readonly<Record<string, string>>
+  }
 ): FolderSpendEntry[] {
   const byPath = new Map<string, FolderSpendEntry>()
   const placeOf = new Map<string, ReturnType<typeof attributeFolder>>()
@@ -127,8 +151,10 @@ export function folderSpend(
     if (!parsed || parsed.day < options.sinceDay || !(tokens > 0)) continue
     let place = placeOf.get(parsed.path)
     if (place === undefined) {
-      place = owns && !owns(parsed.path) ? null : attributeFolder(parsed.path, folders, options.children)
-      if (!place && owns && owns(parsed.path) && !isThrowawayFolder(parsed.path)) place = { name: lastSegment(parsed.path), path: norm(parsed.path), root: false }
+      let path = parsed.path
+      if (options.aliases && !attributeFolder(path, folders, options.children)) path = aliasPath(path, options.aliases)
+      place = owns && !owns(path) ? null : attributeFolder(path, folders, options.children)
+      if (!place && owns && owns(path) && !isThrowawayFolder(path)) place = { name: lastSegment(path), path: norm(path), root: false }
       placeOf.set(parsed.path, place)
     }
     if (!place) continue

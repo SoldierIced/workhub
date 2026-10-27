@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { localDayKey, spendKey, type SpendBuckets } from '@workhub/core'
-import { claudeSpendLine, codexSpendLine, commitClaude, kiroSpendFile, TokenSpendScanner, type ClaudeSpendState, type CodexSpendState } from '../src/token-spend'
+import { claudeSpendLine, codexSpendLine, commitClaude, kiroSpendFile, TokenSpendScanner, worktreeAliases, worktreeOf, type ClaudeSpendState, type CodexSpendState } from '../src/token-spend'
 
 const T = '2026-10-27T10:00:00.000Z'
 const DAY = localDayKey(new Date(T))
@@ -71,6 +71,21 @@ describe('Codex spend lines', () => {
     codexSpendLine(tokenCount(300, 140, 30), state, b)
     expect(b).toEqual({ [key('codex', '/w/repo')]: 190 })
   })
+
+  it('takes the totals from token_usage_record once there is one, without counting twice', () => {
+    const state: CodexSpendState = {}
+    const b: SpendBuckets = {}
+    const record = (input: number, cached: number, output: number) =>
+      JSON.stringify({ timestamp: T, type: 'token_usage_record', payload: { usage: {}, thread_token_usage: { input_tokens: input, cached_input_tokens: cached, output_tokens: output } } })
+    codexSpendLine(JSON.stringify({ timestamp: T, type: 'turn_context', payload: { cwd: '/w/repo' } }), state, b)
+    codexSpendLine(tokenCount(100, 40, 10), state, b)
+    codexSpendLine(record(100, 40, 10), state, b)
+    codexSpendLine(record(300, 140, 30), state, b)
+    // A token_count written after a record (even a lagging one) is ignored.
+    codexSpendLine(tokenCount(250, 100, 20), state, b)
+    codexSpendLine(tokenCount(300, 140, 30), state, b)
+    expect(b).toEqual({ [key('codex', '/w/repo')]: 190 })
+  })
 })
 
 describe('Kiro spend file', () => {
@@ -98,6 +113,25 @@ describe('TokenSpendScanner', () => {
 
   const since = new Date(T).getTime() - 6 * 86_400_000
   const sinceDay = localDayKey(new Date(since))
+
+  it('counts a Claude session copied to another account once, from its newest copy', async () => {
+    const a = join(root, '.claude')
+    const b = join(root, '.claude-work')
+    for (const dir of [a, b]) mkdirSync(join(dir, 'projects', '-w-acme'), { recursive: true })
+    const first = `${assistant('m1', usage(10, 0))}\n`
+    writeFileSync(join(a, 'projects', '-w-acme', 'sess.jsonl'), first)
+    // The failover copy continued in the other account.
+    const copy = join(b, 'projects', '-w-acme', 'sess.jsonl')
+    writeFileSync(copy, `${first}${assistant('m2', usage(5, 0))}\n`)
+    const t = new Date(T).getTime() / 1000
+    utimesSync(join(a, 'projects', '-w-acme', 'sess.jsonl'), t - 60, t - 60)
+    utimesSync(copy, t, t)
+    writeFileSync(join(b, 'projects', '-w-acme', 'other.jsonl'), `${assistant('o1', usage(1, 0))}\n`)
+    const scanner = new TokenSpendScanner()
+    const sources = { claudeDirs: [a, b], codexHomes: [], kiroDirs: [] }
+    expect(await scanner.scan(sources, since, sinceDay)).toEqual({ [key('claude', '/w/acme')]: 16 })
+    expect(Object.keys(scanner.snapshot().files).sort()).toEqual([copy, join(b, 'projects', '-w-acme', 'other.jsonl')].sort())
+  })
 
   it('reads every source, resumes appended transcripts from the cache, and skips old files', async () => {
     const claude = join(root, '.claude')
@@ -152,5 +186,28 @@ describe('TokenSpendScanner', () => {
     const scanner = new TokenSpendScanner({ version: 0, files: { x: { size: 1, mtimeMs: 1, offset: 0, buckets: { a: 1 } } } })
     expect(scanner.cached(sinceDay)).toEqual({})
     expect(await scanner.scan({ claudeDirs: [join(root, 'none')], codexHomes: [join(root, 'none')], kiroDirs: [join(root, 'none')] }, since, sinceDay)).toEqual({})
+  })
+})
+
+describe('git worktrees', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'wh-wt-'))
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('finds the main repository of a linked worktree from git files, and nothing for others', async () => {
+    const main = join(root, 'profile', 'api')
+    const wt = join(root, 'elsewhere', 'api-fix')
+    mkdirSync(join(main, '.git', 'worktrees', 'api-fix'), { recursive: true })
+    writeFileSync(join(main, '.git', 'worktrees', 'api-fix', 'commondir'), '../..\n')
+    mkdirSync(join(wt, 'src'), { recursive: true })
+    writeFileSync(join(wt, '.git'), `gitdir: ${join(main, '.git', 'worktrees', 'api-fix')}\n`)
+    expect(await worktreeOf(join(wt, 'src', 'gone', 'deeper'))).toEqual({ worktree: wt, main })
+    expect(await worktreeOf(join(main, 'src'))).toBeNull()
+    expect(await worktreeOf(join(root, 'nowhere'))).toBeNull()
+    const cache = new Map()
+    expect(await worktreeAliases([join(wt, 'src'), join(root, 'nowhere')], cache)).toEqual({ [wt]: main })
+    expect(cache.size).toBe(2)
   })
 })

@@ -1,6 +1,8 @@
+import type { ApiAgentSpend } from '@workhub/core'
 import type { FolderSpendResult } from '@shared/api'
 import { Spinner } from '../atoms'
 import { HomeCard, HomeNote } from '../molecules/HomeCard'
+import { ApiSpendList } from '../molecules/ApiSpendList'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { formatTokens } from '../../lib/home'
@@ -10,9 +12,10 @@ const ROWS = 7
 
 /**
  * Home's "Token spend by folder" (Workhub 1's "Claude by folder"): the active profile's folders
- * over the last days, from the transcripts the main process scans in the background.
+ * over the last days, from the transcripts the main process scans in the background. Below, what
+ * agents billed by API key spent in money.
  */
-export function TokenSpendCard({ spend, onOpenSettings }: { spend: FolderSpendResult | null; onOpenSettings: () => void }) {
+export function TokenSpendCard({ spend, apiSpend = [], onOpenSettings }: { spend: FolderSpendResult | null; apiSpend?: readonly ApiAgentSpend[]; onOpenSettings: () => void }) {
   const { t } = useI18n()
   const days = spend?.days ?? 7
   const entries = spend?.entries.slice(0, ROWS) ?? []
@@ -55,6 +58,7 @@ export function TokenSpendCard({ spend, onOpenSettings }: { spend: FolderSpendRe
           })}
         </ul>
       )}
+      <ApiSpendList spend={apiSpend} className="mt-3 border-t border-border pt-2" />
     </HomeCard>
   )
 }
