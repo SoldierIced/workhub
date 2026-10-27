@@ -166,6 +166,23 @@ describe('ClaudeBridgeMapper', () => {
   })
 })
 
+describe('ClaudeNativeRuntime stop', () => {
+  it('frees the session id when a bridge had to be killed, so the next engine can start under it', async () => {
+    const rt = new ClaudeNativeRuntime({ bridgeDir: fakeBridge, stopTimeoutMs: 300 })
+    const events: AgentEvent[] = []
+    rt.subscribe((e) => events.push(e))
+    try {
+      await rt.start({ sessionId: 'hang', agent: claude, account: null, cwd: fixtures, env: {} })
+      await rt.prompt('hang', 'ignore close')
+      await rt.stop('hang')
+      expect(events.filter((e) => e.type === 'state').at(-1)).toMatchObject({ state: 'stopped' })
+      await expect(rt.start({ sessionId: 'hang', agent: claude, account: null, cwd: fixtures, env: {} })).resolves.toMatchObject({ agentName: 'Claude Code' })
+    } finally {
+      await rt.stopAll()
+    }
+  })
+})
+
 describe('Claude session history', () => {
   it('lists every session of an account with its folder and title', async () => {
     const history = new ClaudeSessionHistory({ bridgeDir: fakeBridge })
@@ -175,6 +192,11 @@ describe('Claude session history', () => {
       { agentId: 'claude', accountId: 'work', agentSessionId: 'sess-2', title: 'Account /tmp/acme-work', lastModified: 1500 }
     ])
     expect(await history.messages('sess-1', '/tmp/acme-web')).toEqual([{ kind: 'user', text: 'hello from sess-1 in /tmp/acme-web' }])
+  })
+
+  it('looks a conversation up in every project when its folder does not hold it', async () => {
+    const history = new ClaudeSessionHistory({ bridgeDir: fakeBridge })
+    expect(await history.messages('sess-1', '/tmp/moved')).toEqual([{ kind: 'user', text: 'hello from sess-1 in undefined' }])
   })
 
   it('turns stored messages into a replayable conversation', () => {

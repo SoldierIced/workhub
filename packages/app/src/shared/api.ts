@@ -109,6 +109,13 @@ export interface SessionView extends Session {
   controls: boolean
   /** An AI reviewer session (read-only, started by the AI review). */
   readOnly?: boolean
+  /** The engine picked while a turn was running: the hand-over waits for the turn to end. */
+  pendingMode?: 'app' | 'console'
+}
+
+export interface SetModeOptions {
+  /** Hand over at once, even if that ends the turn in progress. */
+  now?: boolean
 }
 
 export interface StartSessionInput {
@@ -181,8 +188,13 @@ export interface SessionsApi {
   respondPermission(id: string, requestId: string, optionId: string | null): void
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
-  /** Switches what the session shows; app and console hand the same agent session over. */
-  setMode(id: string, mode: SessionMode): Promise<void>
+  /**
+   * Switches what the session shows; app and console hand the same agent session over. While a
+   * turn runs the hand-over waits for its end (`pendingMode`) unless `now` is set.
+   */
+  setMode(id: string, mode: SessionMode, options?: SetModeOptions): Promise<void>
+  /** Stops the session if it runs and drops it from the open sessions (it stays in History). */
+  close(id: string): Promise<void>
   setModel(id: string, modelId: string | null): Promise<void>
   mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void
   onEvent(cb: (e: AgentEvent) => void): () => void

@@ -13,6 +13,7 @@ import { pushItem, type SessionData } from '../store'
 import { AiReviewAside, AiReviewButton } from './sessions/AiReviewPanel'
 import { ChatPane } from './sessions/ChatPane'
 import { MonitorPanel } from './sessions/MonitorPanel'
+import { PendingSwitchBar } from './sessions/PendingSwitchBar'
 import { TerminalPane } from './sessions/TerminalPane'
 
 export interface SessionsScreenProps {
@@ -61,7 +62,8 @@ function ModeSwitch({ data }: { data: SessionData }) {
   const v = data.view
   const [pending, setPending] = useState(false)
   const pick = async (mode: SessionMode) => {
-    if (mode === v.mode || pending) return
+    // Picking the view that runs while a switch waits drops the switch.
+    if ((mode === v.mode && !v.pendingMode) || pending) return
     setPending(true)
     try {
       await window.hub.sessions.setMode(v.id, mode)
@@ -76,6 +78,7 @@ function ModeSwitch({ data }: { data: SessionData }) {
       {v.modes.map((m) => {
         const Icon = MODE_ICON[m]
         const active = v.mode === m
+        const waiting = v.pendingMode === m
         return (
           <button
             key={m}
@@ -85,9 +88,12 @@ function ModeSwitch({ data }: { data: SessionData }) {
             disabled={pending}
             onClick={() => void pick(m)}
             data-testid={`mode-${m}`}
+            data-pending={waiting || undefined}
+            title={waiting ? t('session.switchPending', { mode: t(MODE_LABEL[m]) }) : undefined}
             className={cn(
               'inline-flex h-6 items-center gap-1.5 rounded px-2 text-sm transition-colors duration-150 disabled:opacity-60',
-              active ? 'bg-accent-soft font-medium text-text' : 'text-muted hover:text-text'
+              active ? 'bg-accent-soft font-medium text-text' : 'text-muted hover:text-text',
+              waiting && 'text-accent ring-1 ring-accent/50'
             )}
           >
             <Icon className="size-3.5" aria-hidden />
@@ -179,6 +185,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
           {t('session.startingHint')}
         </div>
       )}
+      <PendingSwitchBar view={v} />
       {v.error && (
         <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-sm text-danger">
           <CircleAlert className="size-4" aria-hidden />

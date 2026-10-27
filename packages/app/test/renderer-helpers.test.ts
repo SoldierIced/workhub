@@ -6,7 +6,7 @@ import { recentFolders, usageGroups, type SessionSummary } from '../src/renderer
 import { imageInputFromDataUrl } from '../src/renderer/lib/images'
 import { historyAccounts, historyAgents } from '../src/renderer/screens/HistoryScreen'
 import { formatDuration } from '../src/renderer/screens/sessions/MonitorPanel'
-import { applyEvent, replayItems, type SessionData } from '../src/renderer/store'
+import { applyEvent, replayItems, withReplay, type SessionData } from '../src/renderer/store'
 
 const summary = (cwd: string, startedAt: number, extra: Partial<SessionSummary['view']> = {}, planUsage?: SessionSummary['monitor']['planUsage']): SessionSummary => ({
   view: { id: cwd + startedAt, state: 'ready', cwd, startedAt, ...extra },
@@ -105,6 +105,22 @@ describe('chat store', () => {
       expect.objectContaining({ kind: 'agent', text: 'a' }),
       expect.objectContaining({ kind: 'tool', title: 'Ran the tests', status: 'failed' })
     ])
+  })
+
+  it('replaces what a chat showed with the whole stored conversation when it resumes', () => {
+    // The chat before the console took over: its turns are in the stored conversation too.
+    let s = applyEvent(empty(), { sessionId: 's', type: 'message', role: 'agent', text: 'from the first chat' }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'exit', code: 0 }, next)
+    s = withReplay(
+      s,
+      [
+        { kind: 'agent', text: 'from the first chat' },
+        { kind: 'user', text: 'typed in the terminal' }
+      ],
+      next
+    )
+    expect(s.items.map((i) => i.kind)).toEqual(['agent', 'user', 'replayStart'])
+    expect(s.items.at(-1)).toMatchObject({ kind: 'replayStart', count: 2 })
   })
 })
 
