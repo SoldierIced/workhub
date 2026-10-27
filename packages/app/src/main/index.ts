@@ -885,9 +885,9 @@ function showMain(): void {
 }
 
 /** A PR window's "Show in Workhub": the main window comes up on Pull requests with that PR selected. */
-function showPullRequestInMain(url: string): void {
+function showPullRequestInMain(url: string, profileId: string | null): void {
   showMain()
-  send('codeHost:focus', url)
+  send('codeHost:focus', url, profileId)
 }
 
 function navigate(route: TrayRoute): void {

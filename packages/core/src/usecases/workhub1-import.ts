@@ -16,6 +16,7 @@ import {
 } from '../health/types'
 import { PR_EVENT_KINDS, type PrEventToggles } from '../pr-events/types'
 import { DEFAULT_AI_REVIEW_SETTINGS } from '../ai-review/defaults'
+import { DEFAULT_PROTECTED_BRANCHES } from '../codehost/usecases'
 import { effectiveAgentKey } from './effective-agents'
 import { commitImported } from './configuration'
 import type { Result } from './validation'
@@ -51,6 +52,8 @@ export interface Workhub1Settings {
   usageChecker?: string
   /** `settings.usageRefreshMinutes` */
   usageRefreshMinutes?: number
+  /** `settings.protectedBranches`: the branches Close PR never deletes, as the comma-separated text of Settings → Flows. */
+  protectedBranches?: string
   /** `settings.prBabysitter` */
   prBabysitter?: boolean
   /** `settings.promptLanguage`: `english` or `spanish`. */
@@ -542,6 +545,12 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
   if (allOff || n.automations === false) options.notifyAutomations = false
   // Workhub 1 keeps Health alerts under their own key (`settings.healthAlerts`), not the category.
   if (allOff || v1.healthAlerts === false) options.notifyHealth = false
+  // Only a list the user changed from Workhub 1's default is worth carrying over.
+  if (v1.protectedBranches !== undefined) {
+    const list = [...new Set(v1.protectedBranches.split(/[,\s]+/).filter(Boolean).map((b) => b.toLowerCase()))]
+    const isDefault = list.length === DEFAULT_PROTECTED_BRANCHES.length && DEFAULT_PROTECTED_BRANCHES.every((b) => list.includes(b))
+    if (list.length && !isDefault) options.protectedBranches = list
+  }
   if (Object.keys(options).length) {
     if (current.options) note('exists', 'options')
     else plan.options = options

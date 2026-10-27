@@ -186,7 +186,20 @@ function Shell() {
     showScreen('pullRequests')
   }, [showScreen])
   // A pull request window asked to show its PR here.
-  useEffect(() => window.hub.codeHost.onFocus((url) => openPullRequest(url)), [openPullRequest])
+  // The PR may belong to another profile than the one the main window shows: switch to it first.
+  useEffect(
+    () =>
+      window.hub.codeHost.onFocus((url, profileId) => {
+        void (async () => {
+          if (profileId && profileId !== activeProfileId && profiles.some((p) => p.id === profileId)) {
+            const r = await window.hub.config.setActiveProfile(profileId)
+            if (r.ok) await refreshConfig()
+          }
+          openPullRequest(url)
+        })()
+      }),
+    [openPullRequest, activeProfileId, profiles]
+  )
   // A ticket window asked to show one of the sessions.
   useEffect(() => window.hub.tickets.onOpenSession(openSession), [openSession])
   const openSettings = useCallback((tab?: string) => {
