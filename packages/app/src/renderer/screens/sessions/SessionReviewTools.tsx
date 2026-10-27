@@ -25,7 +25,7 @@ function useDelivery(sessionId: string): LocalReviewDelivery | null {
 }
 
 /** "Review changes": the session's local diff in its own window, with the state of the last review message. */
-export function LocalReviewButton({ sessionId }: { sessionId: string }) {
+export function LocalReviewButton({ sessionId, compact }: { sessionId: string; compact?: boolean }) {
   const { t, formatDate } = useI18n()
   const delivery = useDelivery(sessionId)
   const status =
@@ -45,8 +45,10 @@ export function LocalReviewButton({ sessionId }: { sessionId: string }) {
         title={status ? `${t('localReview.buttonHint')}\n${status}` : t('localReview.buttonHint')}
         onClick={() => void window.hub.localReview.openWindow(sessionId)}
         data-testid="local-review-button"
+        aria-label={compact ? t('localReview.button') : undefined}
+        className={compact ? 'px-1.5' : undefined}
       >
-        {t('localReview.button')}
+        {!compact && t('localReview.button')}
       </Button>
       {delivery && delivery.state !== 'delivered' && (
         <Badge tone={delivery.state === 'queued' ? 'info' : 'warning'} title={status ?? undefined} data-testid="local-review-delivery">
@@ -80,15 +82,23 @@ function FileRow({ file, cwd }: { file: SessionFile; cwd: string }) {
 }
 
 /** "Files": every file the agent edited, wrote or read in this session, each opening in the file viewer. Hidden until there is one. */
-export function SessionFilesMenu({ data }: { data: SessionData }) {
+export function SessionFilesMenu({ data, compact }: { data: SessionData; compact?: boolean }) {
   const { t } = useI18n()
   const files = useMemo(() => sessionFiles(data.items), [data.items])
   if (!files.length) return null
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <Button size="sm" variant="ghost" icon={<FolderOpen className="size-3.5" aria-hidden />} title={t('files.buttonHint')} data-testid="session-files">
-          {t('files.button')}
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<FolderOpen className="size-3.5" aria-hidden />}
+          title={t('files.buttonHint')}
+          data-testid="session-files"
+          aria-label={compact ? t('files.button') : undefined}
+          className={compact ? 'px-1.5' : undefined}
+        >
+          {!compact && t('files.button')}
         </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -106,13 +116,13 @@ export function SessionFilesMenu({ data }: { data: SessionData }) {
   )
 }
 
-/** The session header's review entry points: the local review and the Files list. */
-export function SessionReviewTools({ data }: { data: SessionData }) {
+/** The session header's review entry points: the local review and the Files list (`compact`: icons only, the name on hover). */
+export function SessionReviewTools({ data, compact }: { data: SessionData; compact?: boolean }) {
   if (data.view.readOnly) return null
   return (
     <>
-      <SessionFilesMenu data={data} />
-      <LocalReviewButton sessionId={data.view.id} />
+      <SessionFilesMenu data={data} compact={compact} />
+      <LocalReviewButton sessionId={data.view.id} compact={compact} />
     </>
   )
 }

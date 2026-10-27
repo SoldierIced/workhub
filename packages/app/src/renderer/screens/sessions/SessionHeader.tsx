@@ -1,4 +1,4 @@
-import { Ear, Folder, MessagesSquare, MoreHorizontal, ShieldAlert, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
+import { Cpu, Ear, Folder, MessagesSquare, MoreHorizontal, Shield, ShieldAlert, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { effectiveAgentKey, sessionIdentity } from '@workhub/core'
 import type { SessionMode, SessionView } from '@shared/api'
@@ -69,13 +69,20 @@ function ModeSwitch({ view: v, iconsOnly }: { view: SessionView; iconsOnly: bool
   )
 }
 
-function ModelPicker({ view: v, wide }: { view: SessionView; wide?: boolean }) {
+/** The current option's name, for an icon-only picker's tooltip. */
+function optionName(options: readonly { value: string; label: string }[], value: string, fallback: string): string {
+  return options.find((o) => o.value === value)?.label ?? fallback
+}
+
+function ModelPicker({ view: v, wide, compact }: { view: SessionView; wide?: boolean; compact?: boolean }) {
   const { t } = useI18n()
   const picker = sessionModelPicker(v)
   const change = (id: string) => {
     rememberModel(effectiveAgentKey(v.agentId, v.accountId), id || null)
     void window.hub.sessions.setModel(v.id, id || null).catch((e: unknown) => pushItem(v.id, 'error', errorText(e)))
   }
+  const options = [...(picker.allowDefault ? [{ value: '', label: t('session.modelDefault') }] : []), ...picker.options]
+  const name = `${t('session.model')}: ${optionName(options, picker.value, t('session.modelDefault'))}`
   return (
     <span data-testid="model-picker" title={v.modelIgnored ? t('agentControls.modelIgnored') : undefined}>
       <Select
@@ -83,15 +90,16 @@ function ModelPicker({ view: v, wide }: { view: SessionView; wide?: boolean }) {
         value={picker.value}
         onChange={change}
         disabled={picker.disabled}
-        options={[...(picker.allowDefault ? [{ value: '', label: t('session.modelDefault') }] : []), ...picker.options]}
-        className={cn('h-7 text-sm', wide ? 'w-full!' : 'w-40!')}
+        options={options}
+        compact={compact ? { icon: <Cpu className="size-3.5 shrink-0 text-muted" aria-hidden />, title: v.modelIgnored ? `${name}\n${t('agentControls.modelIgnored')}` : name } : undefined}
+        className={cn('h-7 text-sm', wide ? 'w-full!' : compact ? 'w-auto! gap-1 px-1.5' : 'w-40!')}
       />
     </span>
   )
 }
 
 /** The session's agent (Kiro, OpenCode) or permission preset (Codex, Gemini), switched live over ACP. */
-function ModePicker({ view: v, wide }: { view: SessionView; wide?: boolean }) {
+function ModePicker({ view: v, wide, compact }: { view: SessionView; wide?: boolean; compact?: boolean }) {
   const { t } = useI18n()
   const picker = sessionModePicker(v)
   const change = (id: string) => {
@@ -100,14 +108,21 @@ function ModePicker({ view: v, wide }: { view: SessionView; wide?: boolean }) {
     void window.hub.sessions.setAgentMode(v.id, id).catch((e: unknown) => pushItem(v.id, 'error', errorText(e)))
   }
   const label = t(picker.kind === 'agent' ? 'agentControls.agent' : 'agentControls.permission')
+  const hint = v.modeIgnored ? t('agentControls.modeIgnored') : t(picker.kind === 'agent' ? 'agentControls.agentHint' : 'agentControls.permissionHint')
+  const Icon = picker.kind === 'agent' ? UserRound : Shield
   return (
-    <span
-      data-testid="mode-picker"
-      className={cn('inline-flex items-center gap-1 text-xs text-muted', wide && 'w-full')}
-      title={v.modeIgnored ? t('agentControls.modeIgnored') : t(picker.kind === 'agent' ? 'agentControls.agentHint' : 'agentControls.permissionHint')}
-    >
-      {picker.kind === 'agent' && <UserRound className="size-3.5 shrink-0" aria-hidden />}
-      <Select aria-label={label} value={picker.value} onChange={change} disabled={picker.disabled} options={picker.options} placeholder={label} className={cn('h-7 text-sm', wide ? 'w-full!' : 'w-36!')} />
+    <span data-testid="mode-picker" className={cn('inline-flex items-center gap-1 text-xs text-muted', wide && 'w-full')} title={compact ? undefined : hint}>
+      {picker.kind === 'agent' && !compact && <UserRound className="size-3.5 shrink-0" aria-hidden />}
+      <Select
+        aria-label={label}
+        value={picker.value}
+        onChange={change}
+        disabled={picker.disabled}
+        options={picker.options}
+        placeholder={label}
+        compact={compact ? { icon: <Icon className="size-3.5 shrink-0 text-muted" aria-hidden />, title: `${label}: ${optionName(picker.options, picker.value, label)}\n${hint}` } : undefined}
+        className={cn('h-7 text-sm', wide ? 'w-full!' : compact ? 'w-auto! gap-1 px-1.5' : 'w-36!')}
+      />
     </span>
   )
 }
@@ -267,9 +282,11 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
   const showContinue = live && !v.readOnly && v.modes.includes('app')
   const unattended = v.permissionMode?.unattended === true
 
-  const chipsInline = density === 'full'
-  // The review tools, the AI review and "Continue" fold before the pickers do.
-  const actionsInline = density === 'full' || density === 'compact'
+  // Below `full` the pickers and actions keep their icon only; then, level by level, the chips,
+  // the actions and the pickers fold into "More".
+  const iconControls = density !== 'full'
+  const chipsInline = density === 'full' || density === 'icons'
+  const actionsInline = chipsInline || density === 'compact'
   const controlsInline = density !== 'narrow'
   const agentMode = showAgentMode && <Badge className="shrink-0">{t('session.agentMode', { mode: v.currentModeId! })}</Badge>
   const overflow = (
@@ -298,15 +315,15 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
   const hasOverflow = !chipsInline || (!actionsInline && (live || !v.readOnly)) || (!controlsInline && (showModePicker || showModelPicker))
 
   return (
-    <header ref={ref} className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-surface/60 px-4" data-testid="session-header" data-density={density}>
+    <header ref={ref} className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-surface/60 px-4" data-testid="session-header" data-density={density}>
       {/* Clips rather than spills: nothing here is ever drawn under the controls on the right. */}
-      <div ref={identityRef} className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-sm" data-testid="session-identity">
+      <div ref={identityRef} className={cn('flex min-w-0 flex-1 items-center overflow-hidden text-sm', iconControls ? 'gap-2' : 'gap-2.5')} data-testid="session-identity">
         <SquareTerminal className="size-4 shrink-0 text-accent" aria-hidden />
         <h1 className={cn('max-w-48 truncate font-semibold', density === 'narrow' ? 'min-w-12 shrink' : 'shrink-0')} title={v.agentName}>
           {v.agentName}
         </h1>
         {v.accountName && (
-          <Badge tone="accent" data-testid="session-account" className="max-w-36 shrink" title={t('header.account', { name: v.accountName })} icon={<UserRound className="size-3 shrink-0" aria-hidden />}>
+          <Badge tone="accent" data-testid="session-account" className={cn('shrink', iconControls ? 'max-w-28' : 'max-w-36')} title={t('header.account', { name: v.accountName })} icon={<UserRound className="size-3 shrink-0" aria-hidden />}>
             <span className="truncate">{v.accountName}</span>
           </Badge>
         )}
@@ -325,15 +342,15 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
           </span>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className={cn('flex shrink-0 items-center', iconControls ? 'gap-1' : 'gap-1.5')}>
         {chipsInline && <PermissionChip view={v} />}
         {chipsInline && agentMode}
-        {v.modes.length > 1 && <ModeSwitch view={v} iconsOnly={density === 'narrow'} />}
-        {controlsInline && showModePicker && <ModePicker view={v} />}
-        {controlsInline && showModelPicker && <ModelPicker view={v} />}
-        {actionsInline && <SessionReviewTools data={data} />}
-        {actionsInline && live && <AiReviewButton view={v} />}
-        {actionsInline && showContinue && <ContinueMenu view={v} />}
+        {v.modes.length > 1 && <ModeSwitch view={v} iconsOnly={iconControls} />}
+        {controlsInline && showModePicker && <ModePicker view={v} compact={iconControls} />}
+        {controlsInline && showModelPicker && <ModelPicker view={v} compact={iconControls} />}
+        {actionsInline && <SessionReviewTools data={data} compact={iconControls} />}
+        {actionsInline && live && <AiReviewButton view={v} compact={iconControls} />}
+        {actionsInline && showContinue && <ContinueMenu view={v} compact={iconControls} />}
         {live && (
           <Button size="sm" variant="ghost" icon={<Square className="size-3" aria-hidden />} onClick={() => void window.hub.sessions.stop(v.id)}>
             {t('session.stop')}
