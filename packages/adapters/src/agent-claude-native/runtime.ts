@@ -23,7 +23,7 @@ import type {
   Unsubscribe
 } from '@workhub/core'
 import { pathKeyOf } from '../shared/login-path'
-import { ClaudeBridgeMapper, permissionResult, resultStopReason } from './mapping'
+import { ClaudeBridgeMapper, permissionResult, resultStopReason, settleResult } from './mapping'
 
 export interface ClaudeNativeRuntimeOptions {
   /** Folder holding `bridge.mjs` and `sessions.mjs`. */
@@ -45,6 +45,8 @@ export interface ClaudeNativeRuntimeOptions {
 }
 
 interface Pending {
+  /** The uuid stamped on the prompt, so a result can tell which prompts it answers. */
+  uuid: string
   resolve: (r: PromptResult) => void
   reject: (e: Error) => void
 }
@@ -155,19 +157,27 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
     return { agentSessionId, agentName: 'Claude Code', permissionMode: req.readOnly ? { id: 'plan', label: 'Plan (read-only)', source: 'workhub' } : null }
   }
 
+  /**
+   * Sends a prompt. One sent while a turn runs goes in at priority `next`: Claude Code folds it
+   * into the running turn between tool rounds (as a message typed in the terminal while Claude
+   * works), or runs it as the next turn when the turn ends first.
+   */
   async prompt(sessionId: string, text: string, images: ImageInput[] = []): Promise<PromptResult> {
     const s = this.require(sessionId)
-    s.cancelled = false
+    const midTurn = s.pending.length > 0
+    if (!midTurn) s.cancelled = false
     this.emit({ sessionId, type: 'state', state: 'busy' })
-    const result = new Promise<PromptResult>((resolve, reject) => s.pending.push({ resolve, reject }))
+    const uuid = randomUUID()
+    const result = new Promise<PromptResult>((resolve, reject) => s.pending.push({ uuid, resolve, reject }))
+    const stamp = { uuid, ...(midTurn ? { priority: 'next' } : {}) }
     if (images.length) {
       const content = [
         ...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } })),
         ...(text ? [{ type: 'text', text }] : [])
       ]
-      this.send(s, { type: 'user', content })
+      this.send(s, { type: 'user', content, ...stamp })
     } else {
-      this.send(s, { type: 'user', text })
+      this.send(s, { type: 'user', text, ...stamp })
     }
     return result
   }
@@ -249,9 +259,16 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
         const resetsAt = limitResetFromText(text)
         this.emit({ sessionId: s.id, type: 'usageLimit', message: text.slice(0, 500), ...(resetsAt !== undefined ? { resetsAt } : {}) })
       }
-      this.finishPending(s, resultStopReason(message, s.cancelled))
+      const { settled, stillBusy } = settleResult(
+        s.pending.map((p) => p.uuid),
+        message
+      )
+      const stopReason = resultStopReason(message, s.cancelled)
+      for (const p of s.pending.filter((p) => settled.includes(p.uuid))) p.resolve({ stopReason })
+      s.pending = s.pending.filter((p) => !settled.includes(p.uuid))
       s.cancelled = false
-      if (this.sessions.has(s.id)) this.emit({ sessionId: s.id, type: 'state', state: 'ready' })
+      // A prompt sent during the turn still waits for its own turn: the session stays busy.
+      if (!stillBusy && this.sessions.has(s.id)) this.emit({ sessionId: s.id, type: 'state', state: 'ready' })
       return
     }
     if (line['type'] === 'error') {
