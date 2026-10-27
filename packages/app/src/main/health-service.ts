@@ -13,7 +13,7 @@ import {
 } from '@workhub/adapters/health-elastic'
 import type { HttpClient } from '@workhub/adapters/http'
 import {
-  connectionSecretRef,
+  secretForConnectionTest,
   DEFAULT_HEALTH_REFRESH_MINUTES,
   HEALTH_CONNECTION_SETTINGS,
   moduleScreens,
@@ -176,8 +176,9 @@ export class HealthService {
   /** Checks a connection as typed in the form: one `_count`, with the typed or the stored secret. */
   async test(connection: Connection, change: SecretChange, indexToProbe?: string): Promise<ConnectionTest> {
     if (this.deps.demo) return new DemoHealthProvider().test()
-    const ref = connection.secretRef ?? connectionSecretRef(connection.id)
-    const secret = change.action === 'set' ? change.value : change.action === 'keep' ? await this.deps.secrets.get(ref) : null
+    const resolved = await secretForConnectionTest(await this.deps.configuration.current(), this.deps.secrets, connection, change)
+    if (!resolved.ok) return resolved
+    const { secret } = resolved
     const built = buildHealthProvider(connection, secret, indexToProbe, this.deps.httpFor)
     if ('missing' in built) {
       if (built.missing === 'unsupported') return { ok: false, error: 'This health provider is not supported yet' }

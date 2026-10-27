@@ -174,6 +174,28 @@ export type SecretChange =
   | { action: 'set'; value: string }
   | { action: 'clear' }
 
+export const RETYPE_SECRET_TO_TEST = 'The address changed: enter the secret again to test this connection'
+
+/**
+ * The secret a "Test connection" may use for a connection as typed in a form. A typed secret is
+ * used as is. Keeping the stored one only ever reads the secret Workhub saved for that connection
+ * id, and only while the typed address is still the saved one: the stored secret is never sent to
+ * an address it was not saved for, and the form never picks which stored secret is read.
+ */
+export async function secretForConnectionTest(
+  config: WorkhubConfig,
+  secrets: Pick<SecretStore, 'get'>,
+  connection: Connection,
+  change: SecretChange
+): Promise<{ ok: true; secret: string | null } | { ok: false; error: string }> {
+  if (change.action === 'set') return { ok: true, secret: change.value }
+  if (change.action === 'clear') return { ok: true, secret: null }
+  const saved = config.connections.find((c) => c.id === connection.id)
+  if (!saved) return { ok: true, secret: null }
+  if ((saved.endpoint ?? '').trim() !== (connection.endpoint ?? '').trim()) return { ok: false, error: RETYPE_SECRET_TO_TEST }
+  return { ok: true, secret: await secrets.get(connectionSecretRef(saved.id)) }
+}
+
 /**
  * Config use cases bound to their stores. Every write validates first, then persists secrets,
  * then the config, so a rejected change touches neither store.

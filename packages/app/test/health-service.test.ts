@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyConfig, type Connection, type HealthEnvironment, type Profile, type SecretStore, type WorkhubConfig, DEFAULT_HEALTH_THRESHOLDS } from '@workhub/core'
+import { emptyConfig, RETYPE_SECRET_TO_TEST, type Connection, type HealthEnvironment, type Profile, type SecretStore, type WorkhubConfig, DEFAULT_HEALTH_THRESHOLDS } from '@workhub/core'
 import type { HttpClient, HttpRequest } from '@workhub/adapters/http'
 import { buildHealthProvider, HEALTH_MIN_GAP_MS, HealthService, tlsOf } from '../src/main/health-service'
 
@@ -146,5 +146,14 @@ describe('HealthService', () => {
     expect(c.calls[0]?.headers['Authorization']).toBe('ApiKey typed-key')
     const missing = await s.test(elastic, { action: 'keep' })
     expect(missing.ok).toBe(false)
+  })
+
+  it('keeps the stored secret only for the saved address and the connection\'s own secret', async () => {
+    const c = cluster()
+    const s = service({ http: c.http, secrets: { 'connection/es': 'stored-key', 'connection/other': 'other-key' } })
+    expect(await s.test({ ...elastic, endpoint: 'https://attacker.example.net' }, { action: 'keep' })).toEqual({ ok: false, error: RETYPE_SECRET_TO_TEST })
+    expect(c.calls).toEqual([])
+    expect((await s.test({ ...elastic, secretRef: 'connection/other' }, { action: 'keep' })).ok).toBe(true)
+    expect(c.calls.map((r) => r.headers['Authorization'])).toEqual(['ApiKey stored-key'])
   })
 })
