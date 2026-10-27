@@ -61,7 +61,7 @@ export interface Workhub1Settings {
   sessionModels?: Record<string, string>
   /** `session.effort.<account folder name>` */
   sessionEfforts?: Record<string, string>
-  /** `terminal.*`, `chat.fontSize`, `app.textSize`: only reported, Workhub 2 has no such options. */
+  /** `terminal.*`, `chat.fontSize`, `app.textSize`: mapped to the renderer's appearance preferences. */
   appearance?: Partial<Record<Workhub1AppearanceKey, string | number>>
   /** `workbench.openSessions` */
   openSessions?: Workhub1OpenSessions
@@ -184,6 +184,47 @@ export interface ImportPrefs {
   /** The model new sessions start with, per agent key (`claude:<account id>`). */
   models?: Record<string, string>
   language?: 'en' | 'es'
+  /** Workhub 1's terminal theme and font, and its text sizes (the renderer clamps them into its ranges). */
+  appearance?: ImportAppearance
+}
+
+/** Settings → Appearance values carried over from Workhub 1. */
+export interface ImportAppearance {
+  /** `terminal.theme`: a color scheme name of the shared iTerm2-Color-Schemes catalog. */
+  terminalTheme?: string
+  /** `terminal.fontFamily`; Workhub 1's empty value (its default) is not carried. */
+  terminalFontFamily?: string
+  /** `terminal.fontSize`, in points (pixels in Workhub 2). */
+  terminalFontSize?: number
+  /** `chat.fontSize` */
+  chatFontSize?: number
+  /** `app.textSize` */
+  textSize?: number
+}
+
+/** Workhub 1's appearance settings as Workhub 2 preferences; empty or unreadable values are left out. */
+export function appearanceFrom(values: Workhub1Settings['appearance']): ImportAppearance | undefined {
+  const text = (key: Workhub1AppearanceKey) => {
+    const v = values?.[key]
+    return typeof v === 'string' && v.trim() ? v.trim() : undefined
+  }
+  const size = (key: Workhub1AppearanceKey) => {
+    const v = values?.[key]
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined
+  }
+  const out: ImportAppearance = {}
+  const theme = text('terminal.theme')
+  if (theme) out.terminalTheme = theme
+  const family = text('terminal.fontFamily')
+  if (family) out.terminalFontFamily = family
+  const terminalFontSize = size('terminal.fontSize')
+  if (terminalFontSize) out.terminalFontSize = terminalFontSize
+  const chatFontSize = size('chat.fontSize')
+  if (chatFontSize) out.chatFontSize = chatFontSize
+  const textSize = size('app.textSize')
+  if (textSize) out.textSize = textSize
+  return Object.keys(out).length ? out : undefined
 }
 
 export interface ImportPlan {
@@ -501,12 +542,7 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
   if (v1.usageChecker?.trim()) note('notSupported', 'settings', 'usageChecker')
   if (v1.usageRefreshMinutes !== undefined) note('notSupported', 'settings', 'usageRefreshMinutes')
   if (v1.prBabysitter === true) note('notSupported', 'settings', 'prBabysitter')
-  for (const key of WORKHUB1_APPEARANCE_KEYS) {
-    const v = v1.appearance?.[key]
-    if (v !== undefined && v !== '') note('notSupported', 'settings', key)
-  }
-
-  // Renderer preferences: the model per account and the interface language.
+  // Renderer preferences: the model per account, the interface language and the appearance.
   const prefs: ImportPrefs = {}
   for (const [folderName, model] of Object.entries(v1.sessionModels ?? {})) {
     const accountId = accountByFolderName.get(folderName)
@@ -519,7 +555,9 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
   const lang = v1.appLanguage?.toLowerCase() ?? ''
   if (lang.startsWith('es')) prefs.language = 'es'
   else if (lang.startsWith('en')) prefs.language = 'en'
-  if (prefs.models || prefs.language) plan.prefs = prefs
+  const appearance = appearanceFrom(v1.appearance)
+  if (appearance) prefs.appearance = appearance
+  if (prefs.models || prefs.language || prefs.appearance) plan.prefs = prefs
 
   // Sidebar groups and order. A Claude session's id is its agent session id in both apps.
   const groups = sessionGroupsFrom(v1.openSessions, (kind) => (kind === 'claude' ? keyOf(accountRef.main) : kind === 'claudeSecond' && accountRef.second ? keyOf(accountRef.second) : null))
