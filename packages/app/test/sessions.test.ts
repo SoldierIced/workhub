@@ -522,3 +522,71 @@ describe('closing a session', () => {
     expect(manager.list()).toEqual([])
   })
 })
+
+describe('SessionManager prompt gate', () => {
+  /** An ACP runtime whose turns end when the test says so. */
+  function gated(midTurnInput = false) {
+    const ctx = setup()
+    if (midTurnInput) (ctx.acp as unknown as { caps: AgentCapabilities }).caps = caps({ mcpControl: false, midTurnInput: true })
+    const ends: (() => void)[] = []
+    ctx.acp.prompt = async (id: string, text: string) => {
+      ctx.acp.prompts.push({ id, text })
+      await new Promise<void>((r) => ends.push(r))
+      return { stopReason: 'end_turn' }
+    }
+    const endTurn = async () => {
+      ends.shift()?.()
+      await flush()
+    }
+    return { ...ctx, endTurn, ends }
+  }
+
+  it('keeps one prompt in flight per session: a delivery at the same moment is refused, a second user prompt waits', async () => {
+    const { manager, acp, endTurn } = gated()
+    const view = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
+    await flush()
+    const queued = manager.prompt(view.id, 'queued message')
+    // The AI review, the local review, an automation or a Slack wake at the same moment: told to retry.
+    expect(manager.tryPrompt(view.id, 'review findings')).toBeNull()
+    const second = manager.prompt(view.id, 'second')
+    await flush()
+    expect(acp.prompts.map((p) => p.text)).toEqual(['queued message'])
+    await endTurn()
+    await expect(queued).resolves.toBe('end_turn')
+    expect(acp.prompts.map((p) => p.text)).toEqual(['queued message', 'second'])
+    expect(manager.tryPrompt(view.id, 'review findings')).toBeNull()
+    await endTurn()
+    await second
+    const review = manager.tryPrompt(view.id, 'review findings')
+    expect(review).not.toBeNull()
+    await endTurn()
+    await expect(review).resolves.toBe('end_turn')
+    expect(acp.prompts.map((p) => p.text)).toEqual(['queued message', 'second', 'review findings'])
+  })
+
+  it('drops prompts still waiting when the session is interrupted, so none goes out after the turn', async () => {
+    const { manager, acp, endTurn } = gated()
+    const view = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
+    await flush()
+    const running = manager.prompt(view.id, 'running')
+    const waiting = manager.prompt(view.id, 'waiting')
+    await manager.cancel(view.id)
+    await expect(waiting).rejects.toThrow('workhub:prompt-withdrawn')
+    await endTurn()
+    await running
+    await flush()
+    expect(acp.prompts.map((p) => p.text)).toEqual(['running'])
+    expect(manager.tryPrompt(view.id, 'next')).not.toBeNull()
+  })
+
+  it('lets agents that take input mid-turn get a prompt while one runs', async () => {
+    const { manager, acp, ends } = gated(true)
+    const view = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
+    await flush()
+    void manager.prompt(view.id, 'first')
+    expect(manager.tryPrompt(view.id, 'folded in')).not.toBeNull()
+    await flush()
+    expect(acp.prompts.map((p) => p.text)).toEqual(['first', 'folded in'])
+    ends.forEach((e) => e())
+  })
+})

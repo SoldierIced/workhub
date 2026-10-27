@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { NO_CAPABILITIES, type SessionState } from '@workhub/core'
 import type { SessionView, StartSessionInput } from '../src/shared/api'
 import { expandHome } from '../src/main/automations'
-import { SessionDriver } from '../src/main/session-driver'
+import { SessionDriver, type DrivableSessions } from '../src/main/session-driver'
+import { SendGate } from '../src/main/send-gate'
 
 function view(id: string, state: SessionState, over: Partial<SessionView> = {}): SessionView {
   return {
@@ -33,24 +34,34 @@ function setup() {
   const prompts: [string, string][] = []
   const writes: [string, string][] = []
   const shown: [string, string][] = []
-  const driver = new SessionDriver(
-    {
-      list: () => views,
-      start: async (_i: StartSessionInput) => views[0]!,
-      prompt: async (id, text) => (prompts.push([id, text]), 'end_turn'),
-      write: (channel, data) => void writes.push([channel, data]),
-      cancel: async () => undefined,
-      stop: async () => undefined,
-      remove: (id) => {
-        const i = views.findIndex((v) => v.id === id)
-        if (i < 0 || views[i]!.state === 'ready' || views[i]!.state === 'busy') return false
-        views.splice(i, 1)
-        return true
-      }
-    },
-    (id, text) => void shown.push([id, text])
-  )
-  return { views, prompts, writes, shown, driver }
+  // The session manager's gate, with turns that end when the test says so.
+  const gate = new SendGate()
+  const turns: (() => void)[] = []
+  const turn = (id: string, text: string) => () => {
+    prompts.push([id, text])
+    return new Promise<string>((resolve) => turns.push(() => resolve('end_turn')))
+  }
+  const sessions: DrivableSessions = {
+    list: () => views,
+    start: async (_i: StartSessionInput) => views[0]!,
+    prompt: (id, text) => gate.run(id, turn(id, text)),
+    tryPrompt: (id, text) => gate.tryRun(id, turn(id, text)),
+    write: (channel, data) => void writes.push([channel, data]),
+    cancel: async () => undefined,
+    stop: async () => undefined,
+    remove: (id) => {
+      const i = views.findIndex((v) => v.id === id)
+      if (i < 0 || views[i]!.state === 'ready' || views[i]!.state === 'busy') return false
+      views.splice(i, 1)
+      return true
+    }
+  }
+  const driver = new SessionDriver(sessions, (id, text) => void shown.push([id, text]))
+  const endTurn = async () => {
+    turns.shift()?.()
+    await new Promise((r) => setTimeout(r, 0))
+  }
+  return { views, prompts, writes, shown, driver, sessions, endTurn }
 }
 
 describe('session driver', () => {
@@ -87,6 +98,28 @@ describe('session driver', () => {
     expect(shown).toEqual([['v3', 'hi']])
     expect(await driver.deliver('v2', 'a\nb')).toBe('delivered')
     expect(writes).toEqual([['v2:console', 'a\rb\r']])
+  })
+
+  it('waits while another prompt of the session is in flight, even when the session still reads ready', async () => {
+    const { views, driver, sessions, prompts, shown, endTurn } = setup()
+    views.push(view('v1', 'ready'))
+    // The user's queued message goes out as the session turns idle; the AI review delivers at the same moment.
+    const user = sessions.prompt('v1', 'queued message')
+    expect(await driver.deliver('v1', 'review findings')).toBe('waiting')
+    expect(prompts).toEqual([['v1', 'queued message']])
+    expect(shown).toEqual([])
+    await endTurn()
+    await user
+    // The caller's retry finds the session free.
+    expect(await driver.deliver('v1', 'review findings')).toBe('delivered')
+    expect(prompts).toEqual([['v1', 'queued message'], ['v1', 'review findings']])
+    // And a user prompt sent while the review's turn runs waits for it instead of running beside it.
+    const late = sessions.prompt('v1', 'late message')
+    expect(prompts).toHaveLength(2)
+    await endTurn()
+    expect(prompts.at(-1)).toEqual(['v1', 'late message'])
+    await endTurn()
+    await late
   })
 
   it('expands ~ in automation folders', () => {

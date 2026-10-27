@@ -31,6 +31,7 @@ import {
 import { terminalChannel, type SessionMode, type SessionView, type SetModeOptions, type StartSessionInput } from '../shared/api'
 import { ConsoleActivity } from './console-activity'
 import { pathInsideFolder } from './reveal'
+import { SendGate } from './send-gate'
 import { cleanSessionName, type SessionNameStore } from './session-names'
 
 /** What runs the session right now: the agent's runtime (app) or the agent's own TUI in a PTY (console). */
@@ -133,6 +134,8 @@ export function resolveChoice(config: WorkhubConfig, profileId: string | null, a
  */
 export class SessionManager {
   private readonly sessions = new Map<string, ManagedSession>()
+  /** One prompt in flight per session, whoever sends it (see `prompt`). */
+  private readonly sends = new SendGate()
   private readonly timer: ReturnType<typeof setInterval>
   private polling = false
   /** The last size each terminal channel reported, so a terminal started later starts at that size. */
@@ -154,6 +157,7 @@ export class SessionManager {
     const s = this.sessions.get(id)
     if (!s || (s.view.state !== 'stopped' && s.view.state !== 'error')) return false
     this.sessions.delete(id)
+    this.sends.withdraw(id)
     this.deps.emitRemoved?.(id)
     return true
   }
@@ -260,21 +264,53 @@ export class SessionManager {
     this.update(id, { name: stored })
   }
 
-  async prompt(id: string, text: string, images?: ImageInput[]): Promise<string> {
-    const s = this.require(id)
-    if (s.engine !== 'app') throw new Error('the session is in its console; type there')
-    const usable = s.view.capabilities.imageInput && images?.length ? images : undefined
-    return (await s.runtime.prompt(id, text, usable)).stopReason
+  /**
+   * Runs one prompt turn. An agent that takes no input mid-turn gets one prompt at a time: this
+   * waits for the session's prompt in flight, whoever sent it. Claude folds a message sent during a
+   * turn into it, so its prompts go straight through.
+   */
+  prompt(id: string, text: string, images?: ImageInput[]): Promise<string> {
+    try {
+      const s = this.chatSession(id)
+      const send = async () => {
+        // The session may have handed over to its console while this prompt waited.
+        const now = this.chatSession(id)
+        const usable = now.view.capabilities.imageInput && images?.length ? images : undefined
+        return (await now.runtime.prompt(id, text, usable)).stopReason
+      }
+      return s.view.capabilities.midTurnInput ? send() : this.sends.run(id, send)
+    } catch (e) {
+      return Promise.reject(e)
+    }
   }
 
+  /**
+   * A prompt from a sender that keeps its own retry (reviews, automations, Slack): sent now, or
+   * null (nothing sent) while another prompt of the session is in flight or waiting.
+   */
+  tryPrompt(id: string, text: string): Promise<string> | null {
+    const s = this.chatSession(id)
+    if (!s.view.capabilities.midTurnInput && this.sends.busy(id)) return null
+    return this.prompt(id, text)
+  }
+
+  private chatSession(id: string): ManagedSession {
+    const s = this.require(id)
+    if (s.engine !== 'app') throw new Error('the session is in its console; type there')
+    return s
+  }
+
+  /** Interrupts the turn; prompts still waiting for it are dropped, never sent after it. */
   async cancel(id: string): Promise<void> {
     const s = this.require(id)
+    this.sends.withdraw(id)
     if (s.engine === 'app') await s.runtime.cancel(id)
     else await this.deps.terminal.cancel(terminalChannel(id, 'console'))
   }
 
   async stop(id: string): Promise<void> {
     const s = this.require(id)
+    this.sends.withdraw(id)
     this.clearPending(s)
     s.switching = true
     await Promise.all([
