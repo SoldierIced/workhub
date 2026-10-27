@@ -1,6 +1,6 @@
-import { ENV_NAME, profileEnvRef, type Profile, type SecretStore } from '@workhub/core'
+import { ENV_NAME, profileEnvRef, profileRootFor, type Profile, type SecretStore } from '@workhub/core'
 
-/** `${FOLDER}` is the session folder and `${PROFILE_ROOT}` the profile's first folder, as in Workhub 1. */
+/** `${FOLDER}` is the session folder and `${PROFILE_ROOT}` the profile folder holding it (else its first folder), as in Workhub 1. */
 export function expandEnvValue(value: string, vars: { folder: string; profileRoot: string }): string {
   return value.replaceAll('${FOLDER}', vars.folder).replaceAll('${PROFILE_ROOT}', vars.profileRoot)
 }
@@ -9,8 +9,7 @@ export function expandEnvValue(value: string, vars: { folder: string; profileRoo
 export async function profileSessionEnv(profile: Profile | undefined, cwd: string, secrets: Pick<SecretStore, 'get'>, home: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   if (!profile) return out
-  const expand = (p: string) => (p === '~' ? home : p.startsWith('~/') ? home + p.slice(1) : p)
-  const vars = { folder: cwd, profileRoot: expand(profile.folders?.[0] ?? cwd) }
+  const vars = { folder: cwd, profileRoot: profileRootFor(cwd, profile, home) ?? cwd }
   for (const name of profile.envNames ?? []) {
     if (!ENV_NAME.test(name)) continue
     const value = await secrets.get(profileEnvRef(profile.id, name))

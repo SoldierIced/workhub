@@ -1,10 +1,11 @@
 import { AgentIcon } from '../atoms/AgentIcon'
 import { FolderOpen, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { pickAgent, type EffectiveAgent } from '@workhub/core'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { pickAgent, type EffectiveAgent, type Profile } from '@workhub/core'
+import { newSessionProfile } from '../../lib/folders'
 import { useI18n } from '../../i18n/I18nProvider'
 import { installHintKey } from '../../lib/agents'
-import type { AgentOptionsView } from '@shared/api'
+import type { AgentOptionsView, WorkspaceFolder } from '@shared/api'
 import { initialStartChoice } from '../../lib/agent-pickers'
 import { readPrefs, rememberMode, rememberModel } from '../../lib/prefs'
 import { Button } from '../atoms/Button'
@@ -24,6 +25,10 @@ export interface NewSessionDialogProps {
   preferredAgents?: string[]
   initialAgentKey?: string
   initialCwd?: string
+  /** Every profile: a folder another profile owns starts the session in that profile, with its agents. */
+  profiles?: readonly Profile[]
+  /** The profile's folders and the folders inside them (the sidebar's list), offered as the folder is typed. */
+  folders?: readonly WorkspaceFolder[]
   onStarted: (sessionId: string) => void
 }
 
@@ -31,10 +36,34 @@ export interface NewSessionDialogProps {
 const optionDefault = (label: string, id: string | undefined) => (id ? `${label} (${id})` : label)
 
 /** Starts a session with the active profile: pick the agent, the folder, and the model and agent or mode where the agent has them. */
-export function NewSessionDialog({ open, onOpenChange, profileId, agents, preferredAgents, initialAgentKey, initialCwd, onStarted }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, onOpenChange, profileId, agents: activeAgents, preferredAgents: activePreferred, initialAgentKey, initialCwd, profiles = [], folders = [], onStarted }: NewSessionDialogProps) {
   const { t } = useI18n()
   const [agentKey, setAgentKey] = useState('')
   const [cwd, setCwd] = useState('')
+  // As in Workhub 1, the session belongs to the profile that owns its folder: the agents and
+  // accounts offered follow it.
+  const [home, setHome] = useState<string | undefined>()
+  useEffect(() => {
+    if (open) void window.hub.getDefaultCwd().then(setHome, () => setHome(undefined))
+  }, [open])
+  const sessionProfileId = useMemo(() => newSessionProfile(cwd, profileId, profiles, home), [cwd, profileId, profiles, home])
+  const owner = profiles.find((p) => p.id === sessionProfileId)
+  const [ownerAgents, setOwnerAgents] = useState<EffectiveAgent[] | null>(null)
+  useEffect(() => {
+    setOwnerAgents(null)
+    if (!open || sessionProfileId === profileId) return
+    let alive = true
+    void window.hub.config.effectiveAgents(sessionProfileId).then(
+      (list) => alive && setOwnerAgents(list),
+      () => alive && setOwnerAgents(null)
+    )
+    return () => {
+      alive = false
+    }
+  }, [open, sessionProfileId, profileId])
+  const otherProfile = sessionProfileId !== profileId && ownerAgents !== null
+  const agents = otherProfile ? ownerAgents : activeAgents
+  const preferredAgents = otherProfile ? owner?.preferredAgents : activePreferred
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   // Agent id -> installed; an agent missing from the answer is treated as installed.
@@ -49,15 +78,21 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
     if (!open) return
     setError('')
     setAgentKey((k) =>
-      initialAgentKey && agents.some((a) => a.key === initialAgentKey)
+      initialAgentKey && activeAgents.some((a) => a.key === initialAgentKey)
         ? initialAgentKey
-        : agents.some((a) => a.key === k)
+        : activeAgents.some((a) => a.key === k)
           ? k
-          : (pickAgent({ preferredAgents }, agents, 'any')?.key ?? '')
+          : (pickAgent({ preferredAgents: activePreferred }, activeAgents, 'any')?.key ?? '')
     )
     if (initialCwd) setCwd(initialCwd)
     else void window.hub.getDefaultCwd().then((d) => setCwd((c) => c || d))
-  }, [open, initialAgentKey, initialCwd, agents, preferredAgents])
+  }, [open, initialAgentKey, initialCwd, activeAgents, activePreferred])
+
+  // Another profile's agents: keep the pick when that profile offers it too, else its first choice.
+  useEffect(() => {
+    if (!open) return
+    setAgentKey((k) => (agents.some((a) => a.key === k) ? k : (pickAgent({ preferredAgents }, agents, 'any')?.key ?? '')))
+  }, [open, agents, preferredAgents])
 
   useEffect(() => {
     if (open) void window.hub.agents.availability().then(setInstalled, () => setInstalled({}))
@@ -105,7 +140,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
     setBusy(true)
     try {
       // Nothing picked: the main process falls back to the account's defaults, then the agent's.
-      const view = await window.hub.sessions.start({ profileId, agentKey, cwd, cols: 100, rows: 30, ...(model ? { model } : {}), ...(modeId ? { modeId } : {}) })
+      const view = await window.hub.sessions.start({ profileId: sessionProfileId, agentKey, cwd, cols: 100, rows: 30, ...(model ? { model } : {}), ...(modeId ? { modeId } : {}) })
       if (configurable) {
         rememberModel(agentKey, model || null)
         rememberMode(agentKey, modeId || null)
@@ -203,7 +238,14 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
         ) : null}
         <Field label={t('newSession.folder')}>
           <div className="flex gap-2">
-            <Input aria-label={t('newSession.folder')} value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} />
+            <Input aria-label={t('newSession.folder')} value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} list={folders.length ? 'new-session-folders' : undefined} />
+            {folders.length > 0 && (
+              <datalist id="new-session-folders">
+                {folders.map((f) => (
+                  <option key={f.path} value={f.path} label={f.name} />
+                ))}
+              </datalist>
+            )}
             <IconButton
               label={t('newSession.browse')}
               icon={<FolderOpen className="size-4" />}
@@ -212,6 +254,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
             />
           </div>
         </Field>
+        {otherProfile && owner && <p className="-mt-2 text-xs text-subtle">{t('newSession.otherProfile', { name: owner.name })}</p>}
         {error && (
           <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
             {error}

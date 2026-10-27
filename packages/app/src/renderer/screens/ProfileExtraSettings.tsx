@@ -156,13 +156,21 @@ function FieldGroup({ legend, help, children }: { legend: string; help?: ReactNo
 /** `folders` as the form edits them (one per line, blanks and spaces dropped). */
 const cleanFolders = (folders: string[] | undefined): string[] => (folders ?? []).map((f) => f.trim()).filter(Boolean)
 
-/** Drops the options of folders the profile no longer lists, and the empty ones. */
+/**
+ * Drops the options of folders the profile no longer lists, and the switches never set. A switch
+ * turned off stays saved as off: unset means the default behaviour (see `projectChildren`), and a
+ * value the user set is never filled from Workhub 1 again.
+ */
 export function prunedFolderOptions(options: Profile['folderOptions'], folders: string[] | undefined): Profile['folderOptions'] {
   const keep = new Set(cleanFolders(folders))
   const out: Record<string, FolderOptions> = {}
   for (const [folder, o] of Object.entries(options ?? {})) {
-    if (!keep.has(folder) || (!o.onlyGitRepos && !o.subfoldersAreProjects)) continue
-    out[folder] = { ...(o.onlyGitRepos ? { onlyGitRepos: true } : {}), ...(o.subfoldersAreProjects ? { subfoldersAreProjects: true } : {}) }
+    if (!keep.has(folder)) continue
+    const set: FolderOptions = {
+      ...(typeof o.onlyGitRepos === 'boolean' ? { onlyGitRepos: o.onlyGitRepos } : {}),
+      ...(typeof o.subfoldersAreProjects === 'boolean' ? { subfoldersAreProjects: o.subfoldersAreProjects } : {})
+    }
+    if (Object.keys(set).length) out[folder] = set
   }
   return Object.keys(out).length ? out : undefined
 }
@@ -225,7 +233,7 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
             <Input value={form.linkBrowser ?? ''} spellCheck={false} placeholder={window.hub.platform === 'mac' ? 'Google Chrome' : 'chromium'} onChange={(e) => onChange({ ...form, linkBrowser: e.target.value || undefined })} />
           </Field>
           <SwitchRow label={t('profileExtra.ownsOutside')} hint={t('profileExtra.ownsOutsideHint')}>
-            <Switch checked={form.ownsOutside === true} onChange={(on) => onChange({ ...form, ownsOutside: on || undefined })} />
+            <Switch checked={form.ownsOutside === true} onChange={(on) => onChange({ ...form, ownsOutside: on })} />
           </SwitchRow>
         </div>
       </FieldGroup>

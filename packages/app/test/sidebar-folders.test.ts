@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SubagentSummary } from '@workhub/core'
 import { profileWorkspaces } from '../src/main/workspaces'
-import { folderSections, RECENT_FOLDERS, toggleFavorite, type FolderSessionInfo } from '../src/renderer/lib/folders'
+import { folderSections, newSessionProfile, RECENT_FOLDERS, toggleFavorite, type FolderSessionInfo } from '../src/renderer/lib/folders'
 import { parsePrefs } from '../src/renderer/lib/prefs'
 import { SUBAGENT_RETENTION_MS, visibleSubagents } from '../src/renderer/lib/subagentView'
 
@@ -64,7 +64,7 @@ describe('the folders of a profile (main)', () => {
   afterEach(() => rmSync(home, { recursive: true, force: true }))
 
   it('lists each folder, then the folders inside it in natural order, hidden ones and missing folders left out', async () => {
-    const list = await profileWorkspaces(['~/work', join(home, 'work'), '~/missing', ''], home)
+    const list = await profileWorkspaces({ folders: ['~/work', join(home, 'work'), '~/missing', ''] }, home)
     expect(list.map((f) => [f.name, f.root])).toEqual([
       ['work', true],
       ['a-repo', false],
@@ -73,6 +73,13 @@ describe('the folders of a profile (main)', () => {
       ['repo10', false]
     ])
     expect(list[1]?.path).toBe(join(home, 'work', 'a-repo'))
+  })
+
+  it('lists only the git repositories of a folder marked "Only git repos"', async () => {
+    mkdirSync(join(home, 'work', 'a-repo', '.git'), { recursive: true })
+    writeFileSync(join(home, 'work', 'repo9', '.git'), 'gitdir: elsewhere')
+    const list = await profileWorkspaces({ folders: ['~/work'], folderOptions: { '~/work': { onlyGitRepos: true } } }, home)
+    expect(list.map((f) => f.name)).toEqual(['work', 'a-repo', 'repo9'])
   })
 })
 
@@ -93,5 +100,18 @@ describe('sub-agents under a session row', () => {
     )
     expect(list.map((s) => s.id)).toEqual(['recent', 'unknown', 'running'])
     expect(visibleSubagents(undefined, now)).toEqual([])
+  })
+})
+
+describe('the profile of a new session', () => {
+  const profiles = [
+    { id: 'work', folders: ['~/work'] },
+    { id: 'home', folders: ['/srv/home'], ownsOutside: true }
+  ]
+  it('starts in the profile that owns the folder, else the active one', () => {
+    expect(newSessionProfile('/u/work/api', 'home', profiles, '/u')).toBe('work')
+    expect(newSessionProfile('/elsewhere', 'work', profiles, '/u')).toBe('home')
+    expect(newSessionProfile('/elsewhere', 'work', [profiles[0]!], '/u')).toBe('work')
+    expect(newSessionProfile('', null, profiles, '/u')).toBeNull()
   })
 })

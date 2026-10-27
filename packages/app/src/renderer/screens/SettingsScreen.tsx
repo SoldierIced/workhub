@@ -699,7 +699,8 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
     if (!profile.symbol) delete profile.symbol
     if (!profile.linkBrowser?.trim()) delete profile.linkBrowser
     else profile.linkBrowser = profile.linkBrowser.trim()
-    if (!profile.ownsOutside) delete profile.ownsOutside
+    // Off stays saved as off: a switch the user set is never filled from Workhub 1 again.
+    if (profile.ownsOutside === undefined) delete profile.ownsOutside
     const folderOptions = prunedFolderOptions(profile.folderOptions, profile.folders)
     if (folderOptions) profile.folderOptions = folderOptions
     else delete profile.folderOptions
@@ -709,9 +710,7 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
     // Only one profile owns everything outside the folders: taking it lets the others go.
     if (profile.ownsOutside) {
       for (const other of snap.config.profiles.filter((p) => p.id !== profile.id && p.ownsOutside)) {
-        const { ownsOutside: _released, ...rest } = other
-        void _released
-        if (!(await run(() => window.hub.config.saveProfile(rest)))) return
+        if (!(await run(() => window.hub.config.saveProfile({ ...other, ownsOutside: false })))) return
       }
     }
     if (await run(() => window.hub.config.saveProfile(profile))) {

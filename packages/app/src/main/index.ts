@@ -13,6 +13,7 @@ import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
 import { createCliRunner } from '@workhub/adapters/cli'
 import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
+import { readNotificationPermission } from '@workhub/adapters/notification-permission'
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
@@ -36,6 +37,8 @@ import {
   pendingWorkhub1Secrets,
   pauseUntil,
   planWorkhub1Import,
+  fillWorkhub1FolderFlags,
+  type Workhub1Settings,
   TRAY_ROUTES,
   resolveEffectiveAgents,
   startOfLocalDay,
@@ -72,6 +75,7 @@ import { TrayPopover } from './tray-popover'
 import { healthAlertWords, isLocale, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
 import { profileWorkspaces } from './workspaces'
+import { NotificationPermissionCheck } from './notification-permission'
 import { HealthWatcher, TicketWatcher } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
@@ -204,11 +208,19 @@ const appBadge = new AppBadge({
   describe: (count) => trayText(trayLocale).tn('tray.tooltip.attention', count)
 })
 
+/** Whether macOS shows this app's notifications (Settings warns when it does not). */
+const notificationPermission = new NotificationPermissionCheck({
+  platform: process.platform,
+  supported: () => Notification.isSupported(),
+  readPrefs: () => readNotificationPermission({ execPath: process.execPath }),
+  createProbe: () => new Notification({ title: app.getName(), silent: true })
+})
+
 /** Every OS notification goes through here: per-kind switches and "Pause notifications". */
 const notifier = new Notifier({
   options: async () => appOptions(await configuration.current()),
   supported: () => Notification.isSupported(),
-  create: (content) => new Notification(content),
+  create: (content) => notificationPermission.observe(new Notification(content)),
   logPath: process.env['WORKHUB_NOTIFICATION_LOG'],
   onShown: scheduleTray
 })
@@ -638,7 +650,7 @@ function registerIpc(): void {
   ipc.handle('hub:profileFolders', async (_e, profileId: unknown) => {
     const config = await configuration.current()
     const profile = typeof profileId === 'string' ? config.profiles.find((p) => p.id === profileId) : undefined
-    return profile ? profileWorkspaces(profile.folders ?? [], homedir()) : []
+    return profile ? profileWorkspaces(profile, homedir()) : []
   })
 
   ipc.handle('config:get', () => snapshot())
@@ -699,7 +711,10 @@ function registerIpc(): void {
     guarded(async () => {
       const v1 = await readWorkhub1Settings()
       if (!v1) return { ok: false, issues: [{ path: 'import', message: 'Workhub 1 settings not found' }] }
-      return configuration.applyImport(planWorkhub1Import(v1, await configuration.current(), homedir()))
+      const result = await configuration.applyImport(planWorkhub1Import(v1, await configuration.current(), homedir()))
+      // Profiles imported earlier get the folder switches they still leave unset.
+      if (result.ok) return (await fillWorkhub1FolderFlagsFrom(v1)) ?? result
+      return result
     })
   )
   // Copies the tokens of Workhub 1's Keychain items into the SecretStore. Only statuses go back.
@@ -789,7 +804,7 @@ function registerIpc(): void {
     const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v === 'string'))
     await saveProfileEnv(profileId, clean, removed.filter((n) => typeof n === 'string'), secrets)
   })
-  ipc.handle('systemNotifications:status', () => ({ supported: Notification.isSupported() }))
+  ipc.handle('systemNotifications:status', async () => ({ supported: await notificationPermission.allowed() }))
   ipc.on('systemNotifications:openSettings', () => {
     const target =
       process.platform === 'darwin' ? 'x-apple.systempreferences:com.apple.Notifications-Settings.extension' : process.platform === 'win32' ? 'ms-settings:notifications' : null
@@ -1294,6 +1309,34 @@ function startTray(): void {
   setInterval(scheduleTray, 60_000).unref?.()
 }
 
+/** Marks that Workhub 1's folder switches were filled into the profiles once (see `fillWorkhub1FolderFlags`). */
+const workhub1FolderFlags = new StateFile<{ done: boolean }>(join(dataDir, 'workhub1-folder-flags.json'), 0)
+
+/** Fills the folder switches Workhub 1 turned on into the profiles that leave them unset; the new config when one changed. */
+async function fillWorkhub1FolderFlagsFrom(v1: Workhub1Settings): Promise<Result<WorkhubConfig> | undefined> {
+  let last: Result<WorkhubConfig> | undefined
+  for (const profile of fillWorkhub1FolderFlags(v1, await configuration.current(), homedir())) {
+    last = await configuration.saveProfile(profile)
+    if (!last.ok) break
+  }
+  if (last?.ok) send('config:changed')
+  return last
+}
+
+/** Once, at the first launch that finds Workhub 1's settings: profiles imported before the folder switches were imported get them. */
+async function fillWorkhub1FolderFlagsOnce(): Promise<void> {
+  if (loadError || workhub1FolderFlags.load({ done: false }).done) return
+  try {
+    const v1 = await readWorkhub1Settings()
+    if (!v1) return
+    await fillWorkhub1FolderFlagsFrom(v1)
+    workhub1FolderFlags.save({ done: true })
+    workhub1FolderFlags.flush()
+  } catch {
+    // Tried again at the next launch.
+  }
+}
+
 void app.whenReady().then(async () => {
   if (!firstInstance) return
   try {
@@ -1305,6 +1348,7 @@ void app.whenReady().then(async () => {
   registerIpc()
   await refreshMenu()
   createWindow()
+  void fillWorkhub1FolderFlagsOnce()
   await refreshOptionsCache()
   try {
     startTray()

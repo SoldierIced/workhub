@@ -97,7 +97,7 @@ function Shell() {
 
   // The sidebar's folder browser: the profile's folders and the folders inside them, read again when they change.
   const [workspaces, setWorkspaces] = useState<WorkspaceFolder[]>([])
-  const folderKey = JSON.stringify(profile?.folders ?? [])
+  const folderKey = JSON.stringify([profile?.folders ?? [], profile?.folderOptions ?? {}])
   useEffect(() => {
     let alive = true
     void window.hub.profileFolders(activeProfileId).then((list) => alive && setWorkspaces(list), () => alive && setWorkspaces([]))
@@ -105,6 +105,7 @@ function Shell() {
       alive = false
     }
   }, [activeProfileId, folderKey])
+  const projectFolders = useMemo(() => workspaces.map((w) => w.path), [workspaces])
 
   // A module turned off in the active profile takes its screen with it.
   useEffect(() => {
@@ -403,7 +404,7 @@ function Shell() {
               ) : route === 'pullRequests' ? (
                 <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
               ) : route === 'health' ? (
-                <HealthScreen profile={profile} onOpenSettings={openSettings} onInvestigate={investigate} />
+                <HealthScreen profile={profile} projectFolders={projectFolders} onOpenSettings={openSettings} onInvestigate={investigate} />
               ) : route === 'tickets' ? (
                 <TicketsScreen profile={profile} sessions={sessions} onOpenSettings={openSettings} />
               ) : route === 'slack' ? (
@@ -424,6 +425,8 @@ function Shell() {
         agents={agents}
         preferredAgents={profile?.preferredAgents}
         initialCwd={dialog.cwd}
+        folders={workspaces}
+        profiles={profiles}
         initialAgentKey={dialog.agentKey}
         onStarted={openSession}
       />
