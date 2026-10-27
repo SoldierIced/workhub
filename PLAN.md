@@ -208,3 +208,12 @@ How to keep it near the low end:
 3. Second adapter per domain (GitLab? Linear?).
 4. Minimum feature set for a "v2.0" public release (suggested: P0–P4 plus the terminal agent).
 5. Whether to buy signing certificates before v2.0.
+
+## 9. Pending
+
+- **Spend for API-key agents (deferred).** Usage per agent account (Settings → Usage) covers plan
+  windows only: Claude and Codex accounts signed in with a subscription. Agents that run on API
+  keys (OpenCode, Gemini with an API key) have no plan window; for them, show spend per day and
+  per week from the token counts their sessions report, and the provider balance where an API
+  exposes it (OpenRouter has one; Anthropic and OpenAI are still to be researched). Deferred by
+  the user. Kiro stays "not available" until it exposes remaining credits or limits locally.
