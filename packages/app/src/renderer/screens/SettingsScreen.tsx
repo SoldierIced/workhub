@@ -3,6 +3,8 @@ import { useState, type ReactNode } from 'react'
 import {
   appOptions,
   CONNECTION_KINDS,
+  FAILOVER_MODES,
+  failoverMode,
   NO_MODULES,
   OPTIONAL_MODULES,
   orderAgents,
@@ -10,6 +12,7 @@ import {
   type AgentAccount,
   type Connection,
   type ConnectionKind,
+  type FailoverMode,
   type OptionalModule,
   type Profile,
   type Result,
@@ -613,6 +616,16 @@ function ProfilesSection({ snap, run }: SectionProps) {
                 <Switch checked={form.modules[m]} onChange={(on) => setForm({ ...form, modules: { ...form.modules, [m]: on } })} />
               </SwitchRow>
             ))}
+          </FieldGroup>
+          <FieldGroup legend={t('continuity.settings.legend')}>
+            <Field label={t('continuity.settings.mode')} hint={t('continuity.settings.hint')}>
+              <Select
+                aria-label={t('continuity.settings.mode')}
+                value={failoverMode(form)}
+                onChange={(v) => setForm({ ...form, accountFailover: v as FailoverMode })}
+                options={FAILOVER_MODES.map((m) => ({ value: m, label: t(`continuity.settings.${m}`) }))}
+              />
+            </Field>
           </FieldGroup>
           <FieldGroup legend={t('aiReview.settings.legend')}>
             <AiReviewProfileFields form={form} agents={orderedAgents} onChange={(aiReview) => setForm({ ...form, aiReview })} />

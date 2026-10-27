@@ -12,6 +12,7 @@ import { rememberModel } from '../lib/prefs'
 import { pushItem, type SessionData } from '../store'
 import { AiReviewAside, AiReviewButton } from './sessions/AiReviewPanel'
 import { ChatPane } from './sessions/ChatPane'
+import { ContinueMenu } from './sessions/ContinueMenu'
 import { MonitorPanel } from './sessions/MonitorPanel'
 import { TerminalPane } from './sessions/TerminalPane'
 
@@ -166,6 +167,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
           </Badge>
           {v.currentModeId && v.permissionMode?.id === 'agent-managed' && <Badge>{t('session.agentMode', { mode: v.currentModeId })}</Badge>}
           {live && <AiReviewButton view={v} />}
+          {live && !v.readOnly && v.modes.includes('app') && <ContinueMenu view={v} />}
           {live && (
             <Button size="sm" variant="ghost" icon={<Square className="size-3" aria-hidden />} onClick={() => void window.hub.sessions.stop(v.id)}>
               {t('session.stop')}

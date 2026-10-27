@@ -1,5 +1,5 @@
-import { ArrowUp, Brain, ChevronRight, CircleAlert, FileText, History, Info, Pencil, Search, ShieldAlert, Square, SquareTerminal, TriangleAlert, Webhook, Wrench, X, type LucideIcon } from 'lucide-react'
-import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, FileText, History, Info, Pencil, Search, ShieldAlert, Square, SquareTerminal, TriangleAlert, Webhook, Wrench, X, type LucideIcon } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { gatePrompt, setCeiling, type ImageInput } from '@workhub/core'
 import { Badge, Button, IconButton, Spinner } from '../../components/atoms'
 import { Markdown } from '../../components/molecules'
@@ -14,6 +14,9 @@ import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useNow, useUsageSettings } from '../../lib/usage'
 import { BudgetNotice } from './BudgetNotice'
+import type { ContinuityOptions } from '@shared/continuity-api'
+import { dismissOffer, originText, useContinuityActions, useContinuityOffer } from '../../lib/continuity'
+import { ContinuityNotice } from './ContinuityNotice'
 
 const TOOL_ICON: Record<string, LucideIcon> = { read: FileText, edit: Pencil, execute: SquareTerminal, search: Search, think: Brain }
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
@@ -174,6 +177,31 @@ export function ChatPane({ data }: { data: SessionData }) {
     if (gate.status.action !== 'block') setNeedsConfirm(false)
   }, [gate.status.action])
 
+  // Continuing elsewhere when the account ran out: the agent's limit (an offer from main) or the gate's ceiling.
+  const offer = useContinuityOffer(v.id)
+  const { failover, handoff } = useContinuityActions()
+  const [continuity, setContinuity] = useState<ContinuityOptions | null>(null)
+  const [ceilingDismissed, setCeilingDismissed] = useState(false)
+  const [moving, setMoving] = useState(false)
+  const blocked = gate.status.action === 'block'
+  useEffect(() => {
+    setCeilingDismissed(false)
+    if (!blocked) return setContinuity(null)
+    let alive = true
+    void window.hub.continuity.options(v.id).then((o) => alive && setContinuity(o), () => undefined)
+    return () => {
+      alive = false
+    }
+  }, [blocked, v.id, v.state])
+  const act = async (fn: () => Promise<boolean>) => {
+    setMoving(true)
+    try {
+      await fn()
+    } finally {
+      setMoving(false)
+    }
+  }
+
   const clearCeiling = async () => {
     if (!gate.status.window) return
     const r = await window.hub.config.saveOptions({ usageBudget: setCeiling(usageSettings.budget, gate.key, gate.status.window, null) })
@@ -185,6 +213,14 @@ export function ChatPane({ data }: { data: SessionData }) {
     if ((!value && images.length === 0) || v.state !== 'ready') return
     // The one-shot escape: "Send anyway" passes this prompt only; nothing stored changes.
     if (gatePrompt(gate.status, 'user', override).kind === 'confirm') {
+      // Automatic failover: the held prompt goes to the same conversation in the next account.
+      const target = continuity?.mode === 'automatic' ? continuity.failover[0] : undefined
+      if (target) {
+        setText('')
+        setImages([])
+        void act(() => failover(v, { targetKey: target.key, reason: 'ceiling', ...(gate.status.window ? { window: gate.status.window } : {}), prompt: value }))
+        return
+      }
       setNeedsConfirm(true)
       return
     }
@@ -229,6 +265,17 @@ export function ChatPane({ data }: { data: SessionData }) {
     })
   }
 
+  // Where the session came from, right after its replayed history (or on top when there is none).
+  const replayAt = data.items.findIndex((i) => i.kind === 'replayStart')
+  const originLine = v.origin ? (
+    <div className="flex items-center gap-2 rounded-md bg-info-soft px-3 py-2 text-sm text-info" data-testid="session-origin">
+      <ArrowRightLeft className="size-4 shrink-0" aria-hidden />
+      <span>{originText(v.origin, v, t)}</span>
+    </div>
+  ) : null
+
+  const ceilingOffer = blocked && !offer && !ceilingDismissed && continuity && continuity.mode !== 'off' ? continuity : null
+
   const placeholder: MessageKey =
     v.state === 'starting' ? 'chat.placeholderStarting' : v.state === 'ready' ? 'chat.placeholder' : v.state === 'busy' ? 'chat.placeholderBusy' : 'chat.placeholderClosed'
 
@@ -236,9 +283,13 @@ export function ChatPane({ data }: { data: SessionData }) {
     <div className="flex min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite" aria-label={t('chat.log')} role="log">
         <div className="mx-auto flex max-w-3xl flex-col gap-3.5 px-6 py-5">
-          {data.items.length === 0 && <p className="py-10 text-center text-sm text-subtle">{t('chat.empty')}</p>}
-          {data.items.map((i) => (
-            <ChatBlock key={i.id} item={i} onAnswer={answer} />
+          {data.items.length === 0 && !v.origin && <p className="py-10 text-center text-sm text-subtle">{t('chat.empty')}</p>}
+          {replayAt < 0 && originLine}
+          {data.items.map((i, n) => (
+            <Fragment key={i.id}>
+              <ChatBlock item={i} onAnswer={answer} />
+              {n === replayAt && originLine}
+            </Fragment>
           ))}
           <div ref={bottom} />
         </div>
@@ -254,6 +305,36 @@ export function ChatPane({ data }: { data: SessionData }) {
             onSendAnyway={() => void send(true)}
             onClear={() => void clearCeiling()}
           />
+          {offer ? (
+            <ContinuityNotice
+              reason={offer.reason}
+              account={offer.accountLabel}
+              window={offer.window}
+              resetsAt={offer.resetsAt}
+              now={now}
+              target={offer.target}
+              handoff={offer.handoff}
+              busy={moving}
+              onContinue={(target) => void act(() => failover(v, { targetKey: target.key, reason: offer.reason, ...(offer.window ? { window: offer.window } : {}) }))}
+              onHandoff={(target) => void act(() => handoff(v, target.key, target.label))}
+              onWait={() => dismissOffer(v.id)}
+            />
+          ) : (
+            ceilingOffer && (
+              <ContinuityNotice
+                reason="ceiling"
+                account={v.accountName ?? v.label}
+                window={gate.status.window}
+                now={now}
+                target={ceilingOffer.failover[0]}
+                handoff={ceilingOffer.handoff[0]}
+                busy={moving}
+                onContinue={(target) => void act(() => failover(v, { targetKey: target.key, reason: 'ceiling', ...(gate.status.window ? { window: gate.status.window } : {}) }))}
+                onHandoff={(target) => void act(() => handoff(v, target.key, target.label))}
+                onWait={() => setCeilingDismissed(true)}
+              />
+            )
+          )}
           {images.length > 0 && (
             <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label={t('chat.attached')}>
               {images.map((src, i) => (
