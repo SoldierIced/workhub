@@ -42,6 +42,7 @@ import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
 import type { TicketsApi } from './tickets-api'
 import type { UpdatesApi } from './updates-api'
+import type { MenuApi, WindowsApi } from './windows-api'
 
 export interface ConfigSnapshot {
   config: WorkhubConfig
@@ -98,6 +99,8 @@ export function terminalChannel(sessionId: string, channel: 'console' | 'shell')
 /** A session as the renderer sees it. */
 export interface SessionView extends Session {
   label: string
+  /** The name the user gave the session (Rename…), kept across restarts; else it shows its agent's name. */
+  name?: string
   agentName: string
   /** The account's name, when the session runs with one. */
   accountName?: string
@@ -229,6 +232,8 @@ export interface SessionsApi {
    * a folder of repositories. Null when the session is unknown or the folder holds no repository.
    */
   localChanges(id: string): Promise<LocalChanges | null>
+  /** Names the session (empty or null: back to its agent's name); stored by the session's identity. */
+  rename(id: string, name: string | null): Promise<void>
   onEvent(cb: (e: AgentEvent) => void): () => void
   onChanged(cb: (s: SessionView) => void): () => void
   /** A finished session left the list (an automation replaced it). */
@@ -239,6 +244,8 @@ export interface SessionsApi {
 
 export interface HistoryApi {
   list(): Promise<HistoryResult>
+  /** Opens a session's folder in the file manager; false when it is not an existing folder. */
+  revealFolder(path: string): Promise<boolean>
 }
 
 /**
@@ -369,6 +376,8 @@ export interface HubApi {
   aiReview: AiReviewApi
   continuity: ContinuityApi
   tray: TrayApi
+  windows: WindowsApi
+  menu: MenuApi
 }
 
 /** What Settings knows about Workhub 1 on this machine (see `previewWorkhub1Import`). */

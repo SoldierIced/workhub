@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Brain, ChevronRight, CircleCheck, X } from 'lucide-react'
+import { AppWindow, ArrowLeft, Bot, Brain, ChevronRight, CircleCheck, X } from 'lucide-react'
 import { Dialog as RDialog } from 'radix-ui'
 import { useEffect, useState } from 'react'
 import type { ConversationEntry, SubagentConversation } from '@workhub/core'
@@ -83,7 +83,7 @@ function Thinking({ text, durationMs }: { text: string; durationMs?: number }) {
   )
 }
 
-function Entry({ entry, sessionId, cwd }: { entry: ConversationEntry; sessionId: string; cwd?: string }) {
+function Entry({ entry, sessionId, cwd, onOpenNested }: { entry: ConversationEntry; sessionId: string; cwd?: string; onOpenNested: (subagentId: string) => void }) {
   const { t } = useI18n()
   switch (entry.kind) {
     case 'text':
@@ -113,14 +113,28 @@ function Entry({ entry, sessionId, cwd }: { entry: ConversationEntry; sessionId:
           result={entry.result}
           cwd={cwd}
           onReveal={(path) => void window.hub.sessions.revealFile(sessionId, path)}
-          onOpenAgent={agentId ? () => openSubagent(sessionId, agentId, true) : undefined}
+          onOpenAgent={agentId ? () => onOpenNested(agentId) : undefined}
         />
       )
     }
   }
 }
 
-function Body({ sessionId, subagentId, depth }: { sessionId: string; subagentId: string; depth: number }) {
+export interface SubagentBodyProps {
+  sessionId: string
+  subagentId: string
+  depth: number
+  /** Back to the parent sub-agent (default: the sheet's stack). */
+  onBack?: () => void
+  /** A sub-agent this one started (default: pushed on the sheet's stack). */
+  onOpenNested?: (subagentId: string) => void
+  /** In a window of its own: no "open in a new window" button. */
+  inWindow?: boolean
+}
+
+/** A sub-agent's conversation: header, prompt, steps and answer. Rendered inside a Radix dialog (the sheet, or a window). */
+export function SubagentBody({ sessionId, subagentId, depth, onBack = backSubagent, onOpenNested, inWindow }: SubagentBodyProps) {
+  const openNested = onOpenNested ?? ((id: string) => openSubagent(sessionId, id, true))
   const { t, tn, formatNumber } = useI18n()
   const load = useConversation(sessionId, subagentId)
   const [shown, setShown] = useState(ENTRY_PAGE)
@@ -132,7 +146,7 @@ function Body({ sessionId, subagentId, depth }: { sessionId: string; subagentId:
   return (
     <>
       <header className="flex items-start gap-3 border-b border-border px-5 py-4">
-        {depth > 1 && <IconButton label={t('subagent.back')} icon={<ArrowLeft className="size-4" />} onClick={backSubagent} />}
+        {depth > 1 && <IconButton label={t('subagent.back')} icon={<ArrowLeft className="size-4" />} onClick={onBack} />}
         <Bot className="mt-1 size-5 shrink-0 text-accent" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -164,6 +178,16 @@ function Body({ sessionId, subagentId, depth }: { sessionId: string; subagentId:
             {!c && <span>{t('subagent.label')}</span>}
           </RDialog.Description>
         </div>
+        {!inWindow && (
+          <IconButton
+            label={t('window.subagentOpen')}
+            icon={<AppWindow className="size-4" />}
+            onClick={() => {
+              window.hub.windows.openSubagent(sessionId, subagentId)
+              closeSubagent()
+            }}
+          />
+        )}
         <RDialog.Close asChild>
           <IconButton label={t('common.close')} icon={<X className="size-4" />} />
         </RDialog.Close>
@@ -184,7 +208,7 @@ function Body({ sessionId, subagentId, depth }: { sessionId: string; subagentId:
             </Button>
           )}
           {list.map((e) => (
-            <Entry key={e.id} entry={e} sessionId={sessionId} cwd={c?.cwd} />
+            <Entry key={e.id} entry={e} sessionId={sessionId} cwd={c?.cwd} onOpenNested={openNested} />
           ))}
           {c && !c.entries.length && !c.result && <p className="text-center text-chat-sm text-subtle">{t('subagent.empty')}</p>}
           {c?.result && (
@@ -225,7 +249,7 @@ export function SubagentSheet() {
           }}
           tabIndex={-1}
         >
-          {current && <Body key={`${current}:${open!.stack.length}`} sessionId={sessionId} subagentId={current} depth={open!.stack.length} />}
+          {current && <SubagentBody key={`${current}:${open!.stack.length}`} sessionId={sessionId} subagentId={current} depth={open!.stack.length} />}
         </RDialog.Content>
       </RDialog.Portal>
     </RDialog.Root>

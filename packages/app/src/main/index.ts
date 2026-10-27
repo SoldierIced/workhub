@@ -1,8 +1,8 @@
-import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { delimiter, join, resolve } from 'node:path'
+import { delimiter, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { AcpRuntime, agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
 import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
@@ -93,6 +93,10 @@ import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
 import { spendSources, TokenSpendService } from './token-spend'
 import { UpdateService } from './updates'
+import { buildAppMenuTemplate } from './app-menu'
+import { SessionNames } from './session-names'
+import { SessionWindows } from './session-windows'
+import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 
 // Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
 // (the Claude bridge) under process.resourcesPath instead.
@@ -143,9 +147,19 @@ const health = new HealthService({ configuration, secrets, demo: process.env['WO
 const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1')
 
 let win: BrowserWindow | null = null
+/** What session and sub-agent windows follow too: the sessions' live state and what their screens show. */
+const SHARED_CHANNELS = new Set(['session:event', 'session:changed', 'session:removed', 'session:replay', 'automations:prompted', 'aiReview:changed', 'usage:changed'])
 const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
+  if (SHARED_CHANNELS.has(channel)) sessionWindows.broadcastShared(channel, args)
 }
+// Sessions in windows of their own ("Open in New Window"); the session's runtime stays here, shared.
+const sessionWindows = new SessionWindows({
+  create: (hash, size) => createAuxWindow(hash, 'Workhub 2', size),
+  mainWindow: () => (win && !win.isDestroyed() ? win : null),
+  showMain: () => showMain(),
+  exists: (id) => sessions.list().some((s) => s.id === id)
+})
 
 // Menu bar / notification area icon (tray.ts) and what it shows that main does not keep elsewhere.
 let trayService: TrayService | null = null
@@ -245,8 +259,11 @@ const tokenSpend = new TokenSpendService({
   sources: async () => spendSources(await configuration.current(), homedir(), kiroDir),
   emit: () => send('usage:folderSpendChanged')
 })
+// The names the user gave sessions, by identity (Rename…).
+const sessionNames = new SessionNames(new StateFile(join(dataDir, 'session-names.json'), 300))
 const sessions = new SessionManager({
   config: configuration,
+  names: sessionNames,
   runtimes,
   terminal,
   transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader({ kiroDir }), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
@@ -264,7 +281,10 @@ const sessions = new SessionManager({
     aiReview.onChanged(s)
     send('session:changed', s)
   },
-  emitRemoved: (id) => send('session:removed', id),
+  emitRemoved: (id) => {
+    send('session:removed', id)
+    sessionWindows.closeSession(id)
+  },
   emitReplay: (id, messages) => send('session:replay', id, messages),
   emitConfigChanged: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
 })
@@ -461,7 +481,9 @@ function guarded<A extends unknown[]>(fn: (...args: A) => Promise<Result<Workhub
   return async (_e: unknown, ...args: A): Promise<Result<WorkhubConfig>> => {
     if (loadError) return { ok: false, issues: [{ path: 'config', message: `config file not loaded: ${loadError}` }] }
     try {
-      return await fn(...args)
+      const r = await fn(...args)
+      if (r.ok) scheduleMenu()
+      return r
     } catch (err) {
       // The real error goes to the log; the user gets a sentence, never a dumped validation error.
       console.error('config write failed', err)
@@ -579,7 +601,17 @@ function registerIpc(): void {
   ipc.handle('updates:status', () => updates.status())
   ipc.handle('updates:check', () => updates.check())
   ipc.handle('updates:install', () => updates.install())
-  ipc.handle('history:list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
+  ipc.handle('history:list', async () => {
+    const result = await listAllHistory(await configuration.current(), homedir(), historySources)
+    // A session the user named shows that name in the history too.
+    return { ...result, entries: result.entries.map((e) => ({ ...e, title: sessionNames.get(e.agentSessionId) ?? e.title })) }
+  })
+  ipc.handle('history:revealFolder', async (_e, path: string) => {
+    if (typeof path !== 'string' || !isAbsolute(path)) return false
+    const isFolder = await stat(path).then((s) => s.isDirectory(), () => false)
+    if (!isFolder) return false
+    return (await shell.openPath(path)) === ''
+  })
   ipc.handle('agents:availability', async () =>
     agentAvailability(knownAgents(await configuration.current()), {
       extraPath,
@@ -643,6 +675,16 @@ function registerIpc(): void {
     const cwd = sessions.cwdOf(id)
     return cwd ? localGit.localChanges(cwd) : null
   })
+  ipc.handle('sessions:rename', (_e, id: string, name: string | null) => {
+    if (name !== null && typeof name !== 'string') throw new Error('a name is required')
+    sessions.rename(id, name)
+  })
+  ipc.on('windows:openSession', (_e, id: string) => sessionWindows.open(id))
+  ipc.on('windows:openSubagent', (_e, id: string, subagentId: string) => sessionWindows.openSubagent(id, subagentId))
+  ipc.on('windows:dock', (_e, id: string) => sessionWindows.dock(id))
+  ipc.handle('windows:detached', () => sessionWindows.detached())
+  ipc.handle('windows:snapshot', (e, id: string) => sessionWindows.snapshot(id, e.sender))
+  ipc.on('windows:snapshotReply', (_e, requestId: string, snapshot: SessionSnapshot | null) => sessionWindows.reply(requestId, snapshot))
   ipc.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
   ipc.handle('sessions:stop', (_e, id: string) => sessions.stop(id))
   ipc.on('sessions:permission', (_e, id: string, requestId: string, optionId: string | null) =>
@@ -662,7 +704,10 @@ function registerIpc(): void {
   ipc.handle('continuity:handoff', (_e, id: string, request) => continuity.handoff(id, request))
   ipc.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
   ipc.on('tray:state', (_e, state: TrayRendererState) => {
-    if (isLocale(state?.locale)) trayLocale = state.locale
+    if (isLocale(state?.locale) && state.locale !== trayLocale) {
+      trayLocale = state.locale
+      scheduleMenu()
+    }
     if (Array.isArray(state?.sessions)) rendererSessions = state.sessions.slice(0, 500).filter(validTraySession)
     scheduleTray()
     appBadge.setCount(attentionBadgeCount(rendererSessions ?? []))
@@ -966,6 +1011,52 @@ function loadPopover(popover: BrowserWindow): void {
   else void popover.loadFile(rendererFile, { hash: TRAY_POPOVER_HASH.slice(1) })
 }
 
+/**
+ * Where a menu command runs: a session command in the focused session window (else the main
+ * window's selection); navigation and new sessions always in the main window, brought up first.
+ */
+function runMenuCommand(command: MenuCommand): void {
+  const focused = BrowserWindow.getFocusedWindow()
+  const sessionWindow = sessionWindows.sessionOf(focused) !== undefined
+  const sessionCommand = command.kind === 'closeSession' || command.kind === 'showMode' || command.kind === 'openInWindow'
+  if (sessionCommand && sessionWindow && focused) return focused.webContents.send('menu:command', command)
+  if (sessionCommand && focused !== win) return
+  showMain()
+  send('menu:command', command)
+}
+
+let menuTimer: ReturnType<typeof setTimeout> | null = null
+/** The application menu follows the active profile's agents and the UI language. */
+function scheduleMenu(): void {
+  if (menuTimer) return
+  menuTimer = setTimeout(() => {
+    menuTimer = null
+    void refreshMenu()
+  }, 100)
+}
+
+async function refreshMenu(): Promise<void> {
+  const config = await configuration.current().catch(() => null)
+  const agents = config ? resolveEffectiveAgents(config, config.activeProfileId ?? null) : []
+  const { t } = trayText(trayLocale)
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      buildAppMenuTemplate({
+        platform: process.platform,
+        appName: app.getName(),
+        agents: agents.map((a) => ({ key: a.key, label: a.label, agentId: a.agent.id })),
+        t,
+        run: runMenuCommand,
+        openHelp: () => void shell.openExternal(HELP_URL),
+        developer: !app.isPackaged
+      })
+    )
+  )
+}
+
+/** Help → the project's page (the release repository's README). */
+const HELP_URL = 'https://github.com/SoldierIced/workhub#readme'
+
 /** The menu bar / notification area icon; a dev run is named "Workhub 2 Dev" there too. */
 function startTray(): void {
   // Linux (AppIndicator) sends no clicks, so it keeps the native menu only.
@@ -1009,6 +1100,7 @@ void app.whenReady().then(async () => {
   }
   denyWebPermissions()
   registerIpc()
+  await refreshMenu()
   createWindow()
   await refreshOptionsCache()
   try {
@@ -1055,6 +1147,7 @@ app.on('before-quit', (event) => {
   aiReview.stop()
   healthWatcher.stop()
   ticketWatcher.stop()
+  sessionNames.flush()
   void sessions.stopAll().finally(() => app.quit())
 })
 // Kept in the menu bar, the app outlives its windows (a window closed some other way than its

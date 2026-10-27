@@ -38,10 +38,13 @@ export function listSessions(all: readonly SessionData[]): ListedSession[] {
 const NAME_MAX = 60
 
 /**
- * What the sidebar calls a session: the first line of what the user first asked, else its folder.
- * The agent and the account are shown by the row's icon and second line, not by its name.
+ * What the sidebar calls a session: the name the user gave it (Rename…), else the first line of
+ * what the user first asked, else its folder. The agent and the account are shown by the row's
+ * icon and second line, not by its name.
  */
 export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
+  const named = s.view.name?.trim()
+  if (named) return named
   for (const item of s.items) {
     if (item.kind !== 'user') continue
     const line = item.text.split('\n').find((l) => l.trim())?.trim().replace(/\s+/g, ' ')
@@ -55,7 +58,7 @@ export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
  * row; before anything is asked, its agent and folder, since there is no icon there to tell the agent.
  */
 export function sessionLabel(s: Pick<SessionData, 'items' | 'view'>): string {
-  const asked = s.items.some((i) => i.kind === 'user' && i.text.trim())
+  const asked = !!s.view.name?.trim() || s.items.some((i) => i.kind === 'user' && i.text.trim())
   return asked ? sessionName(s) : `${s.view.agentName} · ${folderName(s.view.cwd)}`
 }
 

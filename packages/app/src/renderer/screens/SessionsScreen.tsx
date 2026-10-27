@@ -51,7 +51,7 @@ export function SessionsScreen({ sessions, selectedId, visible, theme, onNewSess
   )
 }
 
-function SessionPane({ data, visible, theme }: { data: SessionData; visible: boolean; theme: 'light' | 'dark' }) {
+export function SessionPane({ data, visible, theme }: { data: SessionData; visible: boolean; theme: 'light' | 'dark' }) {
   const { t } = useI18n()
   const v = data.view
   // A shell, once opened, stays mounted so its scrollback survives switching back and forth.

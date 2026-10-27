@@ -34,6 +34,8 @@ export interface SidebarProps {
   /** The active profile's folders and the folders inside them (`window.hub.profileFolders`). */
   workspaces: WorkspaceFolder[]
   onNewSessionIn: (folder: string | null) => void
+  /** A folder's "Resume session…" (its earlier sessions). */
+  onResumeIn?: (folder: string) => void
   usage: UsageGroup[]
 }
 
@@ -133,6 +135,7 @@ export function Sidebar(props: SidebarProps) {
           profileId={props.activeProfileId}
           accent={profileColor(props.profiles, props.activeProfileId)}
           onOpen={(f) => props.onNewSessionIn(f)}
+          onResume={props.onResumeIn}
         />
       </div>
       <div className="shrink-0 px-3 pb-3">

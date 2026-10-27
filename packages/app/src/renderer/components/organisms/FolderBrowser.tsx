@@ -1,4 +1,5 @@
 import { ChevronRight, Folder, FolderTree, Search, Star, X } from 'lucide-react'
+import { ContextMenu } from 'radix-ui'
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import type { WorkspaceFolder } from '@shared/api'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -14,13 +15,18 @@ export interface FolderBrowserProps {
   accent?: string
   /** Starts a session in the folder (the new session dialog, set to it). */
   onOpen: (folder: string) => void
+  /** A folder's "Resume session…" (its earlier sessions), from the row's context menu. */
+  onResume?: (folder: string) => void
 }
+
+const FOLDER_MENU = 'z-50 min-w-48 animate-fade-in rounded-md border border-border bg-surface-raised p-1 shadow-lg'
+const FOLDER_MENU_ITEM = 'flex h-8 cursor-default select-none items-center rounded-sm px-2 text-base outline-none data-[highlighted]:bg-accent-soft'
 
 /**
  * Workhub 1's folder browser: a filter field, then Favorites, Recent and All folders (folded);
  * typing replaces them with the matching folders. A click starts a session there.
  */
-export function FolderBrowser({ workspaces, sessions, profileId, accent, onOpen }: FolderBrowserProps) {
+export function FolderBrowser({ workspaces, sessions, profileId, accent, onOpen, onResume }: FolderBrowserProps) {
   const { t } = useI18n()
   const prefs = usePrefs()
   const [query, setQuery] = useState('')
@@ -33,7 +39,7 @@ export function FolderBrowser({ workspaces, sessions, profileId, accent, onOpen 
   const list = (items: FolderItem[], label: string) => (
     <ul className="flex flex-col gap-0.5" aria-label={label}>
       {items.map((f) => (
-        <FolderRow key={f.path} folder={f} accent={accent} onOpen={() => onOpen(f.path)} onStar={() => star(f.path)} />
+        <FolderRow key={f.path} folder={f} accent={accent} onOpen={() => onOpen(f.path)} onStar={() => star(f.path)} onResume={onResume && (() => onResume(f.path))} />
       ))}
     </ul>
   )
@@ -117,28 +123,48 @@ function SubTitle({ children }: { children: string }) {
   return <h3 className="px-2.5 pt-1.5 pb-0.5 text-xs font-medium text-subtle">{children}</h3>
 }
 
-function FolderRow({ folder, accent, onOpen, onStar }: { folder: FolderItem; accent?: string; onOpen: () => void; onStar: () => void }) {
+function FolderRow({ folder, accent, onOpen, onStar, onResume }: { folder: FolderItem; accent?: string; onOpen: () => void; onStar: () => void; onResume?: () => void }) {
   const { t, tn } = useI18n()
   const Icon = folder.root ? FolderTree : Folder
   return (
     <li className="group/folder flex items-center rounded-md text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text">
-      <button
-        type="button"
-        title={folder.path}
-        onClick={onOpen}
-        aria-label={t('sidebar.newSessionIn', { folder: folder.name })}
-        data-testid="folder-row"
-        className="flex h-7 min-w-0 flex-1 items-center gap-2.5 rounded-md pr-1 pl-2.5 text-left text-base"
-      >
-        <Icon className="size-3.5 shrink-0" style={accent ? { color: accent } : undefined} aria-hidden />
-        <span className={cn('min-w-0 flex-1 truncate', folder.root && 'font-medium')}>{folder.name}</span>
-        {folder.open > 0 && (
-          <span className="rounded-full bg-accent-soft px-1.5 text-xs font-medium tabular-nums text-accent" title={tn('sidebar.openInFolder', folder.open)}>
-            {folder.open}
-            <span className="sr-only"> {tn('sidebar.openInFolder', folder.open)}</span>
-          </span>
-        )}
-      </button>
+      <ContextMenu.Root>
+        <ContextMenu.Trigger asChild>
+          <button
+            type="button"
+            title={folder.path}
+            onClick={onOpen}
+            aria-label={t('sidebar.newSessionIn', { folder: folder.name })}
+            data-testid="folder-row"
+            className="flex h-7 min-w-0 flex-1 items-center gap-2.5 rounded-md pr-1 pl-2.5 text-left text-base"
+          >
+            <Icon className="size-3.5 shrink-0" style={accent ? { color: accent } : undefined} aria-hidden />
+            <span className={cn('min-w-0 flex-1 truncate', folder.root && 'font-medium')}>{folder.name}</span>
+            {folder.open > 0 && (
+              <span className="rounded-full bg-accent-soft px-1.5 text-xs font-medium tabular-nums text-accent" title={tn('sidebar.openInFolder', folder.open)}>
+                {folder.open}
+                <span className="sr-only"> {tn('sidebar.openInFolder', folder.open)}</span>
+              </span>
+            )}
+          </button>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Content className={FOLDER_MENU}>
+            <ContextMenu.Item className={FOLDER_MENU_ITEM} onSelect={onOpen}>
+              {t('folder.newSession')}
+            </ContextMenu.Item>
+            {onResume && (
+              <ContextMenu.Item className={FOLDER_MENU_ITEM} data-testid="folder-resume" onSelect={onResume}>
+                {t('folder.resume')}
+              </ContextMenu.Item>
+            )}
+            <ContextMenu.Separator className="my-1 h-px bg-border" />
+            <ContextMenu.Item className={FOLDER_MENU_ITEM} onSelect={() => void window.hub.history.revealFolder(folder.path)}>
+              {t('folder.reveal')}
+            </ContextMenu.Item>
+          </ContextMenu.Content>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
       <button
         type="button"
         aria-pressed={folder.favorite}
