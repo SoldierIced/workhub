@@ -22,7 +22,7 @@ import { usePlatform } from './lib/platform'
 import { NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
 import { readPrefs } from './lib/prefs'
 import { useAppearance } from './lib/appearance'
-import { listSessions, memberOf, sessionLabel, updateGroups } from './lib/sessionGroups'
+import { historyLookupKeys, listSessions, lookUpHistory, memberOf, sessionLabel, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage, useUsageAlerts } from './lib/usage'
@@ -183,6 +183,20 @@ function Shell() {
     if (!snap || snap.loadError) return
     const live = listed.map(memberOf)
     if (refreshMembers(groups, live) !== groups) void updateGroups((g) => refreshMembers(g, live), liveKeys)
+  }, [snap, groups, listed, liveKeys])
+  // Members saved without their name or account, and reopened sessions known only by their folder,
+  // are looked up once in the session history (the agent's title, its first prompt, its account).
+  const historyAsked = useRef(new Set<string>())
+  const [pastTitles, setPastTitles] = useState<ReadonlyMap<string, string>>(new Map())
+  useEffect(() => {
+    if (!snap || snap.loadError) return
+    const keys = historyLookupKeys(groups, listed, historyAsked.current)
+    if (!keys.length) return
+    for (const k of keys) historyAsked.current.add(k)
+    void lookUpHistory(keys, liveKeys).then(
+      (found) => found.size && setPastTitles((prev) => new Map([...prev, ...found])),
+      () => undefined
+    )
   }, [snap, groups, listed, liveKeys])
   const openPullRequest = useCallback((url?: string) => {
     setPrFocus(url ?? null)
@@ -367,6 +381,8 @@ function Shell() {
             onSelect={openSession}
             onReopen={(m) => void reopenMember(m)}
             profiles={profiles}
+            accounts={snap?.config.accounts}
+            pastTitles={pastTitles}
             onOpenSlack={reachable.some((i) => i.route === 'slack') ? () => navigate('slack') : undefined}
             onRename={setRenaming}
             onOpenInWindow={(id) => window.hub.windows.openSession(id)}

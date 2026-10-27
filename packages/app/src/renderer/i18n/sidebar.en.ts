@@ -21,5 +21,7 @@ export const sidebarEn = {
   'sidebar.subagents.hide.one': 'Hide {count} sub-agent',
   'sidebar.subagents.hide.other': 'Hide {count} sub-agents',
   'sidebar.subagents.list.one': '{count} sub-agent of {name}',
-  'sidebar.subagents.list.other': '{count} sub-agents of {name}'
+  'sidebar.subagents.list.other': '{count} sub-agents of {name}',
+  'sidebar.account': 'Account {name}',
+  'sidebar.clickToReopen': 'Click to reopen'
 } as const

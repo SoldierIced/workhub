@@ -257,7 +257,20 @@ const profile = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()
 })
 
-const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string(), profileId: z.string().min(1).optional() })
+const groupMember = z.object({
+  key: z.string().min(1),
+  title: z.string(),
+  agentKey: z.string().min(1),
+  cwd: z.string(),
+  profileId: z.string().min(1).optional(),
+  // What a closed row shows; optional, so older files load unchanged (no version bump).
+  titled: z.boolean().optional(),
+  agentId: z.string().min(1).optional(),
+  agentName: z.string().optional(),
+  accountId: z.string().min(1).optional(),
+  accountName: z.string().optional(),
+  lookedUp: z.boolean().optional()
+})
 
 const sessionGroups = z.object({
   groups: z

@@ -1,11 +1,15 @@
 import {
   aggregateAttention,
+  applyHistory,
   EMPTY_SESSION_GROUPS,
   effectiveAgentKey,
+  needsHistoryLookup,
   reconcileTop,
+  resolveSessionName,
   sessionIdentity,
   type AttentionSummary,
   type GroupMember,
+  type PastSessionInfo,
   type SessionGroups
 } from '@workhub/core'
 import { refreshConfig } from '../configStore'
@@ -35,22 +39,33 @@ export function listSessions(all: readonly SessionData[]): ListedSession[] {
   return [...best.entries()].map(([key, data]) => ({ key, data })).sort((a, b) => a.data.view.startedAt - b.data.view.startedAt)
 }
 
-const NAME_MAX = 60
+/**
+ * What the sidebar calls an open session, and whether that is a name of its own: the name the user
+ * gave it (Rename…), else the first line of what the user first asked, else its folder. The agent
+ * and the account are shown by the row's icon and second line, not by its name.
+ */
+export function sessionNameInfo(s: Pick<SessionData, 'items' | 'view'>): { title: string; titled: boolean } {
+  const firstPrompt = s.items.find((item) => item.kind === 'user' && item.text.trim())
+  return resolveSessionName({ name: s.view.name, firstPrompt: firstPrompt?.kind === 'user' ? firstPrompt.text : undefined, cwd: s.view.cwd })
+}
+
+export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
+  return sessionNameInfo(s).title
+}
 
 /**
- * What the sidebar calls a session: the name the user gave it (Rename…), else the first line of
- * what the user first asked, else its folder. The agent and the account are shown by the row's
- * icon and second line, not by its name.
+ * A sidebar row's name: the open session's own name, else what its group member remembers (a name
+ * from before it was reopened, or the agent's title from the history), else the history's title
+ * for an open session outside any group, else the folder.
  */
-export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
-  const named = s.view.name?.trim()
-  if (named) return named
-  for (const item of s.items) {
-    if (item.kind !== 'user') continue
-    const line = item.text.split('\n').find((l) => l.trim())?.trim().replace(/\s+/g, ' ')
-    if (line) return line.length > NAME_MAX ? `${line.slice(0, NAME_MAX - 1)}…` : line
+export function rowName(entry: ListedSession | undefined, member: GroupMember, pastTitle?: string): string {
+  if (entry) {
+    const live = sessionNameInfo(entry.data)
+    if (live.titled) return live.title
   }
-  return folderName(s.view.cwd)
+  if (member.titled) return member.title
+  if (pastTitle) return resolveSessionName({ title: pastTitle, cwd: member.cwd }).title
+  return entry ? sessionName(entry.data) : member.title
 }
 
 /**
@@ -62,11 +77,59 @@ export function sessionLabel(s: Pick<SessionData, 'items' | 'view'>): string {
   return asked ? sessionName(s) : `${s.view.agentName} · ${folderName(s.view.cwd)}`
 }
 
-/** What a group remembers about an open session. */
+/** What a group remembers about an open session, to list it with its name, agent and account once closed. */
 export function memberOf(s: ListedSession): GroupMember {
-  const member: GroupMember = { key: s.key, title: sessionName(s.data), agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
-  if (s.data.view.profileId) member.profileId = s.data.view.profileId
+  const { view } = s.data
+  const name = sessionNameInfo(s.data)
+  const member: GroupMember = { key: s.key, title: name.title, agentKey: effectiveAgentKey(view.agentId, view.accountId), cwd: view.cwd, agentId: view.agentId }
+  if (name.titled) member.titled = true
+  if (view.agentName) member.agentName = view.agentName
+  if (view.accountId) member.accountId = view.accountId
+  if (view.accountName) member.accountName = view.accountName
+  if (view.profileId) member.profileId = view.profileId
   return member
+}
+
+/**
+ * The identities to look up in the session history: group members that lack their name or account
+ * (saved by an older Workhub, or closed before anything was asked), and open sessions known only by
+ * their folder. `asked` holds the ones already looked up in this run, so each is read once.
+ */
+export function historyLookupKeys(groups: SessionGroups, listed: readonly ListedSession[], asked: ReadonlySet<string>): string[] {
+  // A session started here (not reopened) has no past to look up: it names itself when asked something.
+  const reopened = (l: ListedSession) => !!l.data.view.resumed && !!l.data.view.agentSessionId
+  const live = new Map(listed.map((l) => [l.key, l]))
+  const keys = new Set<string>()
+  for (const g of groups.groups) {
+    for (const m of g.members) {
+      const open = live.get(m.key)
+      if (needsHistoryLookup(m) && !asked.has(m.key) && (!open || reopened(open))) keys.add(m.key)
+    }
+  }
+  for (const l of listed) if (reopened(l) && !asked.has(l.key) && !sessionNameInfo(l.data).titled) keys.add(l.key)
+  return [...keys]
+}
+
+/** The newest history title of each identity found, for open sessions outside any group. */
+export function pastTitles(entries: readonly PastSessionInfo[]): Map<string, string> {
+  const newest = new Map<string, PastSessionInfo>()
+  for (const e of entries) {
+    const prev = newest.get(e.agentSessionId)
+    if (!prev || e.lastModified > prev.lastModified) newest.set(e.agentSessionId, e)
+  }
+  return new Map([...newest].flatMap(([key, e]) => (e.title.trim() ? [[key, e.title] as const] : [])))
+}
+
+/**
+ * Looks members and open sessions up in the history once: members keep what is found (and that
+ * they were looked up) in the stored groups; the titles found are returned for the open rows.
+ */
+export async function lookUpHistory(keys: readonly string[], liveKeys: readonly string[]): Promise<Map<string, string>> {
+  if (!keys.length) return new Map()
+  const entries = await window.hub.history.find([...keys])
+  const searched = new Set(keys)
+  await updateGroups((g) => applyHistory(g, entries, searched), liveKeys)
+  return pastTitles(entries)
 }
 
 /** The badge count and top state dot of a set of open sessions. */

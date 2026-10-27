@@ -1,10 +1,12 @@
 import { Bot, ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, Settings, X } from 'lucide-react'
 import { ContextMenu, DropdownMenu } from 'radix-ui'
-import { useMemo, useState, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
 import {
+  accountColor,
   createGroup,
   deleteGroup,
   groupOf,
+  memberAgentId,
   moveBy,
   moveGroupBy,
   moveGroupOnto,
@@ -18,6 +20,7 @@ import {
   sidebarRows,
   statusLevel,
   ungroup,
+  type AgentAccount,
   type GroupMember,
   type Profile,
   type SessionGroup,
@@ -29,7 +32,7 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { LEVEL_LABEL, LEVEL_TONE } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 import { folderName } from '../../lib/home'
-import { groupSummary, listSessions, memberOf, newGroupId, sessionName, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
+import { groupSummary, listSessions, memberOf, newGroupId, rowName, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
 import { openSubagent, visibleSubagents } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
 import { usePlatform } from '../../lib/platform'
@@ -69,6 +72,10 @@ export interface SessionListProps {
   onReopen: (member: GroupMember) => void
   /** The profiles: each session row carries its profile's colour down its left edge. */
   profiles?: readonly Pick<Profile, 'id' | 'name' | 'color'>[]
+  /** The agent accounts: a row names its account and marks it with the account's colour. */
+  accounts?: readonly Pick<AgentAccount, 'id' | 'agentId' | 'name'>[]
+  /** History titles of reopened sessions outside any group, by identity (see `lookUpHistory`). */
+  pastTitles?: ReadonlyMap<string, string>
   /** The Slack badge of a row that owns followed threads opens the Slack screen. */
   onOpenSlack?: () => void
   /** "Rename…" of an open session. */
@@ -138,7 +145,7 @@ function readMember(e: DragEvent): GroupMember | null {
  * the user arranged them. Groups hold sessions by their stable identity, so a closed session
  * stays listed (dimmed, reopenable) until it is removed.
  */
-export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [], onOpenSlack, onRename, onOpenInWindow }: SessionListProps) {
+export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [], accounts = [], pastTitles, onOpenSlack, onRename, onOpenInWindow }: SessionListProps) {
   const { t, tn } = useI18n()
   const platform = usePlatform()
   const listed = useMemo(() => listSessions(sessions), [sessions])
@@ -252,11 +259,20 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     return color && name ? { color, name } : undefined
   }
 
+  /** The account a row runs with, named as Settings names it now, else as remembered. */
+  const accountOf = (member: GroupMember, entry: ListedSession | undefined) => {
+    const id = entry ? entry.data.view.accountId : member.accountId
+    const name = accounts.find((a) => a.id === id)?.name ?? (entry ? entry.data.view.accountName : member.accountName)
+    return name ? { name, color: accountColor(accounts, id) } : undefined
+  }
+
   const sessionItem = (member: GroupMember, entry: ListedSession | undefined, nested: boolean) => (
     <SessionItem
       key={member.key}
       onOpenSlack={onOpenSlack}
       member={member}
+      title={rowName(entry, member, pastTitles?.get(member.key))}
+      account={accountOf(member, entry)}
       profile={profileOf(member, entry)}
       subagents={entry ? visibleSubagents(entry.data.monitor.subagents, now) : []}
       subagentsOpen={expanded.has(member.key)}
@@ -370,6 +386,10 @@ export function dropOnSessionsTitle(e: DragEvent, liveKeys: readonly string[]): 
 function SessionItem(props: {
   member: GroupMember
   entry: ListedSession | undefined
+  /** The row's name (see `rowName`). */
+  title: string
+  /** The account it runs with, and that account's colour when it is still set up. */
+  account?: { name: string; color?: string }
   /** The session's profile, for the colour bar down the row's left edge. */
   profile?: { color: string; name: string }
   /** Its sub-agents at work or recently ended, listed under the row while `subagentsOpen`. */
@@ -402,13 +422,10 @@ function SessionItem(props: {
   // A session that was stopped is as good as closed: dimmed, and the row reopens it.
   const stopped = data?.view.state === 'stopped'
   const status = data ? (data.unseen && level ? t(LEVEL_LABEL[level]) : t(`state.${data.view.state}`)) : t('groups.closed')
-  const title = data ? sessionName(data) : member.title
+  const { title, account } = props
   const cwd = data ? data.view.cwd : member.cwd
-  const agentId = data ? data.view.agentId : member.agentKey
-  const agentName = data?.view.agentName
-  const accountName = data?.view.accountName
-  // The full name, then where it runs: shown on hover because the row truncates all of it.
-  const details = [agentName, accountName, folderName(cwd)].filter(Boolean).join(' · ')
+  const agentId = data ? data.view.agentId : memberAgentId(member)
+  const agentName = data?.view.agentName ?? member.agentName
   const onKey = (e: KeyboardEvent) => {
     // Delete or Backspace closes the focused session, as the close button does.
     if (props.onClose && !e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace')) {
@@ -458,16 +475,24 @@ function SessionItem(props: {
             <Tooltip
               side="right"
               content={
-                <span className="block max-w-xs break-words">
+                <span data-testid="row-tooltip" className="block max-w-xs break-words">
                   <span className="block font-medium">{title}</span>
-                  <span className="block text-xs text-muted">{details}</span>
+                  <span className="block text-xs text-muted">{agentName ?? agentId}</span>
+                  {account && (
+                    <span className="flex items-center gap-1.5 text-xs text-muted">
+                      <span className="size-2 shrink-0 rounded-full bg-subtle" style={account.color ? { backgroundColor: account.color } : undefined} aria-hidden />
+                      {t('sidebar.account', { name: account.name })}
+                    </span>
+                  )}
                   {props.profile && (
                     <span className="flex items-center gap-1.5 text-xs text-muted">
                       <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: props.profile.color }} aria-hidden />
                       {t('sidebar.profileBar', { name: props.profile.name })}
                     </span>
                   )}
-                  <span className="block text-xs text-subtle">{closed ? t('groups.reopen') : cwd}</span>
+                  <span className="block text-xs text-subtle">{cwd}</span>
+                  <span className="block text-xs text-muted">{status}</span>
+                  {closed && <span className="block text-xs font-medium text-text">{t('sidebar.clickToReopen')}</span>}
                 </span>
               }
             >
@@ -479,7 +504,13 @@ function SessionItem(props: {
                 className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1.5 pr-1 text-left', props.nested ? 'pl-2' : 'pl-3')}
               >
                 <span className="relative inline-flex shrink-0">
-                  <AgentIcon agentId={agentId} adapter={data?.view.adapter} label={agentName} />
+                  <AgentIcon
+                    agentId={agentId}
+                    adapter={data?.view.adapter}
+                    label={agentName}
+                    className={account?.color ? 'ring-2 ring-offset-1 ring-offset-sidebar' : undefined}
+                    style={account?.color ? ({ '--tw-ring-color': account.color } as CSSProperties) : undefined}
+                  />
                   {closed ? (
                     <RotateCcw className="absolute -right-1 -bottom-1 size-3 rounded-full bg-surface text-subtle" aria-hidden />
                   ) : (
@@ -492,9 +523,16 @@ function SessionItem(props: {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className={cn('block truncate text-base', data?.unseen && 'font-semibold text-text')}>{title}</span>
-                  <span className="block truncate text-xs text-subtle">
-                    {folderName(cwd)} · {accountName ? `${accountName} · ` : ''}
-                    {status}
+                  <span className="block truncate text-xs text-subtle" data-testid="row-subtitle">
+                    {account && (
+                      <>
+                        <span data-testid="row-account" className="font-medium" style={account.color ? { color: account.color } : undefined}>
+                          {account.name}
+                        </span>
+                        {' · '}
+                      </>
+                    )}
+                    {folderName(cwd)} · {status}
                   </span>
                 </span>
                 {automation && <Settings data-testid="automation-badge" role="img" aria-label={t('automations.sessionBadge', { name: automation })} className="size-3.5 shrink-0 text-subtle" />}
