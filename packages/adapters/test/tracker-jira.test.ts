@@ -74,6 +74,8 @@ describe('JiraTracker.listAssigned', () => {
     body: {
       issues: [
         issue('ABC-1', status('In Progress', 'indeterminate'), {
+          description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'PR https://github.com/example/app/pull/4' }] }] },
+          comment: { comments: [{ body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'inlineCard', attrs: { url: 'https://github.com/example/app/pull/5' } }] }] } }] },
           customfield_10020: [
             { id: 5, name: 'Sprint 5', state: 'closed' },
             { id: 7, name: 'Sprint 7', state: 'active', startDate: '2026-10-19T00:00:00Z' }
@@ -94,6 +96,8 @@ describe('JiraTracker.listAssigned', () => {
       ['ABC-2', 'todo', 'Sprint 8'],
       ['ABC-3', 'todo', undefined]
     ])
+    expect(tickets[0]?.pullRequestUrls).toEqual(['https://github.com/example/app/pull/4', 'https://github.com/example/app/pull/5'])
+    expect(tickets[1]?.pullRequestUrls).toBeUndefined()
     expect(tickets[0]).toMatchObject({ provider: 'jira', url: 'https://acme.example.com/browse/ABC-1', assignee: 'Dana Test', type: 'Task', priority: 'High' })
     expect(groupBySprint(tickets).map((g) => g.title)).toEqual(['Sprint 7', 'Sprint 8', 'Backlog'])
   })

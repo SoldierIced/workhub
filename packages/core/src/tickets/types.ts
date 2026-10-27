@@ -30,6 +30,8 @@ export interface Ticket {
   priority?: string
   /** Browser URL. */
   url?: string
+  /** Pull/merge request URLs the description and comments list (Workhub 1's ticket to PR link). */
+  pullRequestUrls?: string[]
 }
 
 export interface TicketComment {

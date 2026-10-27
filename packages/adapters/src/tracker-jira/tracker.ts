@@ -1,6 +1,7 @@
 import {
   TrackerError,
   isTicketKey,
+  listedPullRequests,
   type ConnectionTest,
   type ListTicketsOptions,
   type StatusCategory,
@@ -28,7 +29,7 @@ export interface JiraOptions {
 }
 
 const SPRINT_SCHEMA = 'com.pyxis.greenhopper.jira:gh-sprint'
-const LIST_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee']
+const LIST_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee', 'description', 'comment']
 const DETAIL_FIELDS = 'summary,status,issuetype,priority,assignee,reporter,created,updated,labels,description,comment,parent,subtasks'
 const AGILE_CONCURRENCY = 5
 
@@ -191,6 +192,7 @@ export class JiraTracker implements TicketTracker {
     const f = issue['fields'] as Json | undefined
     if (typeof key !== 'string' || !f?.status) return null
     const sprints = sprintField ? ((f[sprintField] as Json[] | null) ?? []) : []
+    const pullRequestUrls = listedPullRequests({ description: adfToText(f['description']), comments: commentsOf(f).map((c) => ({ id: '', author: '', body: c })) })
     return {
       key,
       provider: 'jira',
@@ -201,7 +203,8 @@ export class JiraTracker implements TicketTracker {
       assignee: f['assignee']?.displayName ?? undefined,
       type: f['issuetype']?.name ?? undefined,
       priority: f['priority']?.name ?? undefined,
-      url: `${this.site}/browse/${key}`
+      url: `${this.site}/browse/${key}`,
+      pullRequestUrls: pullRequestUrls.length > 0 ? pullRequestUrls : undefined
     }
   }
 
@@ -231,6 +234,11 @@ function failureMessage(status: number, text: string): string {
   const json = parseJson(text) as Json | undefined
   const messages = [...((json?.['errorMessages'] as string[] | undefined) ?? []), ...Object.values((json?.['errors'] as Record<string, string> | undefined) ?? {})]
   return messages.length > 0 ? messages.join(' ') : `Jira answered ${status}`
+}
+
+/** Plain text of every comment of an issue's fields. */
+function commentsOf(fields: Json): string[] {
+  return ((fields['comment']?.comments as Json[] | undefined) ?? []).map((c) => adfToText(c['body']))
 }
 
 function parseDate(value: unknown): number | undefined {

@@ -1,6 +1,7 @@
 import {
   TrackerError,
   isTicketKey,
+  pullRequestUrlsIn,
   type ConnectionTest,
   type ListTicketsOptions,
   type StatusCategory,
@@ -31,6 +32,7 @@ type Json = Record<string, any>
 const DEFAULT_ENDPOINT = 'https://api.linear.app/graphql'
 
 const ISSUE_FIELDS = `identifier title url priorityLabel state { name type } assignee { name } cycle { id name number startsAt endsAt isActive }`
+const LIST_EXTRA = `description comments(first: 20) { nodes { body } }`
 
 /** Linear's state types: backlog and unstarted are to-do, started is in progress, the rest is done. */
 export function linearCategory(type: unknown): StatusCategory {
@@ -67,7 +69,7 @@ export class LinearTracker implements TicketTracker {
 
   async listAssigned(options: ListTicketsOptions = {}): Promise<Ticket[]> {
     const data = await this.query(
-      `query { viewer { assignedIssues(first: 100, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) { nodes { ${ISSUE_FIELDS} } } } }`
+      `query { viewer { assignedIssues(first: 100, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) { nodes { ${ISSUE_FIELDS} ${LIST_EXTRA} } } } }`
     )
     const hidden = new Set((options.ignoredStatuses ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean))
     const nodes = (data['viewer']?.assignedIssues?.nodes as Json[] | undefined) ?? []
@@ -153,6 +155,8 @@ export class LinearTracker implements TicketTracker {
   }
 
   private toTicket(n: Json): Ticket {
+    const text = [n['description'], ...((n['comments']?.nodes as Json[] | undefined) ?? []).map((c) => c['body'])].filter((x) => typeof x === 'string').join('\n')
+    const pullRequestUrls = pullRequestUrlsIn(text)
     return {
       key: String(n['identifier']),
       provider: 'linear',
@@ -162,7 +166,8 @@ export class LinearTracker implements TicketTracker {
       sprint: this.toSprint(n['cycle']),
       assignee: n['assignee']?.name ?? undefined,
       priority: n['priorityLabel'] && n['priorityLabel'] !== 'No priority' ? n['priorityLabel'] : undefined,
-      url: typeof n['url'] === 'string' ? n['url'] : undefined
+      url: typeof n['url'] === 'string' ? n['url'] : undefined,
+      pullRequestUrls: pullRequestUrls.length > 0 ? pullRequestUrls : undefined
     }
   }
 

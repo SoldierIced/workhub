@@ -52,7 +52,7 @@ describe('LinearTracker', () => {
             viewer: {
               assignedIssues: {
                 nodes: [
-                  node('ENG-1', { name: 'In Progress', type: 'started' }, { cycle: { id: 'c1', name: null, number: 12, startsAt: '2026-10-20T00:00:00Z', endsAt: '2026-11-03T00:00:00Z', isActive: true } }),
+                  node('ENG-1', { name: 'In Progress', type: 'started' }, { description: 'PR: https://github.com/example/app/pull/9', comments: { nodes: [{ body: 'see https://github.com/example/app/pull/9/files' }] }, cycle: { id: 'c1', name: null, number: 12, startsAt: '2026-10-20T00:00:00Z', endsAt: '2026-11-03T00:00:00Z', isActive: true } }),
                   node('ENG-2', { name: 'Todo', type: 'unstarted' }, { cycle: { id: 'c2', name: 'Autumn', number: 13, startsAt: '2026-11-03T00:00:00Z', endsAt: '2026-11-17T00:00:00Z', isActive: false } }),
                   node('ENG-3', { name: 'Todo', type: 'unstarted' }, { cycle: { id: 'c0', name: 'Old', number: 11, startsAt: '2026-10-01T00:00:00Z', endsAt: '2026-10-15T00:00:00Z', isActive: false } }),
                   node('ENG-4', { name: 'Blocked', type: 'started' })
@@ -69,6 +69,7 @@ describe('LinearTracker', () => {
       ['ENG-2', 'todo', 'Autumn', 'future'],
       ['ENG-3', 'todo', undefined, undefined]
     ])
+    expect(tickets[0]?.pullRequestUrls).toEqual(['https://github.com/example/app/pull/9'])
     expect(groupBySprint(tickets).map((g) => g.title)).toEqual(['Cycle 12', 'Autumn', 'Backlog'])
     expect(tickets[0]).toMatchObject({ provider: 'linear', url: 'https://linear.example.com/t/ENG-1', priority: 'High' })
   })
