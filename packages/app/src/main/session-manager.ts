@@ -21,7 +21,8 @@ import {
   type TranscriptReader,
   type WorkhubConfig
 } from '@workhub/core'
-import { terminalChannel, type SessionMode, type SessionView, type StartSessionInput } from '../shared/api'
+import { terminalChannel, type SessionMode, type SessionView, type SetModeOptions, type StartSessionInput } from '../shared/api'
+import { ConsoleActivity } from './console-activity'
 
 /** What runs the session right now: the agent's runtime (app) or the agent's own TUI in a PTY (console). */
 type Engine = 'app' | 'console'
@@ -39,7 +40,25 @@ interface ManagedSession {
   lastMonitor?: string
   /** An AI reviewer: started in the agent's most read-only mode, chat only. */
   readOnly: boolean
+  /** The engine picked while a turn ran: the hand-over waits for the turn to end (Workhub 1's `pendingEngine`). */
+  pending?: Engine
+  pendingTimer?: ReturnType<typeof setTimeout>
+  /** Permission requests of the app engine not answered yet: the turn waits on the user. */
+  openPermissions: Set<string>
+  /** What the console's terminal UI shows: a spinner while a turn runs, a notification when it asks. */
+  console: ConsoleActivity
+  /** When the console engine last started, so a tool call cut off by an earlier process never holds a switch. */
+  consoleStartedAt: number
+  /** Tool calls the transcript reports for this session, with their last status. */
+  toolStatus: Map<string, { status?: string; startedAt?: number }>
+  /**
+   * While a resumed chat is replayed: its live chat events and its state wait here, so the
+   * renderer gets the earlier conversation first and the composer opens only after it.
+   */
+  held?: { events: AgentEvent[]; state?: Extract<AgentEvent, { type: 'state' }> }
 }
+
+const CHAT_EVENTS: ReadonlySet<AgentEvent['type']> = new Set(['message', 'tool', 'permission', 'permissionCancelled', 'notice', 'exit'])
 
 export interface SessionManagerDeps {
   config: ConfigurationService
@@ -58,6 +77,10 @@ export interface SessionManagerDeps {
   emitConfigChanged?: () => void
   /** How often transcripts are read for the monitor (Workhub 1: every 3 s). */
   pollMs?: number
+  /** How long a session stays idle before a pending switch hands it over (Workhub 1: 1.5 s). */
+  settleMs?: number
+  /** Longest wait for the earlier conversation before a resumed chat opens without it. */
+  replayWaitMs?: number
 }
 
 const SHELL = BUILTIN_AGENTS.find((a) => a.id === 'shell')!
@@ -95,6 +118,8 @@ export class SessionManager {
   private readonly sessions = new Map<string, ManagedSession>()
   private readonly timer: ReturnType<typeof setInterval>
   private polling = false
+  /** The last size each terminal channel reported, so a terminal started later starts at that size. */
+  private readonly sizes = new Map<string, { cols: number; rows: number }>()
 
   constructor(private readonly deps: SessionManagerDeps) {
     const runtimes = new Set([...Object.values(deps.runtimes), deps.terminal])
@@ -162,18 +187,39 @@ export class SessionManager {
       controls: hasSessionControls(runtime),
       ...(input.readOnly ? { readOnly: true } : {})
     }
-    const session: ManagedSession = { view, agent, account, env: { ...launchEnvironment(agent, account), ...(internal.env ?? {}) }, runtime, engine, switching: false, readOnly: input.readOnly === true }
+    const session: ManagedSession = {
+      view,
+      agent,
+      account,
+      env: { ...launchEnvironment(agent, account), ...(internal.env ?? {}) },
+      runtime,
+      engine,
+      switching: false,
+      readOnly: input.readOnly === true,
+      openPermissions: new Set(),
+      console: new ConsoleActivity(),
+      consoleStartedAt: 0,
+      toolStatus: new Map()
+    }
     this.sessions.set(view.id, session)
     this.deps.emitChanged(view)
 
     const resume = Boolean(input.resumeAgentSessionId)
     // session/new can take 10-15 s: answer now, report progress through `changed` events.
-    void (engine === 'app' ? this.startApp(session, { resume, model: input.model, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows))
-      .then(() => {
-        if (resume && engine === 'app') void this.replay(session)
-      })
-      .catch((err: unknown) => this.update(view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) }))
+    void (engine === 'app' ? this.startChat(session, { resume, model: input.model, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows)).catch(
+      (err: unknown) => this.update(view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) })
+    )
     return view
+  }
+
+  /** Stops a session (if it still runs) and drops it from the list; its conversation stays in History. */
+  async close(id: string): Promise<void> {
+    const s = this.sessions.get(id)
+    if (!s) return
+    if (s.view.state !== 'stopped' && s.view.state !== 'error') await this.stop(id)
+    // A late event may have moved it out of `stopped`; closing wins.
+    if (s.view.state !== 'stopped' && s.view.state !== 'error') this.update(id, { state: 'stopped' })
+    this.remove(id)
   }
 
   async prompt(id: string, text: string, images?: ImageInput[]): Promise<string> {
@@ -191,21 +237,27 @@ export class SessionManager {
 
   async stop(id: string): Promise<void> {
     const s = this.require(id)
+    this.clearPending(s)
     s.switching = true
     await Promise.all([
       s.engine === 'app' ? s.runtime.stop(id) : this.deps.terminal.stop(terminalChannel(id, 'console')),
       this.deps.terminal.stop(terminalChannel(id, 'shell'))
     ])
     s.switching = false
-    this.update(id, { state: 'stopped', shellRunning: false })
+    this.update(id, { state: 'stopped', shellRunning: false, pendingMode: undefined })
   }
 
   /**
    * Shows another mode. App and console hand the same agent session over: the running engine
    * stops (Claude ends cleanly) and the other resumes it, as Workhub 1 does. The shell starts once
    * and keeps running beside the agent.
+   *
+   * Handing over ends the current engine's process, which would cut a turn off. So while a turn
+   * runs (or waits on a permission or a question) the other engine is only recorded as
+   * `pendingMode` and the hand-over follows the turn's end. `now` forces it (the turn ends);
+   * picking the engine that runs drops a pending switch.
    */
-  async setMode(id: string, mode: SessionMode): Promise<void> {
+  async setMode(id: string, mode: SessionMode, options: SetModeOptions = {}): Promise<void> {
     const s = this.require(id)
     if (!s.view.modes.includes(mode)) throw new Error(`mode ${mode} is not available for this session`)
     if (mode === 'shell') {
@@ -215,20 +267,89 @@ export class SessionManager {
     }
     const live = s.view.state !== 'stopped' && s.view.state !== 'error'
     if (mode === s.engine && live) {
-      this.update(id, { mode })
+      this.clearPending(s)
+      this.update(id, { mode, pendingMode: undefined })
       return
     }
+    // A hand-over is under way; the switch shows the engine it lands on.
+    if (s.switching) return
+    if (live && !options.now && this.turnInProgress(s)) {
+      s.pending = mode
+      // From the shell, back to the view where the turn runs and the notice shows.
+      this.update(id, { mode: s.engine, pendingMode: mode })
+      return
+    }
+    this.clearPending(s)
+    await this.handOver(s, mode, mode)
+  }
+
+  /** Whether handing the conversation to the other engine now would cut a turn off. */
+  turnInProgress(s: ManagedSession): boolean {
+    if (s.view.state === 'stopped' || s.view.state === 'error') return false
+    if (s.engine === 'app') return s.view.state === 'busy' || s.openPermissions.size > 0
+    if (s.console.busy) return true
+    // A permission prompt titles the terminal with the idle ✳: the transcript tells, through a tool
+    // call this console started that has no result yet.
+    for (const t of s.toolStatus.values()) {
+      if ((t.status === 'pending' || t.status === 'in_progress') && (t.startedAt ?? 0) >= s.consoleStartedAt - 1000) return true
+    }
+    return false
+  }
+
+  /** Ends the current engine and resumes the same agent session in the other one. */
+  private async handOver(s: ManagedSession, engine: Engine, show: SessionMode): Promise<void> {
+    const id = s.view.id
+    const live = s.view.state !== 'stopped' && s.view.state !== 'error'
     s.switching = true
     try {
       if (live) await (s.engine === 'app' ? s.runtime.stop(id) : this.deps.terminal.stop(terminalChannel(id, 'console')))
-      s.engine = mode
-      this.update(id, { mode, state: 'starting', error: undefined })
+      s.engine = engine
+      s.openPermissions.clear()
+      s.console.reset()
+      this.update(id, { mode: show, pendingMode: undefined, state: 'starting', error: undefined })
     } finally {
       s.switching = false
     }
     const hasHistory = await this.hasTranscript(s)
-    if (mode === 'app') await this.startApp(s, { resume: hasHistory, model: s.view.currentModelId })
+    if (engine === 'app') await this.startChat(s, { resume: hasHistory, model: s.view.currentModelId })
     else await this.startConsole(s)
+  }
+
+  private clearPending(s: ManagedSession): void {
+    s.pending = undefined
+    if (s.pendingTimer) clearTimeout(s.pendingTimer)
+    s.pendingTimer = undefined
+  }
+
+  /**
+   * Runs a pending switch once the session has been idle for a moment: a short gap between two
+   * requests of one turn does not count as its end. In the console the transcript is read first,
+   * for a permission prompt the terminal title does not show.
+   */
+  private checkPending(s: ManagedSession): void {
+    if (!s.pending) return
+    if (s.view.state === 'stopped' || s.view.state === 'error') {
+      this.clearPending(s)
+      this.update(s.view.id, { pendingMode: undefined })
+      return
+    }
+    if (this.turnInProgress(s)) {
+      if (s.pendingTimer) clearTimeout(s.pendingTimer)
+      s.pendingTimer = undefined
+      return
+    }
+    if (s.pendingTimer) return
+    s.pendingTimer = setTimeout(() => {
+      s.pendingTimer = undefined
+      void (async () => {
+        if (s.engine === 'console') await this.pollOne(s)
+        const target = s.pending
+        if (!target || s.switching || this.turnInProgress(s) || !this.sessions.has(s.view.id)) return
+        s.pending = undefined
+        // Stays in the shell if the user went there meanwhile; the agent changes view underneath.
+        await this.handOver(s, target, s.view.mode === 'shell' ? 'shell' : target)
+      })().catch((err: unknown) => this.update(s.view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) }))
+    }, this.deps.settleMs ?? 1500)
   }
 
   async setModel(id: string, modelId: string | null): Promise<void> {
@@ -247,20 +368,35 @@ export class SessionManager {
   }
 
   respondPermission(id: string, requestId: string, optionId: string | null): void {
-    this.sessions.get(id)?.runtime.respondPermission(id, requestId, optionId)
+    const s = this.sessions.get(id)
+    if (!s) return
+    s.runtime.respondPermission(id, requestId, optionId)
+    s.openPermissions.delete(requestId)
+    this.checkPending(s)
   }
 
   /** Raw input for a session's terminal channel (`<id>:console` or `<id>:shell`). */
   write(channelId: string, data: string): void {
     if (isTerminalControl(this.deps.terminal)) this.deps.terminal.write(channelId, data)
+    const [id, channel] = channelId.split(':')
+    const s = channel === 'console' ? this.sessions.get(id!) : undefined
+    if (s) {
+      // Typing in the console answers whatever it asked.
+      s.console.typed()
+      this.checkPending(s)
+    }
   }
 
+  /** Remembered per channel too: a terminal that starts later (a hand-over) starts at this size. */
   resize(channelId: string, cols: number, rows: number): void {
+    if (!(cols > 0 && rows > 0)) return
+    this.sizes.set(channelId, { cols, rows })
     if (isTerminalControl(this.deps.terminal)) this.deps.terminal.resize(channelId, cols, rows)
   }
 
   async stopAll(): Promise<void> {
     clearInterval(this.timer)
+    for (const s of this.sessions.values()) this.clearPending(s)
     for (const s of this.sessions.values()) s.switching = true
     const runtimes = new Set([...Object.values(this.deps.runtimes), this.deps.terminal])
     await Promise.all([...runtimes].map((r) => r?.stopAll()))
@@ -311,21 +447,27 @@ export class SessionManager {
         ? { command: s.agent.command, args: s.agent.args }
         : consoleCommand(s.agent.console!, s.view.agentSessionId, await this.hasTranscript(s))
     const agent: AgentDefinition = { ...s.agent, adapter: 'terminal', command: launch.command, args: launch.args }
+    const channel = terminalChannel(s.view.id, 'console')
+    const size = this.sizes.get(channel)
+    s.console.reset()
+    s.consoleStartedAt = Date.now()
     const started = await this.deps.terminal.start({
-      sessionId: terminalChannel(s.view.id, 'console'),
+      sessionId: channel,
       agent,
       account: s.account,
       cwd: s.view.cwd,
       env: s.env,
-      cols: cols ?? 100,
-      rows: rows ?? 30
+      cols: size?.cols ?? cols ?? 100,
+      rows: size?.rows ?? rows ?? 30
     })
     // The console does not report a permission mode; keep the one the chat last showed.
     if (!s.view.permissionMode) this.update(s.view.id, { permissionMode: started.permissionMode })
   }
 
   private async startShell(s: ManagedSession): Promise<void> {
-    await this.deps.terminal.start({ sessionId: terminalChannel(s.view.id, 'shell'), agent: SHELL, account: null, cwd: s.view.cwd, env: s.env, cols: 100, rows: 30 })
+    const channel = terminalChannel(s.view.id, 'shell')
+    const size = this.sizes.get(channel) ?? this.sizes.get(terminalChannel(s.view.id, 'console'))
+    await this.deps.terminal.start({ sessionId: channel, agent: SHELL, account: null, cwd: s.view.cwd, env: s.env, cols: size?.cols ?? 100, rows: size?.rows ?? 30 })
     this.update(s.view.id, { shellRunning: true })
   }
 
@@ -339,14 +481,47 @@ export class SessionManager {
     return s.agent.transcript ? this.deps.transcripts.find((r) => r.id === s.agent.transcript) : undefined
   }
 
-  private async replay(s: ManagedSession): Promise<void> {
+  /**
+   * Starts the chat; a resumed one shows its whole conversation first. The SDK resumes a session
+   * without replaying it, so the stored messages are read (in parallel with the start) and sent
+   * before any live event of the new chat, and the chat turns ready only after them: the
+   * renderer replaces what it showed with the full conversation, the console's turns included.
+   */
+  private async startChat(s: ManagedSession, opts: { resume: boolean; model?: string; cols?: number; rows?: number }): Promise<void> {
     const source = this.deps.history[s.agent.accountsOf ?? s.agent.id]
-    if (!source || !s.view.agentSessionId) return
+    if (!opts.resume || !source || !s.view.agentSessionId) return this.startApp(s, opts)
+    const held: NonNullable<ManagedSession['held']> = { events: [] }
+    s.held = held
+    const release = () => {
+      if (s.held !== held) return
+      s.held = undefined
+      if (held.state) this.onEvent(held.state)
+      for (const e of held.events) this.deps.emitEvent(e)
+    }
+    const agentSessionId = s.view.agentSessionId
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const replayed = Promise.race([
+      this.readHistory(source, agentSessionId, s).then((messages) => {
+        if (s.held === held && messages.length) this.deps.emitReplay(s.view.id, messages)
+      }),
+      new Promise<void>((resolve) => (timer = setTimeout(resolve, this.deps.replayWaitMs ?? 10_000)))
+    ]).finally(() => {
+      clearTimeout(timer)
+      release()
+    })
     try {
-      const messages = await source.messages(s.view.agentSessionId, s.view.cwd, s.account?.configDir)
-      if (messages.length) this.deps.emitReplay(s.view.id, messages)
+      await this.startApp(s, opts)
+    } finally {
+      await replayed
+    }
+  }
+
+  private async readHistory(source: SessionHistorySource, agentSessionId: string, s: ManagedSession): Promise<HistoryMessage[]> {
+    try {
+      return await source.messages(agentSessionId, s.view.cwd, s.account?.configDir)
     } catch {
       // A conversation that cannot be read back still resumes; only the earlier messages are missing.
+      return []
     }
   }
 
@@ -355,28 +530,44 @@ export class SessionManager {
     if (this.polling) return
     this.polling = true
     try {
-      const config = await this.deps.config.current()
-      const prefixes = ticketPrefixes(config)
-      for (const s of this.sessions.values()) {
-        const reader = this.reader(s)
-        if (!reader || !s.view.agentSessionId) continue
-        const snapshot = await reader
-          .read({ agentSessionId: s.view.agentSessionId, cwd: s.view.cwd, configDir: s.account?.configDir, ticketPrefixes: prefixes })
-          .catch(() => null)
-        const key = snapshot && JSON.stringify(snapshot)
-        if (!snapshot || key === s.lastMonitor) continue
-        s.lastMonitor = key ?? undefined
-        this.deps.emitEvent({ sessionId: s.view.id, type: 'monitor', snapshot })
-      }
+      const prefixes = ticketPrefixes(await this.deps.config.current())
+      for (const s of this.sessions.values()) await this.pollOne(s, prefixes)
     } finally {
       this.polling = false
     }
+  }
+
+  private async pollOne(s: ManagedSession, prefixes?: string[]): Promise<void> {
+    const reader = this.reader(s)
+    if (!reader || !s.view.agentSessionId) return
+    const ticketPrefixesNow = prefixes ?? ticketPrefixes(await this.deps.config.current())
+    const snapshot = await reader
+      .read({ agentSessionId: s.view.agentSessionId, cwd: s.view.cwd, configDir: s.account?.configDir, ticketPrefixes: ticketPrefixesNow })
+      .catch(() => null)
+    const key = snapshot && JSON.stringify(snapshot)
+    if (!snapshot || key === s.lastMonitor) return
+    s.lastMonitor = key ?? undefined
+    for (const t of snapshot.toolCalls ?? []) s.toolStatus.set(t.id, { status: t.status, startedAt: t.startedAt })
+    this.deps.emitEvent({ sessionId: s.view.id, type: 'monitor', snapshot })
+    this.checkPending(s)
   }
 
   /** Runtime events carry the runtime's session id: the session's own for the app engine, `<id>:<channel>` for terminals. */
   private onEvent(e: AgentEvent): void {
     const [id, channel] = e.sessionId.split(':') as [string, 'console' | 'shell' | undefined]
     const s = this.sessions.get(id)
+    // A resumed chat's own events wait for its earlier conversation (see startChat).
+    if (s?.held && !channel && s.engine === 'app' && !s.switching) {
+      if (e.type === 'state') {
+        s.held.state = e
+        return
+      }
+      if (CHAT_EVENTS.has(e.type)) {
+        this.track(s, e)
+        s.held.events.push(e)
+        return
+      }
+    }
     if (s && e.type === 'state') {
       if (channel === 'shell') {
         if (e.state === 'stopped' || e.state === 'error') this.update(id, { shellRunning: false, ...(s.view.mode === 'shell' ? { mode: s.engine } : {}) })
@@ -388,7 +579,20 @@ export class SessionManager {
       if (e.type === 'permissionMode') this.update(id, { permissionMode: e.mode, currentModeId: e.currentModeId })
       if (e.type === 'models') this.update(id, { models: e.models, ...(e.currentModelId ? { currentModelId: e.currentModelId } : {}) })
     }
+    if (s) this.track(s, e, channel)
     this.deps.emitEvent(e)
+    if (s) this.checkPending(s)
+  }
+
+  /** Keeps what decides whether a turn is in progress: open permission requests, the console's title. */
+  private track(s: ManagedSession, e: AgentEvent, channel?: 'console' | 'shell'): void {
+    if (!channel && s.engine === 'app') {
+      if (e.type === 'permission') s.openPermissions.add(e.requestId)
+      else if (e.type === 'permissionCancelled') s.openPermissions.delete(e.requestId)
+      else if (e.type === 'state' && e.state !== 'busy') s.openPermissions.clear()
+    } else if (channel === 'console' && s.engine === 'console' && e.type === 'output') {
+      s.console.feed(e.data)
+    }
   }
 
   private update(id: string, patch: Partial<SessionView>): void {
