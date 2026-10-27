@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -59,6 +59,7 @@ import type { TrayRendererState } from '../shared/tray-api'
 import { Notifier } from './notifier'
 import { TrayService } from './tray'
 import { isLocale, trayText } from './tray-text'
+import { AppBadge, attentionBadgeCount } from './app-badge'
 import { HealthWatcher, TicketWatcher } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
@@ -146,6 +147,17 @@ const recentPrEvents: TrayPrEvent[] = []
 /** Options read synchronously (closing the window); refreshed on every options save and tray refresh. */
 let keepInTray = true
 const scheduleTray = () => trayService?.schedule()
+
+/** The number of sessions that need a look, on the app icon (Dock, taskbar button, launcher). */
+const appBadge = new AppBadge({
+  platform: process.platform,
+  setBadgeCount: (count) => void app.setBadgeCount(count),
+  setOverlay: (bitmap, description) => {
+    if (!win || win.isDestroyed()) return
+    win.setOverlayIcon(bitmap ? nativeImage.createFromBitmap(bitmap.data, { width: bitmap.size, height: bitmap.size, scaleFactor: 2 }) : null, description)
+  },
+  describe: (count) => trayText(trayLocale).tn('tray.tooltip.attention', count)
+})
 
 /** Every OS notification goes through here: per-kind switches and "Pause notifications". */
 const notifier = new Notifier({
@@ -573,6 +585,7 @@ function registerIpc(): void {
     if (isLocale(state?.locale)) trayLocale = state.locale
     if (Array.isArray(state?.sessions)) rendererSessions = state.sessions.slice(0, 500).filter(validTraySession)
     scheduleTray()
+    appBadge.setCount(attentionBadgeCount(rendererSessions ?? []))
   })
 }
 
@@ -671,7 +684,9 @@ const ticketWatcher = new TicketWatcher({
 })
 
 async function refreshOptionsCache(): Promise<void> {
-  keepInTray = appOptions(await configuration.current()).keepInTray
+  const options = appOptions(await configuration.current())
+  keepInTray = options.keepInTray
+  appBadge.setEnabled(options.showAppBadge)
   scheduleTray()
 }
 
@@ -833,6 +848,7 @@ function createWindow(): void {
   // Navigation and new-window guards for every window: see 'web-contents-created' above.
   if (process.env['ELECTRON_RENDERER_URL']) void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   else void win.loadFile(rendererFile)
+  appBadge.refresh()
   // "Keep running in the menu bar": closing hides the window; sessions, watchers and notifications go on.
   win.on('close', (event) => {
     if (allowWindowClose || !keepInTray || !trayService) return
