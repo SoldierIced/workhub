@@ -13,6 +13,7 @@ import {
   permissionResult,
   PlanUsageError,
   rateLimitWindow,
+  rejectedLimit,
   toHistoryMessages
 } from '../src/agent-claude-native'
 import { agentEnv } from '../src/agent-claude-native/bridge/env.mjs'
@@ -69,6 +70,16 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     expect(echoed.start).toMatchObject({ sessionId: 'aaaaaaaa-1111-4111-8111-111111111111', model: 'haiku', configDir: '/tmp/acme-claude' })
     expect(echoed.start['resume']).toBeUndefined()
     expect(echoed.configEnv).toBe('/tmp/acme-claude')
+  })
+
+  it('reports a turn refused by a usage limit', async () => {
+    await start('n-limit')
+    const result = await rt.prompt('n-limit', 'hit the limit')
+    expect(result.stopReason).toBe('success')
+    const limits = events.filter((e) => e.type === 'usageLimit')
+    expect(limits[0]).toMatchObject({ type: 'usageLimit', window: '5h', resetsAt: 1_790_000_000_000 })
+    expect(limits.length).toBeGreaterThanOrEqual(2)
+    expect(limits.every((e) => e.sessionId === 'n-limit')).toBe(true)
   })
 
   it('resumes a session by id', async () => {
@@ -144,7 +155,26 @@ describe('ClaudeBridgeMapper', () => {
     const m = new ClaudeBridgeMapper('s')
     expect(m.map({ type: 'sdk', message: { type: 'assistant', parent_tool_use_id: 'toolu_x', message: { content: [{ type: 'text', text: 'inner' }] } } })).toEqual([])
     const events = m.map({ type: 'sdk', message: { type: 'assistant', message: { id: 'm1', model: '<synthetic>', content: [{ type: 'text', text: "You've hit your limit" }] } } })
-    expect(events).toEqual([{ sessionId: 's', type: 'message', role: 'agent', text: "You've hit your limit" }])
+    // A synthetic usage-limit answer is shown, and reported as a usage limit too.
+    expect(events).toEqual([
+      { sessionId: 's', type: 'message', role: 'agent', text: "You've hit your limit" },
+      { sessionId: 's', type: 'usageLimit', message: "You've hit your limit" }
+    ])
+  })
+
+  it('reports a usage limit from a rejected rate limit event, the SDK error flag or the old "|epoch" text', () => {
+    const m = new ClaudeBridgeMapper('s')
+    const rejected = m.map({ type: 'sdk', message: { type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'seven_day', resetsAt: 1790000000, utilization: 1 } } })
+    expect(rejected).toContainEqual({ sessionId: 's', type: 'usageLimit', window: 'weekly', resetsAt: 1_790_000_000_000 })
+    // Extra usage still covers it: not a limit.
+    expect(rejectedLimit({ status: 'rejected', rateLimitType: 'five_hour', overageStatus: 'allowed' })).toBeNull()
+    expect(rejectedLimit({ status: 'allowed_warning', rateLimitType: 'five_hour' })).toBeNull()
+    const flagged = m.map({ type: 'sdk', message: { type: 'assistant', error: 'rate_limit', message: { id: 'm2', model: 'claude-x', content: [] } } })
+    expect(flagged).toEqual([{ sessionId: 's', type: 'monitor', snapshot: { model: 'claude-x' } }, { sessionId: 's', type: 'usageLimit' }])
+    const old = m.map({ type: 'sdk', message: { type: 'assistant', message: { id: 'm3', model: '<synthetic>', content: [{ type: 'text', text: 'Claude AI usage limit reached|1760000000' }] } } })
+    expect(old[1]).toEqual({ sessionId: 's', type: 'usageLimit', resetsAt: 1_760_000_000_000, message: 'Claude AI usage limit reached|1760000000' })
+    // An ordinary synthetic message (an API error that is not a limit) is not.
+    expect(m.map({ type: 'sdk', message: { type: 'assistant', message: { id: 'm4', model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 500' }] } } }).some((e) => e.type === 'usageLimit')).toBe(false)
   })
 
   it('drops hooks that said nothing and flags failed ones', () => {
