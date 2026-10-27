@@ -1,10 +1,20 @@
 /**
  * Parses Codex rollout files into the common monitor model (PLAN "Session monitor"). Codex is not
- * installed on the development machine, so this follows the structure documented by third parties
- * and Codex's open source: one JSON object per line, `{timestamp, type, payload}`, with `type`
- * `session_meta`, `turn_context`, `response_item` and `event_msg` (`token_count` carries the
- * token totals and the rate limits). Every accessor is defensive: unknown or missing fields are
- * skipped and their monitor field stays empty.
+ * installed on the development machine, so this follows Codex's open source (openai/codex, checked
+ * 2026-10-27: `codex-rs/history` RolloutItemWire, `codex-rs/rollout` policy, `codex-rs/protocol`):
+ * one JSON object per line, `{timestamp, ordinal?, type, payload}`, with `type`
+ *
+ * - `session_meta`: `id`, `cwd`, `git`, `source` (`"cli"`, `{"subagent": …}`, `{"internal": …}`),
+ *   `thread_source`, `parent_thread_id`;
+ * - `turn_context`: `model`, `cwd`;
+ * - `response_item`: messages and tool calls (`function_call`, `custom_tool_call`, …);
+ * - `event_msg`: `token_count` (totals and rate limits), `task_started` / `task_complete` (also
+ *   `turn_*`), and in older ("legacy") rollouts `user_message`; newer ("paginated") rollouts write
+ *   the prompt as `item_completed` with a `UserMessage` item instead;
+ * - `token_usage_record` (newer): per-response usage with the thread's running total.
+ *
+ * Every accessor is defensive: unknown or missing fields are skipped and their monitor field stays
+ * empty.
  */
 import type { PlanUsageWindow, SessionMonitorSnapshot, TokenUsage, ToolCallSummary } from '@workhub/core'
 import { pullRequestUrls, ticketKeys } from '../shared/claude-tools'
@@ -21,15 +31,55 @@ export interface CodexMeta {
 
 /** The `session_meta` payload of a rollout's first line. */
 export function readSessionMeta(payload: Obj | undefined): CodexMeta {
-  const source = payload?.['source']
+  const source = obj(payload?.['source'])
+  const threadSource = str(payload?.['thread_source'])
   return {
     id: str(payload?.['id']),
     cwd: str(payload?.['cwd']),
     branch: str(obj(payload?.['git'])?.['branch']),
     createdAt: toMillis(payload?.['timestamp']),
-    // Unverified: subagent rollouts are expected to name their origin in `source`.
-    subagent: obj(source) !== undefined && Object.keys(obj(source) ?? {}).some((k) => k === 'subagent' || k === 'sub_agent')
+    // `SessionSource` serializes a subagent as `{"subagent": …}` and Codex's own background threads
+    // (memory consolidation, guardian) as `{"internal": …}`; newer rollouts also name a parent.
+    subagent:
+      (source !== undefined && Object.keys(source).some((k) => k === 'subagent' || k === 'sub_agent' || k === 'internal')) ||
+      threadSource === 'subagent' ||
+      threadSource === 'memory_consolidation' ||
+      str(payload?.['parent_thread_id']) !== undefined
   }
+}
+
+/** The text of a `UserMessage` turn item (paginated rollouts): its `text` inputs, joined. */
+export function userItemText(item: Obj | undefined): string | undefined {
+  if (item?.['type'] !== 'UserMessage') return undefined
+  const parts = arr(item['content'])
+    .map((c) => obj(c))
+    .filter((c) => c?.['type'] === 'text')
+    .map((c) => str(c?.['text']))
+    .filter((t): t is string => !!t)
+  return parts.length ? parts.join('\n') : undefined
+}
+
+/**
+ * The prompt of a user `message` response item, skipping what Codex injects as user messages
+ * (`<environment_context>`, `<user_instructions>`, AGENTS.md instructions).
+ */
+export function userMessageText(item: Obj): string | undefined {
+  if (item['type'] !== 'message' || item['role'] !== 'user') return undefined
+  const text = arr(item['content'])
+    .map((c) => obj(c))
+    .filter((c) => c?.['type'] === 'input_text')
+    .map((c) => str(c?.['text']))
+    .filter((t): t is string => !!t)
+    .join('\n')
+    .trim()
+  if (!text || text.startsWith('<') || text.startsWith('# AGENTS.md')) return undefined
+  return text
+}
+
+/** Whether a `rate_limits` snapshot is the main Codex limit (others are per-model buckets). */
+export function mainLimit(limits: Obj): boolean {
+  const id = str(limits['limit_id'])
+  return id === undefined || id === 'codex'
 }
 
 /** Codex counts cached tokens inside `input_tokens`; Workhub's model keeps them apart. */
@@ -133,6 +183,12 @@ export class CodexRolloutParser {
   meta: CodexMeta = { subagent: false }
   private model: string | undefined
   private firstPrompt: string | undefined
+  /** The first user `message` response item: the title when no user event was written. */
+  private fallbackPrompt: string | undefined
+  /** A `rate_limits` snapshot of the main limit was seen: other buckets no longer replace it. */
+  private mainLimitSeen = false
+  /** The totals come from `token_usage_record` lines once one was seen. */
+  private usageRecords = false
   private total: Obj | undefined
   private last: Obj | undefined
   private contextWindow: number | undefined
@@ -159,6 +215,11 @@ export class CodexRolloutParser {
       case 'turn_context':
         this.model = str(payload['model']) ?? this.model
         break
+      case 'token_usage_record':
+        this.usageRecords = true
+        this.total = obj(payload['thread_token_usage']) ?? this.total
+        this.last = obj(payload['usage']) ?? this.last
+        break
       case 'event_msg':
         this.onEvent(payload, at)
         break
@@ -176,15 +237,27 @@ export class CodexRolloutParser {
         this.scan(text)
         break
       }
+      case 'item_completed': {
+        const text = userItemText(obj(payload['item']))
+        if (text) {
+          this.firstPrompt ??= text
+          this.scan(text)
+        }
+        break
+      }
       case 'token_count': {
         const info = obj(payload['info'])
         if (info) {
-          this.total = obj(info['total_token_usage']) ?? this.total
-          this.last = obj(info['last_token_usage']) ?? this.last
+          if (!this.usageRecords) {
+            this.total = obj(info['total_token_usage']) ?? this.total
+            this.last = obj(info['last_token_usage']) ?? this.last
+          }
           this.contextWindow = num(info['model_context_window']) ?? this.contextWindow
         }
         const limits = obj(payload['rate_limits'])
-        if (limits) {
+        const main = limits !== undefined && mainLimit(limits)
+        if (main) this.mainLimitSeen = true
+        if (limits && (main || !this.mainLimitSeen)) {
           this.primary = rateWindow(limits['primary'], at) ?? this.primary
           this.secondary = rateWindow(limits['secondary'], at) ?? this.secondary
         }
@@ -205,6 +278,9 @@ export class CodexRolloutParser {
 
   private onItem(payload: Obj, at: number | undefined): void {
     switch (payload['type']) {
+      case 'message':
+        this.fallbackPrompt ??= userMessageText(payload)
+        break
       case 'function_call':
       case 'custom_tool_call':
       case 'local_shell_call': {
@@ -241,7 +317,8 @@ export class CodexRolloutParser {
 
   snapshot(): SessionMonitorSnapshot {
     const out: SessionMonitorSnapshot = {}
-    if (this.firstPrompt) out.title = oneLine(this.firstPrompt)
+    const prompt = this.firstPrompt ?? this.fallbackPrompt
+    if (prompt) out.title = oneLine(prompt)
     if (this.model) out.model = this.model
     const tokens = codexTokens(this.total)
     if (tokens) out.tokens = tokens

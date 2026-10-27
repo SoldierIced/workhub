@@ -88,6 +88,51 @@ describe('CodexTranscriptReader', () => {
   })
 })
 
+// The current rollout format (openai/codex main, 2026-10-27): ordinals, `item_completed` user
+// messages instead of `user_message`, `token_usage_record`, per-model rate-limit buckets, a
+// reverted thread's `<thread>_<rollout>` file name, and subagent / internal threads.
+const current = join(import.meta.dirname, 'fixtures', 'codex-home-current')
+const THREAD = '0199eeee-1111-7222-8333-444455556666'
+
+describe('the current Codex rollout format', () => {
+  const q = { agentSessionId: THREAD, cwd: '/tmp/acme-shop', configDir: current, ticketPrefixes: ['SHOP'] }
+
+  it('finds a reverted thread by its thread id and reads the monitor fields', async () => {
+    expect(rolloutId(`rollout-2026-10-20T08-00-00-${THREAD}_0199eeee-9999-7aaa-8bbb-ccccddddeeee.jsonl`)).toBe(THREAD)
+    const snap = await new CodexTranscriptReader().read(q)
+    expect(snap?.title).toBe('Make the cart total include taxes')
+    expect(snap?.model).toBe('gpt-5.5-codex')
+    expect(snap?.tokens).toEqual({ input: 3000, cacheRead: 6000, output: 700, total: 9700 })
+    expect(snap?.context).toMatchObject({ used: 5000, size: 272_000 })
+    expect(snap?.activeTimeMs).toBe(8_000)
+    expect(snap?.toolCalls?.map((t) => [t.title, t.kind, t.status])).toEqual([
+      ['Ran a command', 'execute', 'completed'],
+      ['Edited total.ts', 'edit', 'completed']
+    ])
+    expect(snap?.ticketKeys).toEqual(['SHOP-7'])
+  })
+
+  it('keeps the main rate limit when another bucket reports after it', async () => {
+    const snap = await new CodexTranscriptReader().read(q)
+    expect(snap?.planUsage).toEqual([
+      { window: '5h', percent: 20, resetsAt: 1_792_656_000_000 },
+      { window: 'weekly', percent: 35, resetsAt: 1_793_000_000_000 }
+    ])
+  })
+
+  it('titles a session from its user message when no user event was written', () => {
+    const parser = new CodexRolloutParser()
+    parser.ingest('{"timestamp":"2026-10-20T08:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for /x"}]}}')
+    parser.ingest('{"timestamp":"2026-10-20T08:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Rename the flag"}]}}')
+    expect(parser.snapshot().title).toBe('Rename the flag')
+  })
+
+  it('lists only user threads in the history, titled from item_completed', async () => {
+    const entries = await new CodexSessionHistory({ defaultHome: current }).list({ agentId: 'codex', accountId: null })
+    expect(entries.map((e) => [e.agentSessionId, e.title, e.gitBranch])).toEqual([[THREAD, 'Make the cart total include taxes', 'feature/SHOP-7-cart']])
+  })
+})
+
 describe('CodexRolloutParser fails soft', () => {
   it('ignores broken lines, unknown events and malformed numbers', () => {
     const parser = new CodexRolloutParser()

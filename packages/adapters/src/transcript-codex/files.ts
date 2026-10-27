@@ -22,9 +22,11 @@ export function defaultCodexHome(): string {
 
 export const isCompressed = (path: string): boolean => path.endsWith('.zst')
 
-const ROLLOUT = /^rollout-.*?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl(\.zst)?$/i
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+/** `rollout-<timestamp>-<thread id>[_<rollout id>].jsonl[.zst]`: a reverted thread adds its rollout id. */
+const ROLLOUT = new RegExp(`^rollout-.*?(${UUID})(?:_${UUID})?\\.jsonl(\\.zst)?$`, 'i')
 
-/** The session id in a rollout file name. */
+/** The session (thread) id in a rollout file name. */
 export function rolloutId(fileName: string): string | undefined {
   return ROLLOUT.exec(fileName)?.[1]
 }
