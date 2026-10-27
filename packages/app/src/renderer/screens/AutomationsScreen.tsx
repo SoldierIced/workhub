@@ -8,6 +8,8 @@ import { useAutomations, useSlack } from '../chatStore'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import { relativeTime } from '../lib/pullRequests'
+import { formatTokens } from '../lib/home'
+import { runUsageLabel } from '../lib/runUsage'
 import { shortDuration } from '../lib/subagentView'
 import { AutomationEditor } from './automations/AutomationEditor'
 
@@ -59,6 +61,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
     else toast(t('automations.noSession'), 'danger')
   }
   const fresh = () => crypto.randomUUID().slice(0, 8)
+  const reviewsPreset = () => prReviewsPreset(fresh(), { profileId: profile?.id ?? null, agentKey: defaultAgent, folder, channels })
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4 px-8 py-7">
@@ -67,7 +70,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
           <h1 className="text-2xl font-semibold tracking-tight">{t('nav.automations')}</h1>
           <p className="mt-0.5 max-w-2xl text-base text-muted">{t('automations.subtitle')}</p>
         </div>
-        <Button size="sm" variant="secondary" onClick={() => setEditing(prReviewsPreset(fresh(), { profileId: profile?.id ?? null, agentKey: defaultAgent, folder, channels }))}>
+        <Button size="sm" variant="secondary" onClick={() => setEditing(reviewsPreset())}>
           {t('automations.preset.prReviews')}
         </Button>
         <Button size="sm" variant="primary" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setEditing(newAutomation(fresh(), { name: t('automations.newName'), profileId: profile?.id ?? null, agentKey: defaultAgent, folder }))}>
@@ -106,7 +109,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
         </CardBody>
       </Card>
 
-      <AutomationEditor automation={editing} agents={agents} channels={channels} onClose={() => setEditing(null)} onSave={save} />
+      <AutomationEditor automation={editing} agents={agents} channels={channels} presets={[{ id: 'prReviews', label: t('automations.preset.prReviews'), build: reviewsPreset }]} onClose={() => setEditing(null)} onSave={save} />
     </div>
   )
 }
@@ -174,7 +177,11 @@ function AutomationCard({ status: s, now, lastRun, channelName, onEdit, onRemove
 }
 
 function RunRow({ run: r, now, locale, removed, onOpen }: { run: AutomationRun; now: number; locale: string; removed: boolean; onOpen: () => void }) {
-  const { t } = useI18n()
+  const { t, formatNumber } = useI18n()
+  const usage = runUsageLabel(r, {
+    money: (c) => formatNumber(c.amount, { style: 'currency', currency: c.currency, maximumFractionDigits: 2 }),
+    tokens: (n) => t('automations.run.tokens', { count: formatTokens(n) })
+  })
   const detail = r.detail ? (r.detail.startsWith('timeout:') ? t('automations.detail.timeout', { minutes: r.detail.slice(8) }) : DETAIL_KEYS.has(r.detail) ? t(`automations.detail.${r.detail}` as 'automations.detail.paused') : r.detail) : ''
   return (
     <li className="flex items-center gap-2">
@@ -192,6 +199,11 @@ function RunRow({ run: r, now, locale, removed, onOpen }: { run: AutomationRun; 
       <span className="min-w-0 flex-1 truncate text-muted" title={detail}>
         {detail}
       </span>
+      {usage && (
+        <span className="text-xs tabular-nums text-subtle" data-testid="run-usage" title={t('automations.run.usageTitle')}>
+          {usage}
+        </span>
+      )}
       {r.startedAt && r.endedAt && <span className="text-xs tabular-nums text-subtle">{shortDuration(r.endedAt - r.startedAt)}</span>}
       {!removed && r.session && (
         <button type="button" className="text-xs text-accent hover:underline" onClick={onOpen}>

@@ -10,7 +10,9 @@ import {
   type AutomationOutcome,
   type AutomationRun,
   type AutomationsState,
-  type AutomationTrigger
+  type AutomationTrigger,
+  type SessionUsage,
+  usageDelta
 } from './types'
 
 /** A session as the engine sees it. */
@@ -26,6 +28,8 @@ export interface DrivenSession {
   error?: string
   /** The user is looking at it. */
   onScreen?: boolean
+  /** Cumulative cost and tokens of the session, when its agent reports them. */
+  usage?: SessionUsage
 }
 
 /** How the engine drives sessions; the app implements it on its session manager. */
@@ -87,7 +91,14 @@ interface Active {
   stage: 'opening' | 'delivering' | 'running'
   submittedAt?: number
   turnsAtSubmit: number
+  /** The session was started for this run, so it had spent nothing before it. */
+  fresh?: boolean
+  /** The session's usage when the prompt went in; absent when it is unknown (then no usage is logged). */
+  usageBaseline?: SessionUsage
 }
+
+/** The monitor reads transcripts every few seconds: a finished run's usage is refreshed for this long. */
+export const USAGE_SETTLE_MS = 20_000
 
 export interface RunState {
   pending?: Pending
@@ -128,6 +139,8 @@ export class AutomationEngine {
   private state: AutomationsState
   private readonly runtime = new Map<string, RunState>()
   private ticking = false
+  /** Finished runs whose usage may still grow as the monitor catches up with the transcript. */
+  private readonly settling = new Map<string, { automationId: string; sessionId: string; baseline: SessionUsage; until: number }>()
 
   constructor(
     private readonly host: AutomationHost,
@@ -264,6 +277,7 @@ export class AutomationEngine {
     try {
       for (const a of this.host.definitions()) await this.step(a)
       await this.retire()
+      this.settleUsage()
     } finally {
       this.ticking = false
     }
@@ -371,15 +385,16 @@ export class AutomationEngine {
     const starts = [...(this.state.starts[a.id] ?? []).filter((t) => now - t < 2 * 86_400_000), now]
     this.save({ ...this.state, starts: { ...this.state.starts, [a.id]: starts } })
     let session: DrivenSession
+    let fresh = false
     try {
-      session = await this.resolveSession(a)
+      ;({ session, fresh } = await this.resolveSession(a))
     } catch (err) {
       this.finish(a, 'error', err instanceof Error ? err.message : String(err))
       return
     }
     const s = this.runState(a.id)
     if (!s.active) return
-    this.runtime.set(a.id, { ...s, active: { ...s.active, run: { ...s.active.run, session: session.identity }, sessionId: session.id, stage: 'delivering' } })
+    this.runtime.set(a.id, { ...s, active: { ...s.active, run: { ...s.active.run, session: session.identity }, sessionId: session.id, stage: 'delivering', fresh } })
     await this.monitor(a)
   }
 
@@ -388,21 +403,21 @@ export class AutomationEngine {
    * a new one. A new session that replaces another takes its sidebar place and its chat threads,
    * and the replaced one is retired (see `retire`).
    */
-  private async resolveSession(a: AutomationDefinition): Promise<DrivenSession> {
+  private async resolveSession(a: AutomationDefinition): Promise<{ session: DrivenSession; fresh: boolean }> {
     const previous = this.state.sessions[a.id]
     const sessions = this.host.sessions
     if (a.sessionPolicy === 'reuse' && previous) {
       const open = this.live(previous)
-      if (open) return open
+      if (open) return { session: open, fresh: false }
       const continued = await sessions.start(a, previous)
       this.adopt(a, continued.identity)
       if (continued.identity !== previous) await this.handOver(a, previous, continued.identity)
-      return continued
+      return { session: continued, fresh: false }
     }
-    const fresh = await sessions.start(a)
-    this.adopt(a, fresh.identity)
-    if (previous && previous !== fresh.identity) await this.handOver(a, previous, fresh.identity)
-    return fresh
+    const started = await sessions.start(a)
+    this.adopt(a, started.identity)
+    if (previous && previous !== started.identity) await this.handOver(a, previous, started.identity)
+    return { session: started, fresh: true }
   }
 
   private adopt(a: AutomationDefinition, identity: string): void {
@@ -462,7 +477,8 @@ export class AutomationEngine {
       if (session.state === 'ready') {
         const delivered = await this.host.sessions.deliver(session.id, a.prompt).catch(() => 'waiting' as const)
         if (delivered === 'delivered') {
-          this.patchActive(a.id, { stage: 'running', submittedAt: this.host.now(), turnsAtSubmit: session.turnsEnded })
+          const baseline = session.usage ?? (active.fresh ? {} : undefined)
+          this.patchActive(a.id, { stage: 'running', submittedAt: this.host.now(), turnsAtSubmit: session.turnsEnded, ...(baseline ? { usageBaseline: baseline } : {}) })
           return
         }
       }
@@ -492,12 +508,36 @@ export class AutomationEngine {
   private finish(a: AutomationDefinition, outcome: AutomationOutcome, detail?: string, resetsAt?: number): void {
     const s = this.runState(a.id)
     if (!s.active) return
-    const run: AutomationRun = { ...s.active.run, outcome, endedAt: this.host.now(), ...(detail ? { detail } : {}) }
+    const baseline = s.active.usageBaseline
+    const sessionId = s.active.sessionId
+    const spent = baseline && sessionId ? usageDelta(baseline, this.host.sessions.list().find((x) => x.id === sessionId)?.usage) : {}
+    const run: AutomationRun = { ...s.active.run, outcome, endedAt: this.host.now(), ...(detail ? { detail } : {}), ...spent }
+    if (baseline && sessionId) this.settling.set(run.id, { automationId: a.id, sessionId, baseline, until: this.host.now() + USAGE_SETTLE_MS })
     let next: RunState = { ...s, active: undefined }
     if (outcome === 'ok') next = { ...next, failureStreak: 0, notified: false, lastError: undefined, pausedUntil: undefined, pauseReason: undefined }
     this.runtime.set(a.id, next)
     this.log(run)
     if (FAILURE_OUTCOMES.includes(outcome)) this.registerFailure(a, outcome, detail ?? outcome, resetsAt)
+  }
+
+  /** Refreshes the usage of runs that just ended, until the monitor has read their last turn. */
+  private settleUsage(): void {
+    if (!this.settling.size) return
+    const now = this.host.now()
+    const sessions = this.host.sessions.list()
+    let runs = this.state.runs
+    for (const [runId, w] of this.settling) {
+      const index = runs.findIndex((r) => r.id === runId)
+      if (index < 0 || now > w.until) {
+        this.settling.delete(runId)
+        continue
+      }
+      const spent = usageDelta(w.baseline, sessions.find((x) => x.id === w.sessionId)?.usage)
+      const row = runs[index]!
+      if (spent.tokens === row.tokens && spent.cost?.amount === row.cost?.amount) continue
+      runs = runs.map((r, i) => (i === index ? { ...row, ...spent } : r))
+    }
+    if (runs !== this.state.runs) this.save({ ...this.state, runs })
   }
 
   /** A failure notifies once per streak, then pauses automatic runs until the limit resets, or with a backoff. */
