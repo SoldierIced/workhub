@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { pickAgent, type EffectiveAgent } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { installHintKey } from '../../lib/agents'
-import type { AgentOptionsView } from '@shared/api'
+import type { AgentOptionsView, WorkspaceFolder } from '@shared/api'
 import { initialStartChoice } from '../../lib/agent-pickers'
 import { readPrefs, rememberMode, rememberModel } from '../../lib/prefs'
 import { Button } from '../atoms/Button'
@@ -24,6 +24,8 @@ export interface NewSessionDialogProps {
   preferredAgents?: string[]
   initialAgentKey?: string
   initialCwd?: string
+  /** The profile's folders and the folders inside them (the sidebar's list), offered as the folder is typed. */
+  folders?: readonly WorkspaceFolder[]
   onStarted: (sessionId: string) => void
 }
 
@@ -31,7 +33,7 @@ export interface NewSessionDialogProps {
 const optionDefault = (label: string, id: string | undefined) => (id ? `${label} (${id})` : label)
 
 /** Starts a session with the active profile: pick the agent, the folder, and the model and agent or mode where the agent has them. */
-export function NewSessionDialog({ open, onOpenChange, profileId, agents, preferredAgents, initialAgentKey, initialCwd, onStarted }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, onOpenChange, profileId, agents, preferredAgents, initialAgentKey, initialCwd, folders = [], onStarted }: NewSessionDialogProps) {
   const { t } = useI18n()
   const [agentKey, setAgentKey] = useState('')
   const [cwd, setCwd] = useState('')
@@ -203,7 +205,14 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
         ) : null}
         <Field label={t('newSession.folder')}>
           <div className="flex gap-2">
-            <Input aria-label={t('newSession.folder')} value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} />
+            <Input aria-label={t('newSession.folder')} value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} list={folders.length ? 'new-session-folders' : undefined} />
+            {folders.length > 0 && (
+              <datalist id="new-session-folders">
+                {folders.map((f) => (
+                  <option key={f.path} value={f.path} label={f.name} />
+                ))}
+              </datalist>
+            )}
             <IconButton
               label={t('newSession.browse')}
               icon={<FolderOpen className="size-4" />}
