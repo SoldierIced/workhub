@@ -20,6 +20,19 @@ function harness() {
 }
 
 describe('SendGate', () => {
+  it('drops one waiting prompt by key, and none that already runs', async () => {
+    const { gate, started, prompt, endTurn } = harness()
+    void gate.run('s', prompt('running'), 'a')
+    const b = gate.run('s', prompt('b'), 'b')
+    void gate.run('s', prompt('c'), 'c')
+    expect(gate.withdrawOne('s', 'a')).toBe(false)
+    expect(gate.withdrawOne('s', 'b')).toBe(true)
+    await expect(b).rejects.toThrow('workhub:prompt-withdrawn')
+    await endTurn()
+    expect(started).toEqual(['running', 'c'])
+    expect(gate.withdrawOne('s', 'c')).toBe(false)
+  })
+
   it('runs one prompt per session at a time, in the order they came', async () => {
     const { gate, started, prompt, endTurn } = harness()
     const a = gate.run('s', prompt('a'))

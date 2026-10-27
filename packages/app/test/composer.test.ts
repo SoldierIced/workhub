@@ -10,8 +10,10 @@ function harness() {
   const settle: (() => void)[] = []
   let changes = 0
   const q = new PromptQueues(
-    (_id, p) => {
+    (_id, p, started) => {
       sent.push(p.text)
+      // Main sends it straight away (nothing else of the session in flight).
+      started()
       return new Promise<void>((resolve) => settle.push(resolve))
     },
     () => changes++
@@ -123,6 +125,45 @@ describe('PromptQueues', () => {
     q.stateChanged('s', 'ready')
     expect(sent).toEqual(['running'])
     expect(q.takeAll('s')).toEqual([])
+  })
+
+  it('keeps a message main holds behind another prompt listed and removable until it goes out', async () => {
+    const goOut: (() => void)[] = []
+    const settle: ((e?: Error) => void)[] = []
+    const withdrawn: number[] = []
+    const heldAtFailure: boolean[] = []
+    const q: PromptQueues = new PromptQueues(
+      (id, p, started) => {
+        goOut.push(started)
+        return new Promise<void>((resolve, reject) => settle.push((e) => (e ? (heldAtFailure.push(q.isHeld(id, p.id)), reject(e)) : resolve())))
+      },
+      () => undefined,
+      (_s, id) => void withdrawn.push(id)
+    )
+    // Sent while main runs an AI review prompt: main holds it.
+    expect(q.submit('s', 'ready', false, 'held')).toBe('sent')
+    const snapshot = q.list('s')
+    expect(snapshot.map((p) => p.text)).toEqual(['held'])
+    expect(q.list('s')).toBe(snapshot)
+    q.stateChanged('s', 'busy')
+    q.submit('s', 'busy', false, 'queued')
+    expect(q.list('s').map((p) => p.text)).toEqual(['held', 'queued'])
+    // It goes out: no longer listed.
+    goOut.shift()!()
+    expect(q.list('s').map((p) => p.text)).toEqual(['queued'])
+    settle.shift()!()
+    q.stateChanged('s', 'ready')
+    await new Promise((r) => setTimeout(r, 0))
+    // The next one is held again, and the user removes it before it goes out.
+    const id = q.list('s')[0]!.id
+    expect(q.isHeld('s', id)).toBe(true)
+    expect(q.remove('s', id)).toBe(true)
+    expect(withdrawn).toEqual([id])
+    expect(q.list('s')).toEqual([])
+    settle.shift()!(new Error('withdrawn'))
+    await new Promise((r) => setTimeout(r, 0))
+    // Removed by the user: not held any more when main's refusal comes back, so it is not offered again.
+    expect(heldAtFailure).toEqual([false])
   })
 
   it('keeps going after a prompt fails', async () => {

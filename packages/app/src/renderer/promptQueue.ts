@@ -3,7 +3,7 @@ import type { ImageInput, SessionState } from '@workhub/core'
 import { PROMPT_WITHDRAWN } from '@shared/api'
 import { imageInputFromDataUrl } from './lib/images'
 import { PromptQueues, type QueuedPrompt, type SubmitOutcome } from './lib/prompt-queue'
-import { pushItem, pushTurnEnd, pushUser, removeItem } from './store'
+import { pushItem, pushTurnEnd, pushUser } from './store'
 
 const listeners = new Set<() => void>()
 
@@ -15,26 +15,57 @@ function recover(sessionId: string, prompts: RecoveredPrompt[]): void {
   if (prompts.length) for (const l of recoveredListeners) l(sessionId, prompts)
 }
 
-/** Sends one prompt: the user's bubble goes in the chat now, the turn's end when it settles. */
-async function deliver(sessionId: string, prompt: { text: string; images: string[] }): Promise<void> {
-  const bubble = pushUser(sessionId, prompt.text, prompt.images)
+/** Prompts handed to main that wait to hear they went out, by session and token. */
+const goingOut = new Map<string, () => void>()
+let followingStarts = false
+function followStarts(): void {
+  if (followingStarts) return
+  followingStarts = true
+  window.hub.sessions.onPromptStarted((id, token) => goingOut.get(`${id}:${token}`)?.())
+}
+
+/**
+ * Sends one prompt. It stays in the queued list while main holds it behind another prompt of the
+ * session; the user's bubble goes in the chat when it actually goes out, the turn's end when it settles.
+ */
+async function deliver(sessionId: string, prompt: QueuedPrompt, started: () => void): Promise<void> {
+  followStarts()
+  const key = `${sessionId}:${prompt.id}`
+  let shown = false
+  const show = () => {
+    if (shown) return
+    shown = true
+    goingOut.delete(key)
+    started()
+    pushUser(sessionId, prompt.text, prompt.images)
+  }
+  goingOut.set(key, show)
   const inputs = prompt.images.map(imageInputFromDataUrl).filter((i): i is ImageInput => i !== null)
   try {
-    pushTurnEnd(sessionId, await window.hub.sessions.prompt(sessionId, prompt.text, inputs.length ? inputs : undefined))
+    const stopReason = await window.hub.sessions.prompt(sessionId, prompt.text, inputs.length ? inputs : undefined, prompt.id)
+    show()
+    pushTurnEnd(sessionId, stopReason)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
-    // It waited behind another prompt (a review, a wake) and the user interrupted: it never went out.
+    // Main dropped it before it went out: the user removed it (nothing to do) or interrupted the session.
     if (message.includes(PROMPT_WITHDRAWN)) {
-      removeItem(sessionId, bubble)
-      return recover(sessionId, [prompt])
+      if (queues.isHeld(sessionId, prompt.id)) recover(sessionId, [{ text: prompt.text, images: prompt.images }])
+      return
     }
+    show()
     pushItem(sessionId, 'error', message)
+  } finally {
+    goingOut.delete(key)
   }
 }
 
-const queues = new PromptQueues(deliver, () => {
-  for (const l of listeners) l()
-})
+const queues = new PromptQueues(
+  deliver,
+  () => {
+    for (const l of listeners) l()
+  },
+  (sessionId, id) => void window.hub.sessions.withdrawPrompt(sessionId, id).catch(() => false)
+)
 
 let started = false
 /** Follows session states so waiting messages go out when their session turns ready. */

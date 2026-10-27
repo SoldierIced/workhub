@@ -223,8 +223,13 @@ export interface SessionsApi {
   /**
    * Runs one prompt turn. On agents that take no input mid-turn it waits for the session's prompt
    * in flight; one still waiting when the session is interrupted fails with `PROMPT_WITHDRAWN`.
+   * With a `token`, `onPromptStarted` reports when it actually goes out.
    */
-  prompt(id: string, text: string, images?: ImageInput[]): Promise<string>
+  prompt(id: string, text: string, images?: ImageInput[], token?: number): Promise<string>
+  /** Takes back a prompt sent with `token` that still waits for its turn; false once it went out. */
+  withdrawPrompt(id: string, token: number): Promise<boolean>
+  /** A prompt sent from this window with a token went out to the agent. */
+  onPromptStarted(cb: (id: string, token: number) => void): () => void
   cancel(id: string): Promise<void>
   stop(id: string): Promise<void>
   respondPermission(id: string, requestId: string, optionId: string | null): void

@@ -784,7 +784,16 @@ function registerIpc(): void {
     if (typeof identity !== 'string' || !identity) throw new Error('an identity is required')
     return ownerStarts.start(identity, input)
   })
-  ipc.handle('sessions:prompt', (_e, id: string, text: string, images) => sessions.prompt(id, text, images))
+  // A renderer's prompt carries a token: main says when it actually goes out (it may wait behind
+  // a review or a Slack wake) and the renderer can take it back until then.
+  ipc.handle('sessions:prompt', (e, id: string, text: string, images, token?: unknown) => {
+    if (typeof token !== 'number') return sessions.prompt(id, text, images)
+    const onStart = () => {
+      if (!e.sender.isDestroyed()) e.sender.send('sessions:promptStarted', id, token)
+    }
+    return sessions.prompt(id, text, images, { key: `${e.sender.id}:${token}`, onStart })
+  })
+  ipc.handle('sessions:withdrawPrompt', (e, id: string, token: unknown) => typeof token === 'number' && sessions.withdrawPrompt(id, `${e.sender.id}:${token}`))
   ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode, options?: { now?: unknown }) => sessions.setMode(id, mode, { now: options?.now === true }))
   ipc.handle('sessions:close', (_e, id: string) => sessions.close(id))
   ipc.handle('sessions:setModel', (_e, id: string, model: string | null) => sessions.setModel(id, model))

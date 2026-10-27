@@ -136,16 +136,8 @@ export function pushItem(id: string, kind: 'error', text: string): void {
   patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, kind, text }] }))
 }
 
-/** Adds the user's message to the chat; returns its item id. */
-export function pushUser(id: string, text: string, images?: string[]): number {
-  const itemId = ++seq
-  patch(id, (s) => ({ ...s, items: [...s.items, { id: itemId, kind: 'user', text, ...(images?.length ? { images } : {}) }] }))
-  return itemId
-}
-
-/** Takes an item out of the chat (a message that turned out never to be sent). */
-export function removeItem(id: string, itemId: number): void {
-  patch(id, (s) => (s.items.some((i) => i.id === itemId) ? { ...s, items: s.items.filter((i) => i.id !== itemId) } : s))
+export function pushUser(id: string, text: string, images?: string[]): void {
+  patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, kind: 'user', text, ...(images?.length ? { images } : {}) }] }))
 }
 
 export function pushTurnEnd(id: string, stopReason: string): void {
