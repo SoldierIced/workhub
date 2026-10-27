@@ -58,7 +58,7 @@ function AccountBudget({ read, budget, editable, save }: { read: AccountUsage; b
     <div className="flex flex-col gap-2 py-3" data-testid="usage-budget-account">
       <span className="text-base">{label(read.agentId, read.name)}</span>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        {budgetWindows(read.windows, own).map((window) => {
+        {budgetWindows(read.windows, own, read.agentId).map((window) => {
           const current = read.windows.find((w) => w.window === window)
           return (
             <div key={window} className="flex items-end gap-1.5">
@@ -94,7 +94,7 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
   useEffect(() => setThresholds(budget.thresholds.join(', ')), [budget.thresholds])
 
   const saveBudget = (next: UsageBudgetOptions) => void run(() => window.hub.config.saveOptions({ usageBudget: next }))
-  const toggle = (key: 'claudePlanUsage' | 'codexUsage', on: boolean) => void run(() => window.hub.config.saveOptions({ [key]: on })).then((ok) => ok && void window.hub.usage.get(true))
+  const toggle = (key: 'claudePlanUsage' | 'codexUsage' | 'kiroUsage', on: boolean) => void run(() => window.hub.config.saveOptions({ [key]: on })).then((ok) => ok && void window.hub.usage.get(true))
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,10 +105,9 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
         <SwitchRow label={t('agentUsage.settings.codex')} hint={t('agentUsage.settings.codexHint')}>
           <Switch checked={options.codexUsage} disabled={!editable} onChange={(on) => toggle('codexUsage', on)} />
         </SwitchRow>
-        <div className="py-2">
-          <span className="block text-base text-muted">{t('agentUsage.settings.kiro')}</span>
-          <p className="text-xs text-subtle">{t('agentUsage.settings.kiroNote')}</p>
-        </div>
+        <SwitchRow label={t('agentUsage.settings.kiro')} hint={t('agentUsage.settings.kiroHint')} help={t('agentUsage.settings.kiroNote')}>
+          <Switch checked={options.kiroUsage} disabled={!editable} onChange={(on) => toggle('kiroUsage', on)} />
+        </SwitchRow>
       </Group>
 
       <Group title={t('agentUsage.settings.budgets')} help={t('help.usage.budgets')} footnote={t('agentUsage.settings.budgetsNote')}>

@@ -15,7 +15,7 @@ import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
  * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
  */
-export const CONFIG_VERSION = 6
+export const CONFIG_VERSION = 7
 
 export interface WorkhubConfig {
   version: typeof CONFIG_VERSION
@@ -58,6 +58,11 @@ export interface AppOptions {
    * files. Off by default, like `claudePlanUsage`.
    */
   codexUsage: boolean
+  /**
+   * Read Kiro credits used and left this billing cycle by asking `kiro-cli` its own `/usage`
+   * (Kiro's sign-in, never read by Workhub). Off by default: each read starts Kiro briefly.
+   */
+  kiroUsage: boolean
   /** Ceilings, warning margin and alerts per account (Settings → Usage). */
   usageBudget: UsageBudgetOptions
   /** OS notification for watched Slack channels, tracked thread replies and watcher failures. */
@@ -76,7 +81,7 @@ export interface AppOptions {
   notificationsPausedUntil?: number
 }
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true, showAppBadge: true }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true, showAppBadge: true }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -309,6 +314,7 @@ export const configSchema = z.object({
         .object(Object.fromEntries(PR_EVENT_KINDS.map((k) => [k, z.boolean().default(DEFAULT_PR_EVENT_TOGGLES[k])])) as Record<(typeof PR_EVENT_KINDS)[number], z.ZodDefault<z.ZodBoolean>>)
         .default(DEFAULT_PR_EVENT_TOGGLES),
       codexUsage: z.boolean().default(false),
+      kiroUsage: z.boolean().default(false),
       usageBudget: usageBudget.default(DEFAULT_USAGE_BUDGET).catch(DEFAULT_USAGE_BUDGET),
       notifySlack: z.boolean().default(true),
       notifyAutomations: z.boolean().default(true),

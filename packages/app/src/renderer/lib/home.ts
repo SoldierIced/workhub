@@ -1,4 +1,4 @@
-import type { ConnectionKind, PlanUsageWindow, Profile, SessionMonitorSnapshot, SessionState } from '@workhub/core'
+import { accountAgentId, BUILTIN_AGENTS, usageAccountKey, type ConnectionKind, type PlanUsageWindow, type Profile, type SessionMonitorSnapshot, type SessionState } from '@workhub/core'
 import type { AccountUsage } from '@shared/api'
 import type { ChatItem } from '../store'
 
@@ -71,32 +71,46 @@ export function planUsage(sessions: SessionSummary[]): PlanUsageWindow[] {
 
 /** Plan usage of one account, as the sidebar card shows it. `name` is empty for the default folder. */
 export interface UsageGroup {
+  /** `usageAccountKey`: `claude:work`, `codex`, `kiro`. */
   key: string
+  /** The agent the account belongs to (`claude`, `codex`, `kiro`). */
+  agentId: string
   name: string
   windows: PlanUsageWindow[]
   error?: string
 }
 
+/** Agent id -> the agent whose accounts it uses (Claude Code over ACP -> Claude Code). */
+const BUILTIN_OWNER = (agentId: string): string => {
+  const agent = BUILTIN_AGENTS.find((a) => a.id === agentId)
+  return agent ? accountAgentId(agent) : agentId
+}
+
 /**
- * Plan usage per account: what running sessions reported, replaced by the account's own read
- * when the user turned that read on (Settings → Usage). Accounts without data are left out.
+ * Plan usage per account of every agent that reports it (Claude, Codex, Kiro): what running
+ * sessions reported, replaced by the account's own read when the user turned that read on
+ * (Settings → Usage). Accounts without data are left out. Sorted by agent: Claude, Codex, Kiro, others.
  */
-export function usageGroups(sessions: SessionSummary[], reads: AccountUsage[]): UsageGroup[] {
+export function usageGroups(sessions: SessionSummary[], reads: AccountUsage[], accountsOf: (agentId: string) => string = BUILTIN_OWNER): UsageGroup[] {
   const groups = new Map<string, UsageGroup>()
   for (const s of sessions) {
     if (!s.monitor.planUsage?.length) continue
-    const key = s.view.accountId ?? ''
-    const g = groups.get(key) ?? { key, name: s.view.accountName ?? '', windows: [] }
+    // Sessions that do not name their agent are Claude's (the only agent that reported plan usage before).
+    const agentId = accountsOf(s.view.agentId ?? 'claude')
+    const key = usageAccountKey(agentId, s.view.accountId ?? null)
+    const g = groups.get(key) ?? { key, agentId, name: s.view.accountName ?? '', windows: [] }
     g.windows = planUsage([{ ...s, monitor: { planUsage: [...g.windows, ...s.monitor.planUsage] } }])
     groups.set(key, g)
   }
-  // The sidebar card stays on Claude accounts; Home's "Usage by agent" lists every agent.
-  for (const r of reads.filter((x) => x.agentId === 'claude')) {
-    const key = r.accountId ?? ''
-    if (r.windows.length) groups.set(key, { key, name: r.name, windows: r.windows })
-    else if (r.error && !groups.has(key)) groups.set(key, { key, name: r.name, windows: [], error: r.error })
+  for (const r of reads) {
+    if (r.windows.length) groups.set(r.key, { key: r.key, agentId: r.agentId, name: r.name, windows: r.windows })
+    else if (r.error && !groups.has(r.key)) groups.set(r.key, { key: r.key, agentId: r.agentId, name: r.name, windows: [], error: r.error })
   }
-  return [...groups.values()]
+  const order = (agentId: string) => {
+    const i = ['claude', 'codex', 'kiro'].indexOf(agentId)
+    return i < 0 ? 99 : i
+  }
+  return [...groups.values()].sort((a, b) => order(a.agentId) - order(b.agentId))
 }
 
 /** Distinct folders: the profile's own first (in its order), then session folders, most recently used first. */

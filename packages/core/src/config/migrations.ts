@@ -28,7 +28,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // 5 -> 6: optional fields added since (agent order, usage budgets, AI review, agent account
   // defaults, tray and notification switches, account failover). The document is unchanged; the
   // bump keeps an older Workhub from loading the file and dropping them on its next save.
-  5: (raw) => raw
+  5: (raw) => raw,
+  // 6 -> 7: optional fields added since (Kiro credits read, app icon badge, mid-turn input per
+  // agent, profile colour, session group member profile). The document is unchanged; the bump
+  // keeps an older Workhub from loading the file and dropping them on its next save.
+  6: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

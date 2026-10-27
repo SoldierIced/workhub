@@ -9,7 +9,7 @@ export const settingsHelpEs: Record<keyof typeof settingsHelpEn, string> = {
   'help.tab.appearance': 'Cómo se ve Workhub en esta computadora: claro u oscuro, colores de la terminal, fuentes y tamaños de texto.',
   'help.tab.profiles': 'Un perfil es un contexto de trabajo, como una empresa o un proyecto personal: las conexiones, cuentas de agentes, carpetas y pantallas opcionales que usa. Cambia de perfil arriba en la barra lateral.',
   'help.tab.connections': 'Los servicios de los que Workhub lee: un host de código (GitHub, GitLab), un gestor de tickets (Jira, Linear), chat y Salud (Elasticsearch). Cada perfil elige como máximo uno de cada tipo.',
-  'help.tab.accounts': 'Una entrada por cada inicio de sesión de un agente. Dos cuentas de Claude, por ejemplo una personal y otra laboral, mantienen inicios de sesión, límites del plan e historial separados porque cada una usa su propia carpeta de configuración. Cada perfil elige qué cuentas ofrece al iniciar una sesión.',
+  'help.tab.accounts': 'Cada agente que Workhub puede ejecutar, cómo se ejecuta y cómo inicia sesión; el orden en que Workhub los elige y qué pasa cuando una cuenta se queda sin uso; y las cuentas en sí (una por inicio de sesión), con su modelo y modo por defecto.',
   'help.tab.usage': 'Cuánto del plan usó cada cuenta de agente (ventanas de 5 horas y semanal), los topes bajo los que Workhub mantiene el trabajo automático y las alertas.',
 
   'help.appearance.base': 'El aspecto claro u oscuro de la app. Sistema sigue el de tu sistema operativo.',
@@ -90,5 +90,6 @@ export const settingsHelpEs: Record<keyof typeof settingsHelpEn, string> = {
   'issues.profileConnection': 'El perfil {name} usa una conexión de {kind} que ya no existe.',
   'issues.profileAccount': 'El perfil {name} usa una cuenta de agente que ya no existe.',
   'issues.profileAgent': 'El perfil {name} ofrece un agente que ya no existe.',
-  'issues.accountAgent': 'La cuenta {name} es de un agente que Workhub no conoce ({agent}).'
+  'issues.accountAgent': 'La cuenta {name} es de un agente que Workhub no conoce ({agent}).',
+  'help.accounts.list': 'Una entrada por cada inicio de sesión de un agente. Dos cuentas de Claude, por ejemplo una personal y otra laboral, mantienen inicios de sesión, límites del plan e historial separados porque cada una usa su propia carpeta de configuración. Cada perfil elige qué cuentas ofrece al iniciar una sesión.'
 }

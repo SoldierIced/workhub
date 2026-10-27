@@ -1,6 +1,6 @@
 import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { gatePrompt, setCeiling, type SubagentSummary } from '@workhub/core'
+import { gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
 import { Markdown } from '../../components/molecules'
 import { BrandMark, ToolCallCard } from '../../components/organisms'
@@ -15,7 +15,7 @@ import { removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../prompt
 import { markPermission, pushItem, type ChatItem, type SessionData } from '../../store'
 import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
-import { useAccountLabel, useAccountUsage, useNow, useUsageSettings } from '../../lib/usage'
+import { useAccountLabel, useAccountUsage, useNow, useSessionCeilings, useUsageSettings } from '../../lib/usage'
 import { BudgetNotice } from './BudgetNotice'
 import type { ContinuityOptions } from '@shared/continuity-api'
 import { dismissOffer, originText, useContinuityActions, useContinuityOffer } from '../../lib/continuity'
@@ -200,7 +200,8 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
   const usageSettings = useUsageSettings()
   const now = useNow()
   const accountLabel = useAccountLabel()
-  const gate = sessionBudget(v, reads, usageSettings.budget, usageSettings.accountsOf, now)
+  const ownCeilings = useSessionCeilings()[sessionIdentity(v)]
+  const gate = sessionBudget(v, reads, usageSettings.budget, usageSettings.accountsOf, now, ownCeilings)
   const [needsConfirm, setNeedsConfirm] = useState(false)
   useEffect(() => {
     if (gate.status.action !== 'block') setNeedsConfirm(false)
@@ -233,6 +234,8 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
 
   const clearCeiling = async () => {
     if (!gate.status.window) return
+    // A ceiling set on this session is cleared on the session; the account's one in Settings.
+    if (gate.fromSession) return window.hub.usage.setSessionBudget(sessionIdentity(v), setSessionCeiling(ownCeilings, gate.status.window, null))
     const r = await window.hub.config.saveOptions({ usageBudget: setCeiling(usageSettings.budget, gate.key, gate.status.window, null) })
     if (r.ok) await refreshConfig()
   }

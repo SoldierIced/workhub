@@ -14,6 +14,7 @@ import { useCachedPullRequestLists } from '../../pullRequestsStore'
 import type { SessionData } from '../../store'
 import { AiReviewSection } from './AiReviewPanel'
 import { Legend, MetricBox, MetricRow, MonitorSection, SegmentBar } from './MonitorSection'
+import { SessionBudgetSection } from './SessionBudgetSection'
 import { SlackThreadsSection } from './SlackThreadsSection'
 
 /** The last turns' credits, newest last: `0.25 · 1.04 · 0.5`, with `…` when older turns are left out. */
@@ -306,6 +307,8 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
             </div>
           </MonitorSection>
         )}
+
+        <SessionBudgetSection view={v} />
 
         {showTokens && <MonitorSection id="requests" title={t('monitor.requests')} missing={t('monitor.requestsMissing')} />}
 

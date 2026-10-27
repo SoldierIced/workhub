@@ -1,9 +1,9 @@
-import { accountBudgetStatus, liveWindows, usageAccountKey, type BudgetStatus, type PlanUsageWindow, type UsageBudgetOptions } from '@workhub/core'
+import { accountBudgetStatus, liveWindows, usageAccountKey, type BudgetStatus, type PlanUsageWindow, type SessionCeilings, type UsageBudgetOptions } from '@workhub/core'
 import type { AccountUsage, SessionView } from '@shared/api'
 import type { SessionSummary } from './home'
 
-/** The agents whose usage the Home card lists, in this order. Kiro is listed only to say its limits are not available. */
-export const USAGE_CARD_AGENTS = ['claude', 'codex'] as const
+/** The agents whose usage the Home card lists, in this order. Kiro's row also shows the credits spent. */
+export const USAGE_CARD_AGENTS = ['claude', 'codex', 'kiro'] as const
 
 /** One account in the "Usage by agent" card. */
 export interface AgentAccountUsage {
@@ -108,19 +108,42 @@ export function kiroUsageNote(sessions: readonly SessionSummary[], accountsOf: (
 
 /**
  * The budget verdict for a session's account, for the composer: computed from the latest read of
- * that account and the current Settings, so raising or clearing a ceiling applies at once.
+ * that account and the current Settings, so raising or clearing a ceiling applies at once. The
+ * session's own ceilings (`session`) replace the account's for the windows they set;
+ * `fromSession` tells that the deciding ceiling is the session's.
  */
 export function sessionBudget(
   view: Pick<SessionView, 'agentId' | 'accountId'>,
   reads: readonly AccountUsage[],
   budget: UsageBudgetOptions,
   accountsOf: (agentId: string) => string,
-  now: number
-): { key: string; status: BudgetStatus } {
+  now: number,
+  session?: Readonly<SessionCeilings>
+): { key: string; status: BudgetStatus; fromSession: boolean } {
   const agentId = accountsOf(view.agentId)
   const key = usageAccountKey(agentId, view.accountId)
   const read = reads.find((r) => r.key === key)
-  return { key, status: read ? accountBudgetStatus(budget, key, read.windows, now) : { action: 'allow' } }
+  const status: BudgetStatus = read ? accountBudgetStatus(budget, key, read.windows, now, session) : { action: 'allow' }
+  return { key, status, fromSession: status.window !== undefined && session?.[status.window] !== undefined }
+}
+
+/** How a usage bar is colored: red past the ceiling or at 90%, yellow near the ceiling or at 75%. */
+export function usageTone(percent: number, ceiling: number | undefined, warnMargin = 5): 'danger' | 'warning' | 'normal' {
+  if ((ceiling !== undefined && percent >= ceiling) || percent >= 90) return 'danger'
+  if ((ceiling !== undefined && percent >= ceiling - warnMargin) || percent >= 75) return 'warning'
+  return 'normal'
+}
+
+/**
+ * A reset moment, short: the time when it is today (`18:59`), the weekday and time within a week
+ * (`Thu 17:59`), else the date (`Nov 1`). `format` is the locale's `Intl.DateTimeFormat`.
+ */
+export function shortReset(at: number, now: number, format: (date: number, options: Intl.DateTimeFormatOptions) => string): string {
+  const day = new Date(at)
+  const today = new Date(now)
+  if (day.toDateString() === today.toDateString()) return format(at, { hour: '2-digit', minute: '2-digit' })
+  if (at - now < 6 * 86_400_000) return format(at, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+  return format(at, { month: 'short', day: 'numeric' })
 }
 
 /** Compact time until a moment: `45m`, `2h 15m`, `3d 4h`; `0m` once it has passed. */
@@ -133,9 +156,9 @@ export function formatCountdown(at: number, now: number): string {
   return hours % 24 ? `${days}d ${hours % 24}h` : `${days}d`
 }
 
-/** The windows an account's budget can be set for: the usual two, then any other the account reported. */
-export function budgetWindows(reported: readonly PlanUsageWindow[], ceilings: Readonly<Record<string, number>> | undefined): string[] {
-  const out = ['5h', 'weekly']
+/** The windows an account's budget can be set for: the agent's usual ones (Kiro: its monthly credits; else 5 h and weekly), then any other the account reported. */
+export function budgetWindows(reported: readonly PlanUsageWindow[], ceilings: Readonly<Record<string, number>> | undefined, agentId?: string): string[] {
+  const out = agentId === 'kiro' ? ['monthly'] : ['5h', 'weekly']
   for (const w of [...reported.map((r) => r.window), ...Object.keys(ceilings ?? {})]) if (!out.includes(w)) out.push(w)
   return out
 }

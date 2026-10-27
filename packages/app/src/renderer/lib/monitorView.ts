@@ -14,6 +14,7 @@ export const MONITOR_SECTIONS = [
   'sessionTime',
   'tokens',
   'context',
+  'sessionBudget',
   'requests',
   'activity',
   'subagents',
