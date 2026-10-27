@@ -1,5 +1,5 @@
-import { Activity, FolderCog, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { Activity, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   appOptions,
   CONNECTION_KINDS,
@@ -19,12 +19,13 @@ import {
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, Input, Select, Switch, Textarea } from '../components/atoms'
-import { AgentOrderList, Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
+import { AgentOrderList, Card, CardBody, CardHeader, EmptyState, Field, HelpTip, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
 import { Workhub1Import } from '../components/organisms'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
+import { humanIssue, type IssueTarget } from '../lib/configIssues'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { AiReviewProfileFields } from './AiReviewSettings'
 import { HealthSettings } from './HealthSettings'
@@ -88,10 +89,44 @@ interface SectionProps {
   run: Run
 }
 
+/** The stored config's problems in plain words, each with a button to the form that fixes it. */
+function StoredIssues({ snap, onFix }: { snap: ConfigSnapshot; onFix: (target: IssueTarget) => void }) {
+  const { t } = useI18n()
+  if (!snap.issues.length) return null
+  const items = snap.issues.map((i) => humanIssue(i, snap.config, snap.providers, (k) => t(k)))
+  return (
+    <div role="alert" className="flex gap-3 rounded-lg border border-warning/30 bg-warning-soft px-4 py-3" data-testid="stored-issues">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="text-base font-semibold text-text">{t('issues.title')}</p>
+        <ul className="mt-1 flex flex-col gap-1.5">
+          {items.map((i) => (
+            <li key={i.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base text-text" title={i.technical}>
+              <span className="min-w-0">{t(i.message, i.params)}</span>
+              {i.action && (
+                <Button size="sm" onClick={() => onFix(i.action!.target)}>
+                  {t(i.action.label)}
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/** One-sentence description under the tab bar: what the tab is for. */
+function TabIntro({ text }: { text: string }) {
+  return <p className="-mt-1 max-w-3xl text-base text-muted">{text}</p>
+}
+
 export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapshot | null; tab: string; onTabChange: (tab: string) => void }) {
   const { t } = useI18n()
   const notify = useToast()
   const [issues, setIssues] = useState<ValidationIssue[]>([])
+  // The item a "fix" button asked to open; the tab's form starts on it.
+  const [focus, setFocus] = useState<IssueTarget | null>(null)
 
   const run: Run = async (op) => {
     const r = await op()
@@ -106,35 +141,43 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
   }
 
   if (!snap) return null
-  const section = (node: ReactNode) => (
+  const section = (node: ReactNode, intro?: string) => (
     <div className="flex flex-col gap-4">
+      {intro && <TabIntro text={intro} />}
       <Issues issues={issues} />
       {node}
     </div>
   )
+  const focusId = (t: IssueTarget['tab']) => (focus?.tab === t ? focus.id : undefined)
+  const fix = (target: IssueTarget) => {
+    setIssues([])
+    setFocus({ ...target })
+    onTabChange(target.tab)
+  }
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-8 py-7">
       <h1 className="text-2xl font-semibold tracking-tight">{t('nav.settings')}</h1>
       {snap.loadError && <Issues title={t('settings.loadError')} issues={[{ path: 'config.json', message: snap.loadError }]} />}
-      <Issues title={t('settings.storedProblems')} issues={snap.issues} />
+      <StoredIssues snap={snap} onFix={fix} />
       <Tabs
         variant="fill"
         label={t('nav.settings')}
         value={tab}
         onChange={(v) => {
           setIssues([])
+          setFocus(null)
           onTabChange(v)
         }}
         items={[
-          { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} />) },
-          { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: <AppearanceSettings /> },
-          { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection snap={snap} run={run} />) },
-          { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection snap={snap} run={run} />) },
-          { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings snap={snap} run={run} />) },
-          { value: 'health', label: t('health.settings.tab'), icon: <Activity className="size-4" aria-hidden />, content: section(<HealthSettings snap={snap} run={run} />) },
+          { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} />, t('help.tab.general')) },
+          { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: section(<AppearanceSettings />, t('help.tab.appearance')) },
+          { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection key={focusId('profiles')} snap={snap} run={run} initialId={focusId('profiles')} />, t('help.tab.profiles')) },
+          { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection key={focusId('connections')} snap={snap} run={run} initialId={focusId('connections')} />, t('help.tab.connections')) },
+          { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings key={focusId('trackers')} snap={snap} run={run} initialId={focusId('trackers')} />) },
+          { value: 'health', label: t('health.settings.tab'), icon: <Activity className="size-4" aria-hidden />, content: section(<HealthSettings snap={snap} run={run} focusSecret={focus?.tab === 'health'} />) },
           { value: 'slack', label: t('nav.slack'), icon: <MessageSquare className="size-4" aria-hidden />, content: section(<SlackSettings snap={snap} run={run} />) },
-          { value: 'accounts', label: t('settings.accounts'), icon: <UserCog className="size-4" aria-hidden />, content: section(<AccountsSection snap={snap} run={run} />) },
-          { value: 'usage', label: t('agentUsage.settings.tab'), icon: <Gauge className="size-4" aria-hidden />, content: section(<UsageSettings snap={snap} run={run} />) }
+          { value: 'accounts', label: t('settings.accounts'), icon: <UserCog className="size-4" aria-hidden />, content: section(<AccountsSection key={focusId('accounts')} snap={snap} run={run} initialId={focusId('accounts')} />, t('help.tab.accounts')) },
+          { value: 'usage', label: t('agentUsage.settings.tab'), icon: <Gauge className="size-4" aria-hidden />, content: section(<UsageSettings snap={snap} run={run} />, t('help.tab.usage')) }
         ]}
       />
     </div>
@@ -148,7 +191,7 @@ function GeneralSection({ snap, run }: SectionProps) {
   const editable = !snap.loadError
   return (
     <div className="flex flex-col gap-6">
-      <SettingsGroup title={t('settings.interface')} footnote={t('settings.languageHint')}>
+      <SettingsGroup title={t('settings.interface')} help={t('help.general.interface')} footnote={t('settings.languageHint')}>
         <SettingRow label={t('settings.language')}>
           <Select
             aria-label={t('settings.language')}
@@ -162,7 +205,7 @@ function GeneralSection({ snap, run }: SectionProps) {
           />
         </SettingRow>
       </SettingsGroup>
-      <SettingsGroup title={t('settings.notifications')} footnote={t('settings.notificationsNote')}>
+      <SettingsGroup title={t('settings.notifications')} help={t('help.general.notifications')} footnote={t('settings.notificationsNote')}>
         {(
           [
             ['notifyReplied', 'settings.notifyReplied', 'settings.notifyRepliedHint'],
@@ -175,18 +218,18 @@ function GeneralSection({ snap, run }: SectionProps) {
           </SwitchRow>
         ))}
       </SettingsGroup>
-      <SettingsGroup title={t('updates.group')} footnote={window.hub.platform === 'mac' ? t('updates.macNote') : undefined}>
+      <SettingsGroup title={t('updates.group')} help={t('help.general.updates')} footnote={window.hub.platform === 'mac' ? t('updates.macNote') : undefined}>
         <UpdatesSettings enabled={options.checkForUpdates} editable={editable} run={run} />
       </SettingsGroup>
-      <SettingsGroup title={t('prevent.settings.title')} footnote={t('prevent.settings.note')}>
+      <SettingsGroup title={t('prevent.settings.title')} help={t('help.general.prEvents')} footnote={t('prevent.settings.note')}>
         <PullRequestNotificationRows config={snap.config} editable={editable} run={run} />
       </SettingsGroup>
       {window.hub.platform === 'mac' && editable && (
-        <SettingsGroup title={t('import.group')}>
+        <SettingsGroup title={t('import.group')} help={t('help.general.import')}>
           <Workhub1Import run={run} />
         </SettingsGroup>
       )}
-      <SettingsGroup title={t('settings.storage')}>
+      <SettingsGroup title={t('settings.storage')} help={t('help.general.storage')}>
         <div className="flex items-center gap-3 py-3">
           <FolderCog className="size-4 text-muted" aria-hidden />
           <span className="flex-1 text-base">{t('settings.dataDir')}</span>
@@ -250,10 +293,13 @@ function MasterDetail<T extends { id: string }>(props: {
   )
 }
 
-function FieldGroup({ legend, children }: { legend: string; children: ReactNode }) {
+function FieldGroup({ legend, help, children }: { legend: string; help?: ReactNode; children: ReactNode }) {
   return (
     <fieldset className="rounded-md border border-border px-3 pt-1 pb-2">
-      <legend className="px-1 text-sm font-medium text-muted">{legend}</legend>
+      <legend className="flex items-center gap-1.5 px-1 text-sm font-medium text-muted">
+        {legend}
+        {help && <HelpTip text={help} label={legend} />}
+      </legend>
       {children}
     </fieldset>
   )
@@ -261,11 +307,17 @@ function FieldGroup({ legend, children }: { legend: string; children: ReactNode 
 
 const emptyConnection = (): Connection => ({ id: '', kind: 'codeHost', provider: 'github', settings: {} })
 
-function ConnectionsSection({ snap, run }: SectionProps) {
+function ConnectionsSection({ snap, run, initialId }: SectionProps & { initialId?: string }) {
   const { t } = useI18n()
-  const [selected, setSelected] = useState<string | null>(null)
-  const [form, setForm] = useState<Connection>(emptyConnection())
-  const [settingsText, setSettingsText] = useState('')
+  const initial = snap.config.connections.find((x) => x.id === initialId)
+  const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
+  const [form, setForm] = useState<Connection>(initial ? { ...initial } : emptyConnection())
+  const [settingsText, setSettingsText] = useState(toLines(initial?.settings))
+  const secretInput = useRef<HTMLInputElement>(null)
+  // Opened from "Enter token": put the cursor in the secret field.
+  useEffect(() => {
+    if (initialId) secretInput.current?.focus()
+  }, [initialId])
   const [secret, setSecret] = useState('')
   const [clearSecret, setClearSecret] = useState(false)
 
@@ -306,13 +358,13 @@ function ConnectionsSection({ snap, run }: SectionProps) {
       formTitle={selected ? (form.name || form.id) : t('settings.newConnection')}
       form={
         <div className="grid grid-cols-2 gap-4">
-          <Field label={t('settings.id')}>
+          <Field label={t('settings.id')} help={t('help.id')}>
             <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="acme-github" />
           </Field>
           <Field label={t('settings.name')}>
             <Input value={form.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme GitHub" />
           </Field>
-          <Field label={t('settings.kind')}>
+          <Field label={t('settings.kind')} help={t('help.connection.kind')}>
             <Select
               value={form.kind}
               onChange={(v) => {
@@ -322,14 +374,14 @@ function ConnectionsSection({ snap, run }: SectionProps) {
               options={CONNECTION_KINDS.map((k) => ({ value: k, label: t(KIND_LABEL[k]) }))}
             />
           </Field>
-          <Field label={t('settings.provider')}>
+          <Field label={t('settings.provider')} help={t('help.connection.provider')}>
             <Select
               value={form.provider}
               onChange={(v) => setForm({ ...form, provider: v })}
               options={providers.map((p) => ({ value: p.id, label: t('settings.providerPhase', { name: p.name, phase: p.phase }) }))}
             />
           </Field>
-          <Field label={provider?.requiresEndpoint ? t('settings.endpointRequired') : t('settings.endpoint')} className="col-span-2">
+          <Field label={provider?.requiresEndpoint ? t('settings.endpointRequired') : t('settings.endpoint')} help={t('help.connection.endpoint')} className="col-span-2">
             <Input
               value={form.endpoint ?? ''}
               onChange={(e) => setForm({ ...form, endpoint: e.target.value })}
@@ -340,9 +392,11 @@ function ConnectionsSection({ snap, run }: SectionProps) {
           <Field
             label={provider?.requiresSecret ? t('settings.secretRequired') : t('settings.secret')}
             hint={t('settings.secretHint')}
+            help={t('help.connection.secret')}
             className="col-span-2"
           >
             <Input
+              ref={secretInput}
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
@@ -357,7 +411,7 @@ function ConnectionsSection({ snap, run }: SectionProps) {
               </SwitchRow>
             </div>
           )}
-          <Field label={t('settings.settingsLines')} className="col-span-2">
+          <Field label={t('settings.settingsLines')} help={t('help.connection.settings')} className="col-span-2">
             <Textarea rows={3} value={settingsText} onChange={(e) => setSettingsText(e.target.value)} placeholder="scope=org:acme" spellCheck={false} />
           </Field>
         </div>
@@ -380,12 +434,13 @@ function ConnectionsSection({ snap, run }: SectionProps) {
 
 const emptyAccount = (agentId: string): AgentAccount => ({ id: '', agentId, name: '' })
 
-function AccountsSection({ snap, run }: SectionProps) {
+function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: string }) {
   const { t } = useI18n()
   const firstAgent = snap.agents[0]?.id ?? ''
-  const [selected, setSelected] = useState<string | null>(null)
-  const [form, setForm] = useState<AgentAccount>(emptyAccount(firstAgent))
-  const [envText, setEnvText] = useState('')
+  const initial = snap.config.accounts.find((x) => x.id === initialId)
+  const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
+  const [form, setForm] = useState<AgentAccount>(initial ? { ...initial } : emptyAccount(firstAgent))
+  const [envText, setEnvText] = useState(toLines(initial?.env))
 
   const select = (id: string | null) => {
     const a = snap.config.accounts.find((x) => x.id === id)
@@ -416,17 +471,18 @@ function AccountsSection({ snap, run }: SectionProps) {
       formTitle={selected ? form.name || form.id : t('settings.newAccount')}
       form={
         <div className="grid grid-cols-2 gap-4">
-          <Field label={t('settings.id')}>
+          <Field label={t('settings.id')} help={t('help.id')}>
             <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="kiro-acme" />
           </Field>
-          <Field label={t('settings.agent')}>
+          <Field label={t('settings.agent')} help={t('help.account.agent')}>
             <Select value={form.agentId} onChange={(v) => setForm({ ...form, agentId: v })} options={snap.agents.map((a) => ({ value: a.id, label: a.name }))} />
           </Field>
-          <Field label={t('settings.name')} className="col-span-2">
+          <Field label={t('settings.name')} help={t('help.account.name')} className="col-span-2">
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme work" />
           </Field>
           <Field
             label={t('settings.configDir')}
+            help={t('help.account.configDir')}
             hint={agent?.accountConfigEnv ? t('settings.configDirSets', { env: agent.accountConfigEnv }) : t('settings.configDirNone')}
             className="col-span-2"
           >
@@ -438,7 +494,7 @@ function AccountsSection({ snap, run }: SectionProps) {
               spellCheck={false}
             />
           </Field>
-          <Field label={t('settings.envLines')} hint={envHintKey ? t(envHintKey) : undefined} className="col-span-2">
+          <Field label={t('settings.envLines')} hint={envHintKey ? t(envHintKey) : undefined} help={t('help.account.env')} className="col-span-2">
             <Textarea rows={3} value={envText} onChange={(e) => setEnvText(e.target.value)} placeholder="ACME_ACCOUNT=work" spellCheck={false} />
           </Field>
         </div>
@@ -461,10 +517,11 @@ function AccountsSection({ snap, run }: SectionProps) {
 
 const emptyProfile = (): Profile => ({ id: '', name: '', connections: {}, accountIds: [], modules: { ...NO_MODULES } })
 
-function ProfilesSection({ snap, run }: SectionProps) {
+function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: string }) {
   const { t } = useI18n()
-  const [selected, setSelected] = useState<string | null>(null)
-  const [form, setForm] = useState<Profile>(emptyProfile())
+  const initial = snap.config.profiles.find((x) => x.id === initialId)
+  const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
+  const [form, setForm] = useState<Profile>(initial ? structuredClone(initial) : emptyProfile())
 
   const select = (id: string | null) => {
     const p = snap.config.profiles.find((x) => x.id === id)
@@ -498,14 +555,14 @@ function ProfilesSection({ snap, run }: SectionProps) {
       form={
         <>
           <div className="grid grid-cols-2 gap-4">
-            <Field label={t('settings.id')}>
+            <Field label={t('settings.id')} help={t('help.id')}>
               <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="acme" />
             </Field>
             <Field label={t('settings.name')}>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme" />
             </Field>
           </div>
-          <Field label={t('settings.folders')} hint={t('settings.foldersHint')}>
+          <Field label={t('settings.folders')} hint={t('settings.foldersHint')} help={t('help.profile.folders')}>
             <Textarea
               rows={3}
               value={(form.folders ?? []).join('\n')}
@@ -516,7 +573,7 @@ function ProfilesSection({ snap, run }: SectionProps) {
               }}
             />
           </Field>
-          <FieldGroup legend={t('settings.connections')}>
+          <FieldGroup legend={t('settings.connections')} help={t('help.profile.connections')}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2">
               {CONNECTION_KINDS.map((kind) => (
                 <Field key={kind} label={t(KIND_LABEL[kind])}>
@@ -537,7 +594,7 @@ function ProfilesSection({ snap, run }: SectionProps) {
               ))}
             </div>
           </FieldGroup>
-          <FieldGroup legend={t('settings.accounts')}>
+          <FieldGroup legend={t('settings.accounts')} help={t('help.profile.accounts')}>
             {snap.config.accounts.length === 0 && <p className="py-2 text-sm text-subtle">{t('settings.noAccounts')}</p>}
             {snap.config.accounts.map((a) => (
               <SwitchRow key={a.id} label={`${a.name} (${a.agentId})`}>
@@ -545,7 +602,7 @@ function ProfilesSection({ snap, run }: SectionProps) {
               </SwitchRow>
             ))}
           </FieldGroup>
-          <FieldGroup legend={t('settings.agentsOffered')}>
+          <FieldGroup legend={t('settings.agentsOffered')} help={t('help.profile.agentsOffered')}>
             <SwitchRow label={t('settings.allAgents')}>
               <Switch
                 checked={allAgents}
@@ -564,21 +621,21 @@ function ProfilesSection({ snap, run }: SectionProps) {
                 </SwitchRow>
               ))}
           </FieldGroup>
-          <FieldGroup legend={t('settings.agentOrder')}>
+          <FieldGroup legend={t('settings.agentOrder')} help={t('help.profile.agentOrder')}>
             <p className="pt-1 text-sm text-subtle">{t('settings.agentOrderHint')}</p>
             <AgentOrderList agents={orderedAgents} onChange={(keys) => setForm({ ...form, preferredAgents: keys })} />
           </FieldGroup>
-          <FieldGroup legend={t('settings.modules')}>
+          <FieldGroup legend={t('settings.modules')} help={t('help.profile.modules')}>
             {OPTIONAL_MODULES.map((m) => (
               <SwitchRow key={m} label={t(MODULE_LABEL[m])}>
                 <Switch checked={form.modules[m]} onChange={(on) => setForm({ ...form, modules: { ...form.modules, [m]: on } })} />
               </SwitchRow>
             ))}
           </FieldGroup>
-          <FieldGroup legend={t('aiReview.settings.legend')}>
+          <FieldGroup legend={t('aiReview.settings.legend')} help={t('help.profile.aiReview')}>
             <AiReviewProfileFields form={form} agents={orderedAgents} onChange={(aiReview) => setForm({ ...form, aiReview })} />
           </FieldGroup>
-          <FieldGroup legend={t('nav.slack')}>
+          <FieldGroup legend={t('nav.slack')} help={t('help.profile.slack')}>
             <SlackArchiveField value={form.slackArchiveMinutes} onChange={(minutes) => setForm({ ...form, slackArchiveMinutes: minutes })} />
           </FieldGroup>
         </>
