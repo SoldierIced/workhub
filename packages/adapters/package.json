@@ -8,7 +8,8 @@
     "./config-json": "./src/config-json/index.ts",
     "./secrets-electron": "./src/secrets-electron/index.ts",
     "./agent-acp": "./src/agent-acp/index.ts",
-    "./agent-terminal": "./src/agent-terminal/index.ts"
+    "./agent-terminal": "./src/agent-terminal/index.ts",
+    "./transcript-claude": "./src/transcript-claude/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
