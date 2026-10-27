@@ -382,6 +382,12 @@ export class SlackWatcherService {
     return r.moved
   }
 
+  /** A session got its real identity after starting (ACP): the threads it owns follow it. */
+  renameOwner(oldKey: string, newKey: string): void {
+    if (oldKey === newKey || !this.state.threads.some((t) => t.owner === oldKey)) return
+    this.setState({ ...this.state, threads: this.state.threads.map((t) => (t.owner === oldKey ? { ...t, owner: newKey } : t)) })
+  }
+
   listeningThreads(identity: string): number {
     return listeningThreadsOf(this.state.threads, identity).length
   }

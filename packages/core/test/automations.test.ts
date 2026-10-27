@@ -218,6 +218,7 @@ describe('the engine', () => {
     first.identity = 'acp-real-id'
     expect(engine.automationOf('acp-real-id')?.id).toBe('a1')
     expect(engine.snapshot().sessions['a1']).toBe('acp-real-id')
+    expect(engine.snapshot().runs.every((r) => !r.session || r.session === 'acp-real-id')).toBe(true)
     engine.runNow('a1')
     await runOnce(world, engine)
     expect(world.live).toHaveLength(1)

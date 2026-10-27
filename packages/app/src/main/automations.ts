@@ -38,6 +38,7 @@ export interface AutomationServiceDeps {
 }
 
 const TICK_MS = 2_000
+const START_WAIT_MS = 60_000
 
 /** `~` and `~/…` in a folder typed by the user. */
 export function expandHome(path: string, home: string): string {
@@ -65,7 +66,10 @@ export class AutomationService {
 
   constructor(private readonly deps: AutomationServiceDeps) {
     this.engine = new AutomationEngine(this.host(), deps.state.load(EMPTY_AUTOMATIONS_STATE))
-    deps.driver.onIdentityChanged = (oldKey, newKey) => this.engine.identityChanged(oldKey, newKey)
+    deps.driver.onIdentityChanged = (oldKey, newKey) => {
+      this.engine.identityChanged(oldKey, newKey)
+      deps.watcher.renameOwner(oldKey, newKey)
+    }
     deps.watcher.link({
       onMessages: (messages, me) => {
         if (this.engine.onChatMessages(messages, me)) void this.tick()
@@ -162,7 +166,14 @@ export class AutomationService {
       else input.identity = previous
     }
     const view = await this.deps.startSession(input)
-    return this.deps.driver.list().find((s) => s.id === view.id) ?? { id: view.id, identity: view.agentSessionId ?? view.identity ?? view.id, state: view.state, turnsEnded: 0 }
+    // An ACP agent reports its session id once it has started: wait for it, so the hand-over uses the real identity.
+    const until = Date.now() + START_WAIT_MS
+    let current = this.deps.driver.list().find((s) => s.id === view.id)
+    while (current?.state === 'starting' && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 200))
+      current = this.deps.driver.list().find((s) => s.id === view.id)
+    }
+    return current ?? { id: view.id, identity: view.agentSessionId ?? view.identity ?? view.id, state: view.state, turnsEnded: 0 }
   }
 
   // Actions from the Automations screen

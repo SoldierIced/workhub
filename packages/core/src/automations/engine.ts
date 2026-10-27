@@ -221,7 +221,11 @@ export class AutomationEngine {
     delete owned[oldKey]
     const sessions = Object.fromEntries(Object.entries(this.state.sessions).map(([id, key]) => [id, key === oldKey ? newKey : key]))
     const retiring = this.state.retiring.map((key) => (key === oldKey ? newKey : key))
-    this.save({ ...this.state, owned, sessions, retiring })
+    const runs = this.state.runs.map((r) => (r.session === oldKey ? { ...r, session: newKey } : r))
+    for (const [id, s] of this.runtime) {
+      if (s.active?.run.session === oldKey) this.runtime.set(id, { ...s, active: { ...s.active, run: { ...s.active.run, session: newKey } } })
+    }
+    this.save({ ...this.state, owned, sessions, retiring, runs })
   }
 
   private enqueue(a: AutomationDefinition, trigger: AutomationTrigger, link?: string): void {
