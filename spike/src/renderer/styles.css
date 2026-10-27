@@ -1,0 +1,21 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 13px -apple-system, system-ui, sans-serif; background: #1e1e1e; color: #ddd; }
+#root { display: flex; flex-direction: column; height: 100vh; }
+.tabs { display: flex; gap: 4px; padding: 6px; background: #2b2b2b; }
+.tabs button { padding: 4px 14px; }
+.tabs button.active { background: #0a84ff; color: #fff; }
+.pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.hidden { display: none; }
+.bar { display: flex; gap: 6px; padding: 6px; align-items: center; background: #252525; }
+.bar input { flex: 1; }
+.term { flex: 1; min-height: 0; padding: 4px; }
+.log { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.msg { white-space: pre-wrap; padding: 6px 8px; border-radius: 6px; background: #2b2b2b; }
+.msg.user { background: #14407a; align-self: flex-end; max-width: 80%; }
+.msg.thought { color: #999; font-style: italic; }
+.msg.tool { font-family: ui-monospace, monospace; background: #2a2a1e; }
+.msg.perm { background: #4a3a10; }
+.msg.err { color: #ff8a80; }
+.perm-buttons { display: flex; gap: 6px; margin-top: 6px; }
+.input { display: flex; gap: 6px; padding: 6px; }
+.input input { flex: 1; }
