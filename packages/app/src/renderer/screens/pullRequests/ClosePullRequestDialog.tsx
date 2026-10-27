@@ -1,8 +1,9 @@
 import { Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { isLongLivedBranch, prName, type PullRequest } from '@workhub/core'
+import { appOptions, isLongLivedBranch, prName, type PullRequest } from '@workhub/core'
 import { Button, Switch, Textarea } from '../../components/atoms'
 import { Dialog, useToast } from '../../components/molecules'
+import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 
 export interface ClosePullRequestDialogProps {
@@ -18,6 +19,7 @@ export interface ClosePullRequestDialogProps {
 export function ClosePullRequestDialog({ profileId, pr, onClose, onClosed }: ClosePullRequestDialogProps) {
   const { t } = useI18n()
   const notify = useToast()
+  const config = useConfig()
   const [comment, setComment] = useState('')
   const [deleteBranch, setDeleteBranch] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -28,7 +30,7 @@ export function ClosePullRequestDialog({ profileId, pr, onClose, onClosed }: Clo
     setError(null)
   }, [pr?.url])
   if (!pr) return null
-  const locked = isLongLivedBranch(pr.branch)
+  const locked = isLongLivedBranch(pr.branch, config ? appOptions(config.config).protectedBranches : undefined)
   const submit = async () => {
     setBusy(true)
     const r = await window.hub.codeHost.close(profileId, pr.url, comment, deleteBranch && !locked)

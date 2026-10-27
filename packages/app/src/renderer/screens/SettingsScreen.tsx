@@ -43,6 +43,7 @@ import { SetupEntryGroup } from './SetupEntryGroup'
 import { AppBadgeRows, MenuBarRows, OtherNotificationRows } from './NotificationExtraSettings'
 import { NotificationMasterRows } from './NotificationMasterRow'
 import { VoiceSettingsGroup } from './VoiceSettings'
+import { ProtectedBranchesRows } from './ProtectedBranchesRows'
 import { TrackerSettings } from './TrackerSettings'
 import { UpdatesSettings } from './UpdatesSettings'
 import { UsageSettings } from './UsageSettings'
@@ -271,6 +272,9 @@ function GeneralSection({ snap, run, workhub1 }: SectionProps & { workhub1: Work
       </SettingsGroup>
       <SettingsGroup title={t('prevent.settings.title')} help={t('help.general.prEvents')} footnote={t('prevent.settings.note')}>
         <PullRequestNotificationRows config={snap.config} editable={editable} run={run} />
+      </SettingsGroup>
+      <SettingsGroup title={t('settings.pullRequests')}>
+        <ProtectedBranchesRows config={snap.config} editable={editable} run={run} />
       </SettingsGroup>
       <SettingsGroup title={t('settings.storage')} help={t('help.general.storage')}>
         <div className="flex items-center gap-3 py-3">
