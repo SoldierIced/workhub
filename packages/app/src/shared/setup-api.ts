@@ -25,7 +25,7 @@ export interface ProfileEnvApi {
 }
 
 export interface SystemNotificationsStatus {
-  /** The OS can show notifications to this app at all. */
+  /** The OS shows this app's notifications: supported, and on macOS allowed in System Settings → Notifications. */
   supported: boolean
 }
 
