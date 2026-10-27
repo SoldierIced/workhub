@@ -32,6 +32,7 @@ import { HealthService } from './health-service'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionManager } from './session-manager'
+import { registerLinksIpc } from './links'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
 import { UpdateService } from './updates'
@@ -258,6 +259,7 @@ function registerIpc(): void {
   ipcMain.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
 
   registerCodeHostIpc(ipcMain, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
+  registerLinksIpc({ ipcMain, loadConfig: () => configuration.current(), mainWindow: () => win })
   registerPrEventsIpc(ipcMain, { service: prEvents, notify: showPullRequestNotification })
   ipcMain.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
   ipcMain.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))

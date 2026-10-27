@@ -16,6 +16,9 @@ export function ticketKeysOfPullRequest(pr: Pick<PullRequest, 'title' | 'branch'
   return ticketKeysIn(`${pr.title}\n${pr.branch}`, providers)
 }
 
+/** The facts of a PR that tie sessions to it. */
+export type PrFacts = Pick<PullRequest, 'url' | 'title' | 'branch'>
+
 /** What a session knows that can tie it to a PR. */
 export interface LinkableSession {
   id: string
@@ -38,7 +41,7 @@ const REASON_ORDER: Record<LinkReason, number> = { url: 0, branch: 1, ticket: 2 
 /** Long-lived branches say nothing about which PR a session belongs to. */
 const SHARED_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk', 'staging', 'production'])
 
-function reasonFor(pr: PullRequest, session: LinkableSession, prTickets: string[]): LinkReason | null {
+function reasonFor(pr: PrFacts, session: LinkableSession, prTickets: string[]): LinkReason | null {
   const url = canonicalUrl(pr.url)
   if ((session.pullRequestUrls ?? []).some((u) => canonicalUrl(u) === url)) return 'url'
   const branch = session.branch?.trim()
@@ -49,7 +52,7 @@ function reasonFor(pr: PullRequest, session: LinkableSession, prTickets: string[
 
 /** The sessions that belong to a PR: by URL, by branch or by a shared ticket key. Strongest reason first. */
 export function sessionsForPullRequest(
-  pr: PullRequest,
+  pr: PrFacts,
   sessions: readonly LinkableSession[],
   providers: readonly TicketKeyProvider[] = ANY_PROJECT_KEY
 ): SessionLink[] {

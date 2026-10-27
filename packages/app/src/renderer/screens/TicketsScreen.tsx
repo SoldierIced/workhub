@@ -74,6 +74,7 @@ export function TicketsScreen({ profile, sessions, onOpenSettings }: TicketsScre
                     ticket={ticket}
                     sessionCount={sessionsForTicket(ticket.key, refs, providers).length}
                     onOpen={() => open(ticket.key)}
+                    onStartSession={() => window.hub.links.request({ kind: 'ticketSession', profileId, ticket: { key: ticket.key, title: ticket.title, url: ticket.url } })}
                     onOpenExternal={ticket.url ? () => void window.hub.tickets.openExternal(ticket.url!) : undefined}
                   />
                 </li>

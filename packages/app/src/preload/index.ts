@@ -3,6 +3,7 @@ import type { AgentEvent, HistoryMessage } from '@workhub/core'
 import { toPlatform, type AccountUsage, type HubApi, type SessionView } from '../shared/api'
 import type { UpdateStatus } from '../shared/updates-api'
 import type { PrEventBatch } from '../shared/pr-events-api'
+import type { SessionIntent } from '../shared/links-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -90,6 +91,11 @@ const api: HubApi = {
     reply: (profileId, url, threadId, body) => ipcRenderer.invoke('codeHost:reply', profileId, url, threadId, body),
     openWindow: (profileId, url) => ipcRenderer.invoke('codeHost:openWindow', profileId, url),
     openExternal: (profileId, url) => ipcRenderer.invoke('codeHost:openExternal', profileId, url)
+  },
+  links: {
+    request: (intent) => ipcRenderer.send('links:request', intent),
+    checkouts: (profileId) => ipcRenderer.invoke('links:checkouts', profileId),
+    onIntent: (cb) => subscribe<[SessionIntent]>('links:intent', cb)
   },
   health: {
     get: (profileId, force) => ipcRenderer.invoke('health:get', profileId, force),
