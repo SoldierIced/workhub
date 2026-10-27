@@ -344,9 +344,11 @@ How to keep it near the low end:
 
 ## 9. Pending
 
-- **Spend for API-key agents (deferred).** Usage per agent account (Settings → Usage) covers plan
-  windows only: Claude and Codex accounts signed in with a subscription. Agents that run on API
-  keys (OpenCode, Gemini with an API key) have no plan window; for them, show spend per day and
-  per week from the token counts their sessions report, and the provider balance where an API
-  exposes it (OpenRouter has one; Anthropic and OpenAI are still to be researched). Deferred by
-  the user. Kiro stays "not available" until it exposes remaining credits or limits locally.
+- **Spend for API-key agents (done, 2026-10-27).** Home's usage cards and the token spend card
+  show, per agent, the USD spent today and over 7 days by agents billed by API key: Claude Code
+  accounts whose environment sets `ANTHROPIC_API_KEY`, Codex sessions without ChatGPT plan rate
+  limits (both priced from their tokens with bundled list-price tables, no network), OpenCode's
+  recorded per-message cost, and any ACP agent reporting a cost in `usage_update` (a persisted
+  per-day ledger). Still open: provider balances (OpenRouter has an API; Anthropic and OpenAI to
+  research) and keeping the OpenAI price table current. Kiro credits left are read through
+  `kiro-cli`'s own `/usage`, on by default.

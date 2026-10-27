@@ -72,5 +72,10 @@ export const usageEn = {
   'agentUsage.refresh': 'Refresh usage',
   'agentUsage.refreshing': 'Reading usage…',
   'agentUsage.updatedAt': 'Updated {time}',
-  'agentUsage.notReadYet': 'Not read yet'
+  'agentUsage.notReadYet': 'Not read yet',
+  'agentUsage.apiSpend': 'API spend',
+  'agentUsage.apiSpendHelp': 'Agents billed by API key (OpenCode, Codex or Claude on an API key, ACP agents that report a cost), from what their sessions report, priced at list prices where only tokens are known.',
+  'agentUsage.apiSpendShort': '{today} today · {week} in 7 days',
+  'agentUsage.apiSpendDays': 'Spent per day, last 7 days',
+  'agentUsage.apiUnpriced': '{tokens} tokens of models without a known price are not included.'
 } as const

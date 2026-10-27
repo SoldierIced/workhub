@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { emptySpendCache, TokenSpendScanner, worktreeAliases, type SpendCache, type SpendSources, type WorktreeLink } from '@workhub/adapters/token-spend'
+import { emptySpendCache, TokenSpendScanner, worktreeAliases, type SpendCache, type SpendFileEntry, type SpendSources, type WorktreeLink } from '@workhub/adapters/token-spend'
 import { attributeFolder, folderSpend, parseSpendKey, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
 import type { FolderSpendResult } from '../shared/api'
 import { usageAccounts } from './agent-usage'
@@ -72,6 +72,11 @@ export class TokenSpendService {
       this.scanning = false
       this.deps.emit()
     }
+  }
+
+  /** What the scanned transcripts `include` picks cost over the last 7 days (see `ApiSpendService`). */
+  costs(include: (path: string, entry: SpendFileEntry) => boolean): { usd: SpendBuckets; unpriced: SpendBuckets; tokens: SpendBuckets } {
+    return this.scanner.costs(spendWindowStart(this.now()), include)
   }
 
   /** The spend of one profile's folders over the last 7 days, largest first. */
