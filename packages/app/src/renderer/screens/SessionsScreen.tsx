@@ -165,16 +165,19 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
   const hasConsole = v.modes.includes('console')
   return (
     <>
-      <header className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3">
-        <div className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-raised text-accent">
+      {/* Wraps: on a narrow pane the controls move to a second row instead of squeezing the name and folder to nothing. */}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-5 py-3" data-testid="session-header">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised text-accent">
           <SquareTerminal className="size-4.5" aria-hidden />
         </div>
-        <div className="min-w-32 flex-1">
-          <div className="flex items-center gap-2">
-            <h1 className="truncate text-md font-semibold">{v.agentName}</h1>
+        <div className="min-w-48 flex-1 basis-56" data-testid="session-identity">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="min-w-0 truncate text-md font-semibold" title={v.agentName}>
+              {v.agentName}
+            </h1>
             {v.accountName && (
-              <Badge tone="accent" data-testid="session-account" icon={<UserRound className="size-3" aria-hidden />}>
-                {v.accountName}
+              <Badge tone="accent" data-testid="session-account" className="min-w-0 shrink" title={v.accountName} icon={<UserRound className="size-3 shrink-0" aria-hidden />}>
+                <span className="truncate">{v.accountName}</span>
               </Badge>
             )}
           </div>
@@ -182,7 +185,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
             {v.cwd}
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
           {v.modes.length > 1 && <ModeSwitch data={data} />}
           {sessionModePicker(v).visible && <ModePicker data={data} />}
           {sessionModelPicker(v).visible && <ModelPicker data={data} />}

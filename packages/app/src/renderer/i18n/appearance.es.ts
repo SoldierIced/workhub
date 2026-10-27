@@ -1,0 +1,36 @@
+import type { appearanceEn } from './appearance.en'
+
+/** Spanish copy of Settings → Appearance (neutral). Same keys as `appearanceEn`. */
+export const appearanceEs: Record<keyof typeof appearanceEn, string> = {
+  'appearance.base': 'Claro u oscuro',
+  'appearance.baseOverridden': 'Lo decide el esquema de colores mientras se aplique a toda la app.',
+  'appearance.themeGroup': 'Esquema de colores de la terminal',
+  'appearance.search': 'Buscar entre {count} temas',
+  'appearance.default': 'Workhub',
+  'appearance.defaultHint': 'Sigue el modo claro u oscuro',
+  'appearance.noMatch': 'Ningún tema coincide con "{query}".',
+  'appearance.preview': 'Vista previa de {name}',
+  'appearance.previewPassed': 'Tests correctos',
+  'appearance.previewWarning': '1 advertencia',
+  'appearance.previewFailed': '1 fallido',
+  'appearance.themeApp': 'Usar el tema en toda la app',
+  'appearance.themeAppHint': 'Todas las pantallas, la barra lateral y Ajustes toman sus colores, y la app pasa a modo claro u oscuro según el tema. Desactivado: solo lo usa la terminal.',
+  'appearance.themeAppNeedsTheme': 'Elige un esquema de colores arriba para aplicarlo a toda la app.',
+  'appearance.attribution': 'Esquemas de colores de iTerm2-Color-Schemes (licencia MIT), el mismo catálogo que ofrecía Workhub 1.',
+  'appearance.terminalFont': 'Fuente de la terminal',
+  'appearance.fontFamily': 'Familia',
+  'appearance.fontDefault': 'Predeterminada (monoespaciada del sistema)',
+  'appearance.fontSize': 'Tamaño',
+  'appearance.textGroup': 'Texto',
+  'appearance.textSize': 'Tamaño del texto de la app',
+  'appearance.textSizeHint': 'Escala todos los textos de la app. 13 px es el valor predeterminado; la terminal mantiene su propio tamaño.',
+  'appearance.chatSize': 'Tamaño del texto de las conversaciones',
+  'appearance.chatSizeHint': 'El texto de las conversaciones con agentes, sobre el tamaño del texto de la app.',
+  'appearance.px': '{size} px',
+  'appearance.reset': 'Restablecer',
+  'import.appearance': 'Apariencia',
+  'import.appearanceTerminal': 'terminal {size} px',
+  'import.appearanceText': 'texto {size} px',
+  'import.appearanceChat': 'conversaciones {size} px',
+  'appearance.resetNamed': 'Restablecer {name}'
+}

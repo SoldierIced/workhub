@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  appearanceFrom,
   applyWorkhub1Import,
   DEFAULT_CHAT_WATCHER,
   isEmptyImportPlan,
@@ -171,10 +172,10 @@ describe('Workhub 1 import: modules and options', () => {
   it('maps options, prefs and the prompt language, and reports what has no equivalent', () => {
     expect(plan.options).toEqual({ claudePlanUsage: true, notifyPrEvents: expect.any(Object), notifySlack: false, notifyHealth: false })
     expect(Object.values(plan.options?.notifyPrEvents ?? {}).every((v) => v === false)).toBe(true)
-    expect(plan.prefs).toEqual({ models: { 'claude:claude-personal': 'opus' }, language: 'es' })
+    expect(plan.prefs).toEqual({ models: { 'claude:claude-personal': 'opus' }, language: 'es', appearance: { terminalFontSize: 17, terminalTheme: 'Dimmed Monokai' } })
     expect(plan.profiles.every((p) => p.aiReview?.language === 'es')).toBe(true)
     const settingsNotes = plan.notes.filter((n) => n.path === 'settings').map((n) => n.detail)
-    expect(settingsNotes.sort()).toEqual(['terminal.fontSize', 'terminal.theme', 'usageChecker', 'usageRefreshMinutes'])
+    expect(settingsNotes.sort()).toEqual(['usageChecker', 'usageRefreshMinutes'])
     expect(plan.notes).toContainEqual({ code: 'notSupported', path: 'accounts.claude-work', detail: 'effort' })
   })
 
@@ -282,5 +283,18 @@ describe('session groups helpers', () => {
       ['New', ['k2']]
     ])
     expect(merged.top).toEqual([{ kind: 'group', id: 'g1' }, { kind: 'group', id: 'g2' }, { kind: 'session', key: 'k3' }])
+  })
+})
+
+describe('Workhub 1 appearance', () => {
+  it('maps the terminal theme and font and both text sizes, rounding sizes', () => {
+    expect(
+      appearanceFrom({ 'terminal.theme': 'Catppuccin Mocha', 'terminal.fontFamily': 'Menlo', 'terminal.fontSize': 14.5, 'chat.fontSize': '15', 'app.textSize': 16 })
+    ).toEqual({ terminalTheme: 'Catppuccin Mocha', terminalFontFamily: 'Menlo', terminalFontSize: 15, chatFontSize: 15, textSize: 16 })
+  })
+
+  it('leaves out empty, default and unreadable values', () => {
+    expect(appearanceFrom({ 'terminal.fontFamily': '', 'terminal.theme': '  ', 'terminal.fontSize': 'big', 'app.textSize': 0 })).toBeUndefined()
+    expect(appearanceFrom(undefined)).toBeUndefined()
   })
 })
