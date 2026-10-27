@@ -284,17 +284,18 @@ function Content({ view }: { view: TrayPopoverView }) {
       {menuOpen && <PopoverMenu view={view} onClose={() => setMenuOpen(false)} />}
       <footer className="flex items-center gap-1 border-t border-border/70 px-2 py-1.5">
         <FooterButton icon={<Plus className="size-3.5" />} label={t('trayPopover.newSession')} onClick={() => perform({ kind: 'newSession' })} />
-        <FooterButton icon={<Settings className="size-3.5" />} label={t('trayPopover.settings')} onClick={() => go('settings')} />
         <span className="flex-1" />
+        <FooterButton iconOnly icon={<Settings className="size-4" />} label={t('trayPopover.settings')} onClick={() => go('settings')} />
         {view.pausedUntil ? (
           <FooterButton
-            icon={<BellOff className="size-3.5" />}
+            iconOnly
+            icon={<BellOff className="size-4 text-warning" />}
             label={t('trayPopover.resume')}
-            title={t('trayPopover.pausedUntil', { time: pausedTime ?? '' })}
+            title={`${t('trayPopover.resume')}\n${t('trayPopover.pausedUntil', { time: pausedTime ?? '' })}`}
             onClick={() => perform({ kind: 'resume' })}
           />
         ) : (
-          <FooterButton icon={<Bell className="size-3.5" />} label={t('trayPopover.pause')} onClick={() => perform({ kind: 'pause', preset: 'hour' })} />
+          <FooterButton iconOnly icon={<Bell className="size-4" />} label={t('trayPopover.pauseHour')} onClick={() => perform({ kind: 'pause', preset: 'hour' })} />
         )}
         <button
           type="button"
@@ -326,17 +327,22 @@ function MoreLine({ count, onClick }: { count: number; onClick: () => void }) {
   )
 }
 
-function FooterButton({ icon, label, title, onClick }: { icon: ReactNode; label: string; title?: string; onClick: () => void }) {
+/** A footer action: icon and label, or (`iconOnly`) the icon with the label as its tooltip and accessible name. */
+function FooterButton({ icon, label, title, iconOnly, onClick }: { icon: ReactNode; label: string; title?: string; iconOnly?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       data-nav
-      title={title}
-      className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition-colors hover:bg-surface-hover hover:text-text"
+      title={title ?? (iconOnly ? label : undefined)}
+      aria-label={iconOnly ? label : undefined}
+      className={cn(
+        'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md text-xs whitespace-nowrap text-muted transition-colors hover:bg-surface-hover hover:text-text',
+        iconOnly ? 'w-7 justify-center' : 'px-2'
+      )}
       onClick={onClick}
     >
       {icon}
-      {label}
+      {!iconOnly && label}
     </button>
   )
 }
