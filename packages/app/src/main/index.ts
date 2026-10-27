@@ -951,9 +951,6 @@ function registerIpc(): void {
   ipc.on('trayPopover:hide', (e) => {
     if (trayPopover?.owns(e.sender)) trayPopover.hide()
   })
-  ipc.on('trayPopover:menu', (e) => {
-    if (trayPopover?.owns(e.sender)) trayService?.showMenu()
-  })
 }
 
 const SESSION_STATES = new Set(['starting', 'ready', 'busy', 'stopped', 'error'])

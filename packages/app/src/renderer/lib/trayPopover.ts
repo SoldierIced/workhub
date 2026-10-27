@@ -1,4 +1,4 @@
-import type { TrayPopoverSession, TrayTone } from '@workhub/core'
+import type { TrayAction, TrayPopoverSession, TrayPopoverView, TrayTone } from '@workhub/core'
 import type { Tone } from '../components/atoms/Badge'
 import { LEVEL_LABEL, LEVEL_TONE } from './attention'
 import type { MessageKey } from '../i18n/translate'
@@ -58,4 +58,29 @@ export function nextFocus(current: number, count: number, key: string): number |
     default:
       return null
   }
+}
+
+/** An entry of the popover's own "More" menu (what the native tray menu offered besides the lists). */
+export interface PopoverMenuItem {
+  id: 'pauseHour' | 'pauseTomorrow' | 'resume' | 'checkForUpdates' | 'quit'
+  label: MessageKey
+  action: TrayAction
+  /** A line above it. */
+  separated?: boolean
+}
+
+/**
+ * The popover's "More" menu: the pause presets (or resume), checking for updates where the build
+ * can, and quitting. Opening the window, settings and a new session already sit in the popover.
+ */
+export function popoverMenuItems(view: Pick<TrayPopoverView, 'pausedUntil' | 'canCheckForUpdates'>): PopoverMenuItem[] {
+  const items: PopoverMenuItem[] = view.pausedUntil
+    ? [{ id: 'resume', label: 'trayPopover.resume', action: { kind: 'resume' } }]
+    : [
+        { id: 'pauseHour', label: 'trayPopover.pauseHour', action: { kind: 'pause', preset: 'hour' } },
+        { id: 'pauseTomorrow', label: 'trayPopover.pauseTomorrow', action: { kind: 'pause', preset: 'tomorrow' } }
+      ]
+  if (view.canCheckForUpdates) items.push({ id: 'checkForUpdates', label: 'trayPopover.checkForUpdates', action: { kind: 'checkForUpdates' }, separated: true })
+  items.push({ id: 'quit', label: 'trayPopover.quitTitle', action: { kind: 'quit' }, separated: true })
+  return items
 }

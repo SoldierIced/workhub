@@ -11,6 +11,8 @@ export const trayPopoverEs: Record<keyof typeof trayPopoverEn, string> = {
   'trayPopover.resume': 'Reanudar notificaciones',
   'trayPopover.pausedUntil': 'En pausa hasta las {time}',
   'trayPopover.notificationsOn': 'Notificaciones activas',
+  'trayPopover.pauseHour': 'Pausar notificaciones durante 1 hora',
+  'trayPopover.pauseTomorrow': 'Pausar notificaciones hasta mañana',
   'trayPopover.moreOptions': 'Más opciones',
   'trayPopover.quit': 'Salir',
   'trayPopover.quitTitle': 'Salir de {app}',

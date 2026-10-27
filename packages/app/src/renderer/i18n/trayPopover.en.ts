@@ -9,6 +9,8 @@ export const trayPopoverEn = {
   'trayPopover.resume': 'Resume notifications',
   'trayPopover.pausedUntil': 'Paused until {time}',
   'trayPopover.notificationsOn': 'Notifications on',
+  'trayPopover.pauseHour': 'Pause notifications for 1 hour',
+  'trayPopover.pauseTomorrow': 'Pause notifications until tomorrow',
   'trayPopover.moreOptions': 'More options',
   'trayPopover.quit': 'Quit',
   'trayPopover.quitTitle': 'Quit {app}',

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Bell, BellOff, Ellipsis, GitPullRequest, Plus, Settings } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Bell, BellOff, ChevronUp, Download, GitPullRequest, Plus, Power, Settings } from 'lucide-react'
 import { automationLine, type TrayAction, type TrayPopoverSession, type TrayPopoverUsageAccount, type TrayPopoverView, type TrayRoute } from '@workhub/core'
 import type { MessageKey } from '../i18n/translate'
 import { usageWindowName } from '../lib/usage-window'
@@ -9,7 +9,7 @@ import { BrandMark } from '../components/organisms/BrandMark'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { usePlatform } from '../lib/platform'
-import { BAR_CLASS, DOT_CLASS, elapsed, nextFocus, sessionChip } from '../lib/trayPopover'
+import { BAR_CLASS, DOT_CLASS, elapsed, nextFocus, popoverMenuItems, sessionChip, type PopoverMenuItem } from '../lib/trayPopover'
 
 const perform = (action: TrayAction) => window.hub.tray.popover.perform(action)
 const go = (route: TrayRoute) => perform({ kind: 'navigate', route })
@@ -96,8 +96,62 @@ function StatusLine({ tone, label, onClick }: { tone: keyof typeof DOT_CLASS; la
   )
 }
 
+const MENU_ICON: Record<PopoverMenuItem['id'], ReactNode> = {
+  pauseHour: <BellOff className="size-3.5" aria-hidden />,
+  pauseTomorrow: <BellOff className="size-3.5" aria-hidden />,
+  resume: <Bell className="size-3.5" aria-hidden />,
+  checkForUpdates: <Download className="size-3.5" aria-hidden />,
+  quit: <Power className="size-3.5" aria-hidden />
+}
+
+/**
+ * The popover's own "More" menu, drawn inside the popover just above the footer (the window grows
+ * to fit it): pause presets or resume, check for updates, quit. It replaces the native tray menu.
+ */
+function PopoverMenu({ view, onClose }: { view: TrayPopoverView; onClose: () => void }) {
+  const { t } = useI18n()
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: 'nearest' })
+    ref.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus()
+  }, [])
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      id="tray-popover-menu"
+      aria-label={t('trayPopover.moreOptions')}
+      data-testid="tray-popover-menu"
+      className="mx-2 mb-1 flex flex-col rounded-md border border-border/70 p-1"
+    >
+      {popoverMenuItems(view).map((item) => (
+        <Fragment key={item.id}>
+          {item.separated && <div role="separator" className="mx-2 my-1 h-px bg-border/70" />}
+          <button
+            type="button"
+            role="menuitem"
+            data-nav
+            data-menu-item={item.id}
+            className={cn(ROW, item.id === 'quit' && 'hover:text-danger focus-visible:text-danger')}
+            onClick={() => {
+              onClose()
+              perform(item.action)
+            }}
+          >
+            {MENU_ICON[item.id]}
+            <span className="min-w-0 flex-1 truncate">{t(item.label, { app: view.appName })}</span>
+          </button>
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
 function Content({ view }: { view: TrayPopoverView }) {
   const { t, tn, formatDate } = useI18n()
+  const [menuOpen, setMenuOpen] = useState(false)
+  // Each opening of the popover starts with the menu closed.
+  useEffect(() => window.hub.tray.popover.onShown(() => setMenuOpen(false)), [])
   const now = Date.now()
   const headline =
     view.summary.attention > 0
@@ -227,6 +281,7 @@ function Content({ view }: { view: TrayPopoverView }) {
         </Section>
       </div>
 
+      {menuOpen && <PopoverMenu view={view} onClose={() => setMenuOpen(false)} />}
       <footer className="flex items-center gap-1 border-t border-border/70 px-2 py-1.5">
         <FooterButton icon={<Plus className="size-3.5" />} label={t('trayPopover.newSession')} onClick={() => perform({ kind: 'newSession' })} />
         <FooterButton icon={<Settings className="size-3.5" />} label={t('trayPopover.settings')} onClick={() => go('settings')} />
@@ -244,12 +299,16 @@ function Content({ view }: { view: TrayPopoverView }) {
         <button
           type="button"
           data-nav
+          data-testid="tray-popover-more"
           aria-label={t('trayPopover.moreOptions')}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? 'tray-popover-menu' : undefined}
           title={t('trayPopover.moreOptions')}
-          className="inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-text"
-          onClick={() => window.hub.tray.popover.openMenu()}
+          className={cn('inline-flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-hover hover:text-text', menuOpen && 'bg-surface-hover text-text')}
+          onClick={() => setMenuOpen((o) => !o)}
         >
-          <Ellipsis className="size-4" />
+          <ChevronUp className={cn('size-4 transition-transform', menuOpen && 'rotate-180')} aria-hidden />
         </button>
       </footer>
     </>

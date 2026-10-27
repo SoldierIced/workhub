@@ -242,8 +242,7 @@ const api: HubApi = {
       onShown: (cb) => subscribe<[]>('trayPopover:shown', cb),
       perform: (action) => ipcRenderer.send('trayPopover:perform', action),
       resize: (height) => ipcRenderer.send('trayPopover:resize', height),
-      hide: () => ipcRenderer.send('trayPopover:hide'),
-      openMenu: () => ipcRenderer.send('trayPopover:menu')
+      hide: () => ipcRenderer.send('trayPopover:hide')
     }
   },
   windows: {

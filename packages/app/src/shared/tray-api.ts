@@ -32,8 +32,6 @@ export interface TrayPopoverApi {
   /** The content's natural height, so the window fits it (clamped to the screen). */
   resize(height: number): void
   hide(): void
-  /** The native menu (Quit, pause presets...), at the icon. */
-  openMenu(): void
 }
 
 export type { NotificationKind, TrayAction, TrayPopoverView, TrayRoute }
