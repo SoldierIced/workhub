@@ -18,6 +18,7 @@ import {
   type HistoryMessage,
   type ImageInput,
   type SessionHistorySource,
+  type SessionOrigin,
   type TranscriptReader,
   type WorkhubConfig
 } from '@workhub/core'
@@ -120,7 +121,7 @@ export class SessionManager {
    * `internal` is for the main process only (never the renderer's IPC input): extra environment
    * for the agent process, e.g. the AI review's push block.
    */
-  async start(input: StartSessionInput, internal: { env?: Record<string, string> } = {}): Promise<SessionView> {
+  async start(input: StartSessionInput, internal: { env?: Record<string, string>; origin?: SessionOrigin } = {}): Promise<SessionView> {
     const config = await this.deps.config.current()
     const choice = resolveChoice(config, input.profileId, input.agentKey)
     if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
@@ -160,7 +161,8 @@ export class SessionManager {
       mode: engine,
       shellRunning: false,
       controls: hasSessionControls(runtime),
-      ...(input.readOnly ? { readOnly: true } : {})
+      ...(input.readOnly ? { readOnly: true } : {}),
+      ...(internal.origin ? { origin: internal.origin } : {})
     }
     const session: ManagedSession = { view, agent, account, env: { ...launchEnvironment(agent, account), ...(internal.env ?? {}) }, runtime, engine, switching: false, readOnly: input.readOnly === true }
     this.sessions.set(view.id, session)

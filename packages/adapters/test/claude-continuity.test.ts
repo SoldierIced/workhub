@@ -72,6 +72,12 @@ describe('copyClaudeSession', () => {
     expect(await exists(join(source, transcript))).toBe(true)
   })
 
+  it('plans without writing on a dry run', async () => {
+    const r = await copyClaudeSession({ ...input(), dryRun: true })
+    expect(r.copied).toContain(transcript)
+    expect(await exists(target)).toBe(false)
+  })
+
   it('finds the session in another project folder when the cwd moved', async () => {
     expect((await copyClaudeSession({ ...input(), cwd: '/somewhere/else' })).folder).toBe(FOLDER)
   })

@@ -104,6 +104,8 @@ export interface CopyClaudeSessionInput {
   cwd: string
   sourceConfigDir: string
   targetConfigDir: string
+  /** Plan only: report what would be copied (and throw on a transcript conflict) without writing. */
+  dryRun?: boolean
 }
 
 export async function copyClaudeSession(input: CopyClaudeSessionInput): Promise<SessionCopyResult> {
@@ -134,6 +136,11 @@ export async function copyClaudeSession(input: CopyClaudeSessionInput): Promise<
   const result: SessionCopyResult = { folder, copied: [], extended: [], unchanged: [], conflicts: [] }
   for (const item of plan) {
     const to = inside(target, item.rel)
+    if (input.dryRun) {
+      const list = { conflict: result.conflicts, unchanged: result.unchanged, copy: result.copied, extend: result.extended }[item.action]
+      list.push(item.rel)
+      continue
+    }
     if (item.action === 'conflict') result.conflicts.push(item.rel)
     else if (item.action === 'unchanged') result.unchanged.push(item.rel)
     else if (item.action === 'copy') {

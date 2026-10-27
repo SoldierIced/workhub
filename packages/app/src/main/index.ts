@@ -10,7 +10,7 @@ import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
 import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
-import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
+import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/transcript-kiro'
 import { GitReview } from '@workhub/adapters/git-review'
@@ -22,7 +22,10 @@ import {
   canonicalUrl,
   CONNECTION_PROVIDERS,
   ConfigurationService,
+  EMPTY_FACTS,
+  factsFromHistory,
   knownAgents,
+  placeBeside,
   planWorkhub1Import,
   resolveEffectiveAgents,
   usageAccountKey,
@@ -36,7 +39,9 @@ import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
 import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
 import { AiReviewService, registerAiReviewIpc, reviewBudgetGate } from './ai-review'
+import { claudeConfigDirOf } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
+import { ContinuityService } from './continuity'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
 import { permissionAllowed } from './permissions'
@@ -144,11 +149,13 @@ const sessions = new SessionManager({
   history: historySources,
   emitEvent: (e) => {
     driver.onEvent(e)
+    continuity.onEvent(e)
     aiReview.onEvent(e)
     send('session:event', e)
   },
   emitChanged: (s) => {
     driver.onChanged(s)
+    continuity.onChanged(s)
     aiReview.onChanged(s)
     send('session:changed', s)
   },
@@ -246,6 +253,47 @@ const aiReview = new AiReviewService({
     return r.ok ? r.value?.title : undefined
   },
   canStartReview: reviewBudgetGate((config, agentKey) => agentKeyBudget(config, agentKey, budgetOf))
+})
+
+// Continuity across accounts and agents: Claude account failover and hand-off to another agent.
+const transcriptReaderFor = (id: string | undefined) =>
+  id === 'kiro' ? new KiroTranscriptReader() : id === 'opencode' ? new OpenCodeTranscriptReader() : id === 'codex' ? new CodexTranscriptReader() : id === 'claude' ? new ClaudeTranscriptReader() : null
+const continuity = new ContinuityService({
+  config: () => configuration.current(),
+  sessions,
+  budgetOf,
+  claudeConfigDir: (account, config) => claudeConfigDirOf(config, account, homedir()),
+  copySession: (input) => copyClaudeSession(input),
+  facts: async (view, agent, account, config) => {
+    if (!view.agentSessionId) return EMPTY_FACTS
+    const family = agent?.accountsOf ?? agent?.id ?? view.agentId
+    if (family === 'claude') {
+      const configDir = claudeConfigDirOf(config, account, homedir())
+      return (await readClaudeHandoffFacts({ sessionId: view.agentSessionId, cwd: view.cwd, configDir, ticketPrefixes: ticketPrefixes(config) })) ?? EMPTY_FACTS
+    }
+    const source = historySources[family as keyof typeof historySources]
+    const messages = source ? await source.messages(view.agentSessionId, view.cwd, account?.configDir).catch(() => []) : []
+    const monitor = await transcriptReaderFor(agent?.transcript)
+      ?.read({ agentSessionId: view.agentSessionId, cwd: view.cwd, configDir: account?.configDir, ticketPrefixes: ticketPrefixes(config) })
+      .catch(() => null)
+    return factsFromHistory(messages, monitor ?? {})
+  },
+  git: async (cwd) => {
+    const probe = await new GitReview().probe(cwd, 'main')
+    return probe ? { branch: probe.branch, dirtyFiles: probe.dirtyFiles } : null
+  },
+  placeBeside: async (member, anchorKey) => {
+    const config = await configuration.current()
+    const groups = config.sessionGroups
+    if (!groups) return
+    const next = placeBeside(groups, member, anchorKey)
+    if (next === groups) return
+    const r = await configuration.saveSessionGroups(next)
+    if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+  },
+  emitOffer: (offer) => send('continuity:offer', offer),
+  emitMoved: (moved) => send('continuity:moved', moved),
+  showPrompt: (id, text) => send('automations:prompted', id, text)
 })
 
 async function snapshot(): Promise<ConfigSnapshot> {
@@ -400,6 +448,9 @@ function registerIpc(): void {
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   registerAiReviewIpc(ipc, aiReview)
+  ipc.handle('continuity:options', (_e, id: string) => continuity.options(id))
+  ipc.handle('continuity:failover', (_e, id: string, request) => continuity.failover(id, request))
+  ipc.handle('continuity:handoff', (_e, id: string, request) => continuity.handoff(id, request))
   ipc.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
 }
 
