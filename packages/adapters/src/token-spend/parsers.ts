@@ -92,7 +92,7 @@ export function claudeSpendLine(line: string, state: ClaudeSpendState, buckets: 
   const cacheRead = num(usage['cache_read_input_tokens']) ?? 0
   const output = num(usage['output_tokens']) ?? 0
   const tokens = input + cacheWrite + output
-  const usd = estimateCost(str(message['model']), { input, cacheWrite, cacheRead, output })?.amount
+  const usd = estimateCost(str(message['model']), { input, cacheWrite, cacheRead, output }, true)?.amount
   if (state.pending && state.pending.id !== id) commitClaude(state, buckets, costs)
   state.pending = { id, at, work: state.work, tokens, all: tokens + cacheRead, ...(usd !== undefined ? { usd } : {}) }
 }
@@ -175,12 +175,16 @@ export function codexSpendLine(line: string, state: CodexSpendState, buckets: Sp
     if (limits && (obj(limits['primary']) || obj(limits['secondary']) || str(limits['plan_type']))) state.plan = true
   }
   let total: Obj | undefined
+  // The last request's usage: over 272K input tokens it is billed at the long-context price.
+  let request: Obj | undefined
   if (entry['type'] === 'token_usage_record') {
     total = obj(payload['thread_token_usage'])
+    request = obj(payload['usage'])
     // The same running total as token_count's: the growth carries on from it.
     if (total) state.records = true
   } else if (entry['type'] === 'event_msg' && payload['type'] === 'token_count' && !state.records) {
     total = obj(obj(payload['info'])?.['total_token_usage'])
+    request = obj(obj(payload['info'])?.['last_token_usage'])
   }
   if (!total) return
   const input = num(total['input_tokens']) ?? 0
@@ -198,7 +202,7 @@ export function codexSpendLine(line: string, state: CodexSpendState, buckets: Sp
   state.parts = { input, cached, output }
   if (at !== undefined && state.cwd && delta > 0) {
     const grown = { input: Math.max(0, input - cached - (last.input - last.cached)), cached: Math.max(0, cached - last.cached), output: Math.max(0, output - last.output) }
-    addCost(costs, at, 'codex', state.cwd, openAiCost(state.model, grown), grown.input + grown.cached + grown.output)
+    addCost(costs, at, 'codex', state.cwd, openAiCost(state.model, grown, num(request?.['input_tokens'])), grown.input + grown.cached + grown.output)
   }
 }
 
