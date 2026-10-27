@@ -15,7 +15,7 @@ export function trayText(locale: Locale): TrayText {
     t,
     tn: (base, count, params) => (has(`${base}.other`) ? translatePlural(locale, base as PluralKey, count, params) : `${base} ${count}`),
     time: (ms) => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(ms),
-    windowLabel: (w) => (has(`tray.window.${w}`) ? t(`tray.window.${w}`) : w)
+    windowLabel: (w) => (has(`tray.window.${w}`) ? t(`tray.window.${w}`) : w.replace(/^weekly /, ''))
   }
 }
 

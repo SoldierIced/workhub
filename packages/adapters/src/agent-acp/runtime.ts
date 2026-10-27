@@ -338,6 +338,8 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       const res = await s.conn.agent.request('session/prompt', { sessionId: s.agentSessionId, prompt })
       const patch = s.monitor.applyPromptResult(res)
       if (patch) this.emit({ sessionId, type: 'monitor', snapshot: patch })
+      const ended = s.monitor.endTurn(res.stopReason)
+      if (ended) this.emit({ sessionId, type: 'monitor', snapshot: ended })
       return { stopReason: res.stopReason }
     } finally {
       if (this.sessions.has(sessionId)) this.emit({ sessionId, type: 'state', state: 'ready' })

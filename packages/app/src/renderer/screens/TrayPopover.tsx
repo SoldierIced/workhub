@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import { Bell, BellOff, Ellipsis, GitPullRequest, Plus, Settings } from 'lucide-react'
 import { automationLine, type TrayAction, type TrayPopoverSession, type TrayPopoverUsageAccount, type TrayPopoverView, type TrayRoute } from '@workhub/core'
 import type { MessageKey } from '../i18n/translate'
+import { usageWindowName } from '../lib/usage-window'
 import { Badge } from '../components/atoms'
 import { AgentIcon } from '../components/atoms/AgentIcon'
 import { BrandMark } from '../components/organisms/BrandMark'
@@ -61,10 +62,7 @@ function SessionRow({ s, now }: { s: TrayPopoverSession; now: number }) {
 
 function UsageAccount({ account, now }: { account: TrayPopoverUsageAccount; now: number }) {
   const { t, locale } = useI18n()
-  const windowLabel = (w: string) => {
-    const key = `tray.window.${w}` as MessageKey
-    return t(key) === key ? w : t(key)
-  }
+  const windowLabel = (w: string) => usageWindowName(w, t)
   return (
     <div className="px-2 py-1">
       <div className="mb-1 flex items-center gap-2 text-sm">

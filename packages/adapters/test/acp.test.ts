@@ -75,6 +75,14 @@ describe('AcpMonitor with recorded Claude ACP updates', () => {
 })
 
 describe('AcpMonitor edge cases', () => {
+  it('marks the tool calls of a turn that did not end normally as cancelled', () => {
+    const m = new AcpMonitor()
+    m.applyUpdate({ sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Read', status: 'in_progress' })
+    m.applyUpdate({ sessionUpdate: 'tool_call', toolCallId: 't2', title: 'Edit', status: 'completed' })
+    expect(m.endTurn('end_turn')).toBeNull()
+    expect(m.endTurn('cancelled')?.toolCalls?.map((t) => t.status)).toEqual(['cancelled', 'completed'])
+    expect(m.endTurn('cancelled')).toBeNull()
+  })
   it('sums credits and tokens over turns', () => {
     const m = new AcpMonitor()
     m.applyExtension('_kiro.dev/metadata', { meteringUsage: [{ value: 1, unit: 'credit' }] })

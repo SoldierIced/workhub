@@ -162,3 +162,16 @@ export function budgetWindows(reported: readonly PlanUsageWindow[], ceilings: Re
   for (const w of [...reported.map((r) => r.window), ...Object.keys(ceilings ?? {})]) if (!out.includes(w)) out.push(w)
   return out
 }
+
+/** The plan windows every account has; per-model windows ("weekly Sonnet") are extras. */
+const BASE_WINDOWS = ['5h', 'weekly', 'monthly']
+
+/**
+ * Splits an account's windows for the compact sidebar row: at most two shown side by side (the
+ * base windows, else the first two), the rest only on hover.
+ */
+export function compactWindows<W extends { window: string }>(windows: readonly W[]): { shown: W[]; extra: W[] } {
+  const base = windows.filter((w) => BASE_WINDOWS.includes(w.window))
+  const shown = (base.length ? base : windows).slice(0, 2)
+  return { shown, extra: windows.filter((w) => !shown.includes(w)) }
+}

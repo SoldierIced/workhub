@@ -3,6 +3,7 @@ import { sessionIdentity, setSessionCeiling, usageAccountKey, USAGE_AGENTS, type
 import type { SessionView } from '@shared/api'
 import { Button, Input } from '../../components/atoms'
 import { HelpTip } from '../../components/molecules'
+import { usageWindowName } from '../../lib/usage-window'
 import { useI18n } from '../../i18n/I18nProvider'
 import { budgetWindows } from '../../lib/agent-usage'
 import { useAccountUsage, useSessionCeilings, useUsageSettings } from '../../lib/usage'
@@ -35,14 +36,14 @@ function CeilingInput({
   }
   return (
     <label className="flex items-center gap-2 text-sm" title={title}>
-      <span className="w-16 shrink-0 text-muted">{window}</span>
+      <span className="w-16 shrink-0 text-muted">{usageWindowName(window, t)}</span>
       <Input
         type="number"
         min={1}
         max={100}
         inputMode="numeric"
         className="h-7 w-20"
-        aria-label={t('agentUsage.settings.ceiling', { window })}
+        aria-label={t('agentUsage.settings.ceiling', { window: usageWindowName(window, t) })}
         value={text}
         placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}

@@ -233,6 +233,11 @@ export interface SessionsApi {
   withdrawPrompt(id: string, token: number): Promise<boolean>
   /** A prompt sent from this window with a token went out to the agent. */
   onPromptStarted(cb: (id: string, token: number) => void): () => void
+  /**
+   * A prompt sent from this window with a token settled. It travels with the session's events, so
+   * it arrives after the turn's last message; `prompt()`'s own answer can overtake them.
+   */
+  onPromptSettled(cb: (id: string, token: number) => void): () => void
   cancel(id: string): Promise<void>
   stop(id: string): Promise<void>
   respondPermission(id: string, requestId: string, optionId: string | null): void

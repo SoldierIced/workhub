@@ -202,6 +202,15 @@ describe('turn end divider', () => {
     expect(withTurnEnd(once, 'end_turn', () => 99)).toBe(once)
     expect(withTurnEnd(once, 'cancelled', () => 99).items).toHaveLength(3)
   })
+  it('cancels the tool calls a stopped turn left unfinished, and keeps them on a normal end', () => {
+    const tools = data([
+      { id: 1, kind: 'tool', toolCallId: 'a', title: 'Read', status: 'in_progress' },
+      { id: 2, kind: 'tool', toolCallId: 'b', title: 'Edit', status: 'completed' }
+    ])
+    const stopped = withTurnEnd(tools, 'cancelled', () => 3)
+    expect(stopped.items.map((i) => (i.kind === 'tool' ? i.status : i.kind))).toEqual(['cancelled', 'completed', 'turnEnd'])
+    expect(withTurnEnd(tools, 'end_turn', () => 3).items[0]).toMatchObject({ status: 'in_progress' })
+  })
 })
 
 describe('pasted images', () => {
