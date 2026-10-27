@@ -1,3 +1,4 @@
+import { linksEn } from './links.en'
 import { healthEn } from './health.en'
 import { prEventsEn } from './prEvents.en'
 import { prEn } from './pullRequests.en'
@@ -344,5 +345,6 @@ export const en = {
   ...ticketsEn,
   ...updatesEn,
   ...healthEn,
-  ...prEventsEn
+  ...prEventsEn,
+  ...linksEn
 } as const

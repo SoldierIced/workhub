@@ -1,11 +1,12 @@
 import { Bot, CircleAlert, Folder, History, MessagesSquare, RefreshCw, Search, SquareTerminal, UserRound } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { effectiveAgentKey, groupHistory } from '@workhub/core'
+import { groupHistory } from '@workhub/core'
 import type { HistoryItem, HistoryResult } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Spinner } from '../components/atoms'
 import { EmptyState } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { folderName } from '../lib/home'
+import { resumeInput } from '../lib/links'
 import { readPrefs } from '../lib/prefs'
 
 export interface HistoryScreenProps {
@@ -66,9 +67,7 @@ export function HistoryScreen({ profileId, onOpened }: HistoryScreenProps) {
     setError('')
     setOpening(`${e.agentSessionId}:${mode}`)
     try {
-      const agentKey = effectiveAgentKey(e.agentId, e.accountId)
-      const cwd = e.cwd || (await window.hub.getDefaultCwd())
-      const view = await window.hub.sessions.start({ profileId, agentKey, cwd, mode, resumeAgentSessionId: e.agentSessionId, model: readPrefs().models[agentKey], cols: 100, rows: 30 })
+      const view = await window.hub.sessions.start(await resumeInput(profileId, e, mode, (key) => readPrefs().models[key], () => window.hub.getDefaultCwd()))
       onOpened(view.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

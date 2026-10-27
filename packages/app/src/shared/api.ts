@@ -25,6 +25,7 @@ import type {
 } from '@workhub/core'
 import type { CodeHostApi } from './codehost-api'
 import type { HealthApi } from './health-api'
+import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
 import type { TicketsApi } from './tickets-api'
 import type { UpdatesApi } from './updates-api'
@@ -211,4 +212,5 @@ export interface HubApi {
   updates: UpdatesApi
   health: HealthApi
   prEvents: PrEventsApi
+  links: LinksApi
 }

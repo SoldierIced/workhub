@@ -1,6 +1,5 @@
 import { canonicalUrl } from '../codehost/urls'
-import { sessionsForPullRequest, type LinkReason, type LinkableSession } from '../codehost/links'
-import type { PullRequest } from '../codehost/domain'
+import { sessionsForPullRequest, type LinkReason, type LinkableSession, type PrFacts } from '../codehost/links'
 import type { HistoryEntry } from '../ports'
 import { pullRequestUrlsIn, sessionsForTicket } from '../tickets/usecases'
 import { ticketKeysIn, type TicketKeyProvider } from '../tickets/keys'
@@ -16,7 +15,7 @@ export function historyId(e: Pick<HistoryEntry, 'agentId' | 'agentSessionId'>): 
 }
 
 /** What the history knows of a session that can tie it to a PR: branch, and the text of its title and first prompt. */
-function linkableOf(e: HistoryEntry, pr: Pick<PullRequest, 'url'>, providers: readonly TicketKeyProvider[]): LinkableSession {
+function linkableOf(e: HistoryEntry, pr: Pick<PrFacts, 'url'>, providers: readonly TicketKeyProvider[]): LinkableSession {
   const text = [e.title, e.firstPrompt].filter(Boolean).join('\n')
   const urls = pullRequestUrlsIn(text)
   // Hosts the URL pattern does not know (self-hosted) still count when the PR's own URL is written out.
@@ -30,7 +29,7 @@ function linkableOf(e: HistoryEntry, pr: Pick<PullRequest, 'url'>, providers: re
  * are open now (by `historyId`), since the live list already shows them.
  */
 export function historyForPullRequest<T extends HistoryEntry>(
-  pr: PullRequest,
+  pr: PrFacts,
   entries: readonly T[],
   providers: readonly TicketKeyProvider[],
   skip: ReadonlySet<string> = new Set()

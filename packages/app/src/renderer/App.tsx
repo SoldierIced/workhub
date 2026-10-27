@@ -8,6 +8,9 @@ import { dropOnSessionsTitle, SessionList } from './components/organisms/Session
 import { refreshConfig, useConfig } from './configStore'
 import { I18nProvider, useI18n } from './i18n/I18nProvider'
 import { setComposerDraft } from './lib/drafts'
+import { runIntent, type IntentDeps } from './lib/links'
+import { keyProviders } from './lib/tickets'
+import type { SessionIntent } from '@shared/links-api'
 import { folderForService } from './lib/health'
 import { recentFolders, usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
@@ -44,7 +47,7 @@ function useTheme(): 'light' | 'dark' {
 }
 
 function Shell() {
-  const { t, tn } = useI18n()
+  const { t, tn, locale } = useI18n()
   const toast = useToast()
   const platform = usePlatform()
   const theme = useTheme()
@@ -190,6 +193,31 @@ function Shell() {
       toast(t('health.investigate.failed', { message: e instanceof Error ? e.message : String(e) }), 'danger')
     }
   }
+
+  // A pull request or ticket window (or screen) asked for a session: open it, or start one with a drafted, unsent prompt.
+  const linkDeps = useRef<Pick<IntentDeps, 'agents' | 'sessions' | 'locale'>>({ agents, sessions, locale })
+  linkDeps.current = { agents, sessions, locale }
+  useEffect(
+    () =>
+      window.hub.links.onIntent((intent: SessionIntent) => {
+        const deps: IntentDeps = {
+          ...linkDeps.current,
+          checkouts: (profileId) => window.hub.links.checkouts(profileId),
+          providers: async (profileId) => keyProviders(await window.hub.tickets.status(profileId)),
+          defaultCwd: () => window.hub.getDefaultCwd(),
+          model: (agentKey) => readPrefs().models[agentKey],
+          start: (input) => window.hub.sessions.start(input),
+          setDraft: setComposerDraft
+        }
+        void runIntent(deps, intent).then((outcome) => {
+          const tr = latest.current.t
+          if (outcome.kind === 'error') return toast(tr(outcome.message, outcome.params), 'danger')
+          openSession(outcome.sessionId)
+          toast(outcome.kind === 'opened' ? tr('links.opened') : outcome.drafted ? tr('links.drafted') : tr('links.started', { folder: outcome.folder }))
+        })
+      }),
+    [openSession, toast]
+  )
 
   const selectProfile = async (id: string) => {
     const r = await window.hub.config.setActiveProfile(id)
