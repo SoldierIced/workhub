@@ -55,6 +55,11 @@ export interface AutomationHost {
   usagePercent(automation: AutomationDefinition): number | null
   /** The parsed gate file; undefined when it is missing or unreadable. */
   readGate(path: string): Promise<unknown>
+  /**
+   * Set when the automation's account is past a usage ceiling (Settings → Usage): automatic runs
+   * wait, until the window resets when that is known. Absent or null: no budget applies.
+   */
+  budgetPaused?(automation: AutomationDefinition): { window: string; resetsAt?: number } | null
   /** The new session takes the old one's sidebar group and position (core `replaceSessionIdentity`). */
   replaceIdentity(oldKey: string, newKey: string): Promise<void>
   /** Hands the open chat threads owned by `oldKey` to `newKey`; returns how many moved. */
@@ -314,6 +319,8 @@ export class AutomationEngine {
       if (outside) return this.drop(a, `window.${outside}`)
       const usage = this.host.usagePercent(a)
       if (usage !== null && usage >= a.usageThreshold) return this.setWait(a.id, 'usage')
+      const budget = this.host.budgetPaused?.(a)
+      if (budget) return this.setWait(a.id, `budget.${budget.window}`, budget.resetsAt)
       const limit = limitWait(this.state.starts[a.id] ?? [], a.limits, now)
       if (limit) return this.setWait(a.id, `limit.${limit.reason}`, limit.until)
     }

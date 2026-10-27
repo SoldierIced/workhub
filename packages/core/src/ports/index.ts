@@ -60,6 +60,15 @@ export interface PlanUsageReader {
   read(configDir: string | undefined): Promise<PlanUsageWindow[]>
 }
 
+/**
+ * Plan usage of one agent's accounts (Claude, Codex): a `PlanUsageReader` that names its agent.
+ * `read` gets the account's config folder (undefined: the agent's default) and throws a readable
+ * error when the account has no usable sign-in or the read failed.
+ */
+export interface UsageProvider extends PlanUsageReader {
+  readonly agentId: string
+}
+
 /** Stores secrets (tokens, API keys) by reference. Values never go into the config file. */
 export interface SecretStore {
   get(ref: string): Promise<string | null>
