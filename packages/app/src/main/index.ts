@@ -62,6 +62,7 @@ import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, Th
 import type { PrNotification } from '../shared/pr-events-api'
 import type { SlackSnapshot } from '../shared/chat-api'
 import { TRAY_POPOVER_HASH, type TrayRendererState } from '../shared/tray-api'
+import type { PullRequestWindowTab } from '../shared/codehost-api'
 import { Notifier } from './notifier'
 import { TrayService } from './tray'
 import { TrayPopover } from './tray-popover'
@@ -357,7 +358,8 @@ const slack = new SlackWatcherService({
   },
   emit: (snap) => {
     lastSlack = snap
-    send('slack:changed', snap)
+    // PR windows show Slack badges and a Slack tab too: every window gets the snapshot.
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('slack:changed', snap))
     scheduleTray()
   },
   notice: (n) => send('slack:notice', n)
@@ -852,15 +854,17 @@ async function performTrayAction(action: TrayAction): Promise<void> {
 /** One window per pull request; opening an open one brings it to the front. */
 const prWindows = new Map<string, BrowserWindow>()
 
-function openPullRequestWindow(profileId: string | null, url: string): void {
+function openPullRequestWindow(profileId: string | null, url: string, tab?: PullRequestWindowTab): void {
   const open = prWindows.get(url)
   if (open && !open.isDestroyed()) {
     if (open.isMinimized()) open.restore()
     open.focus()
+    if (tab) open.webContents.send('codeHost:showTab', tab)
     return
   }
-  const hash = `#pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}`
-  const prWin = createAuxWindow(hash, 'Workhub 2', { width: 1100, height: 780, minWidth: 720, minHeight: 480 })
+  const hash = `#pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}${tab ? `&tab=${tab}` : ''}`
+  // Wide by default: the conversation sits beside the description and the diff gets the full width.
+  const prWin = createAuxWindow(hash, 'Pull request', { width: 1280, height: 860, minWidth: 720, minHeight: 480 })
   prWindows.set(url, prWin)
   prWin.on('closed', () => prWindows.delete(url))
 }

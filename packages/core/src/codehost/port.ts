@@ -40,4 +40,6 @@ export interface CodeHost {
   comment(ref: PullRequestRef, body: string): Promise<void>
   /** Replies in the thread of an inline comment. */
   replyToThread(ref: PullRequestRef, threadId: string, body: string): Promise<void>
+  /** Closes the PR without merging, posting `comment` first when given and deleting its head branch when asked. */
+  close(ref: PullRequestRef, options: { comment: string; deleteBranch: boolean; branch: string }): Promise<void>
 }

@@ -204,8 +204,8 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
 
         <div className="grid grid-cols-1 items-start gap-3 @min-[900px]:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-3">
-            <PullRequestCard kind="mine" lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
-            <PullRequestCard kind="toReview" lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
+            <PullRequestCard kind="mine" profileId={profile?.id ?? null} lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
+            <PullRequestCard kind="toReview" profileId={profile?.id ?? null} lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
             <AgentUsageCard sections={usageSections} kiro={kiro} kiroSpend={kiroSpend} ceilings={budget.ceilings} now={now} onOpenSettings={() => onOpenSettings('usage')} />
           </div>
           <div className="flex min-w-0 flex-col gap-3">

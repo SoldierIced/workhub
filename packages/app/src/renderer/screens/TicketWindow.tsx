@@ -1,8 +1,8 @@
-import { ExternalLink, GitPullRequest, SquareTerminal, Sparkles, UserCheck } from 'lucide-react'
+import { ExternalLink, GitPullRequest, Link, MessageSquarePlus, RefreshCw, SquareTerminal, Sparkles, UserCheck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { historyForTicket, listedPullRequests, pullRequestsForTicket, sessionsForTicket, type PullRequest, type SessionRef, type TicketDetail, type TicketRef, type TicketTransition } from '@workhub/core'
 import type { SessionView } from '@shared/api'
-import { Badge, Button, Select, Spinner, StateDot, STATE_TONE, Textarea, TooltipProvider } from '../components/atoms'
+import { Badge, Button, IconButton, Select, Spinner, StateDot, STATE_TONE, Textarea, TooltipProvider } from '../components/atoms'
 import { Markdown, PastSessions, ToastProvider, useToast } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
@@ -61,6 +61,7 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
   const [sessions, setSessions] = useState<SessionView[]>([])
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
+  const [reloading, setReloading] = useState(false)
 
   const reload = useCallback(async () => {
     const [detail, moves, st] = await Promise.all([
@@ -110,15 +111,47 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
     return r.ok
   }
 
+  // The latest live session that works on this ticket: "Open session" goes there (Workhub 1's toolbar).
+  const liveLinked = linkedSessions.filter((s) => s.view.state !== 'stopped' && s.view.state !== 'error').sort((a, b) => b.view.startedAt - a.view.startedAt)[0]
+  const ready = load.state === 'ready' ? load.detail : null
+  const ticketTarget = { key: ticketKey, title: ready?.title ?? ticketKey, url: ready?.url }
+  const browseUrl = ready?.url
+  const reloadNow = async () => {
+    setReloading(true)
+    await reload().finally(() => setReloading(false))
+  }
   const header = (
-    <header className={cn('drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border px-4', platform === 'mac' && 'pl-20', platform !== 'mac' && 'pr-36')}>
-      <span className="font-mono text-sm font-semibold text-accent">{ticketKey}</span>
-      <span className="truncate text-base font-semibold">{load.state === 'ready' ? load.detail.title : ''}</span>
-      {load.state === 'ready' && load.detail.url && (
-        <Button size="sm" variant="ghost" className="ml-auto" icon={<ExternalLink className="size-3.5" aria-hidden />} onClick={() => void window.hub.tickets.openExternal(load.detail.url!)}>
-          {t('tickets.openInBrowser')}
+    <header className={cn('drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border px-4', platform === 'mac' && 'pl-20', platform !== 'mac' && 'pr-36')}>
+      <span className="shrink-0 font-mono text-sm font-semibold text-accent">{ticketKey}</span>
+      <span className="min-w-0 truncate text-base font-semibold" title={ready?.title}>
+        {ready?.title ?? ''}
+      </span>
+      <div role="toolbar" aria-label={t('ticket.details')} className="ml-auto flex shrink-0 items-center gap-1">
+        {liveLinked && (
+          <Button size="sm" variant="secondary" icon={<SquareTerminal className="size-3.5" aria-hidden />} title={t('ticket.openLinkedSessionHint')} onClick={() => window.hub.tickets.openSession(liveLinked.id)}>
+            {t('ticket.openLinkedSession')}
+          </Button>
+        )}
+        <Button size="sm" variant="secondary" icon={<MessageSquarePlus className="size-3.5" aria-hidden />} title={t('ticket.newSessionHint')} onClick={() => window.hub.links.request({ kind: 'ticketSession', profileId, ticket: ticketTarget })}>
+          {t('ticket.newSession')}
         </Button>
-      )}
+        <Button
+          size="sm"
+          variant={liveLinked ? 'ghost' : 'primary'}
+          icon={<Sparkles className="size-3.5" aria-hidden />}
+          title={t('ticket.talkWithClaudeHint')}
+          onClick={() => window.hub.links.request({ kind: 'ticketSession', profileId, ticket: ticketTarget, agent: 'claude' })}
+        >
+          {t('ticket.talkWithClaude')}
+        </Button>
+        {browseUrl && (
+          <>
+            <IconButton label={t('ticket.copyLink')} icon={<Link className="size-4" aria-hidden />} onClick={() => void navigator.clipboard.writeText(browseUrl).then(() => notify(t('ticket.linkCopied')))} />
+            <IconButton label={t('tickets.openInBrowser')} icon={<ExternalLink className="size-4" aria-hidden />} onClick={() => void window.hub.tickets.openExternal(browseUrl)} />
+          </>
+        )}
+        <IconButton label={t('ticket.reload')} icon={reloading ? <Spinner className="size-4" /> : <RefreshCw className="size-4" aria-hidden />} disabled={reloading} onClick={() => void reloadNow()} />
+      </div>
     </header>
   )
 
@@ -273,15 +306,6 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
                 ))}
               </ul>
             )}
-            <Button
-              size="sm"
-              variant="secondary"
-              className="mt-2"
-              icon={<Sparkles className="size-3.5" aria-hidden />}
-              onClick={() => window.hub.links.request({ kind: 'ticketSession', profileId, ticket: { key: ticketKey, title: d.title, url: d.url } })}
-            >
-              {t('links.ticket.start')}
-            </Button>
           </Side>
           <Side title={t('links.pastSessions')}>
             <PastSessions

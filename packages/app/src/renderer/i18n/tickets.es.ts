@@ -95,5 +95,19 @@ export const ticketsEs: Record<keyof typeof ticketsEn, string> = {
   'trackers.missing.email': 'Primero agrega el correo de la cuenta.',
   'trackers.missing.token': 'Primero agrega el token o la clave.',
   'trackers.demoNote': 'Modo demostración: los tickets son sintéticos y no hacen falta credenciales.',
-  'trackers.saved': 'Tracker guardado'
+  'trackers.saved': 'Tracker guardado',
+  'ticket.talkWithClaude': 'Hablar con Claude',
+  'ticket.talkWithClaudeHint': 'Abrir una sesión de Claude sobre este ticket, con un prompt para que lo completes',
+  'ticket.newSession': 'Nueva sesión sobre este ticket',
+  'ticket.newSessionHint': 'Iniciar una sesión con tu agente preferido, con un prompt sobre este ticket en el compositor',
+  'ticket.openLinkedSession': 'Abrir sesión',
+  'ticket.openLinkedSessionHint': 'Ir a la última sesión abierta que trabaja en este ticket',
+  'ticket.copyLink': 'Copiar enlace',
+  'ticket.linkCopied': 'Enlace copiado',
+  'ticket.reload': 'Recargar',
+  'ticket.chip.open': 'Abrir ticket',
+  'ticket.chip.openHint': 'Abrir {key} en su propia ventana',
+  'ticket.chip.loading': 'Cargando {key}…',
+  'ticket.chip.error': 'No se pudo cargar {key}',
+  'ticket.chip.missing': 'No se encontró {key}'
 }

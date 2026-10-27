@@ -40,6 +40,8 @@ import { Input } from '../atoms/Input'
 import { Tooltip } from '../atoms/Tooltip'
 import { STATE_TONE, StateDot } from '../atoms/StateDot'
 import { Dialog } from '../molecules/Dialog'
+import { SlackBadge } from '../molecules/SlackBadge'
+import { useSessionSlack } from '../../lib/slackLinks'
 import { Field } from '../molecules/Field'
 import type { SessionData } from '../../store'
 import { errorText } from '../../lib/errorText'
@@ -63,6 +65,8 @@ export interface SessionListProps {
   onReopen: (member: GroupMember) => void
   /** The profiles: each session row carries its profile's colour down its left edge. */
   profiles?: readonly Pick<Profile, 'id' | 'name' | 'color'>[]
+  /** The Slack badge of a row that owns followed threads opens the Slack screen. */
+  onOpenSlack?: () => void
 }
 
 type MenuItem = { label: string; hint?: string; onSelect: () => void } | { separator: true } | { label: string; items: MenuItem[] }
@@ -126,7 +130,7 @@ function readMember(e: DragEvent): GroupMember | null {
  * the user arranged them. Groups hold sessions by their stable identity, so a closed session
  * stays listed (dimmed, reopenable) until it is removed.
  */
-export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [] }: SessionListProps) {
+export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [], onOpenSlack }: SessionListProps) {
   const { t, tn } = useI18n()
   const listed = useMemo(() => listSessions(sessions), [sessions])
   const liveKeys = useMemo(() => listed.map((s) => s.key), [listed])
@@ -234,6 +238,7 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
   const sessionItem = (member: GroupMember, entry: ListedSession | undefined, nested: boolean) => (
     <SessionItem
       key={member.key}
+      onOpenSlack={onOpenSlack}
       member={member}
       profile={profileOf(member, entry)}
       subagents={entry ? visibleSubagents(entry.data.monitor.subagents, now) : []}
@@ -366,9 +371,12 @@ function SessionItem(props: {
   onDragOver: (e: DragEvent) => void
   onDragLeave: () => void
   onDrop: (e: DragEvent) => void
+  onOpenSlack?: () => void
 }) {
   const { t, tn } = useI18n()
   const { member, entry } = props
+  // Threads this session owns (member.key is its stable identity), with a dot for unread replies.
+  const slack = useSessionSlack(member.key)
   const data = entry?.data
   const level = data ? statusLevel({ state: data.view.state, unseen: data.unseen, awaitingAnswer: awaitingAnswer(data) }) : null
   const tone = data ? (level ? LEVEL_TONE[level] : STATE_TONE[data.view.state]) : 'neutral'
@@ -476,6 +484,7 @@ function SessionItem(props: {
                 )}
               </button>
             </Tooltip>
+            {props.onOpenSlack && <SlackBadge summary={slack.summary} onOpen={props.onOpenSlack} />}
             {props.subagents.length > 0 && (
               <button
                 type="button"

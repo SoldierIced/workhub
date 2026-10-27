@@ -224,7 +224,7 @@ export function createDemoRunner(now: number = Date.now(), step: () => number = 
         return ok(JSON.stringify(staged ? viewJson(staged, now, s) : viewJson(p, now, s, 'MERGED')))
       }
       if (a === 'pr' && b === 'diff') return ok(DEMO_DIFF)
-      if ((a === 'pr' && (b === 'review' || b === 'comment')) || (a === 'api' && args.some((x) => x.endsWith('/replies')))) return ok('')
+      if ((a === 'pr' && (b === 'review' || b === 'comment' || b === 'close')) || (a === 'api' && args.some((x) => x.endsWith('/replies')))) return ok('')
       return fail(`unexpected demo call: gh ${args.join(' ')}`)
     },
     { calls }

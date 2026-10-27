@@ -9,6 +9,7 @@ import {
   loadMyPullRequests,
   loadPullRequestView,
   loadReviewQueue,
+  closePullRequest,
   postComment,
   submitReview,
   type CodeHost,
@@ -19,7 +20,7 @@ import {
   type WorkhubConfig
 } from '@workhub/core'
 import type { IpcRegistrar } from './ipc-guard'
-import type { CodeHostActionResult, CodeHostLists, PullRequestViewResult } from '../shared/codehost-api'
+import { isPullRequestWindowTab, type CodeHostActionResult, type CodeHostLists, type PullRequestViewResult, type PullRequestWindowTab } from '../shared/codehost-api'
 
 const exec = promisify(execFile)
 const LIST_TTL_MS = 30_000
@@ -206,6 +207,16 @@ export class CodeHostService {
     return this.act(profileId, url, (host, ref) => postComment(host, ref, body))
   }
 
+  /** Closes the user's own open PR without merging; the head branch is deleted only when asked and not long-lived. */
+  close(profileId: string | null, url: string, comment: string, deleteBranch: boolean): Promise<CodeHostActionResult> {
+    return this.act(profileId, url, async (host, ref, key) => {
+      const pr = await host.detail(ref)
+      const login = this.logins.get(key)
+      const isMine = Boolean(login) && login!.toLowerCase() === pr.author.toLowerCase()
+      await closePullRequest(host, ref, pr, isMine, { comment, deleteBranch })
+    })
+  }
+
   reply(profileId: string | null, url: string, threadId: string, body: string): Promise<CodeHostActionResult> {
     return this.act(profileId, url, async (host, ref) => {
       if (body.trim() === '') throw new CodeHostError('reply refused: bodyRequired', 'unsupported')
@@ -222,7 +233,7 @@ export class CodeHostService {
 
 export interface CodeHostIpcOptions {
   service: CodeHostService
-  openWindow: (profileId: string | null, url: string) => void
+  openWindow: (profileId: string | null, url: string, tab?: PullRequestWindowTab) => void
   openExternal: (url: string) => Promise<void>
 }
 
@@ -236,8 +247,11 @@ export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, op
   ipc.handle('codeHost:reply', (_e, profileId: string | null, url: string, threadId: string, body: string) =>
     service.reply(profileId, url, threadId, body)
   )
-  ipc.handle('codeHost:openWindow', async (_e, profileId: string | null, url: string) => {
-    if (await service.recognizes(profileId, url)) openWindow(profileId, url)
+  ipc.handle('codeHost:close', (_e, profileId: string | null, url: string, comment: unknown, deleteBranch: unknown) =>
+    service.close(profileId, url, typeof comment === 'string' ? comment : '', deleteBranch === true)
+  )
+  ipc.handle('codeHost:openWindow', async (_e, profileId: string | null, url: string, tab?: unknown) => {
+    if (await service.recognizes(profileId, url)) openWindow(profileId, url, isPullRequestWindowTab(tab) ? tab : undefined)
   })
   ipc.handle('codeHost:openExternal', async (_e, profileId: string | null, url: string) => {
     // Only pull request URLs of the connected host; the renderer never opens arbitrary links.
