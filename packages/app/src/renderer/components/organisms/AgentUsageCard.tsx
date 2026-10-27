@@ -4,6 +4,7 @@ import type { CreditSpend } from '@workhub/core'
 import { Badge, Button } from '../atoms'
 import { Card, CardBody, CardHeader } from '../molecules/Card'
 import { accountTitle, UsageWindowRow } from '../molecules/UsageWindowRow'
+import { UsageRefreshButton } from '../molecules/UsageRefreshButton'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import type { AgentAccountUsage, AgentUsageSection, KiroUsageNote } from '../../lib/agent-usage'
@@ -89,10 +90,13 @@ export function AgentUsageCard({
         title={t('agentUsage.title')}
         icon={<Gauge className="size-4" aria-hidden />}
         actions={
-          <Button size="sm" variant="ghost" className="text-accent hover:text-accent" onClick={onOpenSettings}>
-            {t('agentUsage.openSettings')}
-            <ArrowRight className="size-3.5" aria-hidden />
-          </Button>
+          <span className="flex items-center gap-1">
+            <UsageRefreshButton />
+            <Button size="sm" variant="ghost" className="text-accent hover:text-accent" onClick={onOpenSettings}>
+              {t('agentUsage.openSettings')}
+              <ArrowRight className="size-3.5" aria-hidden />
+            </Button>
+          </span>
         }
       />
       <CardBody className="pt-0 pb-2">

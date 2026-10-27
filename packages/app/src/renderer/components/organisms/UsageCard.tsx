@@ -2,6 +2,7 @@ import { Gauge } from 'lucide-react'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { accountTitle, UsageWindowRow } from '../molecules/UsageWindowRow'
+import { UsageRefreshButton } from '../molecules/UsageRefreshButton'
 import type { UsageGroup } from '../../lib/home'
 import { useKiroSpend, useNow, useUsageSettings } from '../../lib/usage'
 import { KiroSpent } from './AgentUsageCard'
@@ -30,6 +31,7 @@ export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: 
         <Gauge className="size-3.5" aria-hidden />
         {t('usage.title')}
         <span className="ml-auto text-xs font-normal text-subtle">{tn('usage.running', running)}</span>
+        <UsageRefreshButton className="-my-1 size-6" />
       </header>
       {groups.length === 0 && !kiroSpend ? (
         <p className="mt-2 text-xs text-subtle">{t('usage.empty')}</p>

@@ -4,6 +4,7 @@ import type { AccountUsage, UsageAlert } from '../src/shared/api'
 import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts, type UsageAccountRef } from '../src/main/agent-usage'
 import { agentUsageSections, budgetWindows, formatCountdown, kiroUsageNote, sessionBudget } from '../src/renderer/lib/agent-usage'
 import type { SessionSummary } from '../src/renderer/lib/home'
+import { lastReadAt } from '../src/renderer/lib/usage'
 
 const NOW = Date.UTC(2026, 9, 27, 12)
 const HOUR = 3_600_000
@@ -14,12 +15,14 @@ function config(extra: Partial<WorkhubConfig> = {}): WorkhubConfig {
 
 class FakeProvider implements UsageProvider {
   reads: (string | undefined)[] = []
+  forced: boolean[] = []
   constructor(
     readonly agentId: string,
     public windows: PlanUsageWindow[] | Error
   ) {}
-  async read(configDir: string | undefined): Promise<PlanUsageWindow[]> {
+  async read(configDir: string | undefined, options?: { force?: boolean }): Promise<PlanUsageWindow[]> {
     this.reads.push(configDir)
+    this.forced.push(!!options?.force)
     if (this.windows instanceof Error) throw this.windows
     return this.windows
   }
@@ -126,6 +129,29 @@ describe('the usage service', () => {
     expect(quiet.saved).toHaveLength(1)
   })
 
+  it('forces a fresh read on the refresh button, and reuses it within 30 s', async () => {
+    const provider = new FakeProvider('claude', weekly92)
+    const { svc, setNow, emitted } = service([provider], [{ agentId: 'claude', accountId: null, name: '' }], DEFAULT_USAGE_BUDGET)
+    await svc.refresh()
+    expect(provider.forced).toEqual([false])
+    const first = await svc.refresh({ force: true })
+    expect(provider.forced).toEqual([false, true])
+    setNow(NOW + 20_000)
+    expect(await svc.refresh({ force: true })).toBe(first)
+    expect(provider.reads).toHaveLength(2)
+    setNow(NOW + 31_000)
+    await svc.refresh({ force: true })
+    expect(provider.forced).toEqual([false, true, true])
+    expect(emitted).toHaveLength(3)
+  })
+
+  it('shares a regular refresh that is already running', async () => {
+    const provider = new FakeProvider('claude', weekly92)
+    const { svc } = service([provider], [{ agentId: 'claude', accountId: null, name: '' }], DEFAULT_USAGE_BUDGET)
+    await Promise.all([svc.refresh(), svc.refresh()])
+    expect(provider.reads).toHaveLength(1)
+  })
+
   it('serves demo windows without reading anything', async () => {
     const windows = await new DemoUsageProvider('claude', () => NOW).read(undefined)
     expect(windows.find((w) => w.window === 'weekly')?.percent).toBe(91)
@@ -190,5 +216,12 @@ describe('the Usage by agent card', () => {
     expect(formatCountdown(NOW + 76 * HOUR, NOW)).toBe('3d 4h')
     expect(formatCountdown(NOW - HOUR, NOW)).toBe('0m')
     expect(budgetWindows([{ window: 'weekly Opus', percent: 1 }], { custom: 50 })).toEqual(['5h', 'weekly', 'weekly Opus', 'custom'])
+  })
+})
+
+describe('the usage refresh button', () => {
+  it('shows the newest read time, or none', () => {
+    expect(lastReadAt([])).toBeNull()
+    expect(lastReadAt([{ at: NOW - HOUR }, { at: NOW }, { at: Number.NaN }])).toBe(NOW)
   })
 })
