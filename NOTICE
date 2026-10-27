@@ -5,3 +5,9 @@ Terminal color schemes (packages/app/src/renderer/themes/terminal-themes.json)
   Copyright (c) 2011-present Mark Badolato
   MIT License; the full text is in packages/app/src/renderer/themes/LICENSE.
   Converted from the catalog bundled by libghostty-spm, which Workhub 1 used.
+
+Agent logos (packages/app/src/renderer/components/atoms/AgentLogos.tsx)
+  Claude mark: Simple Icons 16.36.0 (https://simpleicons.org, CC0 1.0).
+  OpenAI mark (Codex): Simple Icons 13.21.0 (CC0 1.0).
+  Kiro mark: the icon served by https://kiro.dev/icon.svg.
+  The marks belong to their owners (Anthropic, OpenAI, Amazon Web Services) and are used only to identify the agent.
