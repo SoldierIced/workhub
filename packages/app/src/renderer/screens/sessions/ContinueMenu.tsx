@@ -10,7 +10,7 @@ import { accountOfLabel, useContinuityActions } from '../../lib/continuity'
  * The session header's "Continue elsewhere" menu: the same conversation in another Claude account,
  * or a hand-off brief for another agent (optionally written by this agent).
  */
-export function ContinueMenu({ view }: { view: SessionView }) {
+export function ContinueMenu({ view, compact }: { view: SessionView; compact?: boolean }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<ContinuityOptions | null>(null)
@@ -53,8 +53,19 @@ export function ContinueMenu({ view }: { view: SessionView }) {
   const isClaude = view.agentId === 'claude'
   return (
     <div ref={root} className="relative">
-      <Button size="sm" variant="ghost" aria-haspopup="menu" aria-expanded={open} icon={<ArrowRightLeft className="size-3" aria-hidden />} onClick={() => setOpen((o) => !o)} data-testid="continue-menu">
-        {t('continuity.menu')}
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={compact ? t('continuity.menu') : undefined}
+        title={compact ? t('continuity.menu') : undefined}
+        className={compact ? 'gap-0.5 px-1.5' : undefined}
+        icon={<ArrowRightLeft className="size-3" aria-hidden />}
+        onClick={() => setOpen((o) => !o)}
+        data-testid="continue-menu"
+      >
+        {!compact && t('continuity.menu')}
         <ChevronDown className="size-3" aria-hidden />
       </Button>
       {open && (

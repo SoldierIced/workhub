@@ -57,15 +57,25 @@ function useStartReview(view: SessionView) {
 }
 
 /** "Review before PR" in the session header: always offered on a live session (main says why when it cannot run). */
-export function AiReviewButton({ view }: { view: SessionView }) {
+export function AiReviewButton({ view, compact }: { view: SessionView; compact?: boolean }) {
   const { t } = useI18n()
   const snap = useAiReviews()
   const review = reviewForSession(snap, view)
   const { run, pending } = useStartReview(view)
   const reviewing = review?.status === 'reviewing'
   return (
-    <Button size="sm" variant="ghost" data-testid="ai-review-start" title={t('aiReview.buttonHint')} disabled={pending || reviewing} icon={reviewing || pending ? <Spinner className="size-3" /> : <ScanSearch className="size-3.5" aria-hidden />} onClick={() => void run()}>
-      {t('aiReview.button')}
+    <Button
+      size="sm"
+      variant="ghost"
+      data-testid="ai-review-start"
+      title={compact ? `${t('aiReview.button')}\n${t('aiReview.buttonHint')}` : t('aiReview.buttonHint')}
+      aria-label={compact ? t('aiReview.button') : undefined}
+      className={compact ? 'px-1.5' : undefined}
+      disabled={pending || reviewing}
+      icon={reviewing || pending ? <Spinner className="size-3" /> : <ScanSearch className="size-3.5" aria-hidden />}
+      onClick={() => void run()}
+    >
+      {!compact && t('aiReview.button')}
     </Button>
   )
 }

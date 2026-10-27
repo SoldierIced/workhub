@@ -34,21 +34,22 @@ describe('session header', () => {
     expect(activityElapsed('idle', 0, 120_000)).toBe('2 min')
   })
 
-  it('moves controls into "More" as the header narrows', () => {
+  it('starts from the header width: labels when wide, icons in between, the menu when narrow', () => {
     expect(headerDensity(1400)).toBe('full')
-    expect(headerDensity(1100)).toBe('compact')
-    expect(headerDensity(900)).toBe('narrow')
+    expect(headerDensity(1024)).toBe('icons')
+    expect(headerDensity(700)).toBe('icons')
+    expect(headerDensity(640)).toBe('narrow')
   })
 
   it('folds one more level each time the row still overflows, never past narrow', () => {
     expect(foldDensity('full', 0)).toBe('full')
-    expect(foldDensity('full', 1)).toBe('compact')
-    expect(foldDensity('full', 2)).toBe('tight')
-    expect(foldDensity('full', 3)).toBe('narrow')
-    expect(foldDensity('compact', 1)).toBe('tight')
-    expect(foldDensity('compact', 5)).toBe('narrow')
+    expect(foldDensity('full', 1)).toBe('icons')
+    expect(foldDensity('full', 2)).toBe('compact')
+    expect(foldDensity('icons', 2)).toBe('tight')
+    expect(foldDensity('full', 4)).toBe('narrow')
+    expect(foldDensity('compact', 9)).toBe('narrow')
     expect(foldDensity('narrow', 1)).toBe('narrow')
-    expect(foldDensity('compact', -1)).toBe('compact')
+    expect(foldDensity('icons', -1)).toBe('icons')
   })
 })
 

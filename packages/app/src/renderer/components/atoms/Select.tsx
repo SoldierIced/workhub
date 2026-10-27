@@ -23,14 +23,20 @@ export interface SelectProps {
   disabled?: boolean
   placeholder?: string
   className?: string
+  /**
+   * Icon-only trigger: shows this icon (and the chevron) instead of the value; `title` names the
+   * current value on hover. The value stays readable to screen readers.
+   */
+  compact?: { icon: ReactNode; title: string }
 }
 
-export function Select({ value, onChange, options, disabled, placeholder, className, id, ...aria }: SelectProps) {
+export function Select({ value, onChange, options, disabled, placeholder, className, id, compact, ...aria }: SelectProps) {
   return (
     <RSelect.Root value={value === '' ? EMPTY : value} onValueChange={(v) => onChange(v === EMPTY ? '' : v)} disabled={disabled}>
       <RSelect.Trigger
         id={id}
         aria-label={aria['aria-label']}
+        title={compact?.title}
         className={cn(
           'inline-flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-base text-text shadow-sm',
           'transition-colors duration-150 hover:border-border-strong data-[placeholder]:text-subtle',
@@ -38,7 +44,8 @@ export function Select({ value, onChange, options, disabled, placeholder, classN
           className
         )}
       >
-        <span className="truncate">
+        {compact && compact.icon}
+        <span className={compact ? 'sr-only' : 'truncate'}>
           <RSelect.Value placeholder={placeholder} />
         </span>
         <RSelect.Icon>

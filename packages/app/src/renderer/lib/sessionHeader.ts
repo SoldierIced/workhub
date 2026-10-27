@@ -58,20 +58,22 @@ export function activityElapsed(a: Activity, since: number, now: number): string
 }
 
 /**
- * Which secondary controls stay on the header row; the rest go to the "More" menu. `full`:
- * everything inline. `compact`: the status chips (permission mode, agent mode) move to the menu.
- * `tight` (only reached by folding, see `foldDensity`): the review tools, the AI review and
- * "Continue" move too. `narrow`: the model and mode pickers move as well.
+ * How the session header fits its controls; each level is tighter than the one before, and what
+ * does not fit goes to the "More" menu. `full`: everything with its label. `icons`: the model and
+ * mode pickers, the review tools, the AI review and "Continue" show their icon only (the name on
+ * hover). `compact`: the status chips (permission mode, agent mode) move to the menu. `tight`: the
+ * review tools, the AI review and "Continue" move too. `narrow`: the pickers move as well.
  */
-export type HeaderDensity = 'full' | 'compact' | 'tight' | 'narrow'
+export type HeaderDensity = 'full' | 'icons' | 'compact' | 'tight' | 'narrow'
 
+/** The density a header width starts from; `foldDensity` tightens it while the row still overflows. */
 export function headerDensity(width: number): HeaderDensity {
   if (width >= 1240) return 'full'
-  if (width >= 1000) return 'compact'
+  if (width >= 700) return 'icons'
   return 'narrow'
 }
 
-const DENSITIES: readonly HeaderDensity[] = ['full', 'compact', 'tight', 'narrow']
+const DENSITIES: readonly HeaderDensity[] = ['full', 'icons', 'compact', 'tight', 'narrow']
 
 /**
  * The density `steps` levels tighter than `base` (never past `narrow`). The header starts from
