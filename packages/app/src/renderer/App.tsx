@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { appOptions, EMPTY_SESSION_GROUPS, groupOf, investigateSlowEndpointPrompt, notificationTitle, pickAgent, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember, type SlowTransaction } from '@workhub/core'
 import type { HealthEnvironmentView } from '@shared/health-api'
-import { TooltipProvider } from './components/atoms'
-import { ToastProvider, useToast } from './components/molecules'
+import { Button, TooltipProvider } from './components/atoms'
+import { Dialog, ToastProvider, useToast } from './components/molecules'
 import { NewSessionDialog, Sidebar, Toolbar } from './components/organisms'
-import { dropOnSessionsTitle, SessionList } from './components/organisms/SessionList'
+import { dropOnSessionsTitle, isWorking, SessionList } from './components/organisms/SessionList'
+import { RenameSessionDialog } from './components/organisms/RenameSessionDialog'
+import { ResumeSheet } from './components/organisms/ResumeSheet'
+import { DetachedSessionNotice } from './screens/sessions/DetachedSessionNotice'
+import { useDetachedSessions } from './lib/windows'
+import type { SessionView } from '@shared/api'
+import type { MenuCommand } from '@shared/windows-api'
 import { refreshConfig, useConfig } from './configStore'
 import { I18nProvider, useI18n } from './i18n/I18nProvider'
 import { setComposerDraft } from './lib/drafts'
@@ -37,7 +43,7 @@ import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { TicketsScreen } from './screens/TicketsScreen'
-import { onAttention, setViewing, startStore, useSessions } from './store'
+import { onAttention, sessionSnapshot, setExternalViewing, setViewing, startStore, useSessions, type SessionData } from './store'
 import { errorText } from './lib/errorText'
 
 /** Applies the appearance preferences to <html> and tells the main process (native chrome). */
@@ -59,6 +65,11 @@ function Shell() {
   const [prFocus, setPrFocus] = useState<string | null>(null)
   const [agents, setAgents] = useState<EffectiveAgent[]>([])
   const [dialog, setDialog] = useState<{ open: boolean; cwd?: string; agentKey?: string }>({ open: false })
+  const [renaming, setRenaming] = useState<SessionView | null>(null)
+  const [resumeFolder, setResumeFolder] = useState<string | null>(null)
+  const [closing, setClosing] = useState<SessionData | null>(null)
+  // Sessions shown in windows of their own: the main window shows a placeholder for them.
+  const detached = useDetachedSessions()
 
   useEffect(() => {
     startStore()
@@ -84,6 +95,8 @@ function Shell() {
   }, [snap, reachable, route])
 
   const sessions = useMemo(() => Object.values(sessionMap).sort((a, b) => b.view.startedAt - a.view.startedAt), [sessionMap])
+  // A session in its own window is not mounted here too: one terminal per session, one size.
+  const docked = useMemo(() => sessions.filter((s) => !detached.has(s.view.id)), [sessions, detached])
 
   const groups = snap?.config.sessionGroups ?? EMPTY_SESSION_GROUPS
   const listed = useMemo(() => listSessions(sessions), [sessions])
@@ -107,6 +120,12 @@ function Shell() {
   }, [])
   // Usage-limit offers, and following a session main moved to another account by itself.
   useContinuity(openSession, selectedSession)
+
+  // Session windows: "Move to Main Window" selects the session here; a focused one counts as seen;
+  // a new one starts from the chat this window holds.
+  useEffect(() => window.hub.windows.onShowSession(openSession), [openSession])
+  useEffect(() => window.hub.windows.onFocusedSession(setExternalViewing), [])
+  useEffect(() => window.hub.windows.onSnapshotRequest((requestId, id) => window.hub.windows.replySnapshot(requestId, sessionSnapshot(id))), [])
 
   // A session counts as seen only while its screen is up (and the window focused: the store tracks that).
   useEffect(() => {
@@ -158,6 +177,39 @@ function Shell() {
   const newSession = useCallback((cwd?: string | null, agentKey?: string) => setDialog({ open: true, cwd: cwd ?? undefined, agentKey }), [])
   // The menu bar / notification area icon: it lists the sessions and opens screens and the new session dialog.
   useTraySync({ sessions, groups, locale, navigate, newSession: () => newSession() })
+
+  // The application menu (main sends its commands to the window they act on).
+  const menuState = useRef({ route, selectedSession, reachable, sessions })
+  menuState.current = { route, selectedSession, reachable, sessions }
+  useEffect(
+    () =>
+      window.hub.menu.onCommand((command: MenuCommand) => {
+        const { route: now, selectedSession: selected, reachable: items, sessions: all } = menuState.current
+        const current = now === 'sessions' ? all.find((s) => s.view.id === selected) : undefined
+        switch (command.kind) {
+          case 'navigate': {
+            const item = items.find((i) => i.route === command.route)
+            if (item) navigate(item.route)
+            return
+          }
+          case 'newSession':
+            return newSession(null, command.agentKey)
+          case 'closeSession':
+            if (current) {
+              if (isWorking(current)) setClosing(current)
+              else void window.hub.sessions.close(current.view.id)
+            }
+            return
+          case 'openInWindow':
+            if (current && current.view.state !== 'stopped') window.hub.windows.openSession(current.view.id)
+            return
+          case 'showMode':
+            if (current?.view.modes.includes(command.mode)) void window.hub.sessions.setMode(current.view.id, command.mode).catch(() => undefined)
+            return
+        }
+      }),
+    [navigate, newSession]
+  )
 
   // CmdOrCtrl shortcuts for every nav item, plus CmdOrCtrl+T for a new session (Workhub 1's keys).
   useEffect(() => {
@@ -266,20 +318,24 @@ function Shell() {
             active={route === 'sessions'}
             onSelect={openSession}
             onReopen={(m) => void reopenMember(m)}
+            onRename={setRenaming}
+            onOpenInWindow={(id) => window.hub.windows.openSession(id)}
           />
         }
         attentionCount={sessions.filter((s) => s.unseen).length}
         onDropOnSessions={(e) => dropOnSessionsTitle(e, liveKeys)}
         folders={recentFolders(sessions, profile?.folders)}
         onNewSessionIn={(f) => newSession(f)}
+        onResumeIn={setResumeFolder}
         usage={usageGroups(sessions, accountUsage)}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-bg">
         <Toolbar title={title} agents={agents} onNewSession={(key) => newSession(null, key)} onOpenSettings={() => openSettings()} />
         <main className="relative min-h-0 flex-1">
           {/* Sessions stay mounted so terminals and chats survive a visit to another screen. */}
-          <div className={route === 'sessions' ? 'h-full' : 'hidden'}>
-            <SessionsScreen sessions={sessions} selectedId={selectedSession} visible={route === 'sessions'} theme={theme} onNewSession={() => newSession()} />
+          <div className={route === 'sessions' ? 'relative h-full' : 'hidden'}>
+            <SessionsScreen sessions={docked} selectedId={selectedSession} visible={route === 'sessions'} theme={theme} onNewSession={() => newSession()} />
+            {selectedSession && detached.has(selectedSession) && <DetachedSessionNotice data={sessionMap[selectedSession]} />}
           </div>
           {route !== 'sessions' && (
             <div key={route} className="h-full animate-fade-in overflow-y-auto">
@@ -294,7 +350,7 @@ function Shell() {
                   onNavigate={navigate}
                 />
               ) : route === 'history' ? (
-                <HistoryScreen profileId={activeProfileId} onOpened={openSession} />
+                <HistoryScreen profileId={activeProfileId} profiles={profiles} onOpened={openSession} />
               ) : route === 'pullRequests' ? (
                 <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
               ) : route === 'health' ? (
@@ -324,6 +380,34 @@ function Shell() {
         initialAgentKey={dialog.agentKey}
         onStarted={openSession}
       />
+      <RenameSessionDialog session={renaming} onClose={() => setRenaming(null)} />
+      <ResumeSheet folder={resumeFolder} profileId={activeProfileId} onClose={() => setResumeFolder(null)} onOpened={openSession} />
+      {closing && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setClosing(null)}
+          title={t('sessions.closeTitle', { name: closing.view.name || closing.view.agentName })}
+          description={t('sessions.closeBody')}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setClosing(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  void window.hub.sessions.close(closing.view.id)
+                  setClosing(null)
+                }}
+              >
+                {t('sessions.closeConfirm')}
+              </Button>
+            </>
+          }
+        >
+          {null}
+        </Dialog>
+      )}
     </div>
   )
 }

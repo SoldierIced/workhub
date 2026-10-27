@@ -31,6 +31,7 @@ import {
 import { terminalChannel, type SessionMode, type SessionView, type SetModeOptions, type StartSessionInput } from '../shared/api'
 import { ConsoleActivity } from './console-activity'
 import { pathInsideFolder } from './reveal'
+import { cleanSessionName, type SessionNameStore } from './session-names'
 
 /** What runs the session right now: the agent's runtime (app) or the agent's own TUI in a PTY (console). */
 type Engine = 'app' | 'console'
@@ -89,6 +90,8 @@ export interface SessionManagerDeps {
   settleMs?: number
   /** Longest wait for the earlier conversation before a resumed chat opens without it. */
   replayWaitMs?: number
+  /** The names the user gave sessions (Rename…), by identity; without it renaming keeps the name for this run only. */
+  names?: SessionNameStore
   /** A session reported its models and modes: remembered so the next session can offer them before it starts. */
   onAgentOptions?: (agentId: string, accountId: string | null, options: { models: ModelOption[]; modes: SessionModeOption[] }) => void
 }
@@ -175,10 +178,13 @@ export class SessionManager {
     // Agents with a console share one session id between chat, console and transcript.
     const agentSessionId = input.resumeAgentSessionId ?? (agent.console || agent.adapter === 'native' ? randomUUID() : undefined)
 
+    // Sidebar groups (and names) key a session by this: the agent's own id when there is one.
+    const identity = agentSessionId ?? input.identity ?? randomUUID()
+    const name = this.deps.names?.get(identity)
     const view: SessionView = {
       id: randomUUID(),
-      // Sidebar groups key a session by this: the agent's own id when there is one.
-      identity: agentSessionId ?? input.identity ?? randomUUID(),
+      identity,
+      ...(name ? { name } : {}),
       agentId: agent.id,
       accountId: account?.id ?? null,
       accountName: account?.name,
@@ -238,6 +244,14 @@ export class SessionManager {
     // A late event may have moved it out of `stopped`; closing wins.
     if (s.view.state !== 'stopped' && s.view.state !== 'error') this.update(id, { state: 'stopped' })
     this.remove(id)
+  }
+
+  /** Names a session; empty or null goes back to its agent's name. Kept by identity, so a resumed session keeps it. */
+  rename(id: string, name: string | null): void {
+    const s = this.require(id)
+    const key = s.view.identity ?? s.view.agentSessionId ?? s.view.id
+    const stored = this.deps.names ? this.deps.names.set(key, name) : cleanSessionName(name)
+    this.update(id, { name: stored })
   }
 
   async prompt(id: string, text: string, images?: ImageInput[]): Promise<string> {
@@ -467,6 +481,7 @@ export class SessionManager {
     if (patch.agentSessionId && patch.agentSessionId !== s.view.identity) {
       const previous = s.view.identity
       patch.identity = patch.agentSessionId
+      if (previous) this.deps.names?.move(previous, patch.agentSessionId)
       if (previous) {
         try {
           const moved = await this.deps.config.replaceSessionIdentity(previous, patch.agentSessionId)
