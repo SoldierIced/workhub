@@ -14,6 +14,7 @@ import {
   PlanUsageError,
   rateLimitWindow,
   rejectedLimit,
+  settleResult,
   toHistoryMessages
 } from '../src/agent-claude-native'
 import { agentEnv } from '../src/agent-claude-native/bridge/env.mjs'
@@ -122,6 +123,28 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     await waitFor(events, (e) => e.type === 'notice' && e.kind === 'warning' && e.text === 'no model nope')
   })
 
+  it('sends a message typed during a turn at priority next: folded into the turn, or run as the next one', async () => {
+    await start('n-mid')
+    const states = () => events.filter((e) => e.type === 'state').map((e) => e.type === 'state' && e.state)
+    events.length = 0
+    const first = rt.prompt('n-mid', 'hold')
+    const folded = rt.prompt('n-mid', 'fold')
+    expect(await first).toEqual({ stopReason: 'end_turn' })
+    expect(await folded).toEqual({ stopReason: 'end_turn' })
+    expect(agentText(events)).toBe('folded next')
+    expect(states()).toEqual(['busy', 'busy', 'ready'])
+
+    events.length = 0
+    const turn = rt.prompt('n-mid', 'hold')
+    const late = rt.prompt('n-mid', 'after')
+    await turn
+    // The first turn is over but the late message still waits for its own: the session stays busy.
+    expect(states()).toEqual(['busy', 'busy'])
+    expect(await late).toEqual({ stopReason: 'end_turn' })
+    expect(agentText(events)).toBe('next turn next')
+    expect(states()).toEqual(['busy', 'busy', 'ready'])
+  })
+
   it('stops by closing the bridge input and reports the session stopped', async () => {
     await start('n6')
     await rt.stop('n6')
@@ -147,6 +170,20 @@ describe('the environment the bridge hands to Claude Code', () => {
       expect(source).toContain('agentEnv(process.env')
       expect(source).not.toMatch(/\.\.\.process\.env/)
     }
+  })
+})
+
+describe('settleResult', () => {
+  it('settles the prompts a result consumed and keeps later ones waiting while Claude has sends queued', () => {
+    expect(settleResult(['a', 'b'], { user_message_uuids: ['a', 'b'], queued_turn_count: 0 })).toEqual({ settled: ['a', 'b'], stillBusy: false })
+    expect(settleResult(['a', 'b'], { user_message_uuids: ['a'], queued_turn_count: 1 })).toEqual({ settled: ['a'], stillBusy: true })
+    expect(settleResult(['a', 'b'], { user_message_uuid: 'b', queued_turn_count: 1 })).toEqual({ settled: ['a', 'b'], stillBusy: false })
+    // A turn of something else (nothing of ours consumed) while ours waits.
+    expect(settleResult(['a'], { user_message_uuids: ['x'], queued_turn_count: 1 })).toEqual({ settled: [], stillBusy: true })
+  })
+  it('settles everything when the CLI reports no uuids or nothing queued (older CLIs, interrupts)', () => {
+    expect(settleResult(['a', 'b'], { subtype: 'success' })).toEqual({ settled: ['a', 'b'], stillBusy: false })
+    expect(settleResult(['a', 'b'], { user_message_uuids: ['a'], queued_turn_count: 0 })).toEqual({ settled: ['a', 'b'], stillBusy: false })
   })
 })
 

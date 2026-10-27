@@ -488,6 +488,8 @@ export class SessionManager {
     } else if (opts.model) patch.currentModelId = opts.model
     else if (started.currentModelId) patch.currentModelId = started.currentModelId
     if (started.modeIgnored) patch.modeIgnored = true
+    // The agent's own word on images (ACP) wins over its definition.
+    if (started.imageInput !== undefined) patch.capabilities = { ...s.view.capabilities, imageInput: started.imageInput }
     this.update(s.view.id, patch)
     if (started.models?.length || started.availableModes?.length) {
       this.deps.onAgentOptions?.(s.agent.id, s.account?.id ?? null, { models: started.models ?? [], modes: started.availableModes ?? [] })

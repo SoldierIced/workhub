@@ -39,6 +39,7 @@ import { SettingsScreen } from './screens/SettingsScreen'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, setViewing, startStore, useSessions } from './store'
 import { errorText } from './lib/errorText'
+import { startPromptQueue } from './promptQueue'
 
 /** Applies the appearance preferences to <html> and tells the main process (native chrome). */
 function useTheme(): 'light' | 'dark' {
@@ -62,6 +63,7 @@ function Shell() {
 
   useEffect(() => {
     startStore()
+    startPromptQueue()
     void refreshConfig()
     // Main moves a session's group place to its real id by itself; the stale copy must not be saved back.
     return window.hub.config.onChanged(() => void refreshConfig())

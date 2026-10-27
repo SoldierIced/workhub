@@ -12,6 +12,7 @@ import {
   PROTOCOL_VERSION,
   type AnyMessage,
   type ClientConnection,
+  type ContentBlock,
   type RequestPermissionResponse,
   type Stream
 } from '@agentclientprotocol/sdk'
@@ -22,6 +23,7 @@ import type {
   AgentEvent,
   AgentEventListener,
   AgentRuntime,
+  ImageInput,
   ModelControl,
   ModelOption,
   PromptResult,
@@ -227,6 +229,8 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
         availableModes,
         ...(modelIgnored ? { modelIgnored: true } : {}),
         ...(modeIgnored ? { modeIgnored: true } : {}),
+        // Image content blocks are opt-in in ACP: only an agent that advertises them gets pasted images.
+        imageInput: init.agentCapabilities?.promptCapabilities?.image === true,
         ...(session.models.length ? { models: session.models } : {}),
         ...(session.currentModelId ? { currentModelId: session.currentModelId } : {})
       }
@@ -323,14 +327,15 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
     })
   }
 
-  async prompt(sessionId: string, text: string): Promise<PromptResult> {
+  async prompt(sessionId: string, text: string, images: ImageInput[] = []): Promise<PromptResult> {
     const s = this.require(sessionId)
     this.emit({ sessionId, type: 'state', state: 'busy' })
     try {
-      const res = await s.conn.agent.request('session/prompt', {
-        sessionId: s.agentSessionId,
-        prompt: [{ type: 'text', text }]
-      })
+      const prompt: ContentBlock[] = [
+        ...images.map((i): ContentBlock => ({ type: 'image', mimeType: i.mediaType, data: i.data })),
+        ...(text || !images.length ? [{ type: 'text', text } satisfies ContentBlock] : [])
+      ]
+      const res = await s.conn.agent.request('session/prompt', { sessionId: s.agentSessionId, prompt })
       const patch = s.monitor.applyPromptResult(res)
       if (patch) this.emit({ sessionId, type: 'monitor', snapshot: patch })
       return { stopReason: res.stopReason }
