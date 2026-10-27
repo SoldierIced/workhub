@@ -1,10 +1,11 @@
-import { shell, type BrowserWindow, type IpcMain } from 'electron'
+import { shell, type BrowserWindow } from 'electron'
 import type { Connection, SecretChange } from '@workhub/core'
 import type { TicketsResult } from '../shared/tickets-api'
+import type { IpcRegistrar } from './ipc-guard'
 import type { TicketService } from './tickets-service'
 
 export interface TicketIpcDeps {
-  ipcMain: IpcMain
+  ipcMain: IpcRegistrar
   service: TicketService
   /** Creates a secondary window on the renderer with this hash. */
   createWindow: (hash: string, title: string) => BrowserWindow

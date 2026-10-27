@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { IpcMain } from 'electron'
 import { createCliRunner, type CliRunner } from '@workhub/adapters/cli'
 import { GitHubCodeHost, createDemoRunner } from '@workhub/adapters/codehost-github'
 import { GitLabCodeHost } from '@workhub/adapters/codehost-gitlab'
@@ -19,6 +18,7 @@ import {
   type ReviewAction,
   type WorkhubConfig
 } from '@workhub/core'
+import type { IpcRegistrar } from './ipc-guard'
 import type { CodeHostActionResult, CodeHostLists, PullRequestViewResult } from '../shared/codehost-api'
 
 const exec = promisify(execFile)
@@ -226,7 +226,7 @@ export interface CodeHostIpcOptions {
   openExternal: (url: string) => Promise<void>
 }
 
-export function registerCodeHostIpc(ipc: IpcMain, { service, openWindow, openExternal }: CodeHostIpcOptions): void {
+export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, openExternal }: CodeHostIpcOptions): void {
   ipc.handle('codeHost:lists', (_e, profileId: string | null, force?: boolean) => service.lists(profileId, force === true))
   ipc.handle('codeHost:view', (_e, profileId: string | null, url: string) => service.view(profileId, url))
   ipc.handle('codeHost:review', (_e, profileId: string | null, url: string, action: ReviewAction, body: string) =>

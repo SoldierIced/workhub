@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeSto
 import { appendFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { AcpRuntime, agentAvailability } from '@workhub/adapters/agent-acp'
 import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
@@ -29,6 +30,7 @@ import type { PrNotification } from '../shared/pr-events-api'
 import { claudeAccounts, UsageService } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { HealthService } from './health-service'
+import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionManager } from './session-manager'
@@ -175,28 +177,30 @@ function syncTitleBarOverlay(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.on('hub:setTheme', (_e, theme: ThemePreference) => {
+  // Every handler answers only the app's own renderer (see ipc-guard.ts).
+  const ipc = guardIpc(ipcMain, (url) => isTrustedRendererUrl(url, rendererOrigin))
+  ipc.on('hub:setTheme', (_e, theme: ThemePreference) => {
     if (theme === 'system' || theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme
   })
   nativeTheme.on('updated', syncTitleBarOverlay)
-  ipcMain.handle('hub:defaultCwd', () => homedir())
-  ipcMain.handle('hub:pickFolder', async () => {
+  ipc.handle('hub:defaultCwd', () => homedir())
+  ipc.handle('hub:pickFolder', async () => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], defaultPath: homedir() })
     return r.canceled ? null : (r.filePaths[0] ?? null)
   })
 
-  ipcMain.handle('config:get', () => snapshot())
-  ipcMain.handle('config:saveConnection', guarded((c, s) => configuration.saveConnection(c, s)))
-  ipcMain.handle('config:deleteConnection', guarded((id: string) => configuration.deleteConnection(id)))
-  ipcMain.handle('config:saveAccount', guarded((a) => configuration.saveAccount(a)))
-  ipcMain.handle('config:deleteAccount', guarded((id: string) => configuration.deleteAccount(id)))
-  ipcMain.handle('config:saveProfile', guarded((p) => configuration.saveProfile(p)))
-  ipcMain.handle('config:deleteProfile', guarded((id: string) => configuration.deleteProfile(id)))
-  ipcMain.handle('config:setActiveProfile', guarded((id: string) => configuration.setActiveProfile(id)))
-  ipcMain.handle('config:effectiveAgents', async (_e, profileId: string | null) =>
+  ipc.handle('config:get', () => snapshot())
+  ipc.handle('config:saveConnection', guarded((c, s) => configuration.saveConnection(c, s)))
+  ipc.handle('config:deleteConnection', guarded((id: string) => configuration.deleteConnection(id)))
+  ipc.handle('config:saveAccount', guarded((a) => configuration.saveAccount(a)))
+  ipc.handle('config:deleteAccount', guarded((id: string) => configuration.deleteAccount(id)))
+  ipc.handle('config:saveProfile', guarded((p) => configuration.saveProfile(p)))
+  ipc.handle('config:deleteProfile', guarded((id: string) => configuration.deleteProfile(id)))
+  ipc.handle('config:setActiveProfile', guarded((id: string) => configuration.setActiveProfile(id)))
+  ipc.handle('config:effectiveAgents', async (_e, profileId: string | null) =>
     resolveEffectiveAgents(await configuration.current(), profileId)
   )
-  ipcMain.handle(
+  ipc.handle(
     'config:saveOptions',
     guarded(async (o) => {
       const r = await configuration.saveOptions(o)
@@ -204,10 +208,10 @@ function registerIpc(): void {
       return r
     })
   )
-  ipcMain.handle('config:saveSessionGroups', guarded((g) => configuration.saveSessionGroups(g)))
-  ipcMain.on('notifications:show', (_e, n: SessionNotification) => showSessionNotification(n))
+  ipc.handle('config:saveSessionGroups', guarded((g) => configuration.saveSessionGroups(g)))
+  ipc.on('notifications:show', (_e, n: SessionNotification) => showSessionNotification(n))
   // Workhub 1's settings are only ever read (`defaults export`); nothing is written back.
-  ipcMain.handle('config:previewWorkhub1Import', async () => {
+  ipc.handle('config:previewWorkhub1Import', async () => {
     try {
       const v1 = await readWorkhub1Settings()
       if (!v1) return { available: false }
@@ -216,7 +220,7 @@ function registerIpc(): void {
       return { available: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
-  ipcMain.handle(
+  ipc.handle(
     'config:applyWorkhub1Import',
     guarded(async () => {
       const v1 = await readWorkhub1Settings()
@@ -224,43 +228,43 @@ function registerIpc(): void {
       return configuration.addImported(planWorkhub1Import(v1, await configuration.current(), homedir()))
     })
   )
-  ipcMain.on('hub:openExternal', (_e, url: string) => {
+  ipc.on('hub:openExternal', (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })
 
-  ipcMain.handle('updates:status', () => updates.status())
-  ipcMain.handle('updates:check', () => updates.check())
-  ipcMain.handle('updates:install', () => updates.install())
-  ipcMain.handle('history:list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
-  ipcMain.handle('agents:availability', async () => agentAvailability(knownAgents(await configuration.current()), { extraPath }))
-  ipcMain.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
+  ipc.handle('updates:status', () => updates.status())
+  ipc.handle('updates:check', () => updates.check())
+  ipc.handle('updates:install', () => updates.install())
+  ipc.handle('history:list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
+  ipc.handle('agents:availability', async () => agentAvailability(knownAgents(await configuration.current()), { extraPath }))
+  ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
 
   registerTicketIpc({
-    ipcMain,
+    ipcMain: ipc,
     service: ticketService,
     createWindow: createAuxWindow,
     mainWindow: () => win,
     broadcast: (channel, ...args) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send(channel, ...args))
   })
 
-  ipcMain.handle('sessions:list', () => sessions.list())
-  ipcMain.handle('sessions:start', (_e, input) => sessions.start(input))
-  ipcMain.handle('sessions:prompt', (_e, id: string, text: string, images) => sessions.prompt(id, text, images))
-  ipcMain.handle('sessions:setMode', (_e, id: string, mode: SessionMode) => sessions.setMode(id, mode))
-  ipcMain.handle('sessions:setModel', (_e, id: string, model: string | null) => sessions.setModel(id, model))
-  ipcMain.on('sessions:mcp', (_e, id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string) => sessions.mcp(id, action, server))
-  ipcMain.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
-  ipcMain.handle('sessions:stop', (_e, id: string) => sessions.stop(id))
-  ipcMain.on('sessions:permission', (_e, id: string, requestId: string, optionId: string | null) =>
+  ipc.handle('sessions:list', () => sessions.list())
+  ipc.handle('sessions:start', (_e, input) => sessions.start(input))
+  ipc.handle('sessions:prompt', (_e, id: string, text: string, images) => sessions.prompt(id, text, images))
+  ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode) => sessions.setMode(id, mode))
+  ipc.handle('sessions:setModel', (_e, id: string, model: string | null) => sessions.setModel(id, model))
+  ipc.on('sessions:mcp', (_e, id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string) => sessions.mcp(id, action, server))
+  ipc.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
+  ipc.handle('sessions:stop', (_e, id: string) => sessions.stop(id))
+  ipc.on('sessions:permission', (_e, id: string, requestId: string, optionId: string | null) =>
     sessions.respondPermission(id, requestId, optionId)
   )
-  ipcMain.on('sessions:write', (_e, id: string, data: string) => sessions.write(id, data))
-  ipcMain.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
+  ipc.on('sessions:write', (_e, id: string, data: string) => sessions.write(id, data))
+  ipc.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
 
-  registerCodeHostIpc(ipcMain, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
-  registerPrEventsIpc(ipcMain, { service: prEvents, notify: showPullRequestNotification })
-  ipcMain.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
-  ipcMain.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
+  registerCodeHostIpc(ipc, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
+  registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification })
+  ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
+  ipc.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
 }
 
 /** Notifications stay referenced until they close, or the OS may drop their click handler. */
@@ -343,9 +347,38 @@ function createAuxWindow(hash: string, title: string, size: AuxWindowSize = TICK
   // Links inside the app never navigate or open windows of their own.
   aux.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   if (process.env['ELECTRON_RENDERER_URL']) void aux.loadURL(process.env['ELECTRON_RENDERER_URL'] + hash)
-  else void aux.loadFile(join(__dirname, '../renderer/index.html'), { hash: hash.replace(/^#/, '') })
+  else void aux.loadFile(rendererFile, { hash: hash.replace(/^#/, '') })
   return aux
 }
+
+const rendererFile = join(__dirname, '../renderer/index.html')
+/** The only pages allowed to talk to the main process. */
+const rendererOrigin = { fileUrl: pathToFileURL(rendererFile).href, devServerUrl: process.env['ELECTRON_RENDERER_URL'] }
+
+const isWebUrl = (url: string) => /^https?:\/\//i.test(url)
+
+/**
+ * Every window and webview the app ever creates stays on the app's renderer: navigations and
+ * redirects away from it are refused (web links go to the default browser instead), new windows
+ * are denied, and <webview> tags never attach. A window that rendered untrusted Markdown (a pull
+ * request, a ticket) can then never turn into a remote page that still holds `window.hub`.
+ */
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-navigate', (event, url) => {
+    if (url === contents.getURL()) return
+    event.preventDefault()
+    if (isWebUrl(url)) void shell.openExternal(url)
+  })
+  contents.on('will-redirect', (event, url) => {
+    if (!isTrustedRendererUrl(url, rendererOrigin)) event.preventDefault()
+  })
+  contents.on('will-attach-webview', (event) => event.preventDefault())
+  // Links in agent replies open in the default browser, never inside the app.
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isWebUrl(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+})
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -363,19 +396,9 @@ function createWindow(): void {
       sandbox: true
     }
   })
-  // Links in agent replies open in the default browser, never inside the app window.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
-    return { action: 'deny' }
-  })
-  win.webContents.on('will-navigate', (event, url) => {
-    if (url !== win?.webContents.getURL()) {
-      event.preventDefault()
-      if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
-    }
-  })
+  // Navigation and new-window guards for every window: see 'web-contents-created' above.
   if (process.env['ELECTRON_RENDERER_URL']) void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  else void win.loadFile(join(__dirname, '../renderer/index.html'))
+  else void win.loadFile(rendererFile)
 }
 
 void app.whenReady().then(async () => {

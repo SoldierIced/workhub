@@ -1,7 +1,7 @@
-import type { IpcMain } from 'electron'
 import { detectPrEvents, EMPTY_PR_EVENT_STATE, type PrEventState, type PrEventStore, type PullRequest, type WorkhubConfig } from '@workhub/core'
 import type { CodeHostLists } from '../shared/codehost-api'
 import type { PrEventBatch, PrNotification } from '../shared/pr-events-api'
+import type { IpcRegistrar } from './ipc-guard'
 
 /** Workhub 1 synced every 180 seconds. */
 export const PR_SYNC_MS = 180_000
@@ -123,7 +123,7 @@ export interface PrEventsIpcDeps {
   notify: (n: PrNotification) => void
 }
 
-export function registerPrEventsIpc(ipc: IpcMain, { service, notify }: PrEventsIpcDeps): void {
+export function registerPrEventsIpc(ipc: IpcRegistrar, { service, notify }: PrEventsIpcDeps): void {
   ipc.on('prEvents:ready', () => service.rendererReady())
   ipc.on('prEvents:notify', (_e, n: PrNotification) => {
     if (n && typeof n.title === 'string' && typeof n.url === 'string' && typeof n.profileId === 'string') notify(n)
