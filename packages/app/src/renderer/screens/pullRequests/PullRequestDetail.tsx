@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { prName, reviewerStates, reviewRefusal, type PullRequest, type PullRequestDetail as Detail, type ReviewAction } from '@workhub/core'
 import type { PullRequestViewResult } from '@shared/codehost-api'
 import { Badge, Button, IconButton, Spinner, Textarea } from '../../components/atoms'
-import { EmptyState, Tabs, useToast } from '../../components/molecules'
+import { EmptyState, Markdown, Tabs, useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { initials, relativeTime } from '../../lib/pullRequests'
@@ -76,7 +76,7 @@ function Conversation({ detail, canComment, onComment }: { detail: Detail; canCo
           </ul>
         )}
       </Section>
-      <p className="whitespace-pre-wrap break-words text-base">{detail.body.trim() === '' ? <span className="text-muted">{t('pr.detail.noDescription')}</span> : detail.body}</p>
+      {detail.body.trim() === '' ? <p className="text-base text-muted">{t('pr.detail.noDescription')}</p> : <Markdown text={detail.body} className="text-base" />}
       {detail.labels.length > 0 && (
         <Section title={t('pr.detail.labels')}>
           <div className="flex flex-wrap gap-1.5">
@@ -102,7 +102,7 @@ function Conversation({ detail, canComment, onComment }: { detail: Detail; canCo
                       {r.state === 'changesRequested' && <Badge tone="warning">{t('pr.reviewer.changesRequested')}</Badge>}
                       {r.submittedAt && <span className="text-subtle">{relativeTime(r.submittedAt, now, locale)}</span>}
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-base">{r.body}</p>
+                    <Markdown text={r.body} className="mt-1 text-base" />
                   </div>
                 </li>
               ))}
@@ -123,7 +123,7 @@ function Conversation({ detail, canComment, onComment }: { detail: Detail; canCo
                     {c.isBot && <Badge>{t('pr.detail.bot')}</Badge>}
                     {c.createdAt && <span className="text-subtle">{relativeTime(c.createdAt, now, locale)}</span>}
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-base">{c.body}</p>
+                  <Markdown text={c.body} className="mt-1 text-base" />
                 </div>
               </li>
             ))}

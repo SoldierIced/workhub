@@ -1,15 +1,16 @@
 import { ExternalLink, GitPullRequest, SquareTerminal, UserCheck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { listedPullRequests, sessionsForTicket, type SessionRef, type TicketDetail, type TicketRef, type TicketTransition } from '@workhub/core'
+import { listedPullRequests, pullRequestsForTicket, sessionsForTicket, type PullRequest, type SessionRef, type TicketDetail, type TicketRef, type TicketTransition } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import { Badge, Button, Select, Spinner, StateDot, STATE_TONE, Textarea, TooltipProvider } from '../components/atoms'
-import { ToastProvider, useToast } from '../components/molecules'
+import { Markdown, ToastProvider, useToast } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { usePlatform } from '../lib/platform'
 import { resolveTheme, usePrefs, useSystemDark } from '../lib/prefs'
 import { CATEGORY_TONE, keyProviders, relativeTime, splitLinks } from '../lib/tickets'
 import type { TicketsStatus } from '@shared/tickets-api'
+import { usePullRequestLists } from '../pullRequestsStore'
 
 /** `#/ticket?profile=<id>&key=<KEY>` -> the two ids, or null for any other hash. */
 export function parseTicketHash(hash: string): { profileId: string; key: string } | null {
@@ -88,6 +89,13 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
   const providers = useMemo(() => keyProviders(status), [status])
   const sessionRefs: (SessionRef & { view: SessionView })[] = useMemo(() => sessions.map((s) => ({ id: s.id, title: s.label, cwd: s.cwd, view: s })), [sessions])
   const linkedSessions = sessionsForTicket(ticketKey, sessionRefs, providers)
+  // The code host's PRs (mine and to review) that name this ticket in their title or branch.
+  const { lists: prLists } = usePullRequestLists(profileId)
+  const hostPrs = useMemo(() => {
+    const byUrl = new Map<string, PullRequest>()
+    for (const item of [...(prLists?.mine ?? []), ...(prLists?.toReview ?? [])]) byUrl.set(item.pr.url.toLowerCase(), item.pr)
+    return [...byUrl.values()]
+  }, [prLists])
 
   const act = async (op: () => Promise<{ ok: true } | { ok: false; error: string }>, done?: string) => {
     setBusy(true)
@@ -124,7 +132,16 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
   }
 
   const d = load.detail
-  const prs = listedPullRequests(d)
+  const listed = listedPullRequests(d)
+  // Linear writes Markdown; Jira's rich text arrives as plain text with hard line breaks.
+  const markdown = status?.provider === 'linear'
+  // PRs the code host knows open in their own window; other listed URLs open in the browser.
+  const matched = pullRequestsForTicket(ticketKey, hostPrs, providers, listed)
+  const matchedUrls = new Set(matched.map((pr) => pr.url.toLowerCase()))
+  const prs: { url: string; label: string; pr?: PullRequest }[] = [
+    ...matched.map((pr) => ({ url: pr.url, label: `${pr.repo}#${pr.number} ${pr.title}`, pr })),
+    ...listed.filter((u) => !matchedUrls.has(u.toLowerCase())).map((url) => ({ url, label: url.replace(/^https:\/\/(github\.com|gitlab\.com)\//, '') }))
+  ]
   const date = (ms?: number) => (ms ? `${formatDate(ms, { dateStyle: 'medium' })} · ${relativeTime(ms, Date.now(), locale)}` : '—')
   const send = async () => {
     if (await act(() => window.hub.tickets.comment(profileId, ticketKey, comment), t('ticket.commentAdded'))) setComment('')
@@ -147,7 +164,7 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
           <h1 className="mt-3 text-xl font-semibold tracking-tight">{d.title}</h1>
 
           <Section title={t('ticket.description')}>
-            {d.description ? <Linkified text={d.description} /> : <p className="text-sm text-subtle">{t('ticket.noDescription')}</p>}
+            {d.description ? <RichText text={d.description} markdown={markdown} /> : <p className="text-sm text-subtle">{t('ticket.noDescription')}</p>}
           </Section>
 
           {(d.parent || d.children.length > 0) && (
@@ -172,7 +189,7 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
                       <span className="font-medium">{c.author}</span>
                       <span className="text-subtle">{date(c.createdAt)}</span>
                     </div>
-                    <Linkified text={c.body} />
+                    <RichText text={c.body} markdown={markdown} />
                   </li>
                 ))}
               </ul>
@@ -220,11 +237,16 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
               <p className="text-sm text-subtle">{t('ticket.pullRequestsEmpty')}</p>
             ) : (
               <ul className="flex flex-col gap-1">
-                {prs.map((url) => (
+                {prs.map(({ url, label, pr }) => (
                   <li key={url}>
-                    <button type="button" onClick={() => void window.hub.tickets.openExternal(url)} className="flex w-full items-center gap-1.5 text-left text-sm text-accent hover:underline">
+                    <button
+                      type="button"
+                      title={url}
+                      onClick={() => void (pr ? window.hub.codeHost.openWindow(profileId, url) : window.hub.tickets.openExternal(url))}
+                      className="flex w-full items-center gap-1.5 text-left text-sm text-accent hover:underline"
+                    >
                       <GitPullRequest className="size-3.5 shrink-0" aria-hidden />
-                      <span className="truncate">{url.replace(/^https:\/\/(github\.com|gitlab\.com)\//, '')}</span>
+                      <span className="truncate">{label}</span>
                     </button>
                   </li>
                 ))}
@@ -295,6 +317,10 @@ function RefRow({ ticketRef, onOpen }: { ticketRef: TicketRef; onOpen: () => voi
 }
 
 /** Plain text with its http(s) links made clickable; tracker text is never rendered as HTML. */
+function RichText({ text, markdown }: { text: string; markdown: boolean }) {
+  return markdown ? <Markdown text={text} className="text-base leading-relaxed" /> : <Linkified text={text} />
+}
+
 function Linkified({ text }: { text: string }) {
   return (
     <p className="text-base leading-relaxed whitespace-pre-wrap break-words">

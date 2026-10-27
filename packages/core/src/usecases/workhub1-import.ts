@@ -1,5 +1,5 @@
 import type { AgentAccount } from '../domain/agent'
-import type { Connection } from '../domain/connection'
+import { findProvider, type Connection } from '../domain/connection'
 import { NO_MODULES, type Profile } from '../domain/profile'
 import type { WorkhubConfig } from '../config/schema'
 
@@ -152,7 +152,8 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
       const cid = slugId(`github-${id}`, 'github')
       if (claim('connections', cid)) {
         plan.connections.push({ id: cid, kind: 'codeHost', provider: 'github', name: `GitHub (${profile.name})`, settings: { scope } })
-        plan.notes.push({ code: 'reenterSecret', path: `connections.${cid}` })
+        // GitHub reads through the `gh` login, so there is no token to enter again.
+        if (findProvider('github')?.requiresSecret) plan.notes.push({ code: 'reenterSecret', path: `connections.${cid}` })
         profile.connections.codeHost = cid
       }
     }

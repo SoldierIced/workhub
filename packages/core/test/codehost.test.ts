@@ -4,7 +4,6 @@ import {
   classifyPullRequest,
   CodeHostError,
   diffFileFromHunks,
-  extractTicketKeys,
   findPullRequestRefs,
   githubRecognizer,
   githubScopeFromRemotes,
@@ -23,6 +22,7 @@ import {
   reviewRefusal,
   searchPullRequests,
   sessionsForPullRequest,
+  ticketKeysOfPullRequest,
   submitReview,
   toItem,
   type CodeHost,
@@ -221,8 +221,10 @@ describe('URL recognizers', () => {
 })
 
 describe('links', () => {
-  it('extracts ticket keys', () => {
-    expect(extractTicketKeys('ABC-12 fix, see also XY2-7 and abc-1 and ABC-12')).toEqual(['ABC-12', 'XY2-7'])
+  it('extracts ticket keys from the title and branch with the tickets module rules', () => {
+    expect(ticketKeysOfPullRequest({ title: 'ABC-12 fix, see also XY2-7 and abc-1 and ABC-12 (UTF-8)', branch: 'main' })).toEqual(['ABC-12', 'XY2-7'])
+    // With the profile's project keys, lower-case branches match too.
+    expect(ticketKeysOfPullRequest({ title: 'Add widgets', branch: 'feat/abc-5-widgets' }, [{ provider: 'jira', projectKeys: ['ABC'] }])).toEqual(['ABC-5'])
   })
   it('links sessions by URL, then branch, then ticket key', () => {
     const p = pr({ title: 'ABC-5 add widgets', branch: 'feat/abc-5' })

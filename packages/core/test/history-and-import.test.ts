@@ -129,12 +129,13 @@ describe('planWorkhub1Import', () => {
     expect(plan.connections.every((c) => c.secretRef === undefined)).toBe(true)
     expect(plan.notes).toEqual(
       expect.arrayContaining([
-        { code: 'reenterSecret', path: 'connections.github-acme' },
         { code: 'reenterSecret', path: 'connections.jira-acme' },
         { code: 'notSupported', path: 'accounts.claude-work', detail: 'command' },
         { code: 'notSupported', path: 'profiles.acme', detail: 'sessionEnvironment' }
       ])
     )
+    // GitHub reads through the `gh` login: no secret to enter again.
+    expect(plan.notes.some((n) => n.path === 'connections.github-acme')).toBe(false)
     // The Keychain item name is never carried over.
     expect(JSON.stringify(plan)).not.toContain('workhub-jira-acme')
   })

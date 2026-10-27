@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { FileDiff } from 'lucide-react'
 import type { CommentThread, DiffFile, DiffLine } from '@workhub/core'
 import { Badge, Button, Textarea } from '../../components/atoms'
-import { EmptyState } from '../../components/molecules'
+import { EmptyState, Markdown } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { diffLineCount, MAX_DIFF_LINES, relativeTime } from '../../lib/pullRequests'
@@ -50,7 +50,7 @@ function ThreadBox({ thread, canReply, onReply }: { thread: CommentThread; canRe
               {c.isBot && <Badge>{t('pr.detail.bot')}</Badge>}
               {c.createdAt && <span className="text-subtle">{relativeTime(c.createdAt, Date.now(), locale)}</span>}
             </div>
-            <p className="mt-0.5 whitespace-pre-wrap break-words text-base text-text">{c.body}</p>
+            <Markdown text={c.body} className="mt-0.5 text-base text-text" />
           </li>
         ))}
       </ul>

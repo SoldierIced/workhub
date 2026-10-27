@@ -1,19 +1,19 @@
+import { ticketKeysIn, type TicketKeyProvider } from '../tickets/keys'
 import type { PullRequest } from './domain'
 import { canonicalUrl } from './urls'
 
 /**
- * Ticket keys such as `ABC-123`. Generic on purpose: it will switch to the tickets module's
- * per-provider key patterns once that module is merged.
+ * The trackers to look for when the caller does not know the profile's: any upper-case
+ * `PROJ-123` key, minus well-known non-tickets such as `UTF-8` (the tickets module's rule).
  */
-const GENERIC_TICKET_KEY = /\b[A-Z][A-Z0-9]+-\d+\b/g
+const ANY_PROJECT_KEY: readonly TicketKeyProvider[] = [{ provider: 'jira' }]
 
-export function extractTicketKeys(text: string): string[] {
-  return [...new Set(text.match(GENERIC_TICKET_KEY) ?? [])]
-}
-
-/** Ticket keys named in a PR's title or branch, in order (Workhub 1 looked in exactly these two). */
-export function ticketKeysOfPullRequest(pr: Pick<PullRequest, 'title' | 'branch'>): string[] {
-  return extractTicketKeys(`${pr.title} ${pr.branch}`)
+/**
+ * Ticket keys named in a PR's title or branch, in order (Workhub 1 looked in exactly these two).
+ * Pass the profile's trackers to match its project keys (case-insensitive) or GitHub issue refs.
+ */
+export function ticketKeysOfPullRequest(pr: Pick<PullRequest, 'title' | 'branch'>, providers: readonly TicketKeyProvider[] = ANY_PROJECT_KEY): string[] {
+  return ticketKeysIn(`${pr.title}\n${pr.branch}`, providers)
 }
 
 /** What a session knows that can tie it to a PR. */
@@ -48,8 +48,12 @@ function reasonFor(pr: PullRequest, session: LinkableSession, prTickets: string[
 }
 
 /** The sessions that belong to a PR: by URL, by branch or by a shared ticket key. Strongest reason first. */
-export function sessionsForPullRequest(pr: PullRequest, sessions: readonly LinkableSession[]): SessionLink[] {
-  const tickets = ticketKeysOfPullRequest(pr)
+export function sessionsForPullRequest(
+  pr: PullRequest,
+  sessions: readonly LinkableSession[],
+  providers: readonly TicketKeyProvider[] = ANY_PROJECT_KEY
+): SessionLink[] {
+  const tickets = ticketKeysOfPullRequest(pr, providers)
   const links: SessionLink[] = []
   for (const s of sessions) {
     const reason = reasonFor(pr, s, tickets)
@@ -59,6 +63,10 @@ export function sessionsForPullRequest(pr: PullRequest, sessions: readonly Linka
 }
 
 /** The PRs that belong to a session. */
-export function pullRequestsForSession(session: LinkableSession, prs: readonly PullRequest[]): PullRequest[] {
-  return prs.filter((pr) => reasonFor(pr, session, ticketKeysOfPullRequest(pr)) !== null)
+export function pullRequestsForSession(
+  session: LinkableSession,
+  prs: readonly PullRequest[],
+  providers: readonly TicketKeyProvider[] = ANY_PROJECT_KEY
+): PullRequest[] {
+  return prs.filter((pr) => reasonFor(pr, session, ticketKeysOfPullRequest(pr, providers)) !== null)
 }
