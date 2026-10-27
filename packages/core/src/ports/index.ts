@@ -83,10 +83,7 @@ export interface Notifier {
 
 export type { TicketTracker } from '../tickets/ticket-tracker'
 
-/** Chat threads watched for requests (P6: Slack through the agent's MCP). */
-export interface ChatSource {
-  readonly provider: string
-}
+// ChatSource and ChatTrackingHook live with the chat domain (`../chat/port`).
 
 /** Environment health signals (P6: Elastic APM; Sentry or Datadog later). */
 export interface HealthProvider {
