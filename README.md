@@ -148,7 +148,11 @@ notarization (Apple Developer ID, a Windows code-signing certificate) are a late
 - Plan usage per account comes from what running sessions report. Reading it from Anthropic's
   undocumented usage endpoint is an opt-in setting (Settings → General), off by default.
 - **Import from Workhub 1** (Settings → General, macOS) previews profiles, folders, Claude
-  accounts and connections before saving. Workhub 1 is never written; secrets are not copied.
+  accounts and connections (GitHub, Jira, Elastic), automations, the Slack watcher, Health
+  environments, the profile modules they use, notification and usage options, the model per
+  account and the sidebar session groups, before saving. Settings with no Workhub 2 equivalent are
+  listed as not carried over. Applying twice adds nothing. Workhub 1 is never written; secrets are
+  not copied (connections that need one are marked "re-enter").
 
 ### Session groups
 

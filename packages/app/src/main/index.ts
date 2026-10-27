@@ -348,7 +348,7 @@ function registerIpc(): void {
     guarded(async () => {
       const v1 = await readWorkhub1Settings()
       if (!v1) return { ok: false, issues: [{ path: 'import', message: 'Workhub 1 settings not found' }] }
-      return configuration.addImported(planWorkhub1Import(v1, await configuration.current(), homedir()))
+      return configuration.applyImport(planWorkhub1Import(v1, await configuration.current(), homedir()))
     })
   )
   ipc.on('hub:openExternal', (_e, url: string) => {

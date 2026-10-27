@@ -1,7 +1,8 @@
 import { CircleAlert, Download, KeyRound } from 'lucide-react'
 import { useState } from 'react'
-import type { ImportNote, ImportPlan, Result, WorkhubConfig } from '@workhub/core'
+import { isEmptyImportPlan, type ImportNote, type ImportPlan, type ImportPrefs, type Result, type WorkhubConfig } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
+import { readPrefs, setPrefs } from '../../lib/prefs'
 import type { MessageKey } from '../../i18n/translate'
 import { Badge } from '../atoms/Badge'
 import { Button } from '../atoms/Button'
@@ -20,7 +21,65 @@ export function notesFor(plan: ImportPlan, path: string): ImportNote[] {
 
 /** True when the plan adds nothing: every item already exists or nothing was found. */
 export function isEmptyPlan(plan: ImportPlan): boolean {
-  return plan.profiles.length === 0 && plan.accounts.length === 0 && plan.connections.length === 0
+  return isEmptyImportPlan(plan)
+}
+
+/** Paths that have their own preview row; notes on any other path are listed under "Not carried over". */
+export function rowPaths(plan: ImportPlan): Set<string> {
+  return new Set([
+    ...plan.profiles.map((p) => `profiles.${p.id}`),
+    ...plan.accounts.map((a) => `accounts.${a.id}`),
+    ...plan.connections.map((c) => `connections.${c.id}`),
+    ...(plan.automations ?? []).map((a) => `automations.${a.id}`),
+    ...(plan.chatWatcher ? ['chatWatcher'] : [])
+  ])
+}
+
+/**
+ * The renderer-only preferences of the import: a model already picked for an agent and a language
+ * already chosen win over Workhub 1's.
+ */
+export function mergedPrefs(current: { language: string; models: Record<string, string> }, imported: ImportPrefs | undefined): { language?: 'en' | 'es'; models?: Record<string, string> } {
+  const out: { language?: 'en' | 'es'; models?: Record<string, string> } = {}
+  if (imported?.models) out.models = { ...imported.models, ...current.models }
+  if (imported?.language && current.language === 'system') out.language = imported.language
+  return out
+}
+
+const MODULES: [keyof ImportPlan['profiles'][number]['modules'], MessageKey][] = [
+  ['chatWatcher', 'nav.slack'],
+  ['automations', 'nav.automations'],
+  ['health', 'nav.health']
+]
+
+type Translate = (key: MessageKey, params?: Record<string, string>) => string
+
+/** One row per app-wide part of the plan: options, sidebar groups, model per account, language. */
+export function optionRows(plan: ImportPlan, t: Translate): { id: string; name: string; meta?: string; notes: ImportNote[] }[] {
+  const rows: { id: string; name: string; meta?: string; notes: ImportNote[] }[] = []
+  const o = plan.options
+  if (o) {
+    const parts: string[] = []
+    if (o.claudePlanUsage) parts.push(t('import.optPlanUsage'))
+    if (o.notifyPrEvents && Object.values(o.notifyPrEvents).every((v) => !v)) parts.push(t('import.optPrEventsOff'))
+    if (o.notifyReplied === false || o.notifyNeedsAnswer === false) parts.push(t('import.optSessionNotificationsOff'))
+    rows.push({ id: 'options', name: t('import.optionsRow'), meta: parts.join(', '), notes: notesFor(plan, 'options') })
+  }
+  const groups = plan.sessionGroups
+  if (groups && (groups.groups.length || groups.top.length)) {
+    const sessions = new Set([...groups.groups.flatMap((g) => g.members.map((m) => m.key)), ...groups.top.flatMap((s) => (s.kind === 'session' ? [s.key] : []))])
+    rows.push({ id: 'sessionGroups', name: t('import.sessionGroups'), meta: t('import.sessionGroupsMeta', { groups: String(groups.groups.length), sessions: String(sessions.size) }), notes: notesFor(plan, 'sessionGroups') })
+  }
+  const models = Object.values(plan.prefs?.models ?? {})
+  if (models.length) rows.push({ id: 'models', name: t('import.defaultModel'), meta: models.join(', '), notes: [] })
+  if (plan.prefs?.language) rows.push({ id: 'language', name: t('import.language'), meta: plan.prefs.language, notes: [] })
+  return rows
+}
+
+/** Notes that belong to no preview row (app-wide Workhub 1 settings), "already here" ones aside. */
+export function otherNotes(plan: ImportPlan): ImportNote[] {
+  const rows = rowPaths(plan)
+  return plan.notes.filter((n) => n.code !== 'exists' && !rows.has(n.path))
 }
 
 function Notes({ notes }: { notes: ImportNote[] }) {
@@ -71,8 +130,12 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
     else setState({ kind: 'plan', plan: r.plan })
   }
 
-  const apply = async () => {
-    if (await run(() => window.hub.config.applyWorkhub1Import())) setState({ kind: 'done' })
+  const apply = async (plan: ImportPlan) => {
+    if (await run(() => window.hub.config.applyWorkhub1Import())) {
+      const prefs = mergedPrefs(readPrefs(), plan.prefs)
+      if (prefs.models || prefs.language) setPrefs(prefs)
+      setState({ kind: 'done' })
+    }
   }
 
   return (
@@ -102,7 +165,12 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
             <>
               <Group
                 title={t('settings.profiles')}
-                rows={state.plan.profiles.map((p) => ({ id: p.id, name: p.name, meta: (p.folders ?? []).join(', '), notes: notesFor(state.plan, `profiles.${p.id}`) }))}
+                rows={state.plan.profiles.map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  meta: [(p.folders ?? []).join(', '), MODULES.filter(([m]) => p.modules[m]).map(([, k]) => t(k)).join(', ')].filter(Boolean).join(' · '),
+                  notes: notesFor(state.plan, `profiles.${p.id}`)
+                }))}
               />
               <Group
                 title={t('settings.accounts')}
@@ -112,7 +180,39 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
                 title={t('settings.connections')}
                 rows={state.plan.connections.map((c) => ({ id: c.id, name: c.name || c.id, meta: c.endpoint, notes: notesFor(state.plan, `connections.${c.id}`) }))}
               />
+              <Group
+                title={t('nav.automations')}
+                rows={(state.plan.automations ?? []).map((a) => ({ id: a.id, name: a.name, meta: [a.folder, a.prompt].filter(Boolean).join(' · '), notes: notesFor(state.plan, `automations.${a.id}`) }))}
+              />
+              <Group
+                title={t('nav.slack')}
+                rows={
+                  state.plan.chatWatcher
+                    ? [
+                        {
+                          id: 'chatWatcher',
+                          name: t(state.plan.chatWatcher.enabled ? 'import.watcherOn' : 'import.watcherOff'),
+                          meta: t('import.channels', { count: String(state.plan.chatWatcher.channels.length) }),
+                          notes: notesFor(state.plan, 'chatWatcher')
+                        }
+                      ]
+                    : []
+                }
+              />
+              <Group title={t('import.options')} rows={optionRows(state.plan, t)} />
             </>
+          )}
+          {otherNotes(state.plan).length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold tracking-wide text-subtle uppercase">{t('import.notCarried')}</h4>
+              <ul className="mt-1.5 flex flex-col gap-1">
+                {otherNotes(state.plan).map((n, i) => (
+                  <li key={i} className="text-xs text-subtle" data-testid="import-note">
+                    {t(NOTE_LABEL[n.code], { detail: n.detail ?? n.path })}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {state.plan.notes
             .filter((n) => n.code === 'exists')
@@ -125,7 +225,7 @@ export function Workhub1Import({ run }: { run: (op: () => Promise<Result<Workhub
             <Button size="sm" variant="ghost" onClick={() => setState({ kind: 'idle' })}>
               {t('common.cancel')}
             </Button>
-            <Button size="sm" variant="primary" disabled={isEmptyPlan(state.plan)} onClick={() => void apply()}>
+            <Button size="sm" variant="primary" disabled={isEmptyPlan(state.plan)} onClick={() => void apply(state.plan)}>
               {t('import.apply')}
             </Button>
           </div>

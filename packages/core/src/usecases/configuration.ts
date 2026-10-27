@@ -8,6 +8,7 @@ import { fail, knownAgents, ok, validateConfig, type Result, type ValidationIssu
 import type { AutomationDefinition } from '../automations/types'
 import type { ChatWatcherSettings } from '../chat/types'
 import { deleteAutomation, saveAutomation, setChatWatcher } from './chat-automation-config'
+import { applyWorkhub1Import, type ImportPlan } from './workhub1-import'
 
 const key = (i: ValidationIssue) => `${i.path}\u0000${i.message}`
 
@@ -163,8 +164,16 @@ export function addImported(
     connections: [...config.connections, ...additions.connections]
   }
   if (!next.activeProfileId && next.profiles[0]) next.activeProfileId = next.profiles[0].id
-  const imported = new Set(additions.connections.map((c) => `connections.${c.id}.secretRef`))
-  const result = commit(config, next)
+  return commitImported(config, next, additions.connections.map((c) => c.id))
+}
+
+/**
+ * Validates an imported config like any change, except that the imported connections (by id) may
+ * lack their secret: secrets are never imported, so the stored problem asks to re-enter it.
+ */
+export function commitImported(before: WorkhubConfig, next: WorkhubConfig, importedConnectionIds: string[]): Result<WorkhubConfig> {
+  const imported = new Set(importedConnectionIds.map((id) => `connections.${id}.secretRef`))
+  const result = commit(before, next)
   if (result.ok) return result
   const blocking = result.issues.filter((i) => !(imported.has(i.path) && i.message === 'a secret is required'))
   return blocking.length ? fail(blocking) : ok(next)
@@ -325,6 +334,11 @@ export class ConfigurationService {
 
   async addImported(additions: { profiles: Profile[]; accounts: AgentAccount[]; connections: Connection[] }): Promise<Result<WorkhubConfig>> {
     return this.persist(addImported(await this.current(), additions))
+  }
+
+  /** Applies a Workhub 1 import plan (see `applyWorkhub1Import`); the result's notes are the plan's plus what was already here. */
+  async applyImport(plan: ImportPlan): Promise<Result<WorkhubConfig>> {
+    return this.persist(applyWorkhub1Import(await this.current(), plan).result)
   }
 
   async deleteAgent(id: string): Promise<Result<WorkhubConfig>> {
