@@ -22,6 +22,7 @@ import { sidebarEn } from './sidebar.en'
 import { agentsEn } from './agents.en'
 import { toolViewEn } from './toolView.en'
 import { windowsEn } from './windows.en'
+import { localReviewEn } from './localReview.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -429,5 +430,6 @@ export const en = {
   ...appearanceEn,
   ...settingsHelpEn,
   ...toolViewEn,
-  ...windowsEn
+  ...windowsEn,
+  ...localReviewEn
 } as const

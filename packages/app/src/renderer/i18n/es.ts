@@ -23,6 +23,7 @@ import { sidebarEs } from './sidebar.es'
 import { agentsEs } from './agents.es'
 import { toolViewEs } from './toolView.es'
 import { windowsEs } from './windows.es'
+import { localReviewEs } from './localReview.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -428,5 +429,6 @@ export const es: Record<keyof typeof en, string> = {
   ...appearanceEs,
   ...settingsHelpEs,
   ...toolViewEs,
-  ...windowsEs
+  ...windowsEs,
+  ...localReviewEs
 }

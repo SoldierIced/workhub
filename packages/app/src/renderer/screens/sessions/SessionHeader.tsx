@@ -15,6 +15,7 @@ import { useNow } from '../../lib/usage'
 import { awaitingAnswer, pushItem, type SessionData } from '../../store'
 import { AiReviewButton } from './AiReviewPanel'
 import { ContinueMenu } from './ContinueMenu'
+import { SessionReviewTools } from './SessionReviewTools'
 
 const MODE_ICON: Record<SessionMode, LucideIcon> = { app: MessagesSquare, console: SquareTerminal, shell: TerminalIcon }
 const MODE_LABEL: Record<SessionMode, MessageKey> = { app: 'session.modeApp', console: 'session.modeConsole', shell: 'session.modeShell' }
@@ -259,6 +260,11 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
           {agentMode}
         </div>
       )}
+      {!controlsInline && !v.readOnly && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+          <SessionReviewTools data={data} />
+        </div>
+      )}
       {!controlsInline && live && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
           <AiReviewButton view={v} />
@@ -267,7 +273,7 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
       )}
     </>
   )
-  const hasOverflow = !chipsInline || (!controlsInline && (showModePicker || showModelPicker || live))
+  const hasOverflow = !chipsInline || (!controlsInline && (showModePicker || showModelPicker || live || !v.readOnly))
 
   return (
     <header ref={ref} className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-surface/60 px-4" data-testid="session-header">
@@ -302,6 +308,7 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
         {v.modes.length > 1 && <ModeSwitch view={v} iconsOnly={density === 'narrow'} />}
         {controlsInline && showModePicker && <ModePicker view={v} />}
         {controlsInline && showModelPicker && <ModelPicker view={v} />}
+        {controlsInline && <SessionReviewTools data={data} />}
         {controlsInline && live && <AiReviewButton view={v} />}
         {controlsInline && showContinue && <ContinueMenu view={v} />}
         {live && (

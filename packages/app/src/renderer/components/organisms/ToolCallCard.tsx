@@ -6,6 +6,7 @@ import {
   CircleAlert,
   ExternalLink,
   FilePlus,
+  FileSearch,
   FileText,
   FolderOpen,
   Globe,
@@ -45,6 +46,8 @@ export interface ToolCallCardProps {
   cwd?: string
   /** Shows a file in the file manager (only offered when set). */
   onReveal?: (path: string) => void
+  /** Opens a file in the file viewer window (only offered when set). */
+  onViewFile?: (path: string) => void
   /** Opens the sub-agent a Task call started (only offered when it is known). */
   onOpenAgent?: () => void
 }
@@ -100,6 +103,18 @@ function IconAction({ label, icon: Icon, onClick }: { label: string; icon: Lucid
 
 function revealAction(path: string, cwd: string | undefined, onReveal: ((path: string) => void) | undefined, label: (p: string) => string) {
   return onReveal && path ? <IconAction label={label(relativePath(path, cwd))} icon={FolderOpen} onClick={() => onReveal(path)} /> : undefined
+}
+
+/** "View file" and "Reveal" for a call that worked on a file. */
+function fileActions(path: string, cwd: string | undefined, onReveal: ((path: string) => void) | undefined, onViewFile: ((path: string) => void) | undefined, labels: { reveal: (p: string) => string; view: (p: string) => string }) {
+  const view = onViewFile && path ? <IconAction label={labels.view(relativePath(path, cwd))} icon={FileSearch} onClick={() => onViewFile(path)} /> : undefined
+  const reveal = revealAction(path, cwd, onReveal, labels.reveal)
+  return view || reveal ? (
+    <>
+      {view}
+      {reveal}
+    </>
+  ) : undefined
 }
 
 function Counts({ added, removed }: { added: number; removed: number }) {
@@ -182,10 +197,11 @@ function Frame({
 }
 
 /** One tool call in the chat, rendered for what it is: a diff, a command and its output, a search... */
-export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, toolKind, view, result, cwd, onReveal, onOpenAgent }: ToolCallCardProps) {
+export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, toolKind, view, result, cwd, onReveal, onViewFile, onOpenAgent }: ToolCallCardProps) {
   const { t, tn } = useI18n()
   const failed = status === 'failed' || result?.isError === true
   const revealLabel = (path: string) => t('tool.reveal', { path })
+  const fileLabels = { reveal: revealLabel, view: (path: string) => t('files.viewPath', { path }) }
   const output = () => <OutputBlock text={result?.text} truncated={result?.truncated} isError={failed} />
   const hunks = useMemo(() => {
     if (view?.kind === 'edit') return editHunks(view, result?.patch)
@@ -229,7 +245,7 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
             </>
           }
           meta={<Counts added={stats.added} removed={stats.removed} />}
-          actions={revealAction(view.path, cwd, onReveal, revealLabel)}
+          actions={fileActions(view.path, cwd, onReveal, onViewFile, fileLabels)}
           defaultOpen={stats.added + stats.removed <= AUTO_OPEN_CHANGES || failed}
           body={() => (
             <>
@@ -255,7 +271,7 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
               {range && <span className="shrink-0 text-chat-xs text-subtle">{range}</span>}
             </>
           }
-          actions={revealAction(view.path, cwd, onReveal, revealLabel)}
+          actions={fileActions(view.path, cwd, onReveal, onViewFile, fileLabels)}
           meta={result?.lineCount !== undefined ? <span className="shrink-0 text-chat-xs text-subtle">{tn('tool.linesRead', result.lineCount)}</span> : undefined}
           body={result ? output : undefined}
           defaultOpen={failed}

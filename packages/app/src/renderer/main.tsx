@@ -11,6 +11,9 @@ import { TrayPopover } from './screens/TrayPopover'
 import { SessionWindowRoot, SubagentWindowRoot } from './screens/SessionWindow'
 import { parseSessionWindowHash, parseSubagentWindowHash } from './lib/windows'
 import { parseSetupHash, SetupWindow } from './screens/SetupWindows'
+import { parseFileHash, parseReviewHash } from './lib/localReview'
+import { LocalReviewWindow } from './screens/LocalReviewWindow'
+import { FileViewerWindow } from './screens/FileViewerWindow'
 import './styles.css'
 
 // Set the theme (and the text sizes) before the first paint so a light OS never flashes the dark palette.
@@ -19,6 +22,7 @@ applyAppearance(readPrefs(), matchMedia('(prefers-color-scheme: dark)').matches)
 // Secondary windows load the same bundle and are routed by the URL hash:
 // `#tray-popover` is the menu bar popover, `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…`
 // a ticket, `#session?id=…` a session in its own window and `#subagent?session=…&id=…` a sub-agent's conversation.
+// `#review?session=…` a session's local review and `#file?path=…` the file viewer.
 function root(hash: string): ReactElement {
   if (hash === TRAY_POPOVER_HASH) return <TrayPopover />
   const session = parseSessionWindowHash(hash)
@@ -31,6 +35,10 @@ function root(hash: string): ReactElement {
   if (ticket) return <TicketWindowRoot profileId={ticket.profileId} ticketKey={ticket.key} />
   const setup = parseSetupHash(hash)
   if (setup) return <SetupWindow page={setup} />
+  const review = parseReviewHash(hash)
+  if (review) return <LocalReviewWindow sessionId={review.sessionId} />
+  const file = parseFileHash(hash)
+  if (file) return <FileViewerWindow path={file.path} />
   return <App />
 }
 
