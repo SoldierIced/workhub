@@ -110,7 +110,7 @@ export function HealthSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }
     setEnvs((all) => all.map((e, i) => (i === index ? { ...e, thresholds: { ...e.thresholds, [key]: value } } : e)))
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <p className="text-base text-muted">{t('health.settings.intro')}</p>
       {demo && <p className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning">{t('health.settings.demoNote')}</p>}
       {formError && (

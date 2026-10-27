@@ -94,7 +94,7 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
   const toggle = (key: 'claudePlanUsage' | 'codexUsage', on: boolean) => void run(() => window.hub.config.saveOptions({ [key]: on })).then((ok) => ok && void window.hub.usage.get(true))
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <Group title={t('agentUsage.settings.reading')} footnote={<>{t('settings.planUsageNote')} {t('agentUsage.settings.codexNote')}</>}>
         <SwitchRow label={t('agentUsage.settings.claude')} hint={t('settings.planUsageHint')}>
           <Switch checked={options.claudePlanUsage} disabled={!editable} onChange={(on) => toggle('claudePlanUsage', on)} />

@@ -111,11 +111,12 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
     </div>
   )
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-8 py-7">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-8 py-7">
       <h1 className="text-2xl font-semibold tracking-tight">{t('nav.settings')}</h1>
       {snap.loadError && <Issues title={t('settings.loadError')} issues={[{ path: 'config.json', message: snap.loadError }]} />}
       <Issues title={t('settings.storedProblems')} issues={snap.issues} />
       <Tabs
+        variant="fill"
         label={t('nav.settings')}
         value={tab}
         onChange={(v) => {
@@ -163,7 +164,7 @@ function GeneralSection({ snap, run }: SectionProps) {
   const options = appOptions(snap.config)
   const editable = !snap.loadError
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <SettingsGroup title={t('settings.interface')} footnote={t('settings.languageHint')}>
         <SettingRow label={t('settings.language')}>
           <Select
@@ -219,7 +220,7 @@ function AppearanceSection() {
   const { t } = useI18n()
   const { theme } = usePrefs()
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <SettingsGroup title={t('settings.appearance')} footnote={t('settings.themeHint')}>
         <SettingRow label={t('settings.theme')}>
           <Select
@@ -253,7 +254,7 @@ function MasterDetail<T extends { id: string }>(props: {
   actions: ReactNode
 }) {
   return (
-    <div className="grid grid-cols-[17rem_minmax(0,1fr)] items-start gap-4">
+    <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <Card>
         <CardHeader
           title={props.title}
