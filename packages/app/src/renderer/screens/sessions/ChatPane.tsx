@@ -9,9 +9,9 @@ import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
 import { onComposerDraft, takeComposerDraft } from '../../lib/drafts'
 import { hasImageFiles, imageFilesOf, MAX_PROMPT_IMAGES, pickImageFiles, readImageFiles } from '../../lib/images'
-import { acceptsInput } from '../../lib/prompt-queue'
+import { acceptsInput, restoreComposer } from '../../lib/prompt-queue'
 import { isEditable, shouldFocusComposer } from '../../lib/composer-focus'
-import { removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
+import { interruptSession, onRecoveredPrompts, removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
 import { markPermission, pushItem, type ChatItem, type SessionData } from '../../store'
 import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
@@ -189,6 +189,23 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
       }),
     [v.id]
   )
+  // Interrupting with messages queued: they come back into the composer instead of going out after the turn.
+  const [restored, setRestored] = useState(0)
+  const draft = useRef({ text, images })
+  draft.current = { text, images }
+  useEffect(
+    () =>
+      onRecoveredPrompts((id, prompts) => {
+        if (id !== v.id) return
+        const next = restoreComposer(draft.current, prompts, MAX_PROMPT_IMAGES)
+        draft.current = next
+        setText(next.text)
+        setImages(next.images)
+        setRestored((n) => n + prompts.length)
+      }),
+    [v.id]
+  )
+  const interrupt = () => void interruptSession(v.id).catch(() => undefined)
   useEffect(() => {
     // Braces matter: scrollIntoView returns a Promise in recent Chromium, which React would take as a cleanup.
     void bottom.current?.scrollIntoView({ block: 'end' })
@@ -258,6 +275,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
       return
     }
     setNeedsConfirm(false)
+    setRestored(0)
     // While the agent works the message waits for the turn's end (or joins the turn, on Claude).
     if (submitPrompt(v.id, v.state, midTurn, value, images) === 'refused') return
     setText('')
@@ -276,7 +294,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
       void send()
     } else if (e.key === 'Escape' && v.state === 'busy') {
       e.preventDefault()
-      void window.hub.sessions.cancel(v.id)
+      interrupt()
     }
   }
 
@@ -412,6 +430,13 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
               />
             )
           )}
+          {restored > 0 && (
+            <div role="status" className="flex items-center gap-2 px-4 pt-2.5 text-xs text-muted" data-testid="queue-restored">
+              <Info className="size-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">{tn('chat.queueRestored', restored)}</span>
+              <IconButton size="sm" label={t('common.close')} icon={<X className="size-3" />} onClick={() => setRestored(0)} />
+            </div>
+          )}
           {images.length > 0 && (
             <ul className="flex flex-wrap gap-2 px-3 pt-3" aria-label={t('chat.attached')}>
               {images.map((src, i) => (
@@ -444,7 +469,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
             <span className="text-xs text-subtle">{acceptsImages ? t('chat.keysImages') : t('chat.keys')}</span>
             <div className="ml-auto flex items-center gap-1.5">
               {v.state === 'busy' && (
-                <Button size="sm" variant="secondary" icon={<Square className="size-3" aria-hidden />} onClick={() => void window.hub.sessions.cancel(v.id)}>
+                <Button size="sm" variant="secondary" icon={<Square className="size-3" aria-hidden />} onClick={interrupt}>
                   {t('chat.interrupt')}
                 </Button>
               )}

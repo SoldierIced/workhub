@@ -330,6 +330,8 @@ export const es: Record<keyof typeof en, string> = {
   'chat.placeholderInject': 'El agente está trabajando… un mensaje enviado ahora se suma a su turno',
   'chat.queued': 'En cola: se envía cuando el agente termine',
   'chat.queuedList': 'Mensajes en cola',
+  'chat.queueRestored.one': 'Interrumpido: {count} mensaje que esperaba volvió al cuadro de texto, sin enviarse',
+  'chat.queueRestored.other': 'Interrumpido: {count} mensajes que esperaban volvieron al cuadro de texto, sin enviarse',
   'chat.removeQueued': 'Quitar mensaje en cola',
   'chat.imageTooMany': 'Hasta {n} imágenes por mensaje: el resto se omitió.',
   'chat.imagesUnsupported': 'Este agente no acepta imágenes.',

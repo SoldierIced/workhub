@@ -331,6 +331,8 @@ export const en = {
   'chat.placeholderInject': 'The agent is working… a message sent now joins its turn',
   'chat.queued': 'Queued: sent when the agent finishes',
   'chat.queuedList': 'Queued messages',
+  'chat.queueRestored.one': 'Interrupted: {count} message that was waiting is back in the composer, not sent',
+  'chat.queueRestored.other': 'Interrupted: {count} messages that were waiting are back in the composer, not sent',
   'chat.removeQueued': 'Remove queued message',
   'chat.imageTooMany': 'Up to {n} images per message: the rest were left out.',
   'chat.imagesUnsupported': 'This agent does not take images.',
