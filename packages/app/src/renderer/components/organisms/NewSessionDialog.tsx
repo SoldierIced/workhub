@@ -15,6 +15,7 @@ import { Select } from '../atoms/Select'
 import { Dialog } from '../molecules/Dialog'
 import { Field } from '../molecules/Field'
 import { errorText } from '../../lib/errorText'
+import { currentConfig } from '../../configStore'
 
 export interface NewSessionDialogProps {
   open: boolean
@@ -120,7 +121,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
           setOptions(o)
           const prefs = readPrefs()
           setModel(initialStartChoice('model', o, prefs.models[key], chosen.account))
-          setModeId(initialStartChoice('mode', o, prefs.modes[key], chosen.account))
+          setModeId(initialStartChoice('mode', o, prefs.modes[key], chosen.account, currentConfig()?.config.options?.agentDefaultModes?.[chosen.agent.id]))
         },
         () => setOptions(null)
       )

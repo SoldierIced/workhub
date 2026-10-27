@@ -211,12 +211,21 @@ describe('picker state', () => {
   })
 
   it('start choice: last pick, else account default, else the agent default; picks no longer offered are dropped', () => {
-    const options = { models: [{ id: 'auto', name: 'auto' }, { id: 'sonnet', name: 'sonnet' }], modes: [{ id: 'explorer', name: 'explorer' }] }
+    const options = { models: [{ id: 'auto', name: 'auto' }, { id: 'sonnet', name: 'sonnet' }], modes: [{ id: 'explorer', name: 'explorer' }, { id: 'plan', name: 'plan' }] }
     expect(initialStartChoice('model', options, 'sonnet', { defaultModel: 'auto' })).toBe('sonnet')
     expect(initialStartChoice('model', options, 'gone', { defaultModel: 'auto' })).toBe('auto')
     expect(initialStartChoice('mode', options, undefined, { defaultMode: 'explorer' })).toBe('explorer')
     expect(initialStartChoice('mode', options, undefined, null)).toBe('')
     expect(initialStartChoice('model', { models: [], modes: [] }, 'remembered', null)).toBe('remembered')
+  })
+
+  it('start mode: the defaults set in Settings win over the last pick (account, then agent), then the last pick', () => {
+    const options = { models: [], modes: [{ id: 'default', name: 'default' }, { id: 'plan', name: 'plan' }, { id: 'acceptEdits', name: 'acceptEdits' }] }
+    expect(initialStartChoice('mode', options, 'plan', { defaultMode: 'acceptEdits' }, 'default')).toBe('acceptEdits')
+    expect(initialStartChoice('mode', options, 'plan', null, 'acceptEdits')).toBe('acceptEdits')
+    expect(initialStartChoice('mode', options, 'plan', {}, undefined)).toBe('plan')
+    // A default the agent no longer offers falls through to the next one.
+    expect(initialStartChoice('mode', options, 'plan', { defaultMode: 'gone' }, 'gone-too')).toBe('plan')
   })
 
   it('keeps the last picked modes in the prefs and drops junk', () => {

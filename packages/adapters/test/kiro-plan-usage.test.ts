@@ -16,8 +16,8 @@ const USAGE = {
 }
 
 describe('parseKiroUsage', () => {
-  it('reads the credits window with used, limit and the local reset day', () => {
-    expect(parseKiroUsage(USAGE)).toEqual([{ window: 'monthly', percent: 25, used: 2500, limit: 10000, resetsAt: new Date(2026, 10, 1).getTime() }])
+  it('reads the credits window with used, limit, the local reset day and the plan name', () => {
+    expect(parseKiroUsage(USAGE)).toEqual([{ window: 'monthly', percent: 25, used: 2500, limit: 10000, resetsAt: new Date(2026, 10, 1).getTime(), plan: 'KIRO POWER' }])
   })
 
   it('computes the percent when Kiro leaves it out, and reports nothing without a limit', () => {

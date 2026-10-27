@@ -92,6 +92,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     case 'set_model':
       send({ type: 'option_error', name: 'model', message: `no model ${m.model}` })
       break
+    case 'set_permission_mode':
+      // Recorded, so a later "echo start" shows the mode the session switched to.
+      start = { ...start, switchedTo: m.mode }
+      break
     case 'mcp_toggle':
       servers = servers.map((s) => (s.name === m.name ? { ...s, status: m.enabled ? 'connected' : 'disabled' } : s))
       send({ type: 'mcp_status', servers })

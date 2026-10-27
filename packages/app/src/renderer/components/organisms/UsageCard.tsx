@@ -1,13 +1,17 @@
 import { Gauge } from 'lucide-react'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
-import { accountTitle, UsageWindowChip, useWindowHover } from '../molecules/UsageWindowRow'
+import { accountTitle, UsageRowTooltip, UsageWindowChip, useWindowHover } from '../molecules/UsageWindowRow'
 import { UsageRefreshButton } from '../molecules/UsageRefreshButton'
 import { ApiSpendList } from '../molecules/ApiSpendList'
 import type { UsageGroup } from '../../lib/home'
 import { useApiSpend, useKiroSpend, useNow, useUsageSettings } from '../../lib/usage'
-import { compactWindows, shortReset } from '../../lib/agent-usage'
-import { KiroSpent } from './AgentUsageCard'
+import { accountHoverText, compactWindows, shortReset } from '../../lib/agent-usage'
+import { cn } from '../../lib/cn'
+import { KiroSpent, useKiroSpendHover } from './AgentUsageCard'
+
+/** One account in the card: the whole block is the tooltip's target, and shows it is one. */
+const ROW = '-mx-1.5 flex cursor-default flex-col rounded-md px-1.5 py-0.5 outline-none hover:bg-surface-hover/60 focus-visible:ring-2 focus-visible:ring-accent/40'
 
 const AGENT_NAME: Record<string, MessageKey> = { claude: 'agentUsage.agent.claude', codex: 'agentUsage.agent.codex', kiro: 'agentUsage.agent.kiro' }
 
@@ -16,11 +20,13 @@ const AGENT_NAME: Record<string, MessageKey> = { claude: 'agentUsage.agent.claud
  * above stay visible: per account its name and next reset, then its main windows side by side
  * (`5h ▮▮▯ 47%  week ▮▯ 91%`). Per-model windows, full dates and credits are on hover. Claude,
  * Codex and Kiro, from what running agents report or from each account's own read (Settings →
- * Usage). Kiro also shows the credits spent today.
+ * Usage). Kiro reads like a Claude account (its monthly credits); what it spent is on hover, and
+ * on the row only while its credits left are not read.
  */
 export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: number }) {
   const { t, tn, formatDate } = useI18n()
   const hover = useWindowHover()
+  const spendHover = useKiroSpendHover()
   const now = useNow()
   const { budget } = useUsageSettings()
   const kiroSpend = useKiroSpend()
@@ -41,48 +47,55 @@ export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: 
       {groups.length === 0 && !kiroSpend && !apiSpend.length ? (
         <p className="mt-2 text-xs text-subtle">{t('usage.empty')}</p>
       ) : (
-        <div className="mt-1 flex flex-col gap-1">
+        <div className="mt-1 flex flex-col gap-0.5">
           {groups.map((g) => {
             const { shown, extra } = compactWindows(g.windows)
             const ceilings = budget.ceilings[g.key]
             const reset = shown.find((w) => w.resetsAt !== undefined)?.resetsAt
+            const plan = g.windows.find((w) => w.plan)?.plan
+            const kiro = g.agentId === 'kiro' && kiroSpend
+            // Every window (also the ones only counted as "+n") and Kiro's spend, on hover anywhere over the account.
+            const text = accountHoverText(plan ? `${name(g)} · ${plan}` : name(g), [
+              ...g.windows.map((w) => hover(w, ceilings?.[w.window], now)),
+              g.error,
+              kiro ? spendHover(kiroSpend, true) : undefined
+            ])
             return (
-              <div key={g.key} data-testid="usage-account" className="flex flex-col">
-                <div className="flex items-baseline gap-2 text-xs">
-                  <span className="min-w-0 flex-1 truncate font-medium text-text" title={name(g)}>
-                    {name(g)}
-                  </span>
-                  {!g.error && reset !== undefined && (
-                    <span className="shrink-0 text-2xs text-subtle tabular-nums" title={t('usage.nextReset')}>
-                      {shortReset(reset, now, formatDate)}
-                    </span>
-                  )}
-                </div>
-                {g.error ? (
-                  <p className="text-xs text-danger" title={g.error}>
-                    {t('usage.readFailed')}
-                  </p>
-                ) : (
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    {shown.map((w) => (
-                      <UsageWindowChip key={w.window} w={w} ceiling={ceilings?.[w.window]} now={now} />
-                    ))}
-                    {extra.length > 0 && (
-                      <span className="shrink-0 cursor-help text-2xs text-subtle" title={extra.map((w) => hover(w, ceilings?.[w.window], now)).join('\n\n')} data-testid="usage-extra">
-                        +{extra.length}
+              <UsageRowTooltip key={g.key} text={text} side="right">
+                <div data-testid="usage-account" tabIndex={0} className={ROW}>
+                  <div className="flex items-baseline gap-2 text-xs">
+                    <span className="min-w-0 flex-1 truncate font-medium text-text">{name(g)}</span>
+                    {!g.error && reset !== undefined && (
+                      <span className="shrink-0 text-2xs text-subtle tabular-nums" data-testid="usage-reset">
+                        {t('usage.resetsShort', { when: shortReset(reset, now, formatDate) })}
                       </span>
                     )}
-                    {g.agentId === 'kiro' && kiroSpend && <KiroSpent spend={kiroSpend} remainingKnown compact />}
                   </div>
-                )}
-              </div>
+                  {g.error ? (
+                    <p className="text-xs text-danger">{t('usage.readFailed')}</p>
+                  ) : (
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      {shown.map((w) => (
+                        <UsageWindowChip key={w.window} w={w} ceiling={ceilings?.[w.window]} now={now} />
+                      ))}
+                      {extra.length > 0 && (
+                        <span className="shrink-0 text-2xs text-subtle" data-testid="usage-extra">
+                          +{extra.length}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </UsageRowTooltip>
             )
           })}
           {!hasKiro && kiroSpend && (
-            <div data-testid="usage-account" className="flex items-baseline gap-2 text-xs">
-              <span className="min-w-0 flex-1 truncate font-medium text-text">{t('agentUsage.agent.kiro')}</span>
-              <KiroSpent spend={kiroSpend} remainingKnown={false} compact />
-            </div>
+            <UsageRowTooltip text={accountHoverText(t('agentUsage.agent.kiro'), [spendHover(kiroSpend, false)])} side="right">
+              <div data-testid="usage-account" tabIndex={0} className={cn(ROW, 'flex-row items-baseline gap-2 text-xs')}>
+                <span className="min-w-0 flex-1 truncate font-medium text-text">{t('agentUsage.agent.kiro')}</span>
+                <KiroSpent spend={kiroSpend} compact />
+              </div>
+            </UsageRowTooltip>
           )}
           <ApiSpendList spend={apiSpend} compact />
         </div>

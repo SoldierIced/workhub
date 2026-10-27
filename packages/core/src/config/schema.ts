@@ -101,6 +101,12 @@ export interface AppOptions {
   protectedBranches?: string[]
   /** "Pause notifications": nothing is shown until this moment (epoch ms). Unset when not paused. */
   notificationsPausedUntil?: number
+  /**
+   * The mode a new session of an agent starts in when neither the session nor its account picks
+   * one (Settings → Agents), by agent id: Claude's permission mode, an ACP agent's mode (Codex's
+   * approval preset), Kiro's agent. Unset: the agent's own default.
+   */
+  agentDefaultModes?: Record<string, string>
 }
 
 /** Words per minute the voice speaks at (Workhub 1's range). */
@@ -111,6 +117,23 @@ export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyRepli
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
+}
+
+/** The per-agent default modes with one agent's set (or cleared, for an empty or null mode). */
+export function withAgentDefaultMode(modes: Readonly<Record<string, string>> | undefined, agentId: string, modeId: string | null): Record<string, string> {
+  const next = { ...modes }
+  const mode = modeId?.trim()
+  if (mode) next[agentId] = mode
+  else delete next[agentId]
+  return next
+}
+
+/**
+ * The mode a new session starts in when it picks none: its account's default, else the agent's
+ * default (Settings → Agents), else undefined (the agent's own default applies).
+ */
+export function defaultStartMode(config: Pick<WorkhubConfig, 'options'>, agentId: string, account: { defaultMode?: string } | null | undefined): string | undefined {
+  return account?.defaultMode?.trim() || config.options?.agentDefaultModes?.[agentId]?.trim() || undefined
 }
 
 export function emptyConfig(): WorkhubConfig {
@@ -383,7 +406,8 @@ export const configSchema = z.object({
       speechRate: z.number().int().min(SPEECH_RATE_RANGE[0]).max(SPEECH_RATE_RANGE[1]).default(DEFAULT_SPEECH_RATE),
       welcomeDone: z.boolean().default(false),
       protectedBranches: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
-      notificationsPausedUntil: z.number().int().nonnegative().optional()
+      notificationsPausedUntil: z.number().int().nonnegative().optional(),
+      agentDefaultModes: z.record(z.string().min(1).max(64), z.string().trim().min(1).max(200)).optional()
     })
     .optional(),
   sessionGroups: sessionGroups.optional(),
