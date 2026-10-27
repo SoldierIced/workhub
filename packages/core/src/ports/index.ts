@@ -81,13 +81,6 @@ export interface Notifier {
 
 // The ports below are placeholders: their real shapes are designed in the phase noted.
 
-/** Pull requests and repositories (P3: GitHub, GitLab). */
-export interface CodeHost {
-  readonly provider: string
-  /** Whether a URL is a pull/merge request of this host. */
-  recognizes(url: string): boolean
-}
-
 /** Tickets (P4: Jira, Linear, GitHub Issues). */
 export interface TicketTracker {
   readonly provider: string

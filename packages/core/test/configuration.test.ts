@@ -35,8 +35,13 @@ describe('connections', () => {
   })
 
   it('requires a secret when the provider needs one', () => {
+    const { secretRef: _, ...noSecret } = jira
+    expect(messages(createConnection(config(), noSecret))).toEqual(['connections.acme-jira.secretRef: a secret is required'])
+  })
+
+  it('does not require a secret for code hosts that read through the gh/glab login', () => {
     const { secretRef: _, ...noSecret } = github
-    expect(messages(createConnection(config(), noSecret))).toEqual(['connections.acme-github.secretRef: a secret is required'])
+    expect(createConnection(config(), noSecret).ok).toBe(true)
   })
 
   it('does not require a secret for providers that read through the agent', () => {
