@@ -25,6 +25,7 @@ export const toolViewEs: Record<keyof typeof toolViewEn, string> = {
   'tool.running': 'En curso',
   'tool.done': 'Listo',
   'tool.failed': 'Falló',
+  'tool.cancelled': 'Cancelada',
   'tool.diffLabel': 'Cambios en {path}',
   'subagent.label': 'Conversación del subagente',
   'subagent.prompt': 'Prompt del agente principal',

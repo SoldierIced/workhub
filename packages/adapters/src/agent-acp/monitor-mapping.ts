@@ -94,6 +94,21 @@ export class AcpMonitor {
     }
   }
 
+  /**
+   * A turn that ended without `end_turn` (cancelled, refused, out of tokens): its tool calls still
+   * pending or running will never finish, so they are marked cancelled, as ACP asks of the client.
+   */
+  endTurn(stopReason: string): SessionMonitorSnapshot | null {
+    if (stopReason === 'end_turn') return null
+    let changed = false
+    for (const [id, t] of this.tools) {
+      if (t.status !== 'pending' && t.status !== 'in_progress') continue
+      this.tools.set(id, { ...t, status: 'cancelled' })
+      changed = true
+    }
+    return changed ? this.patch({ toolCalls: [...this.tools.values()] }) : null
+  }
+
   /** The result of `session/prompt`. Token counts are summed over the session's turns. */
   applyPromptResult(result: unknown): SessionMonitorSnapshot | null {
     const usage = obj(obj(result)?.['usage'])

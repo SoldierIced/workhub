@@ -23,6 +23,7 @@ export const toolViewEn = {
   'tool.running': 'Running',
   'tool.done': 'Done',
   'tool.failed': 'Failed',
+  'tool.cancelled': 'Cancelled',
   'tool.diffLabel': 'Changes to {path}',
   'subagent.label': 'Sub-agent conversation',
   'subagent.prompt': 'Prompt from the parent',
