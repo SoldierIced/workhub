@@ -1,11 +1,14 @@
-import { Activity, ArrowRight, Ticket, Workflow } from 'lucide-react'
+import { Activity, ArrowRight, Workflow } from 'lucide-react'
 import type { ConnectionKind, Profile } from '@workhub/core'
 import { Badge, Button, STATE_TONE, StateDot, type Tone } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, ListRow, StatTile } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { ATTENTION_ORDER, folderName, formatTokens, groupByAttention, hasConnection, planUsage, tokensByFolder, type Attention } from '../lib/home'
-import { moduleScreens } from '@workhub/core'
+import { moduleScreens, ticketsInProgress } from '@workhub/core'
+import { HomeTicketsCard } from '../components/organisms/HomeTickets'
+import type { Route } from '../lib/nav'
+import { useTickets } from '../ticketsStore'
 import type { SessionData } from '../store'
 import { usePullRequestLists } from '../pullRequestsStore'
 import { PullRequestCard, PullRequestTile } from './pullRequests/HomeCards'
@@ -24,6 +27,7 @@ export interface HomeScreenProps {
   onOpenSettings: (tab?: string) => void
   /** Opens the Pull requests screen, on one PR when a URL is given. */
   onOpenPullRequest: (url?: string) => void
+  onNavigate?: (route: Route) => void
 }
 
 /** "Connect X in Settings" or "arrives in phase N", depending on whether the profile has the connection. */
@@ -43,7 +47,7 @@ function ConnectionNote({ profile, kind, phase, onOpenSettings }: { profile: Pro
   )
 }
 
-export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, onOpenPullRequest }: HomeScreenProps) {
+export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, onOpenPullRequest, onNavigate }: HomeScreenProps) {
   const { t, tn, formatDate } = useI18n()
   const pullRequests = usePullRequestLists(profile?.id ?? null)
   const groups = groupByAttention(sessions)
@@ -52,7 +56,9 @@ export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, o
   const usage = planUsage(sessions).sort((a, b) => b.percent - a.percent)[0]
   const folders = tokensByFolder(sessions).slice(0, 8)
   const maxTokens = folders[0]?.tokens ?? 1
-  const tracker = hasConnection(profile, 'tracker')
+  const tix = useTickets(profile?.id)
+  const trackerLive = tix.status?.state === 'ready' || tix.status?.state === 'demo'
+  const inProgress = ticketsInProgress(tix.tickets).length
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-8 py-7">
@@ -124,7 +130,12 @@ export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, o
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <PullRequestTile kind="mine" lists={pullRequests.lists} loading={pullRequests.loading} />
         <PullRequestTile kind="toReview" lists={pullRequests.lists} loading={pullRequests.loading} />
-        <StatTile label={t('home.ticketsInProgress')} value={null} caption={tracker ? t('home.arrivesIn', { phase: 'P4' }) : t('home.notConnected.tracker')} />
+        <StatTile
+          label={t('home.ticketsInProgress')}
+          value={trackerLive && !tix.error ? inProgress : null}
+          loading={tix.loading}
+          caption={trackerLive ? (tix.error ? t('home.ticketsError') : tn('home.ticketsAssigned', tix.tickets.length)) : t('home.notConnected.tracker')}
+        />
         <StatTile
           label={t('home.planUsage')}
           value={usage ? `${Math.round(usage.percent)}%` : null}
@@ -138,12 +149,16 @@ export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, o
           <PullRequestCard kind="toReview" lists={pullRequests.lists} onOpenPullRequest={onOpenPullRequest} onOpenAll={() => onOpenPullRequest()} onOpenSettings={onOpenSettings} />
         </div>
         <div className="flex flex-col gap-3">
-          <Card>
-            <CardHeader title={t('home.tickets')} icon={<Ticket className="size-4" aria-hidden />} />
-            <CardBody>
-              <ConnectionNote profile={profile} kind="tracker" phase="P4" onOpenSettings={onOpenSettings} />
-            </CardBody>
-          </Card>
+          <HomeTicketsCard
+            profileId={profile?.id}
+            status={tix.status}
+            tickets={tix.tickets}
+            loading={tix.loading}
+            error={tix.error}
+            sessions={sessions}
+            onViewAll={() => onNavigate?.('tickets')}
+            onOpenSettings={() => onOpenSettings('trackers')}
+          />
           <Card>
             <CardHeader title={t('home.tokensByFolder')} meta={t('home.tokensByFolderMeta')} />
             <CardBody>

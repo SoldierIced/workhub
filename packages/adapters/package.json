@@ -14,7 +14,11 @@
     "./workhub1-import": "./src/workhub1-import/index.ts",
     "./codehost-github": "./src/codehost-github/index.ts",
     "./codehost-gitlab": "./src/codehost-gitlab/index.ts",
-    "./cli": "./src/shared/cli.ts"
+    "./cli": "./src/shared/cli.ts",
+    "./tracker-jira": "./src/tracker-jira/index.ts",
+    "./tracker-linear": "./src/tracker-linear/index.ts",
+    "./tracker-demo": "./src/tracker-demo/index.ts",
+    "./http": "./src/shared/http.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

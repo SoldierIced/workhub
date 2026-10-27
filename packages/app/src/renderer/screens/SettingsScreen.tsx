@@ -1,4 +1,4 @@
-import { FolderCog, Languages, Palette, Plug, Plus, Trash2, Users, UserCog } from 'lucide-react'
+import { FolderCog, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import {
   appOptions,
@@ -23,6 +23,7 @@ import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import { TrackerSettings } from './TrackerSettings'
 
 const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
   codeHost: 'kind.codeHost',
@@ -117,6 +118,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
           { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: <AppearanceSection /> },
           { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection snap={snap} run={run} />) },
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection snap={snap} run={run} />) },
+          { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings snap={snap} run={run} />) },
           { value: 'accounts', label: t('settings.accounts'), icon: <UserCog className="size-4" aria-hidden />, content: section(<AccountsSection snap={snap} run={run} />) }
         ]}
       />

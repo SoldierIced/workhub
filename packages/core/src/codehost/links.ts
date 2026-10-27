@@ -62,8 +62,3 @@ export function sessionsForPullRequest(pr: PullRequest, sessions: readonly Linka
 export function pullRequestsForSession(session: LinkableSession, prs: readonly PullRequest[]): PullRequest[] {
   return prs.filter((pr) => reasonFor(pr, session, ticketKeysOfPullRequest(pr)) !== null)
 }
-
-/** The PRs that name a ticket. */
-export function pullRequestsForTicket(key: string, prs: readonly PullRequest[]): PullRequest[] {
-  return prs.filter((pr) => ticketKeysOfPullRequest(pr).includes(key))
-}

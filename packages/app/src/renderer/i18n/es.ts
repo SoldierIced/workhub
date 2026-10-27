@@ -1,5 +1,6 @@
 import type { en } from './en'
 import { prEs } from './pullRequests.es'
+import { ticketsEs } from './tickets.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -277,5 +278,6 @@ export const es: Record<keyof typeof en, string> = {
   'import.noteExists': 'ya existe',
   'import.noteReenter': 'volver a ingresar el secreto',
   'import.noteNotSupported': 'no se importa: {detail}',
-  ...prEs
+  ...prEs,
+  ...ticketsEs
 }

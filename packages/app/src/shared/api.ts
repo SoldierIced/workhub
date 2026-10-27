@@ -23,6 +23,7 @@ import type {
   WorkhubConfig
 } from '@workhub/core'
 import type { CodeHostApi } from './codehost-api'
+import type { TicketsApi } from './tickets-api'
 
 export interface ConfigSnapshot {
   config: WorkhubConfig
@@ -176,4 +177,5 @@ export interface HubApi {
   history: HistoryApi
   usage: UsageApi
   codeHost: CodeHostApi
+  tickets: TicketsApi
 }

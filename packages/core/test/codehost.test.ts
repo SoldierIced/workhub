@@ -244,7 +244,7 @@ describe('links', () => {
   it('finds PRs of a session and of a ticket', () => {
     const prs = [pr({ number: 1, title: 'ABC-5 a' }), pr({ number: 2, branch: 'feat/x', url: 'https://github.com/acme/api/pull/2' })]
     expect(pullRequestsForSession({ id: 's', branch: 'feat/x' }, prs).map((p) => p.number)).toEqual([2])
-    expect(pullRequestsForTicket('ABC-5', prs).map((p) => p.number)).toEqual([1])
+    expect(pullRequestsForTicket('ABC-5', prs, [{ provider: 'jira' }]).map((p) => p.number)).toEqual([1])
   })
 })
 

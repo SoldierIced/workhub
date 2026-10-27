@@ -1,4 +1,5 @@
 import { prEn } from './pullRequests.en'
+import { ticketsEn } from './tickets.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -278,5 +279,6 @@ export const en = {
   'import.noteExists': 'already here',
   'import.noteReenter': 're-enter the secret',
   'import.noteNotSupported': 'not imported: {detail}',
-  ...prEn
+  ...prEn,
+  ...ticketsEn
 } as const

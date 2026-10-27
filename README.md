@@ -26,6 +26,9 @@ packages/
                 workhub1-import   Reads Workhub 1's settings read-only (`defaults export`, macOS)
                 codehost-github   CodeHost over the `gh` CLI (your own login, no token stored)
                 codehost-gitlab   CodeHost over the `glab` CLI (fixture-tested only so far)
+                tracker-jira      TicketTracker on Jira Cloud (REST v3, Agile API for sprints)
+                tracker-linear    TicketTracker on Linear (GraphQL; cycles are sprints)
+                tracker-demo      TicketTracker with synthetic tickets (WORKHUB_DEMO_TICKETS=1)
   app/        Electron shell: main process, preload bridge, React renderer (Tailwind + Radix design system, en/es)
 spike/        P0 spike, kept as a reference (not part of the workspaces)
 ```
@@ -88,6 +91,9 @@ cd packages/app
 WORKHUB_DATA_DIR=/tmp/workhub-smoke npx electron . --remote-debugging-port=9222
 node scripts/drive.mjs '[{"tap":"button[aria-label=Settings]"},{"shot":"screenshots/settings.png"}]'
 ```
+
+Set `WORKHUB_DEMO_TICKETS=1` to serve synthetic tickets (Tickets screen, Home cards, ticket window)
+without a Jira or Linear account.
 
 ## Pull requests
 

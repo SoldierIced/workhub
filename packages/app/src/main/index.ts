@@ -23,6 +23,8 @@ import type { AccountUsage, ConfigSnapshot, HistoryItem, HistoryResult, SessionM
 import { claudeAccounts, UsageService } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { SessionManager } from './session-manager'
+import { registerTicketIpc } from './tickets'
+import { TicketService } from './tickets-service'
 
 // Dev layout: packages/app/out/main -> packages/app. Packaging is P8.
 const appRoot = resolve(__dirname, '../..')
@@ -50,6 +52,8 @@ const configuration = new ConfigurationService(configStore, secrets)
 let loadError: string | undefined
 // WORKHUB_DEMO_CODEHOST=1 reads synthetic pull requests instead of a real host (screenshots, demos).
 const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1' })
+// WORKHUB_DEMO_TICKETS=1 serves synthetic tickets, so the UI can be shown without credentials.
+const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1')
 
 let win: BrowserWindow | null = null
 const send = (channel: string, ...args: unknown[]) => {
@@ -213,6 +217,14 @@ function registerIpc(): void {
   ipcMain.handle('history:list', () => listHistory())
   ipcMain.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
 
+  registerTicketIpc({
+    ipcMain,
+    service: ticketService,
+    createWindow: createAuxWindow,
+    mainWindow: () => win,
+    broadcast: (channel, ...args) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send(channel, ...args))
+  })
+
   ipcMain.handle('sessions:list', () => sessions.list())
   ipcMain.handle('sessions:start', (_e, input) => sessions.start(input))
   ipcMain.handle('sessions:prompt', (_e, id: string, text: string, images) => sessions.prompt(id, text, images))
@@ -240,23 +252,35 @@ function openPullRequestWindow(profileId: string | null, url: string): void {
     open.focus()
     return
   }
-  const prWin = new BrowserWindow({
-    width: 1100,
-    height: 780,
-    minWidth: 720,
-    minHeight: 480,
-    title: 'Workhub 2',
+  const hash = `#pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}`
+  const prWin = createAuxWindow(hash, 'Workhub 2', { width: 1100, height: 780, minWidth: 720, minHeight: 480 })
+  prWindows.set(url, prWin)
+  prWin.on('closed', () => prWindows.delete(url))
+}
+
+interface AuxWindowSize {
+  width: number
+  height: number
+  minWidth: number
+  minHeight: number
+}
+
+const TICKET_WINDOW_SIZE: AuxWindowSize = { width: 820, height: 760, minWidth: 560, minHeight: 420 }
+
+/** A secondary window (a pull request, a ticket) on the same renderer, routed by its hash. */
+function createAuxWindow(hash: string, title: string, size: AuxWindowSize = TICKET_WINDOW_SIZE): BrowserWindow {
+  const aux = new BrowserWindow({
+    ...size,
+    title,
     backgroundColor: chromeColors().color,
     ...windowChrome(),
     webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   })
-  prWindows.set(url, prWin)
-  prWin.on('closed', () => prWindows.delete(url))
   // Links inside the app never navigate or open windows of their own.
-  prWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  const hash = `pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}`
-  if (process.env['ELECTRON_RENDERER_URL']) void prWin.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#${hash}`)
-  else void prWin.loadFile(join(__dirname, '../renderer/index.html'), { hash })
+  aux.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  if (process.env['ELECTRON_RENDERER_URL']) void aux.loadURL(process.env['ELECTRON_RENDERER_URL'] + hash)
+  else void aux.loadFile(join(__dirname, '../renderer/index.html'), { hash: hash.replace(/^#/, '') })
+  return aux
 }
 
 function createWindow(): void {
