@@ -20,7 +20,7 @@ import {
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { AgentOrderList, Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
-import { Workhub1Import } from '../components/organisms'
+import { Workhub1Import, Workhub1SecretsImport } from '../components/organisms'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
@@ -115,6 +115,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
       <h1 className="text-2xl font-semibold tracking-tight">{t('nav.settings')}</h1>
       {snap.loadError && <Issues title={t('settings.loadError')} issues={[{ path: 'config.json', message: snap.loadError }]} />}
       <Issues title={t('settings.storedProblems')} issues={snap.issues} />
+      {snap.issues.some((i) => i.message === 'a secret is required') && <Workhub1SecretsImport compact />}
       <Tabs
         label={t('nav.settings')}
         value={tab}

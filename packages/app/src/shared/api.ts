@@ -22,6 +22,7 @@ import type {
   SessionGroups,
   SessionScreen,
   ValidationIssue,
+  Workhub1SecretResult,
   WorkhubConfig
 } from '@workhub/core'
 import type { AiReviewApi } from './ai-review-api'
@@ -64,6 +65,8 @@ export interface ConfigApi {
   previewWorkhub1Import(): Promise<{ available: boolean; plan?: ImportPlan; error?: string }>
   /** Reads Workhub 1's settings again and adds what the preview showed. Never writes to Workhub 1. */
   applyWorkhub1Import(): Promise<Result<WorkhubConfig>>
+  /** macOS: copies the tokens of Workhub 1's Keychain items (macOS asks to allow each) into the secret store. Statuses only, never a secret. */
+  importWorkhub1Secrets(): Promise<Workhub1SecretResult[]>
   /** Main changed the config on its own (a session's group place moved to its real id). */
   onChanged(cb: () => void): () => void
 }

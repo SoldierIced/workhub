@@ -33,6 +33,7 @@ const api: HubApi = {
     effectiveAgents: (profileId) => ipcRenderer.invoke('config:effectiveAgents', profileId),
     previewWorkhub1Import: () => ipcRenderer.invoke('config:previewWorkhub1Import'),
     applyWorkhub1Import: () => ipcRenderer.invoke('config:applyWorkhub1Import'),
+    importWorkhub1Secrets: () => ipcRenderer.invoke('config:importWorkhub1Secrets'),
     onChanged: (cb) => subscribe<[]>('config:changed', cb)
   },
   tickets: {
