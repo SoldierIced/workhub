@@ -87,8 +87,3 @@ export type { TicketTracker } from '../tickets/ticket-tracker'
 export interface ChatSource {
   readonly provider: string
 }
-
-/** Environment health signals (P6: Elastic APM; Sentry or Datadog later). */
-export interface HealthProvider {
-  readonly provider: string
-}

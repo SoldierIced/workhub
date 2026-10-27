@@ -1,3 +1,4 @@
+import type { HealthSettings } from '../health/types'
 import type { ConnectionKind } from './connection'
 
 /** Optional modules (PLAN section 4): each one adds its screens only when enabled in a profile. */
@@ -26,4 +27,6 @@ export interface Profile {
   modules: ModuleToggles
   /** Folders the profile works in (Workhub 1's profile folders): new sessions and history group by them. */
   folders?: string[]
+  /** Health module setup: environments to watch and the refresh interval (the cluster is the profile's `health` connection). */
+  health?: HealthSettings
 }
