@@ -18,6 +18,7 @@ import { mapDetail, mapSearchResponse } from './mapping'
 const SEARCH_QUERY = `query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
   number title url state isDraft updatedAt headRefName baseRefName additions deletions changedFiles
   reviewDecision mergeable author { login } repository { name owner { login } }
+  comments { totalCount } reviewThreads { totalCount }
   commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
 } } } }`
 
