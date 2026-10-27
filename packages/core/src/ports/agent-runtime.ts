@@ -22,6 +22,11 @@ export interface StartSessionRequest {
   /** Model to start with; the agent's default when unset. */
   model?: string
   /**
+   * Session mode to start in (ACP `session/set_mode`): the agent or persona for Kiro and OpenCode,
+   * the approval preset for Codex. Ignored when the agent does not offer it; `readOnly` wins.
+   */
+  modeId?: string
+  /**
    * Start in the most read-only mode the agent supports (an AI reviewer): Claude's `plan` mode
    * with edit tools denied, or an ACP permission mode such as `plan` / `read-only`.
    */
@@ -50,6 +55,11 @@ export interface StartedSession {
   availableModes?: SessionModeOption[]
   /** A model was asked for but the agent cannot select one (or refused): it runs with its default. */
   modelIgnored?: boolean
+  /** A mode was asked for but the agent does not offer it (or refused): it runs in its default. */
+  modeIgnored?: boolean
+  /** Models the session can switch to, and the current one, when the agent reports them. */
+  models?: ModelOption[]
+  currentModelId?: string
 }
 
 export interface PermissionOption {
@@ -127,6 +137,24 @@ export interface SessionControls {
   refreshMcp(sessionId: string): void
   reconnectMcp(sessionId: string, server: string): void
   toggleMcp(sessionId: string, server: string, enabled: boolean): void
+}
+
+/** Switching the model of a running session (native Claude; ACP agents that list models). */
+export interface ModelControl {
+  setModel(sessionId: string, modelId: string | null): Promise<void>
+}
+
+/** Switching the session mode of a running session (ACP `session/set_mode`): agent, persona or approval preset. */
+export interface SessionModeControl {
+  setSessionMode(sessionId: string, modeId: string): Promise<void>
+}
+
+export function canSetModel(runtime: AgentRuntime): runtime is AgentRuntime & ModelControl {
+  return typeof (runtime as Partial<ModelControl>).setModel === 'function'
+}
+
+export function canSetSessionMode(runtime: AgentRuntime): runtime is AgentRuntime & SessionModeControl {
+  return typeof (runtime as Partial<SessionModeControl>).setSessionMode === 'function'
 }
 
 export function hasSessionControls(runtime: AgentRuntime): runtime is AgentRuntime & SessionControls {

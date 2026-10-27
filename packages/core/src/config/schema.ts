@@ -133,7 +133,11 @@ const account = z.object({
   agentId: id,
   name: z.string().min(1),
   configDir: z.string().optional(),
-  env: stringMap.optional()
+  env: stringMap.optional(),
+  // Optional, so older files load unchanged (no version bump).
+  command: z.string().trim().min(1).max(1000).optional(),
+  defaultModel: z.string().trim().min(1).max(200).optional(),
+  defaultMode: z.string().trim().min(1).max(200).optional()
 })
 
 /** A number clamped into a range, as Workhub 1 did: a hand-edited out-of-range value never keeps the config from loading. */
