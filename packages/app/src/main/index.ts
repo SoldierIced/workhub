@@ -813,7 +813,7 @@ function registerIpc(): void {
   ipc.on('sessions:write', (_e, id: string, data: string) => sessions.write(id, data))
   ipc.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
 
-  registerCodeHostIpc(ipc, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url, profileId) => openLink(profileId, url) })
+  registerCodeHostIpc(ipc, { service: codeHost, openWindow: openPullRequestWindow, showInWorkhub: showPullRequestInMain, openExternal: (url, profileId) => openLink(profileId, url) })
   registerLinksIpc({ ipcMain: ipc, loadConfig: () => configuration.current(), mainWindow: () => win })
   registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification })
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
@@ -882,6 +882,12 @@ function showMain(): void {
   w.show()
   w.focus()
   if (process.platform === 'darwin') app.focus({ steal: true })
+}
+
+/** A PR window's "Show in Workhub": the main window comes up on Pull requests with that PR selected. */
+function showPullRequestInMain(url: string): void {
+  showMain()
+  send('codeHost:focus', url)
 }
 
 function navigate(route: TrayRoute): void {

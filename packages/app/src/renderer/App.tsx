@@ -185,6 +185,8 @@ function Shell() {
     setPrFocus(url ?? null)
     showScreen('pullRequests')
   }, [showScreen])
+  // A pull request window asked to show its PR here.
+  useEffect(() => window.hub.codeHost.onFocus((url) => openPullRequest(url)), [openPullRequest])
   // A ticket window asked to show one of the sessions.
   useEffect(() => window.hub.tickets.onOpenSession(openSession), [openSession])
   const openSettings = useCallback((tab?: string) => {

@@ -18,7 +18,10 @@ import {
   postComment,
   closePullRequest,
   closeRefusal,
+  appOptions,
   isLongLivedBranch,
+  parseConfig,
+  parseBranchList,
   pullRequestsForSession,
   pullRequestsForTicket,
   reviewerStates,
@@ -168,6 +171,25 @@ describe('review rules', () => {
     expect(isLongLivedBranch('feat/main-menu')).toBe(false)
     expect(isLongLivedBranch('hotfix', ['hotfix'])).toBe(true)
     expect(host.calls).toHaveLength(3)
+  })
+})
+
+describe('configurable protected branches', () => {
+  it('uses the configured list for the delete lock, keeping release branches always', async () => {
+    const host = fakeHost()
+    const protectedBranches = ['hotfix', 'Trunk']
+    await closePullRequest(host, pr(), { state: 'open', branch: 'develop' }, true, { comment: '', deleteBranch: true, protectedBranches })
+    await closePullRequest(host, pr(), { state: 'open', branch: 'trunk' }, true, { comment: '', deleteBranch: true, protectedBranches })
+    await closePullRequest(host, pr(), { state: 'open', branch: 'release/3' }, true, { comment: '', deleteBranch: true, protectedBranches })
+    expect(host.calls).toEqual(['close::true:develop', 'close::false:trunk', 'close::false:release/3'])
+  })
+
+  it('parses a typed list and round-trips through the config', () => {
+    expect(parseBranchList(' main, develop;\nmain  qa ,, ')).toEqual(['main', 'develop', 'qa'])
+    expect(parseBranchList('  ')).toEqual([])
+    expect(appOptions(parseConfig({ version: 7, profiles: [] })).protectedBranches).toBeUndefined()
+    expect(appOptions(parseConfig({ version: 7, options: { protectedBranches: ['a', 'b'] }, profiles: [] })).protectedBranches).toEqual(['a', 'b'])
+    expect(() => parseConfig({ version: 7, options: { protectedBranches: [''] }, profiles: [] })).toThrow()
   })
 })
 
