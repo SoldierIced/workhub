@@ -12,3 +12,18 @@ export function accountEnvHintKey(agentId: string): MessageKey | null {
   const key = `settings.envHint.${agentId}`
   return key in en ? (key as MessageKey) : null
 }
+
+export type AgentGlyph = 'claude' | 'kiro' | 'codex' | 'opencode' | 'gemini' | 'shell' | 'generic'
+
+const SHELLS = new Set(['shell', 'terminal', 'bash', 'zsh', 'sh', 'fish', 'pwsh', 'powershell'])
+
+/**
+ * Which mark an agent gets. Accepts an agent id or an `agent:account` key; ids such as
+ * `claude-acp` map to their family. A terminal agent that is not a known one is a shell.
+ */
+export function agentGlyph(agentId: string, adapter?: string): AgentGlyph {
+  const id = agentId.split(':')[0]!.toLowerCase()
+  for (const family of ['claude', 'kiro', 'codex', 'opencode', 'gemini'] as const) if (id === family || id.startsWith(`${family}-`)) return family
+  if (SHELLS.has(id) || adapter === 'terminal') return 'shell'
+  return 'generic'
+}

@@ -26,11 +26,13 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { LEVEL_LABEL, LEVEL_TONE } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 import { folderName } from '../../lib/home'
-import { listSessions, memberOf, newGroupId, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
+import { listSessions, memberOf, newGroupId, sessionName, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
 import { awaitingAnswer, pushItem } from '../../store'
+import { AgentIcon } from '../atoms/AgentIcon'
 import { Badge } from '../atoms/Badge'
 import { Button } from '../atoms/Button'
 import { Input } from '../atoms/Input'
+import { Tooltip } from '../atoms/Tooltip'
 import { STATE_TONE, StateDot } from '../atoms/StateDot'
 import { Dialog } from '../molecules/Dialog'
 import { Field } from '../molecules/Field'
@@ -335,8 +337,13 @@ function SessionItem(props: {
   // A session that was stopped is as good as closed: dimmed, and the row reopens it.
   const stopped = data?.view.state === 'stopped'
   const status = data ? (data.unseen && level ? t(LEVEL_LABEL[level]) : t(`state.${data.view.state}`)) : t('groups.closed')
-  const title = data ? data.view.agentName : member.title
+  const title = data ? sessionName(data) : member.title
   const cwd = data ? data.view.cwd : member.cwd
+  const agentId = data ? data.view.agentId : member.agentKey
+  const agentName = data?.view.agentName
+  const accountName = data?.view.accountName
+  // The full name, then where it runs: shown on hover because the row truncates all of it.
+  const details = [agentName, accountName, folderName(cwd)].filter(Boolean).join(' · ')
   const onKey = (e: KeyboardEvent) => {
     // Delete or Backspace closes the focused session, as the close button does.
     if (props.onClose && !e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace')) {
@@ -371,26 +378,47 @@ function SessionItem(props: {
               (closed || stopped) && 'opacity-60'
             )}
           >
-            <button
-              type="button"
-              onClick={props.onOpen}
-              onKeyDown={onKey}
-              aria-current={props.selected ? 'true' : undefined}
-              title={closed ? t('groups.reopen') : cwd}
-              className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1.5 pr-1 text-left', props.nested ? 'pl-2' : 'pl-3.5')}
-            >
-              {closed ? <RotateCcw className="size-3 shrink-0 text-subtle" aria-hidden /> : <StateDot tone={tone} pulse={level === 'working' || data?.view.state === 'busy' || data?.view.state === 'starting'} />}
-              <span className="min-w-0 flex-1">
-                <span className={cn('block truncate text-base', data?.unseen && 'font-semibold text-text')}>{title}</span>
-                <span className="block truncate text-xs text-subtle">
-                  {folderName(cwd)} · {data?.view.accountName ? `${data.view.accountName} · ` : ''}
-                  {status}
+            <Tooltip
+              side="right"
+              content={
+                <span className="block max-w-xs break-words">
+                  <span className="block font-medium">{title}</span>
+                  <span className="block text-xs text-muted">{details}</span>
+                  <span className="block text-xs text-subtle">{closed ? t('groups.reopen') : cwd}</span>
                 </span>
-              </span>
-              {data?.unseen && (
-                <span data-testid="unseen-mark" role="img" aria-label={t('attention.unseen')} className="size-2 shrink-0 rounded-full bg-accent" />
-              )}
-            </button>
+              }
+            >
+              <button
+                type="button"
+                onClick={props.onOpen}
+                onKeyDown={onKey}
+                aria-current={props.selected ? 'true' : undefined}
+                className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1.5 pr-1 text-left', props.nested ? 'pl-2' : 'pl-3')}
+              >
+                <span className="relative inline-flex shrink-0">
+                  <AgentIcon agentId={agentId} adapter={data?.view.adapter} label={agentName} />
+                  {closed ? (
+                    <RotateCcw className="absolute -right-1 -bottom-1 size-3 rounded-full bg-surface text-subtle" aria-hidden />
+                  ) : (
+                    <StateDot
+                      tone={tone}
+                      pulse={level === 'working' || data?.view.state === 'busy' || data?.view.state === 'starting'}
+                      className="absolute -right-0.5 -bottom-0.5 rounded-full ring-2 ring-sidebar"
+                    />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={cn('block truncate text-base', data?.unseen && 'font-semibold text-text')}>{title}</span>
+                  <span className="block truncate text-xs text-subtle">
+                    {folderName(cwd)} · {accountName ? `${accountName} · ` : ''}
+                    {status}
+                  </span>
+                </span>
+                {data?.unseen && (
+                  <span data-testid="unseen-mark" role="img" aria-label={t('attention.unseen')} className="size-2 shrink-0 rounded-full bg-accent" />
+                )}
+              </button>
+            </Tooltip>
             {props.onClose && (
               <button
                 type="button"
