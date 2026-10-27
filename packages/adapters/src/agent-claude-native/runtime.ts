@@ -138,7 +138,9 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
       cwd: req.cwd,
       configDir: req.env['CLAUDE_CONFIG_DIR'],
       ...(req.resume ? { resume: agentSessionId } : { sessionId: agentSessionId }),
-      ...(req.model ? { model: req.model } : {})
+      ...(req.model ? { model: req.model } : {}),
+      // A reviewer: plan mode, and the edit tools refused outright.
+      ...(req.readOnly ? { permissionMode: 'plan', readOnly: true } : {})
     })
     try {
       await ready
@@ -149,7 +151,7 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
       throw new Error(message)
     }
     this.emit({ sessionId: id, type: 'state', state: 'ready' })
-    return { agentSessionId, agentName: 'Claude Code', permissionMode: null }
+    return { agentSessionId, agentName: 'Claude Code', permissionMode: req.readOnly ? { id: 'plan', label: 'Plan (read-only)', source: 'workhub' } : null }
   }
 
   async prompt(sessionId: string, text: string, images: ImageInput[] = []): Promise<PromptResult> {

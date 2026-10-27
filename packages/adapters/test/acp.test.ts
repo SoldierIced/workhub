@@ -186,6 +186,15 @@ describe('AcpRuntime against a fake ACP agent', () => {
     })
   })
 
+  it('starts a read-only session in the agent\'s plan mode', async () => {
+    await withRuntime(async (rt, events) => {
+      const started = await rt.start({ sessionId: 's-ro', agent: { ...fakeAgent, modeSemantics: 'permission' }, account: null, cwd: process.cwd(), env: {}, readOnly: true })
+      expect(started.currentModeId).toBe('plan')
+      expect(started.permissionMode).toMatchObject({ id: 'plan', unattended: false })
+      await vi.waitFor(() => expect(events).toContainEqual({ sessionId: 's-ro', type: 'stderr', line: 'set_mode:plan' }))
+    })
+  })
+
   it('relays permission requests and their answer', async () => {
     await withRuntime(async (rt, events) => {
       rt.subscribe((e) => {

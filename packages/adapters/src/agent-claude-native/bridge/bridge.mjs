@@ -7,7 +7,7 @@
 //
 // app -> bridge (stdin):
 //   {"type":"start","cwd","executable"?,"configDir"?,"sessionId"?,"resume"?,
-//    "model"?,"effort"?,"permissionMode"?,"fast"?}
+//    "model"?,"effort"?,"permissionMode"?,"fast"?,"readOnly"?}
 //   {"type":"user","text"} or {"type":"user","content":[text and image blocks]}
 //   {"type":"permission","id","result":{behavior,...}}
 //   {"type":"interrupt"}
@@ -140,6 +140,8 @@ async function start(config) {
   // What the composer had chosen, so switching views keeps model, effort and mode.
   if (config.model) options.model = config.model;
   if (config.permissionMode) options.permissionMode = config.permissionMode;
+  // An AI reviewer reads only: the tools that change files are not offered at all.
+  if (config.readOnly) options.disallowedTools = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
   const settings = {};
   // In SDK sessions the claude.ai Slack connector shadows the official Slack plugin (both serve
   // mcp.slack.com), so an unauthorized connector hides a working plugin. When the account has the
@@ -166,7 +168,8 @@ async function start(config) {
         commands: init.commands,
         fastModeState: init.fast_mode_state ?? null,
         defaults: {
-          permissionMode: settings?.effective?.permissions?.defaultMode ?? null,
+          // The mode asked for at start wins over the settings' default (a read-only reviewer runs in plan).
+          permissionMode: config.permissionMode ?? settings?.effective?.permissions?.defaultMode ?? null,
           effort: settings?.effective?.effortLevel ?? null,
         },
       });
