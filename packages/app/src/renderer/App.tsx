@@ -67,6 +67,8 @@ function Shell() {
   useEffect(() => {
     startStore()
     void refreshConfig()
+    // Main moves a session's group place to its real id by itself; the stale copy must not be saved back.
+    return window.hub.config.onChanged(() => void refreshConfig())
   }, [])
 
   const profiles = snap?.config.profiles ?? []

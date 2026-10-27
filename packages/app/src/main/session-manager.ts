@@ -50,6 +50,8 @@ export interface SessionManagerDeps {
   emitEvent: (e: AgentEvent) => void
   emitChanged: (s: SessionView) => void
   emitReplay: (id: string, messages: HistoryMessage[]) => void
+  /** Main rewrote the config by itself (a group place moved to a session's real id): the renderer reloads it. */
+  emitConfigChanged?: () => void
   /** How often transcripts are read for the monitor (Workhub 1: every 3 s). */
   pollMs?: number
 }
@@ -266,7 +268,8 @@ export class SessionManager {
       patch.identity = patch.agentSessionId
       if (previous) {
         try {
-          await this.deps.config.replaceSessionIdentity(previous, patch.agentSessionId)
+          const moved = await this.deps.config.replaceSessionIdentity(previous, patch.agentSessionId)
+          if (moved?.ok) this.deps.emitConfigChanged?.()
         } catch {
           // The groups are a convenience; the session still starts.
         }

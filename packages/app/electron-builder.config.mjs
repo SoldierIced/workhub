@@ -42,6 +42,16 @@ export default {
   extraMetadata: { name: BRAND.slug, productName: BRAND.productName, version, main: 'out/main/index.js' },
   afterPack: './scripts/after-pack.mjs',
   npmRebuild: true,
+  // Electron fuses, flipped in the packaged binary so it cannot be repurposed by its environment.
+  electronFuses: {
+    // Kept on: the Claude bridge (packages/adapters/src/agent-claude-native/runtime.ts and
+    // history.ts) runs as plain Node through this same binary with ELECTRON_RUN_AS_NODE=1.
+    runAsNode: true,
+    enableNodeOptionsEnvironmentVariable: false,
+    enableNodeCliInspectArguments: false,
+    enableEmbeddedAsarIntegrityValidation: true,
+    onlyLoadAppFromAsar: true
+  },
   artifactName: `${BRAND.productName.replace(/ /g, '-')}-\${version}-\${os}-\${arch}.\${ext}`,
   publish: { provider: 'github', owner: BRAND.repo.owner, repo: BRAND.repo.name, releaseType: 'prerelease' },
   mac: {

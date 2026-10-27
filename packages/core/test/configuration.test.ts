@@ -7,6 +7,8 @@ import {
   deleteAccount,
   deleteConnection,
   deleteProfile,
+  RETYPE_SECRET_TO_TEST,
+  secretForConnectionTest,
   updateConnection,
   updateProfile,
   validateConfig,
@@ -192,5 +194,26 @@ describe('ConfigurationService', () => {
     const saved = store.saved.at(-1)!
     expect(saved.profiles).toHaveLength(1)
     expect(saved.profiles[0]?.name).toBe('Acme 2')
+  })
+})
+
+describe('secretForConnectionTest', () => {
+  const saved = { ...jira, secretRef: 'connection/acme-jira' }
+  const secrets = new MemorySecrets()
+  secrets.values.set('connection/acme-jira', 'stored')
+  secrets.values.set('connection/other', 'other')
+  const cfg = config({ connections: [saved] })
+
+  it('uses a typed secret as is and no secret when cleared', async () => {
+    expect(await secretForConnectionTest(cfg, secrets, { ...saved, endpoint: 'https://new.example.com' }, { action: 'set', value: 'typed' })).toEqual({ ok: true, secret: 'typed' })
+    expect(await secretForConnectionTest(cfg, secrets, saved, { action: 'clear' })).toEqual({ ok: true, secret: null })
+  })
+
+  it('keeps only the stored secret of the saved connection, for its saved address', async () => {
+    expect(await secretForConnectionTest(cfg, secrets, saved, { action: 'keep' })).toEqual({ ok: true, secret: 'stored' })
+    expect(await secretForConnectionTest(cfg, secrets, { ...saved, secretRef: 'connection/other' }, { action: 'keep' })).toEqual({ ok: true, secret: 'stored' })
+    expect(await secretForConnectionTest(cfg, secrets, { ...saved, endpoint: 'https://attacker.example.net' }, { action: 'keep' })).toEqual({ ok: false, error: RETYPE_SECRET_TO_TEST })
+    expect(await secretForConnectionTest(cfg, secrets, { ...saved, endpoint: undefined }, { action: 'keep' })).toEqual({ ok: false, error: RETYPE_SECRET_TO_TEST })
+    expect(await secretForConnectionTest(cfg, secrets, { ...saved, id: 'other', secretRef: 'connection/other' }, { action: 'keep' })).toEqual({ ok: true, secret: null })
   })
 })

@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { BrowserWindow, IpcMain } from 'electron'
+import type { BrowserWindow } from 'electron'
+import type { IpcRegistrar } from './ipc-guard'
 import type { Checkout, WorkhubConfig } from '@workhub/core'
 import type { SessionIntent } from '../shared/links-api'
 
@@ -48,7 +49,7 @@ export async function checkoutsOf(folders: string[]): Promise<Checkout[]> {
 }
 
 export interface LinksIpcDeps {
-  ipcMain: IpcMain
+  ipcMain: IpcRegistrar
   loadConfig: () => Promise<WorkhubConfig>
   mainWindow: () => BrowserWindow | null
 }

@@ -1,4 +1,4 @@
-import type { IpcMain } from 'electron'
+import type { IpcRegistrar } from './ipc-guard'
 import type { AutomationDefinition, ChatWatcherSettings, ConfigurationService, Result, WorkhubConfig } from '@workhub/core'
 import type { SlackDemoInput, TrackThreadInput } from '../shared/chat-api'
 import type { AutomationService } from './automations'
@@ -8,7 +8,7 @@ type Guard = <A extends unknown[]>(fn: (...args: A) => Promise<Result<WorkhubCon
 
 /** IPC of the Slack watcher (`slack:*`) and the automations (`automations:*`). */
 export function registerChatIpc(
-  ipcMain: IpcMain,
+  ipcMain: IpcRegistrar,
   deps: { slack: SlackWatcherService; automations: AutomationService; configuration: ConfigurationService; guarded: Guard }
 ): void {
   const { slack, automations, configuration, guarded } = deps

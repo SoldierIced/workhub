@@ -15,6 +15,7 @@ import {
   rateLimitWindow,
   toHistoryMessages
 } from '../src/agent-claude-native'
+import { agentEnv } from '../src/agent-claude-native/bridge/env.mjs'
 import { parsePlist, workhub1SettingsFromPlist } from '../src/workhub1-import'
 
 const fixtures = join(import.meta.dirname, 'fixtures')
@@ -115,6 +116,26 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     await rt.stop('n6')
     await waitFor(events, (e) => e.type === 'state' && e.state === 'stopped')
     await expect(rt.prompt('n6', 'x')).rejects.toThrow(/no Claude session/)
+  })
+})
+
+describe('the environment the bridge hands to Claude Code', () => {
+  it('drops Electron internals such as ELECTRON_RUN_AS_NODE and keeps the rest', () => {
+    const env = agentEnv(
+      { PATH: '/usr/bin', HOME: '/home/dana', ELECTRON_RUN_AS_NODE: '1', ELECTRON_RENDERER_URL: 'http://localhost:5173', ELECTRON_NO_ASAR: '1', ELECTRON_NO_ATTACH_CONSOLE: '1' },
+      { CLAUDE_CODE_MCP_STARTUP_WAIT_MS: '15000' }
+    )
+    expect(env).toEqual({ CLAUDE_CODE_MCP_STARTUP_WAIT_MS: '15000', PATH: '/usr/bin', HOME: '/home/dana' })
+  })
+  it('lets a value from the bridge env win over a default', () => {
+    expect(agentEnv({ CLAUDE_CODE_MCP_STARTUP_WAIT_MS: '1' }, { CLAUDE_CODE_MCP_STARTUP_WAIT_MS: '15000' })).toEqual({ CLAUDE_CODE_MCP_STARTUP_WAIT_MS: '1' })
+  })
+  it('is what both bridge scripts pass to the SDK', () => {
+    for (const script of ['bridge.mjs', 'oneshot.mjs']) {
+      const source = readFileSync(join(import.meta.dirname, '../src/agent-claude-native/bridge', script), 'utf8')
+      expect(source).toContain('agentEnv(process.env')
+      expect(source).not.toMatch(/\.\.\.process\.env/)
+    }
   })
 })
 

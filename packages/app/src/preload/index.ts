@@ -31,7 +31,8 @@ const api: HubApi = {
     saveSessionGroups: (g) => ipcRenderer.invoke('config:saveSessionGroups', g),
     effectiveAgents: (profileId) => ipcRenderer.invoke('config:effectiveAgents', profileId),
     previewWorkhub1Import: () => ipcRenderer.invoke('config:previewWorkhub1Import'),
-    applyWorkhub1Import: () => ipcRenderer.invoke('config:applyWorkhub1Import')
+    applyWorkhub1Import: () => ipcRenderer.invoke('config:applyWorkhub1Import'),
+    onChanged: (cb) => subscribe<[]>('config:changed', cb)
   },
   tickets: {
     status: (profileId) => ipcRenderer.invoke('tickets:status', profileId),

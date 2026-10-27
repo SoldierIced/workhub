@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyConfig, type Connection, type Profile, type SecretStore, type WorkhubConfig } from '@workhub/core'
+import { emptyConfig, RETYPE_SECRET_TO_TEST, type Connection, type Profile, type SecretStore, type WorkhubConfig } from '@workhub/core'
 import type { HttpClient } from '@workhub/adapters/http'
 import { buildTracker, TicketService } from '../src/main/tickets-service'
 
@@ -72,10 +72,23 @@ describe('TicketService', () => {
 
   it('tests a typed connection with the typed token, or the stored one', async () => {
     const http: HttpClient = async (req) => ({ status: req.headers['Authorization']?.includes(Buffer.from('dana@example.com:typed').toString('base64')) || req.headers['Authorization']?.includes(Buffer.from('dana@example.com:stored').toString('base64')) ? 200 : 401, text: JSON.stringify({ displayName: 'Dana Test' }) })
-    const s = service({ secrets: { 'connection/work-jira': 'stored' }, http })
+    const s = service({ connections: [jira], secrets: { 'connection/work-jira': 'stored' }, http })
     expect(await s.test(jira, { action: 'set', value: 'typed' })).toEqual({ ok: true, account: 'Dana Test' })
     expect(await s.test(jira, { action: 'keep' })).toEqual({ ok: true, account: 'Dana Test' })
     expect(await s.test(jira, { action: 'clear' })).toEqual({ ok: false, error: 'The token is missing' })
     expect(await s.test({ ...jira, endpoint: 'http://insecure.example.com' }, { action: 'set', value: 'x' })).toEqual({ ok: false, error: 'The Jira site must use https' })
+  })
+
+  it('never sends the stored token to an address or a secret the form picked', async () => {
+    const seen: string[] = []
+    const http: HttpClient = async (req) => (seen.push(`${new URL(req.url).host} ${req.headers['Authorization'] ?? ''}`), { status: 200, text: JSON.stringify({ displayName: 'Dana Test' }) })
+    const other: Connection = { ...jira, id: 'other', secretRef: 'connection/other' }
+    const s = service({ connections: [jira, other], secrets: { 'connection/work-jira': 'stored', 'connection/other': 'other-token' }, http })
+    expect(await s.test({ ...jira, endpoint: 'https://attacker.example.net' }, { action: 'keep' })).toEqual({ ok: false, error: RETYPE_SECRET_TO_TEST })
+    // A renderer-chosen secretRef is ignored: only the connection's own stored token is read.
+    expect(await s.test({ ...jira, secretRef: 'connection/other' }, { action: 'keep' })).toEqual({ ok: true, account: 'Dana Test' })
+    // A connection that was never saved has no stored token to keep.
+    expect(await s.test({ ...jira, id: 'new', secretRef: 'connection/work-jira' }, { action: 'keep' })).toEqual({ ok: false, error: 'The token is missing' })
+    expect(seen).toEqual([`acme.example.com Basic ${Buffer.from('dana@example.com:stored').toString('base64')}`])
   })
 })

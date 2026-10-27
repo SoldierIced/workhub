@@ -3,7 +3,7 @@ import { JiraTracker } from '@workhub/adapters/tracker-jira'
 import { LinearTracker } from '@workhub/adapters/tracker-linear'
 import type { HttpClient } from '@workhub/adapters/http'
 import {
-  connectionSecretRef,
+  secretForConnectionTest,
   type ConfigurationService,
   type Connection,
   type ConnectionTest,
@@ -90,8 +90,9 @@ export class TicketService {
 
   async test(connection: Connection, change: SecretChange): Promise<ConnectionTest> {
     if (this.demo) return new DemoTracker(connection.provider).testConnection()
-    const ref = connection.secretRef ?? connectionSecretRef(connection.id)
-    const secret = change.action === 'set' ? change.value : change.action === 'keep' ? await this.secrets.get(ref) : null
+    const resolved = await secretForConnectionTest(await this.configuration.current(), this.secrets, connection, change)
+    if (!resolved.ok) return resolved
+    const { secret } = resolved
     try {
       const built = buildTracker(connection, secret, this.http)
       if ('missing' in built) return { ok: false, error: built.missing === 'unsupported' ? NOT_READY.unsupported : `The ${built.detail} is missing` }

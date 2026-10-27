@@ -21,6 +21,7 @@ import type {
   StartSessionRequest,
   Unsubscribe
 } from '@workhub/core'
+import { pathKeyOf } from '../shared/login-path'
 import { ClaudeBridgeMapper, permissionResult, resultStopReason } from './mapping'
 
 export interface ClaudeNativeRuntimeOptions {
@@ -35,6 +36,11 @@ export interface ClaudeNativeRuntimeOptions {
   nodeCommand?: string
   /** How long a stopping bridge gets to end Claude cleanly (it runs SessionEnd hooks) before it is killed. */
   stopTimeoutMs?: number
+  /**
+   * The PATH a session starts with (the login shell's, see shared/login-path.ts), read at each
+   * start; the process PATH when unset or when it returns undefined.
+   */
+  path?: () => string | undefined
 }
 
 interface Pending {
@@ -76,9 +82,10 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
     if (this.sessions.has(id)) throw new Error(`session ${id} already exists`)
     this.emit({ sessionId: id, type: 'state', state: 'starting' })
     const agentSessionId = req.agentSessionId ?? randomUUID()
+    const basePath = this.options.path?.()
     const child = spawn(this.options.nodeCommand ?? process.execPath, [join(this.options.bridgeDir, this.options.bridgeScript ?? 'bridge.mjs')], {
       cwd: req.cwd,
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ...req.env },
+      env: { ...process.env, ...(basePath ? { [pathKeyOf(process.env)]: basePath } : {}), ELECTRON_RUN_AS_NODE: '1', ...req.env },
       stdio: ['pipe', 'pipe', 'pipe']
     })
     const session: NativeSession = {
