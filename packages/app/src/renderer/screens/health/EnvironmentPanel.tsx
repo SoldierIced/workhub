@@ -1,15 +1,14 @@
 import { ExternalLink } from 'lucide-react'
-import type { SlowTransaction } from '@workhub/core'
 import type { HealthEnvironmentView } from '@shared/health-api'
 import { Badge, Button, StateDot } from '../../components/atoms'
 import { Card } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { blindSpotText, HEALTH_HINT, HEALTH_LABEL, HEALTH_TONE, reasonText, visibleBlindSpots } from '../../lib/health'
 import { relativeTime } from '../../lib/pullRequests'
-import { ErrorsCard, EventsCard, PodsCard, ReportingCard, SlowCard } from './HealthCards'
+import { ErrorsCard, EventsCard, PodsCard, ReportingCard, showsStderrCard, SlowCard, StderrCard } from './HealthCards'
 
-/** One environment: its verdict with the reasons, what could not be read, and a card per signal. */
-export function EnvironmentPanel({ env, onInvestigate }: { env: HealthEnvironmentView; onInvestigate: (env: HealthEnvironmentView, tx: SlowTransaction) => void }) {
+/** One environment: its verdict with the reasons, what could not be read, and a card per signal. Rows act through `HealthRowsProvider`. */
+export function EnvironmentPanel({ env }: { env: HealthEnvironmentView }) {
   const { t, tn, locale } = useI18n()
   const s = env.snapshot
   const tone = HEALTH_TONE[s.state]
@@ -55,12 +54,13 @@ export function EnvironmentPanel({ env, onInvestigate }: { env: HealthEnvironmen
         )}
       </Card>
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <ErrorsCard errors={s.errorServices} off={!errorsRead} hours={env.errorWindowHours} serviceUrls={env.serviceUrls} />
-        <PodsCard pods={s.pods} visible={s.podVisibility === 'visible'} />
-        <EventsCard events={s.events} />
-        <ReportingCard silent={s.silentServices} reporting={s.reportingServiceCount} read={s.reportingServiceCount > 0 || s.silentServices.length > 0} serviceUrls={env.serviceUrls} />
+        <ErrorsCard env={env} off={!errorsRead} />
+        <PodsCard env={env} />
+        {showsStderrCard(env) && <StderrCard env={env} />}
+        <EventsCard env={env} />
+        <ReportingCard env={env} />
       </div>
-      <SlowCard slow={s.slow} hours={env.slowFlowHours} serviceUrls={env.serviceUrls} onInvestigate={(tx) => onInvestigate(env, tx)} />
+      <SlowCard env={env} />
     </div>
   )
 }

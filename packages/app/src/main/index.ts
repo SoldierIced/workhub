@@ -42,6 +42,7 @@ import {
   usageAccountKey,
   validateConfig,
   type HealthAlert,
+  type HealthDetailRequest,
   type CreditSpend,
   type Result,
   type Workhub1SecretResult,
@@ -67,7 +68,7 @@ import type { PullRequestWindowTab } from '../shared/codehost-api'
 import { Notifier } from './notifier'
 import { TrayService } from './tray'
 import { TrayPopover } from './tray-popover'
-import { isLocale, trayText } from './tray-text'
+import { healthAlertWords, isLocale, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
 import { profileWorkspaces } from './workspaces'
 import { HealthWatcher, TicketWatcher } from './watchers'
@@ -802,6 +803,7 @@ function registerIpc(): void {
   registerLinksIpc({ ipcMain: ipc, loadConfig: () => configuration.current(), mainWindow: () => win })
   registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification })
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
+  ipc.handle('health:details', (_e, profileId: string | null, environmentId: string, request: HealthDetailRequest, force?: boolean) => health.details(profileId, environmentId, request, force === true))
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   registerAiReviewIpc(ipc, aiReview)
   ipc.handle('continuity:options', (_e, id: string) => continuity.options(id))
@@ -911,16 +913,18 @@ function ticketNotification(profileId: string, change: TicketChange): void {
 }
 
 function healthNotification(alert: HealthAlert): void {
-  const { t } = trayText(trayLocale)
-  const words = { title: t(`notify.health.${alert.kind}`, { environment: alert.environmentName }), body: t(`notify.health.${alert.kind}Body`) }
-  void notifier.show('health', words, () => navigate('health'), { environmentId: alert.environmentId })
+  void notifier.show('health', healthAlertWords(alert, trayText(trayLocale).t), () => navigate('health'), { environmentId: alert.environmentId })
 }
 
 const healthWatcher = new HealthWatcher({
   activeProfileId: async () => (await configuration.current()).activeProfileId ?? null,
   read: (profileId) => health.get(profileId),
   alert: healthNotification,
-  changed: scheduleTray
+  changed: scheduleTray,
+  cooldowns: (() => {
+    const file = new StateFile<{ firedAt: Record<string, number> }>(join(dataDir, 'health-alerts.json'), 500)
+    return { load: () => file.load({ firedAt: {} }).firedAt ?? {}, save: (firedAt) => file.save({ firedAt }) }
+  })()
 })
 
 const ticketWatcher = new TicketWatcher({

@@ -98,6 +98,9 @@ export const HEALTH_REFRESH_CHOICES = [5, 10, 15, 30, 60] as const
 export const MIN_HEALTH_REFRESH_MINUTES = 5
 export const MAX_HEALTH_REFRESH_MINUTES = 60
 export const DEFAULT_HEALTH_REFRESH_MINUTES = 15
+/** "Never more often than": app-wide, it also holds Refresh back so a shared cluster is not overloaded (Workhub 1's choices). */
+export const HEALTH_FLOOR_CHOICES = [1, 2, 5, 10] as const
+export const DEFAULT_HEALTH_FLOOR_MINUTES = 5
 
 export const EMPTY_HEALTH_SETTINGS: HealthSettings = { refreshMinutes: DEFAULT_HEALTH_REFRESH_MINUTES, environments: [] }
 
@@ -167,12 +170,168 @@ export interface SlowTransaction {
   failureRate: number
 }
 
+/** Any other keyed signal with a trend: a container writing to stderr. */
+export interface SignalTrend {
+  key: string
+  stats: TrendStats
+  /** The Kubernetes namespace most of its documents come from (container stderr only). */
+  namespace?: string
+}
+
+// On-demand details: read when a row is expanded or investigated, never polled ---------------------
+
+/** One APM error group (`error.grouping_key`) of a service: errors with the same exception and code path. */
+export interface ErrorGroup {
+  groupingKey: string
+  exceptionType?: string
+  /** The exception message, or the logged message of an error without an exception; one line, clipped. */
+  message?: string
+  culprit?: string
+  /** The most common `transaction.name` in the window. */
+  endpoint?: string
+  /** Errors in the rolling window. */
+  recent: number
+  /** Errors over the trend window. */
+  total: number
+  /** Epoch milliseconds, inside the trend window. */
+  firstSeen?: number
+  lastSeen?: number
+  /** Days with errors of this group, out of the days of the trend window. */
+  activeDays: number
+  daysWithData: number
+  typicalDay: number
+  /** First seen inside the rolling window: it did not exist before. */
+  isNew: boolean
+  /** Kibana page of the group; set by the app, null without a Kibana URL. */
+  kibanaUrl?: string | null
+}
+
+/** The top error groups of one service, most errors in the window first. */
+export interface ServiceErrorDetails {
+  service: string
+  groups: ErrorGroup[]
+  fetchedAt: number
+}
+
+/** The container status of a pod (`state_container`), for the container with the most restarts. */
+export interface PodStatus {
+  container?: string
+  namespace?: string
+  /** Why the container is waiting right now (`CrashLoopBackOff`, `ImagePullBackOff`...). */
+  waitingReason?: string
+  /** How its previous run ended (`OOMKilled`, `Error`, `Completed`...). */
+  lastTerminatedReason?: string
+  lastExitCode?: number
+  /** Epoch milliseconds. */
+  lastTerminatedAt?: number
+}
+
+/** One Kubernetes warning reason about one pod, with its latest occurrence. */
+export interface PodEvent {
+  reason: string
+  message?: string
+  lastSeen?: number
+  /** Event documents in the window. */
+  count: number
+  /** Kubernetes' own counter of the latest event (`kubernetes.event.count`). */
+  occurrences?: number
+}
+
+/** One line a container wrote, trimmed. */
+export interface LogLine {
+  timestamp?: number
+  container?: string
+  text: string
+}
+
+/** What an expanded pod row shows. Each part is read on its own; one that fails says why and the others still show. */
+export interface PodDetails {
+  pod: string
+  status?: PodStatus
+  events: PodEvent[]
+  eventsError?: string
+  /** Oldest first. */
+  stderr: LogLine[]
+  stderrError?: string
+  fetchedAt: number
+}
+
+/** Where the time of a slow transaction goes: spans grouped by destination. */
+export interface SpanBreakdown {
+  /** `span.destination.service.resource` (a database, a host:port), or the span type when absent. */
+  resource: string
+  type: string
+  subtype?: string
+  calls: number
+  totalMs: number
+  averageMs: number
+  /** Calls per sampled transaction: well above 1 for a chatty loop (N+1). */
+  callsPerTransaction: number
+  /** Total span time over total wall time of the sampled transactions; above 1 the calls ran in parallel. */
+  shareOfWallTime: number
+}
+
+/** One side of a window comparison. */
+export interface WindowStats {
+  errors: number
+  transactions: number
+  failedTransactions: number
+  p95Ms?: number
+}
+
+/** An error type (`error.grouping_key`) first seen inside the current window. */
+export interface NewErrorType {
+  groupingKey: string
+  exceptionType?: string
+  culprit?: string
+  firstSeen: number
+  count: number
+}
+
+/** Why a window is worse than the one before it, as data so each language words it. */
+export type WindowRegression =
+  | { code: 'errors'; before: number; after: number }
+  | { code: 'failureRate'; before: number; after: number }
+  | { code: 'latency'; before: number; after: number }
+  | { code: 'newErrorTypes'; count: number }
+
+export type WindowVerdict = { kind: 'clean' } | { kind: 'regressed'; reasons: WindowRegression[] } | { kind: 'noSignal' }
+
+/** The current window of a flow against the window of the same length before it. */
+export interface WindowComparison {
+  service: string
+  /** Null compares the whole service. */
+  transaction: string | null
+  windowHours: number
+  previous: WindowStats
+  current: WindowStats
+  newErrorTypes: NewErrorType[]
+}
+
+/** The span breakdown of a slow flow's slowest executions and its window comparison. */
+export interface FlowDetails {
+  service: string
+  name: string
+  /** Transactions behind `spans` (the slowest ones) and their summed duration. */
+  sampledTransactions: number
+  sampledWallMs: number
+  /** Largest total first. */
+  spans: SpanBreakdown[]
+  spansError?: string
+  comparison?: WindowComparison
+  comparisonError?: string
+  fetchedAt: number
+}
+
+/** What a row can ask the provider for. */
+export type HealthDetailRequest = { kind: 'errors'; service: string } | { kind: 'pod'; pod: string } | { kind: 'flow'; service: string; name: string }
+
 /** A kind of read, so a provider can be asked for only what is due. */
 export type HealthTier = 'fast' | 'trend' | 'slow'
 
 /** The signals the verdict is made of; a failure is kept per signal. */
-export type HealthSignal = 'errors' | 'events' | 'pods' | 'reporting' | 'slow'
-export const HEALTH_SIGNALS: readonly HealthSignal[] = ['errors', 'events', 'pods', 'reporting', 'slow']
+export type HealthSignal = 'errors' | 'events' | 'pods' | 'reporting' | 'slow' | 'stderr'
+export const HEALTH_SIGNALS: readonly HealthSignal[] = ['errors', 'events', 'pods', 'reporting', 'slow', 'stderr']
 
 /** Whether Kubernetes metrics (kube-state) are available. */
 export type PodVisibility = 'visible' | 'missing' | 'notExpected'
@@ -187,6 +346,8 @@ export interface HealthSignals {
   backOff: PodIssue[]
   reporting: ServiceReporting[]
   slow: SlowTransaction[]
+  /** stderr volume per container, read only while pod metrics are not visible. */
+  stderr: SignalTrend[]
   podVisibility: PodVisibility
   /** Why a signal could not be read. */
   failures: Partial<Record<HealthSignal, string>>
@@ -197,7 +358,7 @@ export interface HealthSignals {
 }
 
 export function emptySignals(): HealthSignals {
-  return { errors: [], events: [], notReady: [], restarts: [], backOff: [], reporting: [], slow: [], podVisibility: 'notExpected', failures: {} }
+  return { errors: [], events: [], notReady: [], restarts: [], backOff: [], reporting: [], slow: [], stderr: [], podVisibility: 'notExpected', failures: {} }
 }
 
 export type HealthState = 'healthy' | 'degraded' | 'blind' | 'unreachable'
@@ -231,6 +392,8 @@ export interface HealthSnapshot {
   silentServices: ServiceReporting[]
   reportingServiceCount: number
   slow: SlowTransaction[]
+  /** stderr per container while pod metrics are not visible: a rough proxy, never a verdict. */
+  containerStderr: SignalTrend[]
   fetchedAt?: number
   trendFetchedAt?: number
   slowFetchedAt?: number

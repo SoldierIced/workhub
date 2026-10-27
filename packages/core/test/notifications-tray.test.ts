@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   appOptions,
   buildTrayMenu,
+  admitHealthAlerts,
+  healthAlertKey,
   healthAlerts,
+  HEALTH_ALERT_COOLDOWN_MS,
   isNotificationKind,
   NOTIFICATION_KINDS,
   notificationsPaused,
@@ -15,6 +18,12 @@ import {
   TRAY_ATTENTION_LIMIT,
   worstHealth,
   type AppOptions,
+  type HealthAlert,
+  type HealthReadout,
+  type PodIssue,
+  type PodKind,
+  type ServiceReporting,
+  type TrendState,
   type TrayAction,
   type TrayItem,
   type TrayState,
@@ -68,26 +77,94 @@ describe('notification policy', () => {
 
 describe('health alerts', () => {
   const env = (state: 'healthy' | 'degraded' | 'blind' | 'unreachable', id = 'prod') => ({ id, name: id.toUpperCase(), state })
+  const b = (state: 'healthy' | 'degraded' | 'blind' | 'unreachable') => ({ prod: { state } })
 
   it('alerts nothing on the first read', () => {
     const r = healthAlerts(undefined, [env('degraded')])
     expect(r.alerts).toEqual([])
-    expect(r.baseline).toEqual({ prod: 'degraded' })
+    expect(r.baseline).toEqual({ prod: { state: 'degraded' } })
   })
 
   it('alerts a degradation, an outage and a recovery', () => {
-    expect(healthAlerts({ prod: 'healthy' }, [env('degraded')]).alerts).toEqual([{ environmentId: 'prod', environmentName: 'PROD', kind: 'degraded' }])
-    expect(healthAlerts({ prod: 'degraded' }, [env('unreachable')]).alerts.map((a) => a.kind)).toEqual(['unreachable'])
-    expect(healthAlerts({ prod: 'degraded' }, [env('healthy')]).alerts.map((a) => a.kind)).toEqual(['recovered'])
-    expect(healthAlerts({ prod: 'unreachable' }, [env('healthy')]).alerts.map((a) => a.kind)).toEqual(['recovered'])
+    expect(healthAlerts(b('healthy'), [env('degraded')]).alerts).toEqual([{ environmentId: 'prod', environmentName: 'PROD', kind: 'degraded', subject: '' }])
+    expect(healthAlerts(b('degraded'), [env('unreachable')]).alerts.map((a) => a.kind)).toEqual(['unreachable'])
+    expect(healthAlerts(b('degraded'), [env('healthy')]).alerts.map((a) => a.kind)).toEqual(['recovered'])
+    expect(healthAlerts(b('unreachable'), [env('healthy')]).alerts.map((a) => a.kind)).toEqual(['recovered'])
   })
 
   it('does not call blind a recovery, nor blind-to-healthy news', () => {
-    const blind = healthAlerts({ prod: 'degraded' }, [env('blind')])
+    const blind = healthAlerts(b('degraded'), [env('blind')])
     expect(blind.alerts).toEqual([])
-    expect(blind.baseline.prod).toBe('degraded')
+    expect(blind.baseline.prod?.state).toBe('degraded')
     expect(healthAlerts(blind.baseline, [env('degraded')]).alerts).toEqual([])
-    expect(healthAlerts({ prod: 'blind' }, [env('healthy')]).alerts).toEqual([])
+    expect(healthAlerts(b('blind'), [env('healthy')]).alerts).toEqual([])
+  })
+
+  const stats = (state: TrendState, recent: number, typicalDay = 10) => ({ recent, typicalDay, streakDays: 3, streakTruncated: false, daysWithData: 14, state })
+  const pod = (name: string, kind: PodKind): PodIssue => ({ pod: name, notReady: kind === 'notReady', restarts: 0, recentRestarts: 0, backOff: kind === 'crashLoop', kind })
+  const silent = (service: string): ServiceReporting => ({ service, lastSeen: 0, silentMinutes: 42, isReporting: false })
+  const read = (over: Partial<HealthReadout['snapshot'] & object> = {}, state: 'healthy' | 'degraded' | 'blind' = 'degraded'): HealthReadout => ({
+    id: 'prod',
+    name: 'Prod',
+    state,
+    minErrorsToFlag: 10,
+    errorWindowHours: 24,
+    snapshot: { silentServices: [], pods: [], errorServices: [], podVisibility: 'visible', blindSpots: [], ...over }
+  })
+
+  it('announces a service that stops reporting, a pod that goes down and a signal that starts worsening', () => {
+    const first = healthAlerts(undefined, [read({ silentServices: [silent('a')], pods: [pod('p1', 'notReady')] })])
+    const second = healthAlerts(first.baseline, [
+      read({
+        silentServices: [silent('a'), silent('b')],
+        pods: [pod('p1', 'notReady'), pod('p2', 'crashLoop'), pod('p3', 'restarting')],
+        errorServices: [
+          { service: 'api', stats: stats('worsening', 120) },
+          { service: 'tiny', stats: stats('worsening', 3) },
+          { service: 'old', stats: stats('chronic', 500) }
+        ]
+      })
+    ])
+    expect(second.alerts.map((a) => [a.kind, a.subject])).toEqual([
+      ['stoppedReporting', 'b'],
+      ['podDown', 'p2'],
+      ['errorsWorsening', 'api']
+    ])
+    expect(second.alerts[1]?.crashLoop).toBe(true)
+    expect(second.alerts[2]).toMatchObject({ count: 120, hours: 24, factor: 12 })
+    // The same picture again is not news.
+    expect(healthAlerts(second.baseline, [read({ silentServices: [silent('a'), silent('b')], pods: [pod('p2', 'crashLoop')], errorServices: [{ service: 'api', stats: stats('worsening', 130) }] })]).alerts).toEqual([])
+  })
+
+  it('compares a list only when it was read both times', () => {
+    const unread = { code: 'unread' as const, signal: 'reporting' as const, detail: 'timeout' }
+    const first = healthAlerts(undefined, [read({ blindSpots: [unread] })])
+    expect(healthAlerts(first.baseline, [read({ silentServices: [silent('a')] })]).alerts).toEqual([])
+    const hidden = healthAlerts(undefined, [read({ podVisibility: 'missing' })])
+    expect(healthAlerts(hidden.baseline, [read({ pods: [pod('p1', 'notReady')] })]).alerts).toEqual([])
+  })
+
+  it('folds a burst into one line after the first three', () => {
+    const first = healthAlerts(undefined, [read()])
+    const pods = ['p1', 'p2', 'p3', 'p4', 'p5'].map((p) => pod(p, 'notReady'))
+    const r = healthAlerts(first.baseline, [read({ pods })])
+    expect(r.alerts.map((a) => a.subject)).toEqual(['p1', 'p2', 'p3', '+more'])
+    expect(r.alerts[3]?.others).toEqual(['p4', 'p5'])
+  })
+
+  it('announces each subject at most once an hour, and a new incident gets its own recovery', () => {
+    const alert = (kind: HealthAlert['kind'], subject = ''): HealthAlert => ({ environmentId: 'prod', environmentName: 'Prod', kind, subject })
+    const t0 = 1_000_000
+    const one = admitHealthAlerts([alert('podDown', 'p1'), alert('recovered')], {}, t0)
+    expect(one.admitted).toHaveLength(2)
+    const again = admitHealthAlerts([alert('podDown', 'p1'), alert('podDown', 'p2')], one.firedAt, t0 + 10 * 60_000)
+    expect(again.admitted.map((a) => a.subject)).toEqual(['p2'])
+    expect(admitHealthAlerts([alert('podDown', 'p1')], again.firedAt, t0 + HEALTH_ALERT_COOLDOWN_MS).admitted).toHaveLength(1)
+    const degraded = admitHealthAlerts([alert('degraded')], one.firedAt, t0 + 60_000)
+    expect(healthAlertKey(alert('recovered')) in degraded.firedAt).toBe(false)
+    expect(admitHealthAlerts([alert('recovered')], degraded.firedAt, t0 + 120_000).admitted).toHaveLength(1)
+    // Old entries are dropped, so the record does not grow forever.
+    expect(Object.keys(admitHealthAlerts([], again.firedAt, t0 + 3 * HEALTH_ALERT_COOLDOWN_MS).firedAt)).toEqual([])
   })
 
   it('picks the worst state for the menu', () => {

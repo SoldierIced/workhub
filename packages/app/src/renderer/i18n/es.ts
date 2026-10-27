@@ -4,6 +4,7 @@ import { aiReviewEs } from './aiReview.es'
 import { sessionsUxEs } from './sessionsUx.es'
 import { sessionMonitorEs } from './sessionMonitor.es'
 import { healthEs } from './health.es'
+import { healthPromptsEs } from './healthPrompts.es'
 import { prEventsEs } from './prEvents.es'
 import { slackEs } from './slack.es'
 import { automationsEs } from './automations.es'
@@ -409,6 +410,7 @@ export const es: Record<keyof typeof en, string> = {
   ...updatesEs,
   ...setupEs,
   ...healthEs,
+  ...healthPromptsEs,
   ...prEventsEs,
   ...linksEs,
   ...slackEs,

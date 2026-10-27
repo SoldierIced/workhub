@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { appOptions, EMPTY_SESSION_GROUPS, groupOf, investigateSlowEndpointPrompt, notificationTitle, pickAgent, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember, type SlowTransaction } from '@workhub/core'
-import type { HealthEnvironmentView } from '@shared/health-api'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, pickAgent, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember } from '@workhub/core'
 import type { SessionView, WorkspaceFolder } from '@shared/api'
 import { Button, TooltipProvider } from './components/atoms'
 import { Dialog, ToastProvider, useToast } from './components/molecules'
@@ -17,7 +16,6 @@ import { setComposerDraft } from './lib/drafts'
 import { runIntent, type IntentDeps } from './lib/links'
 import { keyProviders } from './lib/tickets'
 import type { SessionIntent } from '@shared/links-api'
-import { folderForService } from './lib/health'
 import { usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
@@ -280,14 +278,15 @@ function Shell() {
     }
   }
 
-  // Investigate with Claude: a new app-mode session in the service's folder with the summary in the composer, not sent.
-  const investigate = async (env: HealthEnvironmentView, tx: SlowTransaction) => {
+  // Investigate with Claude: a new app-mode session in the repository's folder (the profile's first one when no
+  // folder matches) with the draft in the composer, not sent.
+  const investigate = async (draft: string, folder: string | undefined) => {
     const claude = pickAgent(profile, agents, 'claude')
     if (!claude) return toast(t('health.investigate.noAgent'), 'danger')
     try {
-      const cwd = folderForService(profile?.folders ?? [], tx.service) ?? (await window.hub.getDefaultCwd())
+      const cwd = folder ?? profile?.folders?.[0] ?? (await window.hub.getDefaultCwd())
       const view = await window.hub.sessions.start({ profileId: activeProfileId, agentKey: claude.key, cwd, cols: 100, rows: 30, mode: 'app', model: readPrefs().models[claude.key] })
-      setComposerDraft(view.id, investigateSlowEndpointPrompt({ name: env.name, slowFlowHours: env.slowFlowHours }, tx))
+      setComposerDraft(view.id, draft)
       openSession(view.id)
       toast(t('health.investigate.drafted'))
     } catch (e) {
@@ -386,7 +385,7 @@ function Shell() {
               ) : route === 'pullRequests' ? (
                 <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
               ) : route === 'health' ? (
-                <HealthScreen profile={profile} onOpenSettings={openSettings} onInvestigate={(env, tx) => void investigate(env, tx)} />
+                <HealthScreen profile={profile} onOpenSettings={openSettings} onInvestigate={investigate} />
               ) : route === 'tickets' ? (
                 <TicketsScreen profile={profile} sessions={sessions} onOpenSettings={openSettings} />
               ) : route === 'slack' ? (

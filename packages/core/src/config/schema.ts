@@ -4,7 +4,7 @@ import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { CONNECTION_KINDS, type Connection } from '../domain/connection'
 import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
 import type { SessionGroups } from '../domain/session-groups'
-import { DEFAULT_HEALTH_REFRESH_MINUTES, DEFAULT_HEALTH_THRESHOLDS, HEALTH_THRESHOLD_RANGES, MAX_HEALTH_REFRESH_MINUTES, MIN_HEALTH_REFRESH_MINUTES, type HealthThresholds } from '../health/types'
+import { DEFAULT_HEALTH_FLOOR_MINUTES, DEFAULT_HEALTH_REFRESH_MINUTES, DEFAULT_HEALTH_THRESHOLDS, HEALTH_FLOOR_CHOICES, HEALTH_THRESHOLD_RANGES, MAX_HEALTH_REFRESH_MINUTES, MIN_HEALTH_REFRESH_MINUTES, type HealthThresholds } from '../health/types'
 import { DEFAULT_PR_EVENT_TOGGLES, PR_EVENT_KINDS, type PrEventToggles } from '../pr-events/types'
 import type { ChatWatcherSettings } from '../chat/types'
 import type { AutomationDefinition } from '../automations/types'
@@ -72,8 +72,10 @@ export interface AppOptions {
   notifyAutomations: boolean
   /** OS notification when an assigned ticket changes status, is assigned or leaves the list. */
   notifyTickets: boolean
-  /** OS notification when a Health environment degrades, becomes unreachable or recovers. */
+  /** OS notification when a Health environment degrades, becomes unreachable or recovers, a service stops reporting, a pod stops being ready or an error signal starts worsening. */
   notifyHealth: boolean
+  /** Health never reads Elasticsearch more often than this, even on Refresh (minutes, one of `HEALTH_FLOOR_CHOICES`). */
+  healthRefreshFloorMinutes: number
   /** Closing the main window keeps the app running in the menu bar / notification area. */
   keepInTray: boolean
   /** A badge on the app icon (Dock, taskbar, launcher) with the number of sessions that need a look. */
@@ -96,7 +98,7 @@ export interface AppOptions {
 export const SPEECH_RATE_RANGE = [120, 300] as const
 export const DEFAULT_SPEECH_RATE = 190
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -342,6 +344,12 @@ export const configSchema = z.object({
       notifyAutomations: z.boolean().default(true),
       notifyTickets: z.boolean().default(true),
       notifyHealth: z.boolean().default(true),
+      healthRefreshFloorMinutes: z
+        .number()
+        .int()
+        .refine((n) => (HEALTH_FLOOR_CHOICES as readonly number[]).includes(n))
+        .default(DEFAULT_HEALTH_FLOOR_MINUTES)
+        .catch(DEFAULT_HEALTH_FLOOR_MINUTES),
       keepInTray: z.boolean().default(true),
       showAppBadge: z.boolean().default(true),
       notificationsEnabled: z.boolean().default(true),
