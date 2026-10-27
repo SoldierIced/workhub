@@ -37,7 +37,7 @@ export function useAiReviewNotices(): void {
       window.hub.aiReview.onNotice((n) => {
         const w = aiReviewNoticeText(n, t)
         toast(`${w.title}: ${w.body}`, n.kind === 'ready' ? undefined : 'danger')
-        window.hub.notifications.show({ title: w.title, body: w.body, sessionId: n.devSessionId ?? '' })
+        window.hub.notifications.show({ title: w.title, body: w.body, sessionId: n.devSessionId ?? '', kind: 'aiReview' })
         if (n.devSessionId) flagAttention(n.devSessionId, n.kind === 'ready' ? 'replied' : 'needsAnswer')
       }),
     [t, toast]

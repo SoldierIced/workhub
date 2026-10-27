@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Menu bar glyph (from Workhub 1's Resources/MenuBarIcon.svg): the logo's hub without the background. Only the alpha channel is used on macOS (template image). -->
+  <g transform="translate(0 86)">
+  <g stroke="#000000" stroke-width="56" stroke-linecap="round">
+    <line x1="512" y1="322" x2="512" y2="190"/>
+    <line x1="677" y1="607" x2="791" y2="673"/>
+    <line x1="347" y1="607" x2="233" y2="673"/>
+  </g>
+  <g fill="#000000">
+    <circle cx="512" cy="170" r="110"/>
+    <circle cx="809" cy="683" r="110"/>
+    <circle cx="215" cy="683" r="110"/>
+  </g>
+  <mask id="prompt">
+    <rect width="1024" height="1024" fill="#FFFFFF"/>
+    <path d="M440 440 L522 512 L440 584" fill="none" stroke="#000000" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="548" y1="584" x2="608" y2="584" stroke="#000000" stroke-width="48" stroke-linecap="round"/>
+  </mask>
+  <circle cx="512" cy="512" r="190" fill="#000000" mask="url(#prompt)"/>
+  </g>
+</svg>

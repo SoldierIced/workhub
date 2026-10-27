@@ -1,4 +1,4 @@
-import { ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw } from 'lucide-react'
+import { ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, X } from 'lucide-react'
 import { ContextMenu, DropdownMenu } from 'radix-ui'
 import { useMemo, useState, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
 import {
@@ -27,7 +27,7 @@ import { LEVEL_LABEL, LEVEL_TONE } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 import { folderName } from '../../lib/home'
 import { listSessions, memberOf, newGroupId, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
-import { awaitingAnswer } from '../../store'
+import { awaitingAnswer, pushItem } from '../../store'
 import { Badge } from '../atoms/Badge'
 import { Button } from '../atoms/Button'
 import { Input } from '../atoms/Input'
@@ -37,6 +37,11 @@ import { Field } from '../molecules/Field'
 import type { SessionData } from '../../store'
 
 export const SESSION_DRAG = 'application/x-workhub-session'
+
+/** Whether closing the session would cut work off: a turn runs, it is starting, or it waits on an answer. */
+export function isWorking(data: SessionData): boolean {
+  return data.view.state === 'busy' || data.view.state === 'starting' || awaitingAnswer(data)
+}
 export const GROUP_DRAG = 'application/x-workhub-group'
 
 export interface SessionListProps {
@@ -119,9 +124,15 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
   const state = useMemo(() => reconcileTop(groups, liveKeys), [groups, liveKeys])
   const [dialog, setDialog] = useState<Dialogs>(null)
   const [over, setOver] = useState<string | null>(null)
+  const [closing, setClosing] = useState<SessionData | null>(null)
 
   const act = (change: (s: SessionGroups) => SessionGroups) => void updateGroups(change, liveKeys)
   const live = useMemo(() => new Set(liveKeys), [liveKeys])
+
+  const closeNow = (data: SessionData) =>
+    void window.hub.sessions.close(data.view.id).catch((e: unknown) => pushItem(data.view.id, 'error', t('sessions.closeFailed', { message: e instanceof Error ? e.message : String(e) })))
+  /** Stops the session and drops it from the open sessions; a working one asks first. */
+  const requestClose = (data: SessionData) => (isWorking(data) ? setClosing(data) : closeNow(data))
 
   const sessionMenu = (member: GroupMember): MenuItem[] => {
     const inGroup = groupOf(state, member.key)
@@ -129,6 +140,7 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     const entry = listed.find((l) => l.key === member.key)
     const items: MenuItem[] = []
     if (!entry || entry.data.view.state === 'stopped') items.push({ label: t('groups.reopen'), onSelect: () => onReopen(member) }, { separator: true })
+    if (entry) items.push({ label: t('sessions.close'), onSelect: () => requestClose(entry.data) }, { separator: true })
     items.push(
       { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveBy(s, member.key, -1)) },
       { label: t('groups.moveDown'), hint: 'Alt+↓', onSelect: () => act((s) => moveBy(s, member.key, 1)) },
@@ -202,6 +214,7 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
       selected={active && entry !== undefined && selectedId === entry.data.view.id}
       dropping={over === `s:${member.key}`}
       menu={sessionMenu(member)}
+      onClose={entry ? () => requestClose(entry.data) : undefined}
       onOpen={() => (entry ? onSelect(entry.data.view.id) : onReopen(member))}
       onMove={(step) => act((s) => moveBy(s, member.key, step))}
       onDragOver={(e) => accept(e, `s:${member.key}`, [SESSION_DRAG, GROUP_DRAG])}
@@ -250,6 +263,33 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
       >
         {t('groups.new')}
       </Button>
+      {closing && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setClosing(null)}
+          title={t('sessions.closeTitle', { name: closing.view.agentName })}
+          description={t('sessions.closeBody')}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setClosing(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                data-testid="confirm-close-session"
+                onClick={() => {
+                  closeNow(closing)
+                  setClosing(null)
+                }}
+              >
+                {t('sessions.closeConfirm')}
+              </Button>
+            </>
+          }
+        >
+          {null}
+        </Dialog>
+      )}
       <GroupDialog
         dialog={dialog}
         closedLost={dialog?.kind === 'delete' ? dialog.group.members.filter((m) => !live.has(m.key)).length : 0}
@@ -278,6 +318,8 @@ function SessionItem(props: {
   selected: boolean
   dropping: boolean
   menu: MenuItem[]
+  /** Closes the open session; undefined for a closed group member. */
+  onClose?: () => void
   onOpen: () => void
   onMove: (step: -1 | 1) => void
   onDragOver: (e: DragEvent) => void
@@ -296,6 +338,12 @@ function SessionItem(props: {
   const title = data ? data.view.agentName : member.title
   const cwd = data ? data.view.cwd : member.cwd
   const onKey = (e: KeyboardEvent) => {
+    // Delete or Backspace closes the focused session, as the close button does.
+    if (props.onClose && !e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace')) {
+      e.preventDefault()
+      props.onClose()
+      return
+    }
     if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
     e.preventDefault()
     props.onMove(e.key === 'ArrowUp' ? -1 : 1)
@@ -343,6 +391,18 @@ function SessionItem(props: {
                 <span data-testid="unseen-mark" role="img" aria-label={t('attention.unseen')} className="size-2 shrink-0 rounded-full bg-accent" />
               )}
             </button>
+            {props.onClose && (
+              <button
+                type="button"
+                data-testid="close-session"
+                aria-label={t('sessions.closeNamed', { name: title })}
+                title={t('sessions.close')}
+                onClick={props.onClose}
+                className={cn(ROW_ACTION, 'mr-0')}
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            )}
             <OptionsButton label={t('groups.options', { name: title })} menu={props.menu} />
           </div>
         </ContextMenu.Trigger>
@@ -354,13 +414,14 @@ function SessionItem(props: {
   )
 }
 
+/** A row's hover actions: shown on hover or keyboard focus. */
+const ROW_ACTION =
+  'mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 data-[state=open]:opacity-100'
+
 function OptionsButton({ label, menu }: { label: string; menu: MenuItem[] }) {
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger
-        aria-label={label}
-        className="mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100 data-[state=open]:opacity-100"
-      >
+      <DropdownMenu.Trigger aria-label={label} className={ROW_ACTION}>
         <Ellipsis className="size-3.5" aria-hidden />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

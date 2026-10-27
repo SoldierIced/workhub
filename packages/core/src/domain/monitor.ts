@@ -93,6 +93,8 @@ export interface SessionMonitorSnapshot {
   credits?: number
   /** Credits used by the last turn (Kiro). */
   lastTurnCredits?: number
+  /** Credits used by each turn, oldest first (Kiro). */
+  turnCredits?: number[]
   context?: ContextUsage
   toolCalls?: ToolCallSummary[]
   subagents?: SubagentSummary[]

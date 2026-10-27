@@ -1,5 +1,6 @@
 import { linksEn } from './links.en'
 import { aiReviewEn } from './aiReview.en'
+import { sessionsUxEn } from './sessionsUx.en'
 import { healthEn } from './health.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
@@ -8,6 +9,10 @@ import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
 import { usageEn } from './usage.en'
+import { appearanceEn } from './appearance.en'
+import { settingsHelpEn } from './settingsHelp.en'
+import { trayEn } from './tray.en'
+import { agentsEn } from './agents.en'
 import { toolViewEn } from './toolView.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
@@ -364,7 +369,12 @@ export const en = {
   'import.language': 'Interface language',
   'import.notCarried': 'Not carried over',
   'import.secrets': 'Import tokens from Workhub 1',
-  'import.secretsHint': 'Copies the Jira and Elastic tokens that Workhub 1 keeps in your Keychain. macOS will ask you to allow the access for each item; click Allow. The tokens go straight into Workhub 2\'s secret store and are never shown.',
+  'import.secretsHint': 'Workhub 1 kept your Jira and Elastic tokens in the macOS Keychain. This copies them here so you do not have to paste them again. macOS asks for permission once per token: choose Allow. The tokens are stored encrypted on this computer and are never shown.',
+  'import.secretsBanner': 'Some connections brought from Workhub 1 are missing their token. Workhub can copy them from the macOS Keychain, where Workhub 1 kept them; macOS asks you to allow each one, and the tokens are stored encrypted and never shown.',
+  'import.secretsDone': 'Tokens imported from Workhub 1: {count}.',
+  'import.secretsSomeLeft': 'Tokens that could not be imported: {count}. You can enter them by hand.',
+  'import.migrate': 'Migrate from Workhub 1',
+  'import.migrateHint': 'Workhub 1 was found on this Mac.',
   'import.secretsNone': 'No connection from Workhub 1 is waiting for a token.',
   'import.secretsImported': 'token imported',
   'import.secretsNotFound': 'not found in the Workhub 1 Keychain',
@@ -379,6 +389,11 @@ export const en = {
   ...slackEn,
   ...automationsEn,
   ...usageEn,
-  ...toolViewEn,
-  ...aiReviewEn
+  ...aiReviewEn,
+  ...sessionsUxEn,
+  ...trayEn,
+  ...agentsEn,
+  ...appearanceEn,
+  ...settingsHelpEn,
+  ...toolViewEn
 } as const

@@ -16,7 +16,8 @@ import { recentFolders, usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
 import { NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
-import { resolveTheme, readPrefs, usePrefs, useSystemDark } from './lib/prefs'
+import { readPrefs } from './lib/prefs'
+import { useAppearance } from './lib/appearance'
 import { listSessions, memberOf, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
@@ -24,6 +25,7 @@ import { useAccountUsage, useUsageAlerts } from './lib/usage'
 import { usePrEventNotifications } from './lib/usePrEventNotifications'
 import { useAiReviewNotices } from './lib/useAiReviewNotices'
 import { useChatNotices } from './lib/useChatNotices'
+import { useTraySync } from './lib/useTraySync'
 import { AutomationsScreen } from './screens/AutomationsScreen'
 import { SlackScreen } from './screens/SlackScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
@@ -36,18 +38,9 @@ import { SettingsScreen } from './screens/SettingsScreen'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, setViewing, startStore, useSessions } from './store'
 
-/** Applies the theme preference to <html> and tells the main process (native chrome). */
+/** Applies the appearance preferences to <html> and tells the main process (native chrome). */
 function useTheme(): 'light' | 'dark' {
-  const { theme } = usePrefs()
-  const systemDark = useSystemDark()
-  const resolved = resolveTheme(theme, systemDark)
-  useEffect(() => {
-    window.hub.setTheme(theme)
-  }, [theme])
-  useEffect(() => {
-    document.documentElement.dataset['theme'] = resolved
-  }, [resolved])
-  return resolved
+  return useAppearance()
 }
 
 function Shell() {
@@ -129,7 +122,7 @@ function Shell() {
         // An AI reviewer's turns are reported by the review itself (Review panel and its notices).
         if (!data || data.view.readOnly || !options[NOTIFY_OPTION[kind]]) return
         const group = groupOf(stored, sessionIdentity(data.view))
-        window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id })
+        window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id, kind })
       }),
     []
   )
@@ -159,6 +152,8 @@ function Shell() {
     setRoute(r)
   }, [])
   const newSession = useCallback((cwd?: string | null, agentKey?: string) => setDialog({ open: true, cwd: cwd ?? undefined, agentKey }), [])
+  // The menu bar / notification area icon: it lists the sessions and opens screens and the new session dialog.
+  useTraySync({ sessions, groups, locale, navigate, newSession: () => newSession() })
 
   // CmdOrCtrl shortcuts for every nav item, plus CmdOrCtrl+T for a new session (Workhub 1's keys).
   useEffect(() => {
@@ -190,6 +185,7 @@ function Shell() {
         cols: 100,
         rows: 30,
         model: readPrefs().models[member.agentKey],
+        modeId: readPrefs().modes[member.agentKey],
         ...(resumes ? { resumeAgentSessionId: member.key } : { identity: member.key })
       })
       openSession(view.id)
