@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Build Workhub 2 and install it as /Applications/Workhub 2.app (replacing any previous copy).
-# It never touches /Applications/Workhub.app (Workhub 1): only the product named in scripts/brand.mjs
-# is quit, replaced and reopened.
+# Build Workhub 2 and install it in /Applications (replacing any previous copy of Workhub 2).
+# The bundle is named WORKHUB_BUNDLE_NAME (default "Workhub", so Spotlight and Launchpad open it as
+# "Workhub"). It refuses to replace a bundle at that path that is not Workhub 2 (for example
+# Workhub 1, bundle id com.nehuenfortes.workhub).
 #
 # WORKHUB_KEEP_RUNNING=1 swaps the bundle without quitting a running copy, which keeps its
 # sessions; the new version starts the next time the app is opened.
@@ -19,12 +20,21 @@ done
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 app_name="$(node "$root/scripts/brand.mjs" productName)"
-target="/Applications/$app_name.app"
+bundle_name="${WORKHUB_BUNDLE_NAME:-Workhub}"
+target="/Applications/$bundle_name.app"
+app_id="$(node "$root/scripts/brand.mjs" appId 2>/dev/null || true)"
 built="$root/dist/mac-arm64/$app_name.app"
 keep_running="${WORKHUB_KEEP_RUNNING:-}"
 
 # Refuse to ever operate on Workhub 1's bundle, whatever the brand says.
 [[ "$app_name" != "Workhub" ]] || { echo "install-mac: productName is 'Workhub', that is Workhub 1's app; refusing" >&2; exit 1; }
+if [[ -d "$target" ]]; then
+  existing_id="$(defaults read "$target/Contents/Info" CFBundleIdentifier 2>/dev/null || true)"
+  if [[ "$existing_id" == "com.nehuenfortes.workhub" || ( -n "$app_id" && -n "$existing_id" && "$existing_id" != "$app_id" ) ]]; then
+    echo "install-mac: $target is another app ($existing_id); refusing to replace it" >&2
+    exit 1
+  fi
+fi
 
 if $dry_run; then
   echo "dry run: nothing is built, quit or installed"
@@ -54,7 +64,7 @@ if [[ "$keep_running" == 1 ]]; then
   rm -rf "$target.old"
   was_running=false
 else
-  osascript -e "quit app \"$app_name\"" >/dev/null 2>&1 || true
+  if $was_running; then osascript -e "quit app \"$target\"" >/dev/null 2>&1 || true; fi
   sleep 1
   rm -rf "$target"
   cp -R "$built" "$target"
