@@ -86,6 +86,7 @@ const api: HubApi = {
   },
   history: {
     list: () => ipcRenderer.invoke('history:list'),
+    find: (keys) => ipcRenderer.invoke('history:find', keys),
     revealFolder: (path) => ipcRenderer.invoke('history:revealFolder', path)
   },
   agents: {

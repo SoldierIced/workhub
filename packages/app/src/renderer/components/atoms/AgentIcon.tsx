@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Bot, SquareTerminal } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { agentGlyph, type AgentGlyph } from '../../lib/agents'
@@ -19,24 +20,26 @@ export interface AgentIconProps {
   /** The accessible name (the agent's name). Without one the icon is decorative. */
   label?: string
   className?: string
+  /** Inline style, such as the ring colour of the account the session runs with. */
+  style?: CSSProperties
 }
 
 /** A small mark that tells which agent runs a session: a monogram per known agent, a terminal for shells, a bot for the rest. */
-export function AgentIcon({ agentId, adapter, label, className }: AgentIconProps) {
+export function AgentIcon({ agentId, adapter, label, className, style }: AgentIconProps) {
   const glyph = agentGlyph(agentId, adapter)
   const a11y = label ? { role: 'img' as const, 'aria-label': label } : { 'aria-hidden': true }
   const base = 'inline-flex size-5 shrink-0 select-none items-center justify-center rounded-md'
   if (glyph === 'shell' || glyph === 'generic') {
     const Icon = glyph === 'shell' ? SquareTerminal : Bot
     return (
-      <span {...a11y} data-agent-icon={glyph} className={cn(base, 'bg-surface-hover text-muted ring-1 ring-border ring-inset', className)}>
+      <span {...a11y} data-agent-icon={glyph} style={style} className={cn(base, 'bg-surface-hover text-muted ring-1 ring-border ring-inset', className)}>
         <Icon className="size-3" aria-hidden />
       </span>
     )
   }
   const badge = BADGE[glyph]
   return (
-    <span {...a11y} data-agent-icon={glyph} className={cn(base, 'font-semibold text-white', badge.className, badge.text.length > 1 ? 'text-[9px] tracking-tighter' : 'text-xs', className)}>
+    <span {...a11y} data-agent-icon={glyph} style={style} className={cn(base, 'font-semibold text-white', badge.className, badge.text.length > 1 ? 'text-[9px] tracking-tighter' : 'text-xs', className)}>
       <span aria-hidden>{badge.text}</span>
     </span>
   )

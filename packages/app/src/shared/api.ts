@@ -269,6 +269,8 @@ export interface SessionsApi {
 
 export interface HistoryApi {
   list(): Promise<HistoryResult>
+  /** The past sessions with these agent session ids (every account's copy): names closed sidebar rows. */
+  find(keys: string[]): Promise<HistoryItem[]>
   /** Opens a session's folder in the file manager; false when it is not an existing folder. */
   revealFolder(path: string): Promise<boolean>
 }

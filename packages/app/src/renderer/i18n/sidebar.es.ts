@@ -23,5 +23,7 @@ export const sidebarEs: Record<keyof typeof sidebarEn, string> = {
   'sidebar.subagents.hide.one': 'Ocultar {count} subagente',
   'sidebar.subagents.hide.other': 'Ocultar {count} subagentes',
   'sidebar.subagents.list.one': '{count} subagente de {name}',
-  'sidebar.subagents.list.other': '{count} subagentes de {name}'
+  'sidebar.subagents.list.other': '{count} subagentes de {name}',
+  'sidebar.account': 'Cuenta {name}',
+  'sidebar.clickToReopen': 'Clic para reabrir'
 }
