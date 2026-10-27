@@ -34,7 +34,7 @@ export const usageEs: Record<keyof typeof usageEn, string> = {
     'Desactivado por defecto. Llama a un endpoint no documentado de ChatGPT con el inicio de sesión guardado en la carpeta de Codex de la cuenta (auth.json); puede cambiar o dejar de funcionar en cualquier momento. Workhub nunca renueva ni guarda ese inicio de sesión. Sin él, o si el endpoint falla, se muestran los límites más recientes que Codex escribió en sus archivos de sesión.',
   'agentUsage.settings.kiro': 'Leer los créditos de Kiro que quedan',
   'agentUsage.settings.kiroNote':
-    'Le pide a kiro-cli su propio /usage (con el inicio de sesión de Kiro; Workhub nunca lo lee), como mucho cada 15 minutos. Cada lectura abre Kiro un momento, con sus servidores MCP, en una sesión que Workhub guarda para esto y reutiliza: verás una sesión vacía con el nombre de la carpeta de Workhub en la lista de Kiro. Los créditos gastados por día salen de los archivos de sesión de Kiro de todos modos.',
+    'Le pide a kiro-cli su propio /usage (con el inicio de sesión de Kiro; Workhub nunca lo lee), como mucho cada 15 minutos y solo mientras Workhub está abierto. Kiro se abre un momento en una carpeta de inicio propia de Workhub: no arranca ninguno de tus servidores MCP y su única sesión, reutilizada, no aparece en la lista de sesiones de Kiro. Los créditos gastados por día salen de los archivos de sesión de Kiro de todos modos.',
   'agentUsage.settings.budgets': 'Presupuestos',
   'agentUsage.settings.budgetsNote':
     'Por encima de un techo, los prompts enviados desde Workhub a esa cuenta requieren "Enviar de todos modos", y las automatizaciones, los despertares y las lecturas de Slack en esa cuenta esperan hasta que la ventana se restablezca o el techo se suba o se quite. "Ejecutar ahora" en una automatización igual se ejecuta una vez. No se instala nada en los agentes: el control vive solo en Workhub, y deja pasar todo mientras el uso es desconocido.',
@@ -71,5 +71,9 @@ export const usageEs: Record<keyof typeof usageEn, string> = {
   'agentUsage.session.account': 'Cuenta: {value}',
   'agentUsage.session.noRead': 'Activa la lectura de uso de este agente en Ajustes → Uso para definir un límite.',
   'agentUsage.session.reset': 'Usar los límites de la cuenta',
-  'agentUsage.session.now': 'ahora {percent}%'
+  'agentUsage.session.now': 'ahora {percent}%',
+  'agentUsage.refresh': 'Actualizar el uso',
+  'agentUsage.refreshing': 'Leyendo el uso…',
+  'agentUsage.updatedAt': 'Actualizado {time}',
+  'agentUsage.notReadYet': 'Todavía sin leer'
 }

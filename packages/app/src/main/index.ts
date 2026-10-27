@@ -309,6 +309,7 @@ const demoUsage = process.env['WORKHUB_DEMO_USAGE'] === '1'
 // The Kiro usage session's id (one session reused across reads, see KiroPlanUsageReader).
 const kiroUsageState = new StateFile<{ sessionId: string | null }>(join(dataDir, 'kiro-usage.json'), 200)
 let configCache: WorkhubConfig | null = null
+let kiroUsageReader: KiroPlanUsageReader | null = null
 // Each session's own usage ceilings, by session identity (set from the session's side panel).
 const sessionBudgets = new StateFile<Record<string, SessionCeilings>>(join(dataDir, 'session-budgets.json'), 200)
 /** Only windows with a valid ceiling (1-100) from what the renderer sent. */
@@ -324,12 +325,13 @@ const usage = new AgentUsageService({
     : [
         new ClaudePlanUsageReader({ userAgent: `workhub/${app.getVersion()}` }),
         new CodexPlanUsageReader(),
-        new KiroPlanUsageReader({
+        kiroUsageReader = new KiroPlanUsageReader({
           command: () => {
             const kiro = configCache && knownAgents(configCache).find((a) => a.id === 'kiro')
             return kiro && runsKiroCli(kiro) ? kiro.command : 'kiro-cli'
           },
           probeDir: join(dataDir, 'kiro-usage'),
+          legacySessionsDir: join(kiroDir ?? join(homedir(), '.kiro'), 'sessions', 'cli'),
           state: {
             load: () => kiroUsageState.load({ sessionId: null }).sessionId,
             save: (sessionId) => kiroUsageState.save({ sessionId })
@@ -715,6 +717,7 @@ function registerIpc(): void {
     return agentOptions.get(choice.agent, choice.account, refresh === true)
   })
   ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
+  ipc.handle('usage:refreshNow', () => usage.refresh({ force: true }))
   ipc.handle('usage:kiroSpend', () => kiroSpend())
   ipc.handle('usage:folderSpend', (_e, profileId?: string | null) => tokenSpend.forProfile(typeof profileId === 'string' ? profileId : null))
   ipc.handle('usage:sessionBudgets', () => sessionBudgets.load({}))
@@ -1291,6 +1294,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   quitting = true
   usage.stop()
+  kiroUsageReader?.dispose()
   tokenSpend.stop()
   prEvents.stop()
   slack.stop()

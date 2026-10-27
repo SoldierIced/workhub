@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { accountAgentId, appOptions, type CreditSpend, type SessionCeilings, type UsageBudgetOptions } from '@workhub/core'
 import type { AccountUsage, UsageAlert } from '@shared/api'
 import { useConfig } from '../configStore'
@@ -14,6 +14,38 @@ export function useAccountUsage(): AccountUsage[] {
     return window.hub.usage.onChanged(setUsage)
   }, [])
   return usage
+}
+
+/** When the newest account read happened (epoch ms); null when nothing was read. */
+export function lastReadAt(reads: readonly Pick<AccountUsage, 'at'>[]): number | null {
+  let latest: number | null = null
+  for (const r of reads) if (Number.isFinite(r.at) && (latest === null || r.at > latest)) latest = r.at
+  return latest
+}
+
+/**
+ * The usage cards' refresh button: reads every account again, bypassing the readers' caches
+ * (a second press within 30 s reuses the previous read, see the main process). The new reads
+ * reach every card through `usage:changed`.
+ */
+export function useUsageRefresh(): { refreshing: boolean; refresh: () => void; updatedAt: number | null } {
+  const reads = useAccountUsage()
+  const [refreshing, setRefreshing] = useState(false)
+  const live = useRef(true)
+  useEffect(() => {
+    live.current = true
+    return () => {
+      live.current = false
+    }
+  }, [])
+  const refresh = useCallback(() => {
+    setRefreshing(true)
+    void window.hub.usage
+      .refreshNow()
+      .catch(() => undefined)
+      .finally(() => live.current && setRefreshing(false))
+  }, [])
+  return { refreshing, refresh, updatedAt: lastReadAt(reads) }
 }
 
 /** Every session's own ceilings, by session identity (`sessionBudgetId`). */

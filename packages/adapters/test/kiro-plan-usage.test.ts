@@ -1,10 +1,10 @@
 import { EventEmitter } from 'node:events'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { KiroPlanUsageReader, parseKiroUsage, type KiroChild, type KiroSpawn } from '../src/transcript-kiro/plan-usage'
+import { KiroPlanUsageReader, kiroProbeCwd, kiroProbeHome, parseKiroUsage, removeLegacyProbeSession, type KiroChild, type KiroSpawn } from '../src/transcript-kiro/plan-usage'
 
 /** The `data` of Kiro 2.33's `/usage` answer, as observed (numbers changed). */
 const USAGE = {
@@ -29,8 +29,9 @@ describe('parseKiroUsage', () => {
 })
 
 /** A fake `kiro-cli acp`: answers JSON-RPC lines; `loadFails` makes `session/load` fail. */
-function fakeKiro(log: string[], options: { loadFails?: boolean } = {}): KiroSpawn {
-  return () => {
+function fakeKiro(log: string[], options: { loadFails?: boolean; seen?: { cwd: string; home?: string }[] } = {}): KiroSpawn {
+  return (_command, _args, spawnOptions) => {
+    options.seen?.push({ cwd: spawnOptions.cwd, home: spawnOptions.env?.['KIRO_HOME'] })
     const stdin = new PassThrough()
     const stdout = new PassThrough()
     const events = new EventEmitter()
@@ -94,13 +95,59 @@ describe('KiroPlanUsageReader', () => {
     expect(stored).toBe('probe-1')
   })
 
-  it('fails with a readable error when kiro-cli is missing', async () => {
+
+  it("runs Kiro in a home of Workhub's own, so its session and the user's MCP servers stay out", async () => {
+    const seen: { cwd: string; home?: string }[] = []
+    const dir = probeDir()
+    const reader = new KiroPlanUsageReader({ probeDir: dir, legacySessionsDir: join(dir, 'none'), state: { load: () => null, save: () => undefined }, spawn: fakeKiro([], { seen }) })
+    await reader.read()
+    expect(seen).toEqual([{ cwd: kiroProbeCwd(dir), home: kiroProbeHome(dir) }])
+    expect(existsSync(kiroProbeHome(dir))).toBe(true)
+  })
+
+  it('remembers a failure for the interval, and a forced read tries again', async () => {
+    let calls = 0
+    let now = 0
+    const spawn: KiroSpawn = (...args) => {
+      calls++
+      if (calls === 1) {
+        const events = new EventEmitter()
+        setTimeout(() => events.emit('exit'))
+        return { stdin: new PassThrough(), stdout: new PassThrough(), on: (e, cb) => events.on(e, cb), kill: () => undefined }
+      }
+      return fakeKiro([])(...args)
+    }
+    const reader = new KiroPlanUsageReader({ probeDir: probeDir(), state: { load: () => null, save: () => undefined }, spawn, now: () => now })
+    await expect(reader.read()).rejects.toThrow('exited before answering')
+    now = 60_000
+    await expect(reader.read()).rejects.toThrow('exited before answering')
+    expect(calls).toBe(1)
+    expect(await reader.read(undefined, { force: true })).toHaveLength(1)
+    expect(calls).toBe(2)
+  })
+
+  it('shows nothing, without an error, when kiro-cli is not installed', async () => {
     const spawn: KiroSpawn = () => {
       const events = new EventEmitter()
       setTimeout(() => events.emit('error', Object.assign(new Error('spawn kiro-cli ENOENT'), { code: 'ENOENT' })))
       return { stdin: new PassThrough(), stdout: new PassThrough(), on: (e, cb) => events.on(e, cb), kill: () => undefined }
     }
     const reader = new KiroPlanUsageReader({ probeDir: probeDir(), state: { load: () => null, save: () => undefined }, spawn })
-    await expect(reader.read()).rejects.toThrow('kiro-cli was not found')
+    expect(await reader.read()).toEqual([])
+  })
+
+  it("deletes the probe session an earlier version left in Kiro's list, and nothing else", async () => {
+    const dir = probeDir()
+    const sessions = join(dir, 'legacy')
+    mkdirSync(sessions, { recursive: true })
+    for (const ext of ['.json', '.jsonl', '.lock']) writeFileSync(join(sessions, `probe-old${ext}`), ext === '.json' ? JSON.stringify({ cwd: dir }) : '')
+    writeFileSync(join(sessions, 'user-1.json'), JSON.stringify({ cwd: '/Users/me/repo' }))
+    expect(await removeLegacyProbeSession(sessions, 'user-1', dir)).toBe(false)
+    expect(await removeLegacyProbeSession(sessions, '../x', dir)).toBe(false)
+    const log: string[] = []
+    const reader = new KiroPlanUsageReader({ probeDir: dir, legacySessionsDir: sessions, state: { load: () => 'probe-old', save: () => undefined }, spawn: fakeKiro(log, { loadFails: true }) })
+    await reader.read()
+    expect(['.json', '.jsonl', '.lock'].map((ext) => existsSync(join(sessions, `probe-old${ext}`)))).toEqual([false, false, false])
+    expect(existsSync(join(sessions, 'user-1.json'))).toBe(true)
   })
 })

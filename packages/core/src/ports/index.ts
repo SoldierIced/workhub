@@ -59,8 +59,13 @@ export interface SessionHistorySource {
 }
 
 /** Plan usage (5 h, weekly windows) of one agent account. */
+export interface PlanUsageReadOptions {
+  /** The user asked for a fresh read: skip the reader's own cache (never its rate-limit backoff). */
+  force?: boolean
+}
+
 export interface PlanUsageReader {
-  read(configDir: string | undefined): Promise<PlanUsageWindow[]>
+  read(configDir: string | undefined, options?: PlanUsageReadOptions): Promise<PlanUsageWindow[]>
 }
 
 /**
