@@ -212,6 +212,66 @@ and sends what to fix into the dev session's chat; the user is asked to step in 
   setting; Kiro-style agents without a read-only mode get a Settings warning, and no review session
   can push (above).
 
+### Session continuity: account failover and hand-off to another agent
+
+Two ways to keep working when an account runs out of usage, or when another agent should take
+over. Rules in `core/continuity` (pure, tested), wiring in `app/main/continuity.ts`, file work in
+`adapters/transcript-claude` (`session-copy.ts`, `handoff.ts`).
+
+- **Account failover (Claude, same conversation).** "Continue in another account" in the session
+  header (Continue elsewhere menu), and per profile (Settings → Profiles → "When a Claude account
+  runs out"): `ask` (default), `automatic` or `off`. Triggers: the agent reports a usage limit (the
+  `usageLimit` event: a `rate_limit_event` with `status: rejected` and no overage, an assistant
+  message flagged `error: 'rate_limit'`, or Claude Code's limit text such as "You've hit your
+  limit" / "Claude AI usage limit reached|<epoch>"), or Workhub's usage gate holds a prompt past the
+  user's ceiling. `ask` shows "Continue in <account>" / "Hand off to <agent>" / "Wait" above the
+  composer (plus an OS notification); `automatic` moves the session by itself, then sends the prompt
+  the gate held, or, after an agent limit, "Continue where you left off".
+- **Target:** the profile's Claude accounts in the agent order (`preferredAgents`, as `pickAgent`
+  uses it), not the source, not one sharing its config folder (same login), not past its ceiling,
+  and not one that reported a limit until its reset (1 h when the reset is unknown). Unknown usage
+  never excludes an account (fail open).
+- **Mechanism:** a dry-run plan of the copy (refuses before anything stops), a clean stop of the
+  source (Claude runs its SessionEnd hooks; nothing writes while copying), the copy, then a resume of
+  the same session id under the target account, and the old view leaves the list. The identity is
+  the session id, so the sidebar group and position stay (`refreshMembers` updates the member's
+  account). If the copy fails after the stop, the session resumes back in its own account. The chat
+  shows "Continued in Laboral: Personal reached its 5h limit."
+- **What is copied** (Claude Code on-disk layout, relative to `CLAUDE_CONFIG_DIR`, from the Agent
+  SDK's docs and code: `deleteSession` removes `<id>.jsonl` and the `<id>/` subdirectory,
+  `listSubagents` reads `<id>/subagents/agent-<id>.jsonl`, `forkSession` notes file-history is
+  separate): `projects/<folder>/<id>.jsonl`, `projects/<folder>/<id>/` (`subagents/`,
+  `tool-results/`), `file-history/<id>/` (checkpoints, rewind), `tasks/<id>/` (task list) and the
+  older `todos/<id>-agent-*.json`. `<folder>` keeps the source's name (Claude Code derives it from
+  the cwd, with a hash suffix past 200 characters). Not copied: `session-env/<id>` (rebuilt by
+  SessionStart hooks), plans (keyed by a slug, not the id), debug logs, `~/.claude.json` project
+  trust (the other account may ask again).
+- **Never overwrite, never move, never delete.** A target file with the same bytes is left; one
+  that is a prefix of the source (an older copy from an earlier failover the other way; transcripts
+  are append-only) only gets the missing tail; any other difference on the transcript stops the
+  move with nothing written, and on a sidecar that file is skipped and reported. Links are not
+  followed.
+- **Hand-off (any agent → any agent with a chat).** "Hand off to…" opens a new session of the target
+  agent in the same folder with a brief drafted in its composer (never sent), shown as "Handed off
+  from …" and placed right after the source in its sidebar group (`placeBeside`). The source keeps
+  running. A Claude session is not offered the other Claude accounts here: failover keeps the whole
+  conversation, a hand-off cannot.
+- **The brief** (`buildHandoffBrief`, 12 000 characters at most): goal (first prompt), links
+  (tickets, pull requests), repository now (branch, uncommitted files, read with git), files
+  touched, latest commands, open TODOs (TodoWrite or TaskCreate/TaskUpdate), the last exchanges
+  (newest kept first within the budget) and a next step. Claude transcripts are read directly
+  (`claudeHandoffFacts`); other agents through their history readers and monitor
+  (`factsFromHistory`). The deterministic brief is the default (no tokens); "Ask the agent to
+  summarize" sends a fixed no-tools template to the source (one turn of its account, only when it is
+  idle in its chat and under its ceiling) and falls back to the deterministic brief if it fails.
+- **Limits:** a hand-off is a summary, not a transcript transfer: the target starts a new
+  conversation and does not see tool outputs, earlier reasoning or files the source only read; the
+  deterministic brief has no "decisions" section (decisions are in the last exchanges; the
+  agent-written summary has one). Failover is Claude-only and native-adapter-only (Claude over ACP
+  and other agents get the hand-off), the "Handed off from" link lives with the open session (not
+  persisted across restarts; the group placement is), and a usage gate past its ceiling with
+  `automatic` mode moves the session on send instead of asking for "Send anyway".
+
 ## 5. Stage 2 — Phases (each one shippable)
 
 | Phase | Scope | Exit criteria |
