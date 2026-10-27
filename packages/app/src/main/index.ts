@@ -32,6 +32,7 @@ import {
   knownAgents,
   placeBeside,
   hasUnread,
+  historyOfSessions,
   isNotificationKind,
   importWorkhub1Secrets,
   pendingWorkhub1Secrets,
@@ -755,10 +756,17 @@ function registerIpc(): void {
   ipc.handle('updates:status', () => updates.status())
   ipc.handle('updates:check', () => updates.check())
   ipc.handle('updates:install', () => updates.install())
-  ipc.handle('history:list', async () => {
+  const namedHistory = async () => {
     const result = await listAllHistory(await configuration.current(), homedir(), historySources)
     // A session the user named shows that name in the history too.
     return { ...result, entries: result.entries.map((e) => ({ ...e, title: sessionNames.get(e.agentSessionId) ?? e.title })) }
+  }
+  ipc.handle('history:list', namedHistory)
+  ipc.handle('history:find', async (_e, keys: unknown) => {
+    if (!Array.isArray(keys)) return []
+    const wanted = new Set(keys.filter((k): k is string => typeof k === 'string'))
+    if (!wanted.size) return []
+    return historyOfSessions((await namedHistory()).entries, wanted)
   })
   ipc.handle('history:revealFolder', async (_e, path: string) => {
     if (typeof path !== 'string' || !isAbsolute(path)) return false

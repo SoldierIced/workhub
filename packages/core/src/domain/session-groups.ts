@@ -19,6 +19,18 @@ export interface GroupMember {
   cwd: string
   /** The profile it ran in: its colour marks the row while the session is closed too. */
   profileId?: string
+  /**
+   * Whether `title` is the session's own name (the user's rename, the agent's title or the first
+   * prompt) rather than its folder: a folder title is replaced as soon as a real name is known.
+   */
+  titled?: boolean
+  /** The agent and account that ran it, so a closed row shows its agent icon and account. */
+  agentId?: string
+  agentName?: string
+  accountId?: string
+  accountName?: string
+  /** The session history was searched once for this member (found or not): it is not searched again. */
+  lookedUp?: boolean
 }
 
 export interface SessionGroup {
@@ -257,7 +269,67 @@ export function reconcileTop(state: SessionGroups, liveKeys: readonly string[]):
   return unchanged ? state : { ...state, top: seen }
 }
 
-/** Updates what members remember (title, agent, folder) from their open sessions. Same object when nothing differs. */
+// Names
+
+const NAME_MAX = 60
+
+/** The last segment of a path: what a session without a name of its own is called. */
+export function folderLabel(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
+
+/** The first non-blank line of a text, whitespace collapsed, cut to a sidebar row's length. */
+function firstLine(text: string | undefined): string | undefined {
+  const line = text?.split('\n').find((l) => l.trim())?.trim().replace(/\s+/g, ' ')
+  if (!line) return undefined
+  return line.length > NAME_MAX ? `${line.slice(0, NAME_MAX - 1)}…` : line
+}
+
+/** Where a session's name can come from, strongest first. */
+export interface SessionNameSources {
+  /** The name the user gave it (Rename…, kept in session-names.json). */
+  name?: string
+  /** The agent's own title for it (a custom title or generated summary from its transcript). */
+  title?: string
+  /** What the user first asked. */
+  firstPrompt?: string
+  /** Its folder: the name of last resort. */
+  cwd: string
+}
+
+/**
+ * What a session is called: the user's rename, else the agent's title, else the first line of the
+ * first prompt, else its folder. `titled` tells whether it has a name of its own.
+ */
+export function resolveSessionName(sources: SessionNameSources): { title: string; titled: boolean } {
+  const own = firstLine(sources.name) ?? firstLine(sources.title) ?? firstLine(sources.firstPrompt)
+  return own ? { title: own, titled: true } : { title: folderLabel(sources.cwd), titled: false }
+}
+
+const MEMBER_FIELDS = ['title', 'titled', 'agentKey', 'cwd', 'profileId', 'agentId', 'agentName', 'accountId', 'accountName', 'lookedUp'] as const
+
+function sameMember(a: GroupMember, b: GroupMember): boolean {
+  return MEMBER_FIELDS.every((f) => a[f] === b[f])
+}
+
+/**
+ * What a member remembers once its open session reported `live`: everything the session knows now,
+ * except that a name of its own is never replaced by its folder (a session reopened in the terminal
+ * has no prompt on screen yet).
+ */
+export function mergeMember(stored: GroupMember, live: GroupMember): GroupMember {
+  const next: GroupMember = { ...live }
+  if (!live.titled && stored.titled) {
+    next.title = stored.title
+    next.titled = true
+  }
+  if (stored.lookedUp) next.lookedUp = true
+  // The account's name is kept while the session still runs with the same account.
+  if (next.accountName === undefined && stored.accountName !== undefined && next.accountId === stored.accountId) next.accountName = stored.accountName
+  return next
+}
+
+/** Updates what members remember (title, agent, account, folder) from their open sessions. Same object when nothing differs. */
 export function refreshMembers(state: SessionGroups, live: readonly GroupMember[]): SessionGroups {
   const byKey = new Map(live.map((m) => [m.key, m]))
   let changed = false
@@ -265,9 +337,76 @@ export function refreshMembers(state: SessionGroups, live: readonly GroupMember[
     let touched = false
     const members = g.members.map((m) => {
       const l = byKey.get(m.key)
-      if (!l || (l.title === m.title && l.agentKey === m.agentKey && l.cwd === m.cwd && l.profileId === m.profileId)) return m
+      if (!l) return m
+      const next = mergeMember(m, l)
+      if (sameMember(next, m)) return m
       touched = true
-      return l
+      return next
+    })
+    if (!touched) return g
+    changed = true
+    return { ...g, members }
+  })
+  return changed ? { ...state, groups } : state
+}
+
+/** The agent id of a member: stored, else read from its `agent:account` key. */
+export function memberAgentId(m: Pick<GroupMember, 'agentKey' | 'agentId'>): string {
+  return m.agentId ?? m.agentKey.split(':')[0]!
+}
+
+/**
+ * Whether a member lacks its name or its agent and account (one saved before Workhub kept them, or
+ * one closed before anything was asked) and the history was not searched for it yet.
+ */
+export function needsHistoryLookup(m: GroupMember): boolean {
+  return !m.lookedUp && (!m.titled || !m.agentId)
+}
+
+/** A past session as the history lists it: enough to name a member and tell its account. */
+export interface PastSessionInfo {
+  agentId: string
+  accountId: string | null
+  accountName?: string
+  agentName?: string
+  agentSessionId: string
+  title: string
+  firstPrompt?: string
+  lastModified: number
+}
+
+/**
+ * Fills in what members in `searched` lack (name, agent, account) from the session history, found
+ * by their stable identity (the agent's session id), and marks them searched so the history is read
+ * for them once. A name of their own and a known account are never overwritten. Same object when
+ * nothing changes.
+ */
+export function applyHistory(state: SessionGroups, entries: readonly PastSessionInfo[], searched: ReadonlySet<string>): SessionGroups {
+  let changed = false
+  const groups = state.groups.map((g) => {
+    let touched = false
+    const members = g.members.map((m) => {
+      if (!searched.has(m.key) || !needsHistoryLookup(m)) return m
+      const agentId = memberAgentId(m)
+      const hit = entries
+        .filter((e) => e.agentSessionId === m.key && e.agentId === agentId)
+        .reduce<PastSessionInfo | undefined>((best, e) => (!best || e.lastModified > best.lastModified ? e : best), undefined)
+      const next: GroupMember = { ...m, lookedUp: true }
+      if (hit) {
+        if (!m.titled) {
+          const named = resolveSessionName({ title: hit.title, firstPrompt: hit.firstPrompt, cwd: m.cwd })
+          next.title = named.title
+          next.titled = named.titled
+        }
+        next.agentId = agentId
+        if (hit.agentName && !m.agentName) next.agentName = hit.agentName
+        if (hit.accountId && !m.accountId) {
+          next.accountId = hit.accountId
+          if (hit.accountName) next.accountName = hit.accountName
+        }
+      }
+      touched = true
+      return next
     })
     if (!touched) return g
     changed = true
