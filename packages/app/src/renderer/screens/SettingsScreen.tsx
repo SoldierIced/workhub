@@ -1,5 +1,5 @@
 import { Activity, FolderCog, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   appOptions,
   CONNECTION_KINDS,
@@ -17,7 +17,7 @@ import {
   type ValidationIssue,
   type WorkhubConfig
 } from '@workhub/core'
-import type { ConfigSnapshot } from '@shared/api'
+import type { AgentOptionsView, ConfigSnapshot } from '@shared/api'
 import { Badge, Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { AgentOrderList, Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
 import { Workhub1Import } from '../components/organisms'
@@ -434,9 +434,30 @@ function AccountsSection({ snap, run }: SectionProps) {
   }
   const agent = snap.agents.find((a) => a.id === form.agentId)
   const envHintKey = accountEnvHintKey(form.agentId)
+  // Models and modes the agent offers, as suggestions for the defaults (free text stays allowed).
+  const [options, setOptions] = useState<AgentOptionsView | null>(null)
+  const optionsKey = selected ? `${form.agentId}:${selected}` : form.agentId
+  const configurable = agent !== undefined && agent.adapter !== 'terminal'
+  useEffect(() => {
+    setOptions(null)
+    if (!configurable) return
+    let live = true
+    void window.hub.agents.options(optionsKey).then(
+      (o) => live && setOptions(o),
+      () => live && setOptions(null)
+    )
+    return () => {
+      live = false
+    }
+  }, [optionsKey, configurable])
 
   const save = async () => {
     const account: AgentAccount = { ...form, env: fromLines(envText) }
+    for (const k of ['command', 'defaultModel', 'defaultMode'] as const) {
+      const v = account[k]?.trim()
+      if (v) account[k] = v
+      else delete account[k]
+    }
     if (!account.configDir) delete account.configDir
     if (!Object.keys(account.env ?? {}).length) delete account.env
     if (await run(() => window.hub.config.saveAccount(account))) setSelected(account.id)
@@ -480,6 +501,46 @@ function AccountsSection({ snap, run }: SectionProps) {
           <Field label={t('settings.envLines')} hint={envHintKey ? t(envHintKey) : undefined} className="col-span-2">
             <Textarea rows={3} value={envText} onChange={(e) => setEnvText(e.target.value)} placeholder="ACME_ACCOUNT=work" spellCheck={false} />
           </Field>
+          {agent && agent.adapter !== 'terminal' && (
+            <Field label={t('settings.accountCommand')} hint={t('settings.accountCommandHint', { command: agent.command })} className="col-span-2">
+              <Input value={form.command ?? ''} onChange={(e) => setForm({ ...form, command: e.target.value })} placeholder={agent.command} spellCheck={false} data-testid="account-command" />
+            </Field>
+          )}
+          {configurable && (
+            <>
+              <Field label={t('settings.defaultModel')} hint={t('settings.defaultModelHint')}>
+                <Input
+                  value={form.defaultModel ?? ''}
+                  onChange={(e) => setForm({ ...form, defaultModel: e.target.value })}
+                  list="account-models"
+                  placeholder={options?.defaultModelId ?? t('settings.agentDefaultOption')}
+                  spellCheck={false}
+                  data-testid="account-default-model"
+                />
+              </Field>
+              <Field label={t('settings.defaultMode')} hint={t('settings.defaultModeHint')}>
+                <Input
+                  value={form.defaultMode ?? ''}
+                  onChange={(e) => setForm({ ...form, defaultMode: e.target.value })}
+                  list="account-modes"
+                  placeholder={options?.defaultModeId ?? t('settings.agentDefaultOption')}
+                  spellCheck={false}
+                  data-testid="account-default-mode"
+                />
+              </Field>
+              <datalist id="account-models">
+                {options?.models.map((m) => <option key={m.id} value={m.id} label={m.description ? `${m.name} · ${m.description}` : m.name} />)}
+              </datalist>
+              <datalist id="account-modes">
+                {options?.modes.map((m) => <option key={m.id} value={m.id} label={m.description ? `${m.name} · ${m.description}` : m.name} />)}
+              </datalist>
+              <p className="col-span-2 -mt-2 text-xs text-subtle" data-testid="account-options-source">
+                {options && options.source !== 'none'
+                  ? t('settings.optionsSource', { count: options.models.length + options.modes.length, source: t(options.source === 'cli' ? 'settings.optionsSource.cli' : 'settings.optionsSource.session') })
+                  : t('settings.optionsNone')}
+              </p>
+            </>
+          )}
         </div>
       }
       actions={

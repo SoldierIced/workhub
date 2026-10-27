@@ -118,10 +118,10 @@ describe('home figures', () => {
 
 describe('preferences', () => {
   it('parse stored values and fall back on anything unexpected', () => {
-    expect(parsePrefs(null)).toEqual({ theme: 'system', language: 'system', models: {} })
-    expect(parsePrefs('{"theme":"light","language":"es"}')).toEqual({ theme: 'light', language: 'es', models: {} })
-    expect(parsePrefs('{"theme":"neon","language":"fr","models":[1]}')).toEqual({ theme: 'system', language: 'system', models: {} })
-    expect(parsePrefs('not json')).toEqual({ theme: 'system', language: 'system', models: {} })
+    expect(parsePrefs(null)).toEqual({ theme: 'system', language: 'system', models: {}, modes: {} })
+    expect(parsePrefs('{"theme":"light","language":"es"}')).toEqual({ theme: 'light', language: 'es', models: {}, modes: {} })
+    expect(parsePrefs('{"theme":"neon","language":"fr","models":[1]}')).toEqual({ theme: 'system', language: 'system', models: {}, modes: {} })
+    expect(parsePrefs('not json')).toEqual({ theme: 'system', language: 'system', models: {}, modes: {} })
   })
 
   it('keep the remembered model per agent key and drop anything that is not a model id', () => {

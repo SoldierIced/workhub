@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import {
+  accountAgent,
   BUILTIN_AGENTS,
+  canSetModel,
+  canSetSessionMode,
   consoleCommand,
   hasSessionControls,
   isTerminalControl,
@@ -17,7 +20,9 @@ import {
   type EffectiveAgent,
   type HistoryMessage,
   type ImageInput,
+  type ModelOption,
   type SessionHistorySource,
+  type SessionModeOption,
   type TranscriptReader,
   type WorkhubConfig
 } from '@workhub/core'
@@ -58,6 +63,8 @@ export interface SessionManagerDeps {
   emitConfigChanged?: () => void
   /** How often transcripts are read for the monitor (Workhub 1: every 3 s). */
   pollMs?: number
+  /** A session reported its models and modes: remembered so the next session can offer them before it starts. */
+  onAgentOptions?: (agentId: string, accountId: string | null, options: { models: ModelOption[]; modes: SessionModeOption[] }) => void
 }
 
 const SHELL = BUILTIN_AGENTS.find((a) => a.id === 'shell')!
@@ -124,7 +131,9 @@ export class SessionManager {
     const config = await this.deps.config.current()
     const choice = resolveChoice(config, input.profileId, input.agentKey)
     if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
-    const { agent, account } = choice
+    const { account } = choice
+    // An account can run another build of the agent (its own command).
+    const agent = accountAgent(choice.agent, account)
     const runtime = agent.adapter === 'terminal' ? this.deps.terminal : this.deps.runtimes[agent.adapter]
     if (!runtime) throw new Error(`no runtime for adapter "${agent.adapter}"`)
 
@@ -160,6 +169,8 @@ export class SessionManager {
       mode: engine,
       shellRunning: false,
       controls: hasSessionControls(runtime),
+      modelControl: canSetModel(runtime),
+      modeControl: canSetSessionMode(runtime),
       ...(input.readOnly ? { readOnly: true } : {})
     }
     const session: ManagedSession = { view, agent, account, env: { ...launchEnvironment(agent, account), ...(internal.env ?? {}) }, runtime, engine, switching: false, readOnly: input.readOnly === true }
@@ -168,7 +179,10 @@ export class SessionManager {
 
     const resume = Boolean(input.resumeAgentSessionId)
     // session/new can take 10-15 s: answer now, report progress through `changed` events.
-    void (engine === 'app' ? this.startApp(session, { resume, model: input.model, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows))
+    // What was picked for this session, else the account's defaults (Settings → Agent accounts).
+    const model = input.model ?? account?.defaultModel
+    const modeId = input.readOnly ? undefined : (input.modeId ?? account?.defaultMode)
+    void (engine === 'app' ? this.startApp(session, { resume, model, modeId, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows))
       .then(() => {
         if (resume && engine === 'app') void this.replay(session)
       })
@@ -227,15 +241,27 @@ export class SessionManager {
       s.switching = false
     }
     const hasHistory = await this.hasTranscript(s)
-    if (mode === 'app') await this.startApp(s, { resume: hasHistory, model: s.view.currentModelId })
+    if (mode === 'app') await this.startApp(s, { resume: hasHistory, model: s.view.currentModelId, modeId: s.readOnly ? undefined : s.view.currentModeId })
     else await this.startConsole(s)
   }
 
   async setModel(id: string, modelId: string | null): Promise<void> {
     const s = this.require(id)
-    if (!hasSessionControls(s.runtime)) throw new Error('this agent cannot switch models')
+    if (s.engine !== 'app' || !canSetModel(s.runtime)) throw new Error('this agent cannot switch models')
     await s.runtime.setModel(id, modelId)
-    this.update(id, { currentModelId: modelId ?? undefined })
+    // ACP cannot go back to "the agent's default": the current model stays until another is picked.
+    if (modelId || s.agent.adapter !== 'acp') this.update(id, { currentModelId: modelId ?? undefined, modelIgnored: undefined })
+  }
+
+  /** Switches the session's mode: the agent or persona (Kiro, OpenCode) or the approval preset (Codex). */
+  async setAgentMode(id: string, modeId: string): Promise<void> {
+    const s = this.require(id)
+    if (s.engine !== 'app' || !canSetSessionMode(s.runtime)) throw new Error('this agent cannot switch modes')
+    // A reviewer stays in its read-only mode.
+    if (s.readOnly) throw new Error('a review session keeps its read-only mode')
+    if (!(s.view.availableModes ?? []).some((m) => m.id === modeId)) throw new Error(`mode "${modeId}" is not offered by this session`)
+    await s.runtime.setSessionMode(id, modeId)
+    this.update(id, { currentModeId: modeId, modeIgnored: undefined })
   }
 
   mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void {
@@ -266,7 +292,7 @@ export class SessionManager {
     await Promise.all([...runtimes].map((r) => r?.stopAll()))
   }
 
-  private async startApp(s: ManagedSession, opts: { resume: boolean; model?: string; cols?: number; rows?: number }): Promise<void> {
+  private async startApp(s: ManagedSession, opts: { resume: boolean; model?: string; modeId?: string; cols?: number; rows?: number }): Promise<void> {
     const started = await s.runtime.start({
       sessionId: s.view.id,
       agent: s.agent,
@@ -276,6 +302,7 @@ export class SessionManager {
       agentSessionId: s.view.agentSessionId,
       resume: opts.resume,
       model: opts.model,
+      ...(opts.modeId ? { modeId: opts.modeId } : {}),
       cols: opts.cols,
       rows: opts.rows,
       ...(s.readOnly ? { readOnly: true } : {})
@@ -300,9 +327,17 @@ export class SessionManager {
     if (started.availableModes) patch.availableModes = started.availableModes
     // The model asked for is the current one until the agent reports otherwise; an agent that cannot
     // pick one says so, and the session keeps its own default.
-    if (started.modelIgnored) patch.modelIgnored = true
-    else if (opts.model) patch.currentModelId = opts.model
+    if (started.models?.length) patch.models = started.models
+    if (started.modelIgnored) {
+      patch.modelIgnored = true
+      if (started.currentModelId) patch.currentModelId = started.currentModelId
+    } else if (opts.model) patch.currentModelId = opts.model
+    else if (started.currentModelId) patch.currentModelId = started.currentModelId
+    if (started.modeIgnored) patch.modeIgnored = true
     this.update(s.view.id, patch)
+    if (started.models?.length || started.availableModes?.length) {
+      this.deps.onAgentOptions?.(s.agent.id, s.account?.id ?? null, { models: started.models ?? [], modes: started.availableModes ?? [] })
+    }
   }
 
   private async startConsole(s: ManagedSession, cols?: number, rows?: number): Promise<void> {
@@ -386,7 +421,10 @@ export class SessionManager {
     }
     if (s && !channel) {
       if (e.type === 'permissionMode') this.update(id, { permissionMode: e.mode, currentModeId: e.currentModeId })
-      if (e.type === 'models') this.update(id, { models: e.models, ...(e.currentModelId ? { currentModelId: e.currentModelId } : {}) })
+      if (e.type === 'models') {
+        this.update(id, { models: e.models, ...(e.currentModelId ? { currentModelId: e.currentModelId } : {}) })
+        if (e.models.length) this.deps.onAgentOptions?.(s.agent.id, s.account?.id ?? null, { models: e.models, modes: s.view.availableModes ?? [] })
+      }
     }
     this.deps.emitEvent(e)
   }

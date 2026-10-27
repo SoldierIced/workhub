@@ -11,10 +11,12 @@ export interface Prefs {
   language: LanguagePreference
   /** The model last picked per agent key (`claude`, `claude:work`), used for the next session. */
   models: Record<string, string>
+  /** The mode (Kiro or OpenCode agent, Codex preset) last picked per agent key, used for the next session. */
+  modes: Record<string, string>
 }
 
 const KEY = 'workhub.prefs'
-const DEFAULTS: Prefs = { theme: 'system', language: 'system', models: {} }
+const DEFAULTS: Prefs = { theme: 'system', language: 'system', models: {}, modes: {} }
 
 export function parsePrefs(raw: string | null): Prefs {
   if (!raw) return DEFAULTS
@@ -23,7 +25,8 @@ export function parsePrefs(raw: string | null): Prefs {
     return {
       theme: v.theme === 'light' || v.theme === 'dark' || v.theme === 'system' ? v.theme : DEFAULTS.theme,
       language: v.language === 'en' || v.language === 'es' || v.language === 'system' ? v.language : DEFAULTS.language,
-      models: modelMap(v.models)
+      models: modelMap(v.models),
+      modes: modelMap(v.modes)
     }
   } catch {
     return DEFAULTS
@@ -48,6 +51,14 @@ export function rememberModel(agentKey: string, modelId: string | null): void {
   if (modelId) models[agentKey] = modelId
   else delete models[agentKey]
   setPrefs({ models })
+}
+
+/** Remembers the mode (agent, persona, preset) picked for an agent key; the next session of that agent starts in it. */
+export function rememberMode(agentKey: string, modeId: string | null): void {
+  const modes = { ...prefs.modes }
+  if (modeId) modes[agentKey] = modeId
+  else delete modes[agentKey]
+  setPrefs({ modes })
 }
 
 export function setPrefs(patch: Partial<Prefs>): void {
