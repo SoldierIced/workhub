@@ -10,6 +10,9 @@
     "./agent-acp": "./src/agent-acp/index.ts",
     "./agent-terminal": "./src/agent-terminal/index.ts",
     "./transcript-claude": "./src/transcript-claude/index.ts",
+    "./transcript-kiro": "./src/transcript-kiro/index.ts",
+    "./transcript-opencode": "./src/transcript-opencode/index.ts",
+    "./transcript-codex": "./src/transcript-codex/index.ts",
     "./agent-claude-native": "./src/agent-claude-native/index.ts",
     "./workhub1-import": "./src/workhub1-import/index.ts"
   },
