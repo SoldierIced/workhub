@@ -24,6 +24,7 @@ import {
   ConfigurationService,
   knownAgents,
   importWorkhub1Secrets,
+  pendingWorkhub1Secrets,
   planWorkhub1Import,
   resolveEffectiveAgents,
   usageAccountKey,
@@ -340,7 +341,10 @@ function registerIpc(): void {
     try {
       const v1 = await readWorkhub1Settings()
       if (!v1) return { available: false }
-      return { available: true, plan: planWorkhub1Import(v1, await configuration.current(), homedir()) }
+      const config = await configuration.current()
+      // Names only: the Workhub 1 connections still waiting for their token (nothing is read from the Keychain here).
+      const pendingSecrets = (await pendingWorkhub1Secrets(v1, config, secrets)).map(({ connection }) => ({ connectionId: connection.id, name: connection.name || connection.id }))
+      return { available: true, plan: planWorkhub1Import(v1, config, homedir()), pendingSecrets }
     } catch (err) {
       return { available: false, error: err instanceof Error ? err.message : String(err) }
     }
