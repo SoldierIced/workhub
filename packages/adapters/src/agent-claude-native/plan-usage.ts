@@ -9,7 +9,8 @@ import { execFile } from 'node:child_process'
 import { readFile, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { PlanUsageReader, PlanUsageWindow } from '@workhub/core'
+import type { PlanUsageWindow, UsageProvider } from '@workhub/core'
+import { PlanUsageError } from '../shared/plan-usage-error'
 
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj | undefined => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : undefined)
@@ -25,15 +26,7 @@ const FIELDS: readonly [string, string][] = [
   ['seven_day_sonnet', 'weekly Sonnet']
 ]
 
-export class PlanUsageError extends Error {
-  constructor(
-    readonly code: 'noLogin' | 'expired' | 'rateLimited' | 'offline' | 'http' | 'unreadable',
-    message: string
-  ) {
-    super(message)
-    this.name = 'PlanUsageError'
-  }
-}
+export { PlanUsageError }
 
 /** The windows of a usage response; fields without a numeric utilization are left out. */
 export function parsePlanUsage(body: unknown): PlanUsageWindow[] {
@@ -93,7 +86,8 @@ export interface ClaudePlanUsageOptions {
   now?: () => number
 }
 
-export class ClaudePlanUsageReader implements PlanUsageReader {
+export class ClaudePlanUsageReader implements UsageProvider {
+  readonly agentId = 'claude'
   private readonly cache = new Map<string, { at: number; windows: PlanUsageWindow[] }>()
   private readonly retryAt = new Map<string, number>()
 

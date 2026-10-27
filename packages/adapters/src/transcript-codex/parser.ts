@@ -58,7 +58,8 @@ export function windowLabel(minutes: number | undefined): string {
   return `${minutes}m`
 }
 
-function rateWindow(raw: unknown, at: number | undefined): PlanUsageWindow | undefined {
+/** One window of a `token_count` event's `rate_limits` (`primary`, `secondary`). */
+export function rateWindow(raw: unknown, at: number | undefined): PlanUsageWindow | undefined {
   const w = obj(raw)
   const percent = num(w?.['used_percent'])
   if (!w || percent === undefined) return undefined
