@@ -88,12 +88,7 @@ export interface CodeHost {
   recognizes(url: string): boolean
 }
 
-/** Tickets (P4: Jira, Linear, GitHub Issues). */
-export interface TicketTracker {
-  readonly provider: string
-  /** Whether a string is a ticket key of this tracker, e.g. `ABC-123`. */
-  isTicketKey(text: string): boolean
-}
+export type { TicketTracker } from '../tickets/ticket-tracker'
 
 /** Chat threads watched for requests (P6: Slack through the agent's MCP). */
 export interface ChatSource {
