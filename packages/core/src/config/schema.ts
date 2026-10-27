@@ -15,7 +15,7 @@ import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
  * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
  */
-export const CONFIG_VERSION = 5
+export const CONFIG_VERSION = 6
 
 export interface WorkhubConfig {
   version: typeof CONFIG_VERSION

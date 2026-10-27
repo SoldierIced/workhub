@@ -24,7 +24,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // 4 -> 5 (P6a, chat watcher and automations): `chatWatcher`, `automations` and the per-profile
   // `profiles[].slackArchiveMinutes` (Slack threads shown archived after N quiet minutes). All optional
   // and default, so the document is unchanged; the bump keeps an older Workhub from dropping them.
-  4: (raw) => raw
+  4: (raw) => raw,
+  // 5 -> 6: optional fields added since (agent order, usage budgets, AI review, agent account
+  // defaults, tray and notification switches, account failover). The document is unchanged; the
+  // bump keeps an older Workhub from loading the file and dropping them on its next save.
+  5: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {
