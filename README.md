@@ -6,8 +6,41 @@ threads and environment health around each task. Agents declare their capabiliti
 shows only what each one supports. Nothing personal or company-specific is in the code: every
 connection, profile and account is configuration loaded at runtime.
 
-Status: phase P2 (sessions). macOS is the only platform exercised so far. See
-[PLAN.md](PLAN.md) for the scope and the phases.
+Status: pre-release (`2.0.0-alpha.1`). macOS is the only platform exercised so far; Windows and
+Linux installers are built by CI and untested. See [PLAN.md](PLAN.md) for the scope and the phases.
+
+## Install
+
+Download the installer for your OS from the
+[Releases](https://github.com/SoldierIced/workhub/releases) page. The app is called **Workhub 2**
+and installs next to Workhub 1 (different name, app id and data folder), so both can run. The
+builds are **not signed with a paid certificate** yet, so each OS asks for one extra step on the
+first launch. Every artifact has a `.sha256` file to check the download.
+
+**macOS (Apple Silicon)**: open the `.dmg` and drag Workhub 2 to Applications (or unzip the `.zip`).
+The app is signed ad hoc and not notarized, so Gatekeeper blocks the first launch: open the app
+once, then go to System Settings > Privacy & Security, scroll to Security and click **Open Anyway**.
+Or run `xattr -dr com.apple.quarantine "/Applications/Workhub 2.app"` and open it again.
+
+**Windows (x64)**: run the `.exe`. SmartScreen shows "Windows protected your PC": click
+**More info**, then **Run anyway**. The installer lets you pick the folder and installs per user.
+
+**Linux (x64)**: `chmod +x Workhub-2-*-linux-x64.AppImage && ./Workhub-2-*-linux-x64.AppImage`, or
+install the `.deb` (`sudo apt install ./Workhub-2-*-linux-x64.deb`).
+
+The Claude Agent SDK and its `claude` binary ship inside the app, so Claude sessions work without
+a separate Claude Code install. Other agents (`kiro-cli`, `opencode`, `gemini`, ...) must be on
+your PATH. The Claude-over-ACP adapter (`claude-agent-acp`) is bundled too, but its launcher
+needs Node.js on the PATH; the default native Claude agent does not.
+
+### Updates
+
+Settings > General > Updates has a **Check for updates** switch, off by default: nothing contacts
+GitHub unless you turn it on or press **Check now**. Updates come from the GitHub Releases of
+`SoldierIced/workhub` (pre-releases included while the version has a suffix). On Windows and on
+Linux AppImage the app can download and install the new version. On macOS an unsigned app cannot
+replace itself, so it only announces the new version and opens the release page: download it and
+replace the app in Applications.
 
 ## Layout
 
@@ -41,7 +74,7 @@ the app bundles them with electron-vite, so there is no separate build step for 
 
 ## Requirements
 
-- macOS (Windows and Linux are planned, not tested yet)
+- macOS, Windows or Linux (only macOS is tested so far)
 - Node.js 22 and npm 10
 - The agents you want to run, on your PATH (for example `kiro-cli`, `opencode`, `gemini`);
   Codex runs through `npx`. The Claude ACP adapter is installed with the app. An agent that is not
@@ -58,6 +91,46 @@ npm run build        # electron-vite build of the app (packages/app/out)
 ```
 
 To run the built app: `cd packages/app && npx electron .`
+
+## Build installers
+
+```sh
+npm run dist          # installers for the current OS, into dist/
+npm run dist:mac      # dmg + zip, arm64 (needs an Apple Silicon Mac)
+npm run dist:win      # NSIS installer, x64 (run on Windows)
+npm run dist:linux    # AppImage + deb, x64 (run on Linux)
+npm run icons         # regenerate packages/app/build/icon.* from logo/workhub-logo.svg
+scripts/install-mac.sh [--dry-run]   # build and install /Applications/Workhub 2.app
+```
+
+`node-pty` is a native module, so each OS builds its own installers (CI has one job per OS). The
+build stages the Claude bridge (`scripts/stage-bridge.mjs`: the bridge scripts, the Agent SDK and
+its native `claude` binary for the target) and ships it in the app's resources folder; `main`
+finds it there instead of in the repo. The macOS build is signed with `WORKHUB_SIGN_IDENTITY`, else
+the first "Apple Development" identity in your keychain, else ad hoc (`-`); it is never notarized.
+`scripts/install-mac.sh` quits and reopens only "Workhub 2" and never touches `Workhub.app`;
+`WORKHUB_KEEP_RUNNING=1` swaps the bundle without quitting it.
+
+The product name, app id and release repository live in `scripts/brand.mjs` only (the app id is
+`io.github.soldiericed.workhub2`); change them there when Workhub 2 replaces Workhub 1.
+
+## Release process
+
+The version is the root `package.json`'s (`packages/app/package.json` must match; the release
+script checks). A version with a suffix (`2.0.0-alpha.1`) is published as a pre-release.
+
+1. Set the version in both `package.json` files, commit, push.
+2. Either push a tag: `git tag v2.0.0-alpha.1 && git push origin v2.0.0-alpha.1`. The `release`
+   workflow checks the tag against the version, builds macOS, Windows and Linux installers and
+   attaches them, with checksums and the `latest*.yml` update metadata, to a **draft** release.
+   Review the draft and publish it.
+3. Or release the macOS build from your machine: `scripts/release.sh --dry-run` prints the steps and
+   the release notes; `scripts/release.sh --publish` builds, writes the `.sha256` files and runs
+   `gh release create` (it refuses a dirty tree or a HEAD that is not pushed).
+
+The `ci` workflow runs install, typecheck, tests and build on macOS, Windows and Linux for every
+push to `main` and every pull request. No secrets are needed for unsigned builds. Signing and
+notarization (Apple Developer ID, a Windows code-signing certificate) are a later step.
 
 ## Sessions
 

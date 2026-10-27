@@ -1,6 +1,6 @@
 {
   "name": "workhub2",
-  "version": "0.0.0",
+  "version": "2.0.0-alpha.1",
   "private": true,
   "description": "Workhub 2: a cross-platform desktop app to run and supervise coding agents",
   "license": "UNLICENSED",
@@ -14,10 +14,18 @@
     "test": "vitest run",
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev -w @workhub/app",
-    "postinstall": "node node_modules/electron/install.js && electron-rebuild -f -w node-pty -m packages/app"
+    "postinstall": "node node_modules/electron/install.js && electron-rebuild -f -w node-pty -m packages/app",
+    "dist": "node scripts/dist.mjs",
+    "dist:mac": "node scripts/dist.mjs mac",
+    "dist:win": "node scripts/dist.mjs win",
+    "dist:linux": "node scripts/dist.mjs linux",
+    "icons": "node scripts/make-icons.mjs",
+    "release": "bash scripts/release.sh"
   },
   "devDependencies": {
     "@types/node": "26.6.5",
+    "png2icons": "2.0.1",
+    "sharp": "0.35.5",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   }

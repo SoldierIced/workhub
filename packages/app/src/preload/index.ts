@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { AgentEvent, HistoryMessage } from '@workhub/core'
 import { toPlatform, type AccountUsage, type HubApi, type SessionView } from '../shared/api'
+import type { UpdateStatus } from '../shared/updates-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -73,6 +74,12 @@ const api: HubApi = {
   notifications: {
     show: (n) => ipcRenderer.send('notifications:show', n),
     onOpen: (cb) => subscribe<[string]>('notifications:open', cb)
+  },
+  updates: {
+    status: () => ipcRenderer.invoke('updates:status'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onChanged: (cb) => subscribe<[UpdateStatus]>('updates:changed', cb)
   },
   codeHost: {
     lists: (profileId, force) => ipcRenderer.invoke('codeHost:lists', profileId, force),

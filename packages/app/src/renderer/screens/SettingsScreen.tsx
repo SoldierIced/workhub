@@ -25,6 +25,7 @@ import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { TrackerSettings } from './TrackerSettings'
+import { UpdatesSettings } from './UpdatesSettings'
 
 const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
   codeHost: 'kind.codeHost',
@@ -188,6 +189,9 @@ function GeneralSection({ snap, run }: SectionProps) {
             <Switch checked={options[option]} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ [option]: on }))} />
           </SwitchRow>
         ))}
+      </SettingsGroup>
+      <SettingsGroup title={t('updates.group')} footnote={window.hub.platform === 'mac' ? t('updates.macNote') : undefined}>
+        <UpdatesSettings enabled={options.checkForUpdates} editable={editable} run={run} />
       </SettingsGroup>
       {window.hub.platform === 'mac' && editable && (
         <SettingsGroup title={t('import.group')}>

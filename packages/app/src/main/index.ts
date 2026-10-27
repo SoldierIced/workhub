@@ -30,8 +30,10 @@ import { listAllHistory } from './history'
 import { SessionManager } from './session-manager'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
+import { UpdateService } from './updates'
 
-// Dev layout: packages/app/out/main -> packages/app. Packaging is P8.
+// Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
+// (the Claude bridge) under process.resourcesPath instead.
 const appRoot = resolve(__dirname, '../..')
 const repoRoot = resolve(appRoot, '../..')
 
@@ -65,11 +67,14 @@ const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
 
-// Workhub 1's Agent SDK bridge, run with Electron's own Node (dev layout; packaging is P8).
-const bridgeDir = join(repoRoot, 'packages', 'adapters', 'src', 'agent-claude-native', 'bridge')
+// Workhub 1's Agent SDK bridge, run with Electron's own Node. Packaged: staged into the resources
+// folder with its node_modules (scripts/stage-bridge.mjs); dev: straight from the adapters source.
+const bridgeDir = app.isPackaged ? join(process.resourcesPath, 'bridge') : join(repoRoot, 'packages', 'adapters', 'src', 'agent-claude-native', 'bridge')
 const terminal = new TerminalRuntime()
 // Agent adapters installed with the app (claude-agent-acp) are found through PATH.
-const extraPath = [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
+const extraPath = app.isPackaged
+  ? [join(bridgeDir, 'node_modules', '.bin')]
+  : [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
 const runtimes = {
   native: new ClaudeNativeRuntime({ bridgeDir }),
   acp: new AcpRuntime({
@@ -100,6 +105,8 @@ const usage = new UsageService(
   },
   (u: AccountUsage[]) => send('usage:changed', u)
 )
+
+const updates = new UpdateService((s) => send('updates:changed', s))
 
 async function snapshot(): Promise<ConfigSnapshot> {
   const config = await configuration.current()
@@ -206,6 +213,9 @@ function registerIpc(): void {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })
 
+  ipcMain.handle('updates:status', () => updates.status())
+  ipcMain.handle('updates:check', () => updates.check())
+  ipcMain.handle('updates:install', () => updates.install())
   ipcMain.handle('history:list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
   ipcMain.handle('agents:availability', async () => agentAvailability(knownAgents(await configuration.current()), { extraPath }))
   ipcMain.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
@@ -339,6 +349,8 @@ void app.whenReady().then(async () => {
   registerIpc()
   createWindow()
   usage.start()
+  // Opt-in: nothing contacts GitHub unless the user turned this on (or presses "Check now").
+  if (app.isPackaged && appOptions(await configuration.current()).checkForUpdates) setTimeout(() => void updates.check(), 10_000)
 })
 
 let quitting = false

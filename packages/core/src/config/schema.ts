@@ -37,9 +37,11 @@ export interface AppOptions {
   notifyNeedsAnswer: boolean
   /** OS notification when a session fails. */
   notifyError: boolean
+  /** Look for a newer release on GitHub at startup and from Settings. Off by default (nothing is contacted unless asked). */
+  checkForUpdates: boolean
 }
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -153,7 +155,8 @@ export const configSchema = z.object({
       claudePlanUsage: z.boolean().default(false),
       notifyReplied: z.boolean().default(true),
       notifyNeedsAnswer: z.boolean().default(true),
-      notifyError: z.boolean().default(true)
+      notifyError: z.boolean().default(true),
+      checkForUpdates: z.boolean().default(false)
     })
     .optional(),
   sessionGroups: sessionGroups.optional()

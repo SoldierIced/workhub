@@ -25,6 +25,7 @@ import type {
 } from '@workhub/core'
 import type { CodeHostApi } from './codehost-api'
 import type { TicketsApi } from './tickets-api'
+import type { UpdatesApi } from './updates-api'
 
 export interface ConfigSnapshot {
   config: WorkhubConfig
@@ -205,4 +206,5 @@ export interface HubApi {
   notifications: NotificationsApi
   codeHost: CodeHostApi
   tickets: TicketsApi
+  updates: UpdatesApi
 }
