@@ -14,6 +14,7 @@ import { continuityEs } from './continuity.es'
 import { appearanceEs } from './appearance.es'
 import { settingsHelpEs } from './settingsHelp.es'
 import { trayEs } from './tray.es'
+import { appBadgeEs } from './appBadge.es'
 import { agentsEs } from './agents.es'
 import { toolViewEs } from './toolView.es'
 
@@ -393,6 +394,7 @@ export const es: Record<keyof typeof en, string> = {
   ...continuityEs,
   ...sessionsUxEs,
   ...trayEs,
+  ...appBadgeEs,
   ...agentsEs,
   ...appearanceEs,
   ...settingsHelpEs,
