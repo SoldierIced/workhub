@@ -92,6 +92,7 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
           result={item.result}
           cwd={cwd}
           onReveal={(path) => void window.hub.sessions.revealFile(sessionId, path)}
+          onViewFile={(path) => void window.hub.files.openWindow(path, cwd)}
           onOpenAgent={agentId && subagents?.some((s) => s.id === agentId) ? () => openSubagent(sessionId, agentId) : undefined}
         />
       )

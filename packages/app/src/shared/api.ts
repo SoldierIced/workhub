@@ -39,6 +39,7 @@ import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
 import type { TicketsApi } from './tickets-api'
 import type { UpdatesApi } from './updates-api'
+import type { FilesApi, LocalReviewApi } from './local-review-api'
 
 export interface ConfigSnapshot {
   config: WorkhubConfig
@@ -324,6 +325,8 @@ export interface HubApi {
   automations: AutomationsApi
   aiReview: AiReviewApi
   continuity: ContinuityApi
+  localReview: LocalReviewApi
+  files: FilesApi
   tray: TrayApi
 }
 

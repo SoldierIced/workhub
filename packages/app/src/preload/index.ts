@@ -8,6 +8,7 @@ import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 import type { ContinuityMoved, ContinuityOffer } from '../shared/continuity-api'
 import type { TrayRoute } from '../shared/tray-api'
+import type { LocalReviewDelivery } from '@workhub/core'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -171,6 +172,24 @@ const api: HubApi = {
     handoff: (sessionId, request) => ipcRenderer.invoke('continuity:handoff', sessionId, request),
     onOffer: (cb) => subscribe<[ContinuityOffer]>('continuity:offer', cb),
     onMoved: (cb) => subscribe<[ContinuityMoved]>('continuity:moved', cb)
+  },
+  localReview: {
+    load: (sessionId, scope) => ipcRenderer.invoke('localReview:load', sessionId, scope),
+    comments: (sessionId) => ipcRenderer.invoke('localReview:comments', sessionId),
+    setComments: (sessionId, comments) => ipcRenderer.invoke('localReview:setComments', sessionId, comments),
+    send: (sessionId, text) => ipcRenderer.invoke('localReview:send', sessionId, text),
+    delivery: (sessionId) => ipcRenderer.invoke('localReview:delivery', sessionId),
+    onDelivery: (cb) => subscribe<[string, LocalReviewDelivery]>('localReview:delivery', cb),
+    openWindow: (sessionId) => ipcRenderer.invoke('localReview:openWindow', sessionId),
+    openFile: (sessionId, repoRoot, path) => ipcRenderer.invoke('localReview:openFile', sessionId, repoRoot, path),
+    filePath: (sessionId, repoRoot, path) => ipcRenderer.invoke('localReview:filePath', sessionId, repoRoot, path)
+  },
+  files: {
+    openWindow: (path, cwd) => ipcRenderer.invoke('files:openWindow', path, cwd),
+    read: (path, known, forceText) => ipcRenderer.invoke('files:read', path, known ?? null, forceText === true),
+    copyPath: (path) => ipcRenderer.send('files:copyPath', path),
+    reveal: (path) => ipcRenderer.invoke('files:reveal', path),
+    openDefault: (path) => ipcRenderer.invoke('files:openDefault', path)
   },
   tray: {
     setState: (state) => ipcRenderer.send('tray:state', state),

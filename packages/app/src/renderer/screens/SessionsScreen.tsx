@@ -16,6 +16,7 @@ import { ChatPane } from './sessions/ChatPane'
 import { ContinueMenu } from './sessions/ContinueMenu'
 import { MonitorPanel } from './sessions/MonitorPanel'
 import { PendingSwitchBar } from './sessions/PendingSwitchBar'
+import { SessionReviewTools } from './sessions/SessionReviewTools'
 import { TerminalPane } from './sessions/TerminalPane'
 import { errorText } from '../lib/errorText'
 
@@ -203,6 +204,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
             {t('session.permissionMode', { mode: mode ? mode.label : v.state === 'starting' ? t('session.pending') : t('session.unknown') })}
           </Badge>
           {v.currentModeId && v.permissionMode?.id === 'agent-managed' && !sessionModePicker(v).visible && <Badge>{t('session.agentMode', { mode: v.currentModeId })}</Badge>}
+          <SessionReviewTools data={data} />
           {live && <AiReviewButton view={v} />}
           {live && !v.readOnly && v.modes.includes('app') && <ContinueMenu view={v} />}
           {live && (

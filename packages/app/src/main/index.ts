@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -15,7 +15,7 @@ import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
-import { GitReview } from '@workhub/adapters/git-review'
+import { GitReview, LocalChanges } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { readKeychainItem, readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
@@ -77,6 +77,8 @@ import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionDriver } from './session-driver'
 import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
+import { LocalReviewService, registerLocalReviewIpc } from './local-review'
+import { registerFileViewerIpc } from './file-viewer'
 import { SlackWatcherService } from './slack-watcher'
 import { StateFile } from './state-file'
 import { registerTicketIpc } from './tickets'
@@ -334,6 +336,18 @@ const aiReview = new AiReviewService({
   canStartReview: reviewBudgetGate((config, agentKey) => agentKeyBudget(config, agentKey, budgetOf))
 })
 
+// The human review of a session's local changes; review messages go to the session like the AI review's.
+const localReview = new LocalReviewService({
+  sessions,
+  deliver: (id, text) => driver.deliver(id, text),
+  changes: new LocalChanges(),
+  myPullRequests: async (profileId) => {
+    const lists = await Promise.race([codeHost.lists(profileId), new Promise<null>((r) => setTimeout(() => r(null), 5_000))]).catch(() => null)
+    return lists?.mine ?? []
+  },
+  emit: (sessionId, delivery) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('localReview:delivery', sessionId, delivery))
+})
+
 // Continuity across accounts and agents: Claude account failover and hand-off to another agent.
 const transcriptReaderFor = (id: string | undefined) =>
   id === 'kiro' ? new KiroTranscriptReader() : id === 'opencode' ? new OpenCodeTranscriptReader() : id === 'codex' ? new CodexTranscriptReader() : id === 'claude' ? new ClaudeTranscriptReader() : null
@@ -567,6 +581,14 @@ function registerIpc(): void {
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   registerAiReviewIpc(ipc, aiReview)
+  registerLocalReviewIpc(ipc, localReview, { openWindow: openLocalReviewWindow, openPath: (path) => shell.openPath(path) })
+  registerFileViewerIpc(ipc, {
+    createWindow: (hash, title) => createAuxWindow(hash, title, FILE_WINDOW_SIZE),
+    home: homedir(),
+    showItemInFolder: (path) => shell.showItemInFolder(path),
+    openPath: (path) => shell.openPath(path),
+    writeClipboard: (text) => clipboard.writeText(text)
+  })
   ipc.handle('continuity:options', (_e, id: string) => continuity.options(id))
   ipc.handle('continuity:failover', (_e, id: string, request) => continuity.failover(id, request))
   ipc.handle('continuity:handoff', (_e, id: string, request) => continuity.handoff(id, request))
@@ -753,6 +775,21 @@ function openPullRequestWindow(profileId: string | null, url: string): void {
   prWin.on('closed', () => prWindows.delete(url))
 }
 
+/** One review window per session; opening an open one brings it to the front. */
+const reviewWindows = new Map<string, BrowserWindow>()
+
+function openLocalReviewWindow(sessionId: string): void {
+  const open = reviewWindows.get(sessionId)
+  if (open && !open.isDestroyed()) {
+    if (open.isMinimized()) open.restore()
+    open.focus()
+    return
+  }
+  const reviewWin = createAuxWindow(`#review?session=${encodeURIComponent(sessionId)}`, 'Workhub 2', { width: 1280, height: 820, minWidth: 900, minHeight: 560 })
+  reviewWindows.set(sessionId, reviewWin)
+  reviewWin.on('closed', () => reviewWindows.delete(sessionId))
+}
+
 interface AuxWindowSize {
   width: number
   height: number
@@ -761,6 +798,7 @@ interface AuxWindowSize {
 }
 
 const TICKET_WINDOW_SIZE: AuxWindowSize = { width: 820, height: 760, minWidth: 560, minHeight: 420 }
+const FILE_WINDOW_SIZE: AuxWindowSize = { width: 900, height: 760, minWidth: 420, minHeight: 320 }
 
 /** A secondary window (a pull request, a ticket) on the same renderer, routed by its hash. */
 function createAuxWindow(hash: string, title: string, size: AuxWindowSize = TICKET_WINDOW_SIZE): BrowserWindow {
@@ -909,6 +947,7 @@ app.on('before-quit', (event) => {
   slack.stop()
   automations.stop()
   aiReview.stop()
+  localReview.stop()
   healthWatcher.stop()
   ticketWatcher.stop()
   void sessions.stopAll().finally(() => app.quit())
