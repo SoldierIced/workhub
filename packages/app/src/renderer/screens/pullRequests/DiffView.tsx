@@ -23,7 +23,8 @@ export interface DiffViewProps {
   onReply: (threadId: string, body: string) => Promise<string | null>
 }
 
-function ThreadBox({ thread, canReply, onReply }: { thread: CommentThread; canReply: boolean; onReply: DiffViewProps['onReply'] }) {
+/** A review thread with its replies; `className` replaces the margins it has under a diff line. */
+export function ThreadBox({ thread, canReply, onReply, className }: { thread: CommentThread; canReply: boolean; onReply: DiffViewProps['onReply']; className?: string }) {
   const { t, locale } = useI18n()
   const [replying, setReplying] = useState(false)
   const [body, setBody] = useState('')
@@ -40,7 +41,7 @@ function ThreadBox({ thread, canReply, onReply }: { thread: CommentThread; canRe
     }
   }
   return (
-    <div className="my-1.5 ml-16 mr-3 rounded-md border border-border bg-surface-raised p-3 font-sans text-base shadow-sm" role="group" aria-label={t('pr.thread.line', { line: thread.line ?? 0 })}>
+    <div className={cn('rounded-md border border-border bg-surface-raised p-3 font-sans text-base shadow-sm', className ?? 'my-1.5 mr-3 ml-16')} role="group" aria-label={t('pr.thread.line', { line: thread.line ?? 0 })}>
       {thread.resolved && <Badge tone="success" className="mb-2">{t('pr.thread.resolved')}</Badge>}
       <ul className="flex flex-col gap-2.5">
         {thread.comments.map((c) => (
@@ -163,7 +164,10 @@ function FileDiffView({ file, threads, canReply, onReply }: { file: DiffFile; th
   )
 }
 
-/** Changed files on the left, the selected file's diff on the right, review threads inline under their line. */
+/**
+ * Changed files on the left, the selected file's diff on the right, review threads inline under
+ * their line. It fills its parent's height: the file list and the diff scroll on their own.
+ */
 export function DiffView({ files, threads, canReply, onReply }: DiffViewProps) {
   const { t, formatNumber } = useI18n()
   const [selected, setSelected] = useState(files[0]?.path ?? '')
@@ -171,8 +175,8 @@ export function DiffView({ files, threads, canReply, onReply }: DiffViewProps) {
   if (!file) return <EmptyState compact icon={<FileDiff className="size-5" aria-hidden />} title={t('pr.files.none')} />
   const fileThreads = threads.filter((th) => th.path === file.path)
   return (
-    <div className="grid grid-cols-[15rem_minmax(0,1fr)] gap-4">
-      <nav aria-label={t('pr.files.list')} className="sticky top-0 max-h-[calc(100vh-14rem)] self-start overflow-y-auto rounded-lg border border-border bg-surface p-1">
+    <div className="grid h-full min-h-0 grid-cols-[15rem_minmax(0,1fr)] gap-4 @6xl:grid-cols-[19rem_minmax(0,1fr)]">
+      <nav aria-label={t('pr.files.list')} className="min-h-0 overflow-y-auto rounded-lg border border-border bg-surface p-1">
         <ul className="flex flex-col gap-0.5">
           {files.map((f) => {
             const count = threads.filter((th) => th.path === f.path).length
@@ -198,13 +202,15 @@ export function DiffView({ files, threads, canReply, onReply }: DiffViewProps) {
           })}
         </ul>
       </nav>
-      <section aria-label={file.path} className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface">
-        <header className="flex items-center gap-2 border-b border-border px-4 py-2 text-sm">
+      <section aria-label={file.path} className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2 text-sm">
           <span className="truncate font-mono font-medium">{file.path}</span>
           <Badge>{t(`pr.files.status.${file.status}`)}</Badge>
           {file.oldPath && <span className="truncate text-subtle">{t('pr.files.renamed', { path: file.oldPath })}</span>}
         </header>
-        <FileDiffView key={file.path} file={file} threads={fileThreads} canReply={canReply} onReply={onReply} />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <FileDiffView key={file.path} file={file} threads={fileThreads} canReply={canReply} onReply={onReply} />
+        </div>
       </section>
     </div>
   )

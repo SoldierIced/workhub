@@ -8,6 +8,7 @@ import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 import type { ContinuityMoved, ContinuityOffer } from '../shared/continuity-api'
 import type { TrayRoute } from '../shared/tray-api'
+import type { PullRequestWindowTab } from '../shared/codehost-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -106,8 +107,10 @@ const api: HubApi = {
     review: (profileId, url, action, body) => ipcRenderer.invoke('codeHost:review', profileId, url, action, body),
     comment: (profileId, url, body) => ipcRenderer.invoke('codeHost:comment', profileId, url, body),
     reply: (profileId, url, threadId, body) => ipcRenderer.invoke('codeHost:reply', profileId, url, threadId, body),
-    openWindow: (profileId, url) => ipcRenderer.invoke('codeHost:openWindow', profileId, url),
-    openExternal: (profileId, url) => ipcRenderer.invoke('codeHost:openExternal', profileId, url)
+    close: (profileId, url, comment, deleteBranch) => ipcRenderer.invoke('codeHost:close', profileId, url, comment, deleteBranch),
+    openWindow: (profileId, url, tab) => ipcRenderer.invoke('codeHost:openWindow', profileId, url, tab),
+    openExternal: (profileId, url) => ipcRenderer.invoke('codeHost:openExternal', profileId, url),
+    onShowTab: (cb) => subscribe<[PullRequestWindowTab]>('codeHost:showTab', cb)
   },
   links: {
     request: (intent) => ipcRenderer.send('links:request', intent),

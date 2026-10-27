@@ -16,6 +16,9 @@ import {
   loadReviewQueue,
   parseUnifiedDiff,
   postComment,
+  closePullRequest,
+  closeRefusal,
+  isLongLivedBranch,
   pullRequestsForSession,
   pullRequestsForTicket,
   reviewerStates,
@@ -75,6 +78,7 @@ function fakeHost(over: Partial<CodeHost> = {}): CodeHost & { calls: string[] } 
     submitReview: async (_r, a, b) => void calls.push(`review:${a}:${b}`),
     comment: async (_r, b) => void calls.push(`comment:${b}`),
     replyToThread: async () => undefined,
+    close: async (_r, o) => void calls.push(`close:${o.comment}:${o.deleteBranch}:${o.branch}`),
     ...over
   }
 }
@@ -149,6 +153,21 @@ describe('review rules', () => {
     await expect(submitReview(host, ref, 'approve', '', true)).rejects.toBeInstanceOf(CodeHostError)
     await expect(postComment(host, ref, ' ')).rejects.toBeInstanceOf(CodeHostError)
     expect(host.calls).toHaveLength(2)
+  })
+
+  it('closes only the user\'s own open PRs and never deletes a long-lived branch', async () => {
+    const host = fakeHost()
+    await closePullRequest(host, pr(), { state: 'open', branch: 'feat/x' }, true, { comment: ' bye ', deleteBranch: true })
+    await closePullRequest(host, pr(), { state: 'open', branch: 'develop' }, true, { comment: '', deleteBranch: true })
+    await closePullRequest(host, pr(), { state: 'open', branch: 'release/2.1' }, true, { comment: '', deleteBranch: true })
+    expect(host.calls).toEqual(['close:bye:true:feat/x', 'close::false:develop', 'close::false:release/2.1'])
+    await expect(closePullRequest(host, pr(), { state: 'open', branch: 'feat/x' }, false, { comment: '', deleteBranch: false })).rejects.toBeInstanceOf(CodeHostError)
+    expect(closeRefusal({ state: 'merged' }, true)).toBe('notOpen')
+    expect(closeRefusal({ state: 'open' }, false)).toBe('notMine')
+    expect(isLongLivedBranch('Main')).toBe(true)
+    expect(isLongLivedBranch('feat/main-menu')).toBe(false)
+    expect(isLongLivedBranch('hotfix', ['hotfix'])).toBe(true)
+    expect(host.calls).toHaveLength(3)
   })
 })
 

@@ -20,9 +20,12 @@ export interface TabsProps {
    * container; the tabs share the width and wrap onto more rows in a narrow window.
    */
   variant?: 'underline' | 'fill'
+  /** Extra classes for the row of tabs and for each panel (a window that scrolls each panel on its own). */
+  listClassName?: string
+  contentClassName?: string
 }
 
-export function Tabs({ items, value, onChange, label, className, variant = 'underline' }: TabsProps) {
+export function Tabs({ items, value, onChange, label, className, variant = 'underline', listClassName, contentClassName }: TabsProps) {
   const fill = variant === 'fill'
   return (
     <RTabs.Root value={value} onValueChange={onChange} className={cn('flex min-h-0 flex-col', className)}>
@@ -30,7 +33,8 @@ export function Tabs({ items, value, onChange, label, className, variant = 'unde
         aria-label={label}
         className={cn(
           'flex shrink-0',
-          fill ? 'w-full flex-wrap gap-0.5 rounded-lg border border-border bg-surface p-1 shadow-sm' : 'gap-1 border-b border-border'
+          fill ? 'w-full flex-wrap gap-0.5 rounded-lg border border-border bg-surface p-1 shadow-sm' : 'gap-1 border-b border-border',
+          listClassName
         )}
       >
         {items.map((i) => (
@@ -50,7 +54,7 @@ export function Tabs({ items, value, onChange, label, className, variant = 'unde
         ))}
       </RTabs.List>
       {items.map((i) => (
-        <RTabs.Content key={i.value} value={i.value} className="min-h-0 flex-1 animate-slide-in pt-5 focus-visible:outline-none">
+        <RTabs.Content key={i.value} value={i.value} className={cn('min-h-0 flex-1 animate-slide-in pt-5 focus-visible:outline-none', contentClassName)}>
           {i.content}
         </RTabs.Content>
       ))}

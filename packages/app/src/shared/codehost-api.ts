@@ -26,14 +26,23 @@ export type PullRequestViewResult =
 
 export type CodeHostActionResult = { ok: true } | { ok: false; error: string }
 
+/** A tab a pull request window can be asked to open on (the Slack badge opens Slack). */
+export type PullRequestWindowTab = 'slack'
+
+export const isPullRequestWindowTab = (tab: unknown): tab is PullRequestWindowTab => tab === 'slack'
+
 export interface CodeHostApi {
   lists(profileId: string | null, force?: boolean): Promise<CodeHostLists>
   view(profileId: string | null, url: string): Promise<PullRequestViewResult>
   review(profileId: string | null, url: string, action: ReviewAction, body: string): Promise<CodeHostActionResult>
   comment(profileId: string | null, url: string, body: string): Promise<CodeHostActionResult>
   reply(profileId: string | null, url: string, threadId: string, body: string): Promise<CodeHostActionResult>
-  /** Opens the PR in its own window (one per PR; an open one is focused). */
-  openWindow(profileId: string | null, url: string): Promise<void>
+  /** Closes the user's own open PR without merging, with an optional closing comment and the head branch deleted when asked. */
+  close(profileId: string | null, url: string, comment: string, deleteBranch: boolean): Promise<CodeHostActionResult>
+  /** Opens the PR in its own window (one per PR; an open one is focused), optionally on a tab. */
+  openWindow(profileId: string | null, url: string, tab?: PullRequestWindowTab): Promise<void>
   /** Opens a recognized PR URL in the browser. */
   openExternal(profileId: string | null, url: string): Promise<void>
+  /** Fires in a PR window that was already open when it was asked to show a tab. */
+  onShowTab(cb: (tab: PullRequestWindowTab) => void): () => void
 }

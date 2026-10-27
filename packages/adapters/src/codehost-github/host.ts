@@ -135,6 +135,13 @@ export class GitHubCodeHost implements CodeHost {
     await this.gh(['pr', 'comment', ref.url, '--body', body], 'gh pr comment failed')
   }
 
+  async close(ref: PullRequestRef, options: { comment: string; deleteBranch: boolean; branch: string }): Promise<void> {
+    const args = ['pr', 'close', ref.url]
+    if (options.comment) args.push('--comment', options.comment)
+    if (options.deleteBranch) args.push('--delete-branch')
+    await this.gh(args, 'gh pr close failed')
+  }
+
   async replyToThread(ref: PullRequestRef, threadId: string, body: string): Promise<void> {
     if (!/^\d+$/.test(threadId)) throw new CodeHostError('Bad thread id', 'unsupported')
     await this.gh(

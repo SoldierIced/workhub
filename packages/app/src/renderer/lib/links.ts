@@ -92,8 +92,9 @@ export async function runIntent(deps: IntentDeps, intent: SessionIntent): Promis
       return { kind: 'opened', sessionId: view.id }
     }
     if (intent.kind === 'ticketSession') {
-      const agent = agentForDraft(deps.profile, deps.agents, false)
-      if (!agent) return failure('links.noAgent')
+      const claude = intent.agent === 'claude'
+      const agent = agentForDraft(deps.profile, deps.agents, claude)
+      if (!agent) return failure(claude ? 'links.noClaude' : 'links.noAgent')
       const cwd = chooseFirstFolder(await deps.checkouts(intent.profileId)) ?? (await deps.defaultCwd())
       return await startDrafted(deps, intent.profileId, agent, cwd, ticketPrompt(deps.locale, intent.ticket))
     }
