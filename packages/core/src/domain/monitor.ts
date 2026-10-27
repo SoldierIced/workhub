@@ -64,6 +64,8 @@ export interface PlanUsageWindow {
   window: string
   percent: number
   resetsAt?: number
+  /** When the agent reported this figure (epoch ms), for a reading taken from an older local file. */
+  asOf?: number
 }
 
 export type McpServerState = 'loading' | 'running' | 'needs-auth' | 'failed' | 'disabled' | 'unknown'

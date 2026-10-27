@@ -25,6 +25,7 @@ export const automationsEs: Record<keyof typeof automationsEn, string> = {
   'automations.moduleOff': 'Su perfil tiene el módulo Automatizaciones apagado: no se ejecuta.',
   'automations.waiting': 'En espera: {reason} {time}',
   'automations.reason.usage': 'el uso de la cuenta supera el límite',
+  'automations.reason.budget': 'la cuenta superó su techo de uso',
   'automations.reason.limit': 'se alcanzó el límite de frecuencia',
   'automations.reason.rateLimited': 'el agente está limitado',
   'automations.reason.backoff': 'esperando tras varios errores',

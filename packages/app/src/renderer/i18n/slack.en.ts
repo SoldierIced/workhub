@@ -15,6 +15,7 @@ export const slackEn = {
   'slack.skip.days': 'Not a watched day',
   'slack.skip.hours': 'Outside the watched hours',
   'slack.skip.usage': 'Waiting: the account\'s usage is over the guard',
+  'slack.skip.budget': 'Waiting: the Claude account is past its usage ceiling',
   'slack.nextRun': 'Next read {time}',
   'slack.lastError': 'Last read failed: {error}',
   'slack.nothingToWatch': 'no channels or threads to read',
@@ -94,5 +95,6 @@ export const slackEn = {
   'slack.notice.notWoken.automationOff': 'its automation is off',
   'slack.notice.notWoken.noReplies': 'its automation takes no replies',
   'slack.notice.notWoken.openElsewhere': 'it is open in another terminal',
+  'slack.notice.notWoken.budget': 'its account is past its usage ceiling; the replies wait until it resets or the ceiling changes',
   'slack.notice.automationFailed': 'Automation "{name}" failed'
 }

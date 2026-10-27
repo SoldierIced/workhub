@@ -17,6 +17,7 @@ export const slackEs: Record<keyof typeof slackEn, string> = {
   'slack.skip.days': 'No es un día vigilado',
   'slack.skip.hours': 'Fuera del horario vigilado',
   'slack.skip.usage': 'En espera: el uso de la cuenta supera el límite',
+  'slack.skip.budget': 'En espera: la cuenta de Claude superó su techo de uso',
   'slack.nextRun': 'Próxima lectura {time}',
   'slack.lastError': 'La última lectura falló: {error}',
   'slack.nothingToWatch': 'no hay canales ni hilos para leer',
@@ -96,5 +97,6 @@ export const slackEs: Record<keyof typeof slackEn, string> = {
   'slack.notice.notWoken.automationOff': 'su automatización está apagada',
   'slack.notice.notWoken.noReplies': 'su automatización no recibe respuestas',
   'slack.notice.notWoken.openElsewhere': 'está abierta en otra terminal',
+  'slack.notice.notWoken.budget': 'su cuenta superó su techo de uso; las respuestas esperan hasta que se restablezca o cambie el techo',
   'slack.notice.automationFailed': 'La automatización "{name}" falló'
 }

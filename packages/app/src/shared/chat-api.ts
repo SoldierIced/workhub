@@ -32,7 +32,7 @@ export interface SlackSnapshot {
   demo: boolean
   health: SlackHealth
   /** Why the last scheduled read did not run: outside the days or hours, or the usage guard. */
-  skipReason?: 'days' | 'hours' | 'usage'
+  skipReason?: 'days' | 'hours' | 'usage' | 'budget'
   /** Epoch ms. */
   nextRunAt?: number
   pausedUntil?: number
