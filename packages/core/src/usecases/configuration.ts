@@ -274,7 +274,10 @@ export class ConfigurationService {
 
   /** For automations and account moves: the new session takes the old one's group and place. */
   async replaceSessionIdentity(oldKey: string, newKey: string, meta?: Partial<Omit<GroupMember, 'key'>>): Promise<Result<WorkhubConfig>> {
-    return this.persist(replaceStoredSessionIdentity(await this.current(), oldKey, newKey, meta))
+    const config = await this.current()
+    const result = replaceStoredSessionIdentity(config, oldKey, newKey, meta)
+    // Nothing to move (the usual case): do not rewrite the file.
+    return result.ok && result.value === config ? result : this.persist(result)
   }
 
   async addImported(additions: { profiles: Profile[]; accounts: AgentAccount[]; connections: Connection[] }): Promise<Result<WorkhubConfig>> {
