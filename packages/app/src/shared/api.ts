@@ -99,6 +99,8 @@ export interface SessionView extends Session {
   currentModelId?: string
   /** The runtime offers live controls: model switch and MCP reconnect/toggle. */
   controls: boolean
+  /** An AI reviewer session (read-only, started by the AI review). */
+  readOnly?: boolean
 }
 
 export interface StartSessionInput {

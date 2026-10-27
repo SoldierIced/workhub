@@ -223,7 +223,7 @@ export class AiReviewService {
   }
 
   private isReviewerSession(view: SessionView): boolean {
-    if (this.reviewers.has(view.id)) return true
+    if (view.readOnly || this.reviewers.has(view.id)) return true
     const rel = relative(resolve(this.deps.workDir), resolve(view.cwd))
     return rel === '' || (!rel.startsWith('..') && !rel.startsWith(sep) && !/^[A-Za-z]:/.test(rel))
   }
@@ -400,9 +400,9 @@ export class AiReviewService {
       const outcome = await this.deps.driver.deliver(dev.id, r.pendingDelivery).catch(() => 'waiting' as const)
       if (outcome !== 'delivered') continue
       const latest = this.state.reviews[r.id] ?? r
-      const findingsWentOut = latest.findings.some((f) => f.status === 'open')
-      if (findingsWentOut) this.devReplies.set(dev.id, '')
-      this.put(findingsWentOut ? markDelivered(latest, this.now()) : { ...withoutPending(latest), updatedAt: this.now() }, dev.id)
+      // Only a message with findings makes the dev's next reply worth reading for disputes.
+      if (latest.pendingFindingIds?.length) this.devReplies.set(dev.id, '')
+      this.put(markDelivered(latest, this.now()), dev.id)
     }
   }
 
@@ -451,11 +451,6 @@ export class AiReviewService {
     this.holds.delete(devIdentity)
     this.changed()
   }
-}
-
-function withoutPending(r: BranchReview): BranchReview {
-  const { pendingDelivery: _sent, ...rest } = r
-  return rest
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {

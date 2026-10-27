@@ -126,7 +126,8 @@ function Shell() {
         const { sessions: all, groups: stored, snap: config, t: tr } = latest.current
         const options = appOptions(config?.config ?? { options: undefined })
         const data = all.find((s) => s.view.id === id)
-        if (!data || !options[NOTIFY_OPTION[kind]]) return
+        // An AI reviewer's turns are reported by the review itself (Review panel and its notices).
+        if (!data || data.view.readOnly || !options[NOTIFY_OPTION[kind]]) return
         const group = groupOf(stored, sessionIdentity(data.view))
         window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id })
       }),

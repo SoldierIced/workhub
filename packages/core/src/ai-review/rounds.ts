@@ -72,7 +72,7 @@ export function startRound(prev: BranchReview | undefined, input: StartRoundInpu
   const n = base.rounds.length + 1
   const extraRounds = input.trigger === 'manual' && n > roundLimit(base, settings) ? n - settings.maxRounds : base.extraRounds
   const fromSha = base.lastReviewedSha && base.lastReviewedSha !== input.sha ? base.lastReviewedSha : undefined
-  const { escalation: _cleared, pendingDelivery: _dropped, ...rest } = base
+  const { escalation: _cleared, pendingDelivery: _dropped, pendingFindingIds: _carried, ...rest } = base
   return {
     ...rest,
     status: 'reviewing',
@@ -211,15 +211,20 @@ function settle(review: BranchReview, settings: AiReviewSettings, now: number): 
   if (ready && !unsent) return { ...rest, status: 'ready', updatedAt: now }
   const round = review.rounds[review.rounds.length - 1]?.n ?? 1
   const message = formatDevMessage({ language: settings.language, branch: review.branch, base: review.base, round, maxRounds: roundLimit(review, settings), findings: review.findings })
-  return { ...rest, status: ready ? 'ready' : 'awaitingFixes', pendingDelivery: queue(review.pendingDelivery, message), updatedAt: now }
+  const carried = review.findings.filter((f) => f.status === 'open').map((f) => f.id)
+  return { ...rest, status: ready ? 'ready' : 'awaitingFixes', pendingDelivery: queue(review.pendingDelivery, message), pendingFindingIds: [...new Set([...(review.pendingFindingIds ?? []), ...carried])], updatedAt: now }
 }
 
 const queue = (pending: string | undefined, message: string) => (pending ? `${pending}\n\n---\n\n${message}` : message)
 
-/** The queued message reached the dev session: its open findings count as sent, and its next reply is read for disputes. */
+/**
+ * The queued message reached the dev session. The findings it carried count as sent, and then the
+ * dev's next reply is read for disputes; a message without findings (an opinion) changes neither.
+ */
 export function markDelivered(review: BranchReview, now: number): BranchReview {
-  const { pendingDelivery: _sent, ...rest } = review
-  return { ...rest, findings: review.findings.map((f) => (f.status === 'open' ? { ...f, sent: true } : f)), awaitingDevReply: true, updatedAt: now }
+  const { pendingDelivery: _sent, pendingFindingIds: carried = [], ...rest } = review
+  if (!carried.length) return { ...rest, updatedAt: now }
+  return { ...rest, findings: review.findings.map((f) => (carried.includes(f.id) ? { ...f, sent: true } : f)), awaitingDevReply: true, updatedAt: now }
 }
 
 /** The dev agent's reply after the findings: `DISPUTE F<n>: <reason>` lines pause the loop for the user. */
@@ -261,7 +266,7 @@ export function setFindingStatus(review: BranchReview, ids: readonly string[], s
   const findings = review.findings.map((f) => (ids.includes(f.id) ? { ...f, status } : f))
   const next: BranchReview = { ...review, findings, updatedAt: now }
   if (review.status === 'awaitingFixes' && !blockingOpen(next).length) {
-    const { pendingDelivery: _dropped, ...rest } = next
+    const { pendingDelivery: _dropped, pendingFindingIds: _carried, ...rest } = next
     return { ...rest, status: 'ready' }
   }
   if (review.status === 'ready' && blockingOpen(next).length) return { ...next, status: 'awaitingFixes' }
@@ -276,7 +281,7 @@ export function addOpinion(review: BranchReview, text: string, settings: Pick<Ai
 }
 
 export function stopReview(review: BranchReview, now: number): BranchReview {
-  const { pendingDelivery: _dropped, escalation: _cleared, ...rest } = review
+  const { pendingDelivery: _dropped, pendingFindingIds: _carried, escalation: _cleared, ...rest } = review
   return { ...rest, status: 'stopped', awaitingDevReply: false, updatedAt: now }
 }
 

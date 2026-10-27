@@ -261,6 +261,18 @@ describe('review rounds', () => {
     expect(r.status).toBe('ready')
   })
 
+  it('an opinion delivered during a pause does not count the findings as sent', () => {
+    let r = completeRound(start(), { raw: 'x', parsed: parsed({ findings: [finding('minor', 'ttl')], escalate: { needed: true, reason: 'scope' } }) }, settings, 1)
+    r = addOpinion(r, 'Drop the cache', settings, 2)
+    r = markDelivered(r, 3)
+    expect(r.findings[0]?.sent).toBe(false)
+    expect(r.awaitingDevReply).toBe(false)
+    r = continueReview(r, settings, 4)
+    expect(r.status).toBe('ready')
+    expect(r.pendingDelivery).toContain('F1 [minor] ttl')
+    expect(markDelivered(r, 5).findings[0]?.sent).toBe(true)
+  })
+
   it('keeps unparseable replies raw and forwards them on Continue', () => {
     let r = completeRound(start(), { raw: 'Some prose review', parsed: null }, settings, 2)
     expect(r).toMatchObject({ status: 'paused', escalation: { reason: 'unparsed' }, lastReviewedSha: 'sha1' })

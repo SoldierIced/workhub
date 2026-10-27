@@ -139,6 +139,8 @@ export interface BranchReview {
   userNotes: string[]
   /** A message for the dev session that could not be delivered yet (the session was busy). */
   pendingDelivery?: string
+  /** Findings the queued message carries; they count as sent once it is delivered. */
+  pendingFindingIds?: string[]
   /** The dev session was sent findings; its next reply is read for disputes. */
   awaitingDevReply: boolean
   createdAt: number

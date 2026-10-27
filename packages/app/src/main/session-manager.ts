@@ -155,7 +155,8 @@ export class SessionManager {
       modes,
       mode: engine,
       shellRunning: false,
-      controls: hasSessionControls(runtime)
+      controls: hasSessionControls(runtime),
+      ...(input.readOnly ? { readOnly: true } : {})
     }
     const session: ManagedSession = { view, agent, account, env: launchEnvironment(agent, account), runtime, engine, switching: false, readOnly: input.readOnly === true }
     this.sessions.set(view.id, session)
