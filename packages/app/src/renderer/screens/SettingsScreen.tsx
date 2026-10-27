@@ -1,4 +1,4 @@
-import { FolderCog, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
+import { Activity, FolderCog, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import {
   appOptions,
@@ -24,7 +24,10 @@ import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import { HealthSettings } from './HealthSettings'
+import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
 import { TrackerSettings } from './TrackerSettings'
+import { UpdatesSettings } from './UpdatesSettings'
 
 const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
   codeHost: 'kind.codeHost',
@@ -120,6 +123,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
           { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection snap={snap} run={run} />) },
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection snap={snap} run={run} />) },
           { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings snap={snap} run={run} />) },
+          { value: 'health', label: t('health.settings.tab'), icon: <Activity className="size-4" aria-hidden />, content: section(<HealthSettings snap={snap} run={run} />) },
           { value: 'accounts', label: t('settings.accounts'), icon: <UserCog className="size-4" aria-hidden />, content: section(<AccountsSection snap={snap} run={run} />) }
         ]}
       />
@@ -188,6 +192,12 @@ function GeneralSection({ snap, run }: SectionProps) {
             <Switch checked={options[option]} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ [option]: on }))} />
           </SwitchRow>
         ))}
+      </SettingsGroup>
+      <SettingsGroup title={t('updates.group')} footnote={window.hub.platform === 'mac' ? t('updates.macNote') : undefined}>
+        <UpdatesSettings enabled={options.checkForUpdates} editable={editable} run={run} />
+      </SettingsGroup>
+      <SettingsGroup title={t('prevent.settings.title')} footnote={t('prevent.settings.note')}>
+        <PullRequestNotificationRows config={snap.config} editable={editable} run={run} />
       </SettingsGroup>
       {window.hub.platform === 'mac' && editable && (
         <SettingsGroup title={t('import.group')}>

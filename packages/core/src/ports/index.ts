@@ -84,8 +84,3 @@ export interface Notifier {
 export type { TicketTracker } from '../tickets/ticket-tracker'
 
 // ChatSource and ChatTrackingHook live with the chat domain (`../chat/port`).
-
-/** Environment health signals (P6: Elastic APM; Sentry or Datadog later). */
-export interface HealthProvider {
-  readonly provider: string
-}

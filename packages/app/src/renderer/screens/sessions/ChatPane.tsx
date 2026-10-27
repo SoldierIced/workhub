@@ -7,6 +7,7 @@ import { BrandMark } from '../../components/organisms'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
+import { onComposerDraft, takeComposerDraft } from '../../lib/drafts'
 import { imageInputFromDataUrl, MAX_PROMPT_IMAGES, readPastedImages } from '../../lib/images'
 import { markPermission, pushItem, pushTurnEnd, pushUser, type ChatItem, type SessionData } from '../../store'
 
@@ -139,9 +140,18 @@ function ChatBlock({ item, onAnswer }: { item: ChatItem; onAnswer: (requestId: s
 export function ChatPane({ data }: { data: SessionData }) {
   const { t } = useI18n()
   const v = data.view
-  const [text, setText] = useState('')
+  const [text, setText] = useState(() => takeComposerDraft(v.id) ?? '')
   const [images, setImages] = useState<string[]>([])
   const bottom = useRef<HTMLDivElement>(null)
+  // A draft written for this session after its chat mounted (Investigate with Claude).
+  useEffect(
+    () =>
+      onComposerDraft((id) => {
+        const draft = id === v.id ? takeComposerDraft(id) : undefined
+        if (draft !== undefined) setText(draft)
+      }),
+    [v.id]
+  )
   useEffect(() => {
     // Braces matter: scrollIntoView returns a Promise in recent Chromium, which React would take as a cleanup.
     void bottom.current?.scrollIntoView({ block: 'end' })

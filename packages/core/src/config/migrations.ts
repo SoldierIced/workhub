@@ -16,9 +16,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // Both are optional and default, so the document is unchanged; the bump keeps an older Workhub
   // from loading the file and dropping the groups on its next save.
   2: (raw) => raw,
-  // 3 -> 4 (P6a, chat watcher and automations): `chatWatcher` and `automations`. Both are optional
+  // 3 -> 4 (p6b-health-and-pr-events): the per-profile Health setup (`profiles[].health`) and the
+  // pull request notification switches (`options.notifyPrEvents`). Both are optional and default,
+  // so the document is unchanged; the bump keeps an older Workhub from loading the file and
+  // dropping them on its next save.
+  3: (raw) => raw,
+  // 4 -> 5 (P6a, chat watcher and automations): `chatWatcher` and `automations`. Both are optional
   // and default, so the document is unchanged; the bump keeps an older Workhub from dropping them.
-  3: (raw) => raw
+  4: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

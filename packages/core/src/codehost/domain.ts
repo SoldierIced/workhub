@@ -40,6 +40,8 @@ export interface PullRequest extends PullRequestRef {
   /** Epoch milliseconds; undefined when the host did not say. */
   updatedAt?: number
   headSha?: string
+  /** Conversation comments plus review threads, when the host's list reports them; used to notice new comments. */
+  commentCount?: number
 }
 
 export interface PullRequestReview {

@@ -40,6 +40,27 @@ export const DEMO_PRS: readonly DemoPr[] = [
   { number: 60, repo: 'design-system', title: 'Document the focus ring tokens', author: 'li-wen', head: 'docs/focus-ring', base: 'main', hoursAgo: 50, decision: 'REVIEW_REQUIRED', ci: 'SUCCESS', mergeable: 'MERGEABLE', additions: 35, deletions: 2, files: 2, mine: false, review: true }
 ]
 
+/** A review request that only exists from the second demo step on. */
+const LATE_REVIEW: DemoPr = { number: 490, repo: 'billing-api', title: 'DEMO-251 Add the currency to the invoice export', author: 'sam-okafor', head: 'feat/demo-251-invoice-currency', base: 'main', hoursAgo: 0, decision: 'REVIEW_REQUIRED', ci: 'PENDING', mergeable: 'MERGEABLE', additions: 52, deletions: 6, files: 3, mine: false, review: true }
+
+/**
+ * The demo moves on when the app asks (`step()` rises): each step changes a few pull requests the
+ * way a real day would, so the pull request events can be seen without a real host.
+ *  1: a new commit and a failing CI on #482; #479 gets approved.
+ *  2: #133 is merged (it leaves the open list); #490 asks for a review.
+ *  3: two new comments on #482.
+ */
+function atStep(p: DemoPr, step: number): DemoPr | null {
+  let out = p
+  if (p.number === 482 && step >= 1) out = { ...out, ci: 'FAILURE' }
+  if (p.number === 479 && step >= 1) out = { ...out, decision: 'APPROVED' }
+  if (p.number === 133 && step >= 2) return null
+  return out
+}
+
+const commentsAt = (p: DemoPr, step: number) => 2 + (p.number === 482 && step >= 3 ? 2 : 0)
+const headOf = (p: DemoPr, step: number) => `${p.number}`.padStart(7, '0') + (p.number === 482 && step >= 1 ? 'c9d8e7f6a5b4031221304f5e6d7c8b9a' : 'a1b2c3d4e5f60718293a4b5c6d7e8f90')
+
 const OWNER = 'acme-demo'
 const urlOf = (p: DemoPr) => `https://github.com/${OWNER}/${p.repo}/pull/${p.number}`
 
@@ -47,7 +68,7 @@ function iso(now: number, hoursAgo: number): string {
   return new Date(now - hoursAgo * 3_600_000).toISOString()
 }
 
-function searchNode(p: DemoPr, now: number) {
+function searchNode(p: DemoPr, now: number, step = 0) {
   return {
     number: p.number,
     title: p.title,
@@ -64,11 +85,13 @@ function searchNode(p: DemoPr, now: number) {
     mergeable: p.mergeable ?? 'MERGEABLE',
     author: { login: p.author },
     repository: { name: p.repo, owner: { login: OWNER } },
-    commits: { nodes: [{ commit: { oid: `${p.number}`.padStart(7, '0') + 'a1b2c3d4e5f60718293a4b5c6d7e8f90', statusCheckRollup: p.ci ? { state: p.ci } : null } }] }
+    comments: { totalCount: commentsAt(p, step) },
+    reviewThreads: { totalCount: 0 },
+    commits: { nodes: [{ commit: { oid: headOf(p, step), statusCheckRollup: p.ci ? { state: p.ci } : null } }] }
   }
 }
 
-function viewJson(p: DemoPr, now: number) {
+function viewJson(p: DemoPr, now: number, step = 0, state: 'OPEN' | 'MERGED' = 'OPEN') {
   const ci = p.ci
   return {
     number: p.number,
@@ -76,14 +99,14 @@ function viewJson(p: DemoPr, now: number) {
     url: urlOf(p),
     body: `Adds the change described in the title.\n\n- Keeps the public API stable\n- Covers the new paths with tests\n\nRefs ${/DEMO-\d+/.exec(p.title)?.[0] ?? 'no ticket'}.`,
     author: { login: p.author, is_bot: false },
-    state: 'OPEN',
+    state,
     isDraft: p.draft ?? false,
     baseRefName: p.base,
     headRefName: p.head,
-    headRefOid: `${p.number}`.padStart(7, '0') + 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    headRefOid: headOf(p, step),
     createdAt: iso(now, p.hoursAgo + 26),
     updatedAt: iso(now, p.hoursAgo),
-    mergedAt: null,
+    mergedAt: state === 'MERGED' ? iso(now, 0) : null,
     mergeable: p.mergeable ?? 'MERGEABLE',
     reviewDecision: p.decision ?? '',
     labels: [{ name: 'enhancement' }, ...(p.draft ? [{ name: 'wip' }] : [])],
@@ -172,7 +195,7 @@ const ok = (stdout = ''): CliResult => ({ code: 0, stdout, stderr: '' })
 const fail = (stderr: string): CliResult => ({ code: 1, stdout: '', stderr })
 
 /** A fake `gh`. Reads answer from the synthetic data above; writes only record the call. */
-export function createDemoRunner(now: number = Date.now()): DemoRunner {
+export function createDemoRunner(now: number = Date.now(), step: () => number = () => 0): DemoRunner {
   const calls: string[][] = []
   const runner: DemoRunner = Object.assign(
     async (command: string, args: string[]): Promise<CliResult> => {
@@ -184,15 +207,21 @@ export function createDemoRunner(now: number = Date.now()): DemoRunner {
       if (a === 'api' && args.includes('graphql')) {
         const q = args.find((x) => x.startsWith('q=')) ?? ''
         const wanted = q.includes('review-requested:@me') ? (p: DemoPr) => p.review : (p: DemoPr) => p.mine
-        return ok(JSON.stringify({ data: { search: { nodes: DEMO_PRS.filter(wanted).map((p) => searchNode(p, now)) } } }))
+        const s = step()
+        const open = [...DEMO_PRS, ...(s >= 2 ? [LATE_REVIEW] : [])].flatMap((p) => atStep(p, s) ?? [])
+        return ok(JSON.stringify({ data: { search: { nodes: open.filter(wanted).map((p) => searchNode(p, now, s)) } } }))
       }
       if (a === 'api' && args.some((x) => /\/pulls\/\d+\/comments$/.test(x))) {
         // The inline comments exist on the first demo PR only.
         return ok(args.some((x) => x.endsWith(`/pulls/${DEMO_PRS[0]!.number}/comments`)) ? JSON.stringify(inlineComments(now)) : '[]')
       }
       if (a === 'pr' && b === 'view') {
-        const p = DEMO_PRS.find((x) => urlOf(x) === args[2])
-        return p ? ok(JSON.stringify(viewJson(p, now))) : fail('GraphQL: Could not resolve to a PullRequest (demo)')
+        const s = step()
+        const p = [...DEMO_PRS, LATE_REVIEW].find((x) => urlOf(x) === args[2])
+        if (!p) return fail('GraphQL: Could not resolve to a PullRequest (demo)')
+        const staged = atStep(p, s)
+        // A PR the demo removed from the open list reads as merged.
+        return ok(JSON.stringify(staged ? viewJson(staged, now, s) : viewJson(p, now, s, 'MERGED')))
       }
       if (a === 'pr' && b === 'diff') return ok(DEMO_DIFF)
       if ((a === 'pr' && (b === 'review' || b === 'comment')) || (a === 'api' && args.some((x) => x.endsWith('/replies')))) return ok('')

@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { AgentEvent, HistoryMessage } from '@workhub/core'
 import { toPlatform, type AccountUsage, type HubApi, type SessionView } from '../shared/api'
+import type { UpdateStatus } from '../shared/updates-api'
+import type { PrEventBatch } from '../shared/pr-events-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -74,6 +76,12 @@ const api: HubApi = {
     show: (n) => ipcRenderer.send('notifications:show', n),
     onOpen: (cb) => subscribe<[string]>('notifications:open', cb)
   },
+  updates: {
+    status: () => ipcRenderer.invoke('updates:status'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onChanged: (cb) => subscribe<[UpdateStatus]>('updates:changed', cb)
+  },
   codeHost: {
     lists: (profileId, force) => ipcRenderer.invoke('codeHost:lists', profileId, force),
     view: (profileId, url) => ipcRenderer.invoke('codeHost:view', profileId, url),
@@ -82,6 +90,16 @@ const api: HubApi = {
     reply: (profileId, url, threadId, body) => ipcRenderer.invoke('codeHost:reply', profileId, url, threadId, body),
     openWindow: (profileId, url) => ipcRenderer.invoke('codeHost:openWindow', profileId, url),
     openExternal: (profileId, url) => ipcRenderer.invoke('codeHost:openExternal', profileId, url)
+  },
+  health: {
+    get: (profileId, force) => ipcRenderer.invoke('health:get', profileId, force),
+    test: (connection, secret, indexToProbe) => ipcRenderer.invoke('health:test', connection, secret, indexToProbe)
+  },
+  prEvents: {
+    ready: () => ipcRenderer.send('prEvents:ready'),
+    onEvents: (cb) => subscribe<[PrEventBatch]>('prEvents:events', cb),
+    notify: (n) => ipcRenderer.send('prEvents:notify', n),
+    demoAdvance: () => ipcRenderer.invoke('prEvents:demoAdvance')
   }
 }
 

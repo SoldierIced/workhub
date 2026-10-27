@@ -10,6 +10,7 @@ import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
 import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
 import { CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/transcript-kiro'
+import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
 import {
@@ -24,14 +25,19 @@ import {
   type WorkhubConfig
 } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference } from '../shared/api'
+import type { PrNotification } from '../shared/pr-events-api'
 import { claudeAccounts, UsageService } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
+import { HealthService } from './health-service'
 import { listAllHistory } from './history'
+import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionManager } from './session-manager'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
+import { UpdateService } from './updates'
 
-// Dev layout: packages/app/out/main -> packages/app. Packaging is P8.
+// Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
+// (the Claude bridge) under process.resourcesPath instead.
 const appRoot = resolve(__dirname, '../..')
 const repoRoot = resolve(appRoot, '../..')
 
@@ -56,7 +62,18 @@ const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeSt
 const configuration = new ConfigurationService(configStore, secrets)
 let loadError: string | undefined
 // WORKHUB_DEMO_CODEHOST=1 reads synthetic pull requests instead of a real host (screenshots, demos).
-const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1' })
+// The demo moves on one step at a time (`prEvents.demoAdvance`) so pull request events can be seen.
+let demoPrStep = 0
+const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1', demoStep: () => demoPrStep })
+const prEvents = new PrEventService({
+  source: codeHost,
+  store: new JsonPrEventStore(join(dataDir, 'pr-events.json')),
+  config: () => configuration.current(),
+  emit: (batch) => send('prEvents:events', batch),
+  demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1' ? { advance: () => ++demoPrStep } : undefined
+})
+// WORKHUB_DEMO_HEALTH=1 serves synthetic environments, so Health can be shown without a cluster.
+const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1' })
 // WORKHUB_DEMO_TICKETS=1 serves synthetic tickets, so the UI can be shown without credentials.
 const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1')
 
@@ -65,11 +82,14 @@ const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
 
-// Workhub 1's Agent SDK bridge, run with Electron's own Node (dev layout; packaging is P8).
-const bridgeDir = join(repoRoot, 'packages', 'adapters', 'src', 'agent-claude-native', 'bridge')
+// Workhub 1's Agent SDK bridge, run with Electron's own Node. Packaged: staged into the resources
+// folder with its node_modules (scripts/stage-bridge.mjs); dev: straight from the adapters source.
+const bridgeDir = app.isPackaged ? join(process.resourcesPath, 'bridge') : join(repoRoot, 'packages', 'adapters', 'src', 'agent-claude-native', 'bridge')
 const terminal = new TerminalRuntime()
 // Agent adapters installed with the app (claude-agent-acp) are found through PATH.
-const extraPath = [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
+const extraPath = app.isPackaged
+  ? [join(bridgeDir, 'node_modules', '.bin')]
+  : [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
 const runtimes = {
   native: new ClaudeNativeRuntime({ bridgeDir }),
   acp: new AcpRuntime({
@@ -100,6 +120,8 @@ const usage = new UsageService(
   },
   (u: AccountUsage[]) => send('usage:changed', u)
 )
+
+const updates = new UpdateService((s) => send('updates:changed', s))
 
 async function snapshot(): Promise<ConfigSnapshot> {
   const config = await configuration.current()
@@ -206,6 +228,9 @@ function registerIpc(): void {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
   })
 
+  ipcMain.handle('updates:status', () => updates.status())
+  ipcMain.handle('updates:check', () => updates.check())
+  ipcMain.handle('updates:install', () => updates.install())
   ipcMain.handle('history:list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
   ipcMain.handle('agents:availability', async () => agentAvailability(knownAgents(await configuration.current()), { extraPath }))
   ipcMain.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
@@ -233,6 +258,9 @@ function registerIpc(): void {
   ipcMain.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
 
   registerCodeHostIpc(ipcMain, { service: codeHost, openWindow: openPullRequestWindow, openExternal: (url) => shell.openExternal(url) })
+  registerPrEventsIpc(ipcMain, { service: prEvents, notify: showPullRequestNotification })
+  ipcMain.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
+  ipcMain.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
 }
 
 /** Notifications stay referenced until they close, or the OS may drop their click handler. */
@@ -254,6 +282,26 @@ function showSessionNotification(n: SessionNotification): void {
     win.show()
     win.focus()
     send('notifications:open', n.sessionId)
+  })
+  notification.show()
+}
+
+/** An OS notification about a pull request event; a click brings the window up and opens that pull request. */
+function showPullRequestNotification(n: PrNotification): void {
+  if (!Notification.isSupported()) return
+  const log = process.env['WORKHUB_NOTIFICATION_LOG']
+  if (log) appendFileSync(log, `${JSON.stringify({ title: n.title, body: n.body, url: n.url, profileId: n.profileId })}\n`)
+  const notification = new Notification({ title: n.title.slice(0, 200), body: String(n.body ?? '').slice(0, 400) })
+  liveNotifications.add(notification)
+  notification.on('close', () => liveNotifications.delete(notification))
+  notification.on('click', () => {
+    liveNotifications.delete(notification)
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+    }
+    openPullRequestWindow(n.profileId || null, n.url)
   })
   notification.show()
 }
@@ -339,6 +387,9 @@ void app.whenReady().then(async () => {
   registerIpc()
   createWindow()
   usage.start()
+  // Opt-in: nothing contacts GitHub unless the user turned this on (or presses "Check now").
+  if (app.isPackaged && appOptions(await configuration.current()).checkForUpdates) setTimeout(() => void updates.check(), 10_000)
+  prEvents.start()
 })
 
 let quitting = false
@@ -348,6 +399,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   quitting = true
   usage.stop()
+  prEvents.stop()
   void sessions.stopAll().finally(() => app.quit())
 })
 app.on('window-all-closed', () => app.quit())

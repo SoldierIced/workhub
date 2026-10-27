@@ -9,3 +9,4 @@ spike/screenshots/
 *.tsbuildinfo
 packages/app/screenshots/
 packages/app/.dev-data/
+packages/app/.stage/

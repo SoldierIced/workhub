@@ -15,6 +15,7 @@ import {
   type CodeHost,
   type Connection,
   type Profile,
+  type PullRequest,
   type ReviewAction,
   type WorkhubConfig
 } from '@workhub/core'
@@ -58,10 +59,10 @@ export class CodeHostService {
 
   constructor(
     private readonly loadConfig: () => Promise<WorkhubConfig>,
-    options: { demo: boolean }
+    options: { demo: boolean; /** Demo only: the step the synthetic pull requests are at (see the GitHub demo). */ demoStep?: () => number }
   ) {
     this.run = createCliRunner()
-    this.demoHost = options.demo ? new GitHubCodeHost({ run: createDemoRunner() }) : null
+    this.demoHost = options.demo ? new GitHubCodeHost({ run: createDemoRunner(Date.now(), options.demoStep) }) : null
   }
 
   private hostFor(connection: Connection): { host: CodeHost; cli: string } | null {
@@ -163,6 +164,18 @@ export class CodeHostService {
       return { ok: true, view, capabilities: resolved.host.capabilities, provider: resolved.host.provider, isMine }
     } catch (e) {
       return { ok: false, error: messageOf(e) }
+    }
+  }
+
+  /** A pull request read again by URL (merged, closed or still open); null when it cannot be read. For the pull request event sync. */
+  async stateOf(profileId: string | null, url: string): Promise<PullRequest | null> {
+    const resolved = await this.resolve(profileId)
+    const ref = resolved?.host.parseUrl(url)
+    if (!resolved || !ref) return null
+    try {
+      return await resolved.host.detail(ref)
+    } catch {
+      return null
     }
   }
 
