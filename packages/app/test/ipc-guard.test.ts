@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { guardIpc, isTrustedRendererUrl, type IpcRegistrar } from '../src/main/ipc-guard'
+import { permissionAllowed } from '../src/main/permissions'
 
 const packaged = { fileUrl: 'file:///Applications/Workhub%202.app/Contents/Resources/app.asar/out/renderer/index.html' }
 const dev = { fileUrl: 'file:///repo/packages/app/out/renderer/index.html', devServerUrl: 'http://localhost:5173' }
@@ -63,5 +64,17 @@ describe('guardIpc', () => {
     listener({ get senderFrame() { throw new Error('frame destroyed') } }, 's1', 'x')
     listener(from('file:///app/index.html'), 's1', 'ls\r')
     expect(received).toEqual([['s1', 'ls\r']])
+  })
+})
+
+describe('permissionAllowed', () => {
+  const trusted = (url: string | null) => url === 'file:///app/index.html'
+  it('lets only the app write text to the clipboard and denies every other permission', () => {
+    expect(permissionAllowed('clipboard-sanitized-write', 'file:///app/index.html', trusted)).toBe(true)
+    expect(permissionAllowed('clipboard-sanitized-write', 'https://evil.example.com/', trusted)).toBe(false)
+    expect(permissionAllowed('clipboard-sanitized-write', undefined, trusted)).toBe(false)
+    for (const permission of ['media', 'geolocation', 'notifications', 'clipboard-read', 'openExternal', 'hid', 'serial', 'fileSystem']) {
+      expect(permissionAllowed(permission, 'file:///app/index.html', trusted)).toBe(false)
+    }
   })
 })

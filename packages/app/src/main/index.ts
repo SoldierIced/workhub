@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { appendFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -31,6 +31,7 @@ import { claudeAccounts, UsageService } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
+import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionManager } from './session-manager'
@@ -380,6 +381,15 @@ app.on('web-contents-created', (_event, contents) => {
   })
 })
 
+/** Web permission requests and checks are denied by default (see permissions.ts). */
+function denyWebPermissions(): void {
+  const trusted = (url: string | null) => isTrustedRendererUrl(url, rendererOrigin)
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) =>
+    callback(permissionAllowed(permission, details.requestingUrl || contents.getURL(), trusted))
+  )
+  session.defaultSession.setPermissionCheckHandler((contents, permission) => permissionAllowed(permission, contents?.getURL(), trusted))
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1280,
@@ -407,6 +417,7 @@ void app.whenReady().then(async () => {
   } catch (err) {
     loadError = err instanceof Error ? err.message : String(err)
   }
+  denyWebPermissions()
   registerIpc()
   createWindow()
   usage.start()
