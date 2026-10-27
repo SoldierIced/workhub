@@ -120,6 +120,13 @@ export const en = {
   'usage.running.one': '{count} open',
   'usage.running.other': '{count} open',
 
+  'topNav.label': 'Screens',
+  'topNav.history': 'History',
+  'topNav.slackUnread.one': '{count} Slack thread with new replies',
+  'topNav.slackUnread.other': '{count} Slack threads with new replies',
+  'topNav.prsToReview.one': '{count} pull request waiting for your review',
+  'topNav.prsToReview.other': '{count} pull requests waiting for your review',
+  'topNav.health': 'Health: {state}',
   'toolbar.newSession': 'New session',
   'toolbar.chooseAgent': 'Choose the agent for a new session',
   'toolbar.newSessionWith': 'New session with',
