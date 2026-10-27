@@ -1,4 +1,4 @@
-import type { HealthEnvironment, SlowTransaction } from './types'
+import type { SlowTransaction } from './types'
 
 const round = (n: number) => (n >= 100 ? Math.round(n) : Math.round(n * 10) / 10)
 
@@ -6,8 +6,8 @@ const round = (n: number) => (n >= 100 ? Math.round(n) : Math.round(n * 10) / 10
  * The prompt "Investigate with Claude" drafts for a slow endpoint. It is written into the
  * composer of a new session and never sent: the user reads it, edits it and sends it.
  */
-export function investigateSlowEndpointPrompt(env: Pick<HealthEnvironment, 'name' | 'apmEnvironments' | 'thresholds'>, tx: SlowTransaction): string {
-  const hours = env.thresholds.slowFlowHours
+export function investigateSlowEndpointPrompt(env: { name: string; slowFlowHours: number }, tx: SlowTransaction): string {
+  const hours = env.slowFlowHours
   const lines = [
     `The endpoint "${tx.name}" of the service "${tx.service}" is slow in the ${env.name} environment.`,
     '',

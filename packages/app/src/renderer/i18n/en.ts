@@ -1,3 +1,5 @@
+import { healthEn } from './health.en'
+import { prEventsEn } from './prEvents.en'
 import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 /**
@@ -338,5 +340,7 @@ export const en = {
   'import.noteReenter': 're-enter the secret',
   'import.noteNotSupported': 'not imported: {detail}',
   ...prEn,
-  ...ticketsEn
+  ...ticketsEn,
+  ...healthEn,
+  ...prEventsEn
 } as const
