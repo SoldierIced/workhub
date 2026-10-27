@@ -23,7 +23,7 @@ export const setupEn = {
   'setup.tab.connections': 'Connections',
   'setup.tab.trackers': 'Trackers',
   'setup.tab.health': 'Health',
-  'setup.tab.accounts': 'Accounts',
+  'setup.tab.accounts': 'Agents',
   'setup.tab.usage': 'Usage',
   'setup.link.installGuide': 'Install guide',
   'setup.link.downloadNode': 'Download Node.js',
