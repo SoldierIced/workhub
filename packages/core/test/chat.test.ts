@@ -194,6 +194,19 @@ describe('thread ownership and waking (Workhub 1 bugs)', () => {
     expect(planWake(t, { sessions, now: NOW, transcriptCwd: null })).toEqual({ kind: 'missing' })
   })
 
+  it('never opens the owner again for the same replies once the session it opened failed or was stopped', () => {
+    const t = thread({ owner: 'gone', ownerAgentKey: 'claude', wake: true })
+    const since = NOW - 200_000
+    // Opened for these replies, then it errored: no second chat, the replies are notified instead.
+    const failed = [{ id: 'ui-1', identity: 'gone', state: 'error' as const, startedAt: since + 1_000 }]
+    expect(planWake(t, { sessions: failed, now: NOW, openingSince: since, transcriptCwd: '/tmp/acme' })).toEqual({ kind: 'notifyOnly', reason: 'openFailed' })
+    const stopped = [{ id: 'ui-1', identity: 'gone', state: 'stopped' as const, startedAt: since }]
+    expect(planWake(t, { sessions: stopped, now: NOW - 190_000, openingSince: since, transcriptCwd: '/tmp/acme' })).toEqual({ kind: 'notifyOnly', reason: 'openFailed' })
+    // A session of the owner that ended before Workhub opened it for the wake is no reason to stop.
+    const older = [{ id: 'ui-0', identity: 'gone', state: 'stopped' as const, startedAt: since - 1 }]
+    expect(planWake(t, { sessions: older, now: NOW, openingSince: since, transcriptCwd: '/tmp/acme' })).toEqual({ kind: 'reopen', identity: 'gone', cwd: '/tmp/acme', agentKey: 'claude' })
+  })
+
   it('does not wake a blocked owner or one open elsewhere, and words the replies for the agent', () => {
     const t = thread({ owner: 'gone', wake: true })
     expect(planWake(t, { sessions, now: NOW, blocked: 'automationOff', transcriptCwd: '/x' })).toEqual({ kind: 'notifyOnly', reason: 'automationOff' })

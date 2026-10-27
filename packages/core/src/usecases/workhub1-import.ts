@@ -89,6 +89,8 @@ export interface Workhub1Profile {
   githubScope?: string
   ticketPrefixes?: string[]
   sessionEnvironment?: { name?: string; value?: string }[]
+  /** The profile's accent, `#rrggbb`. */
+  color?: string
 }
 
 export interface Workhub1Jira {
@@ -400,6 +402,9 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
       modules: { ...NO_MODULES },
       folders
     }
+    // Workhub 1 writes `#RRGGBB` (its parser also takes the digits alone).
+    const color = p.color?.trim().replace(/^#/, '')
+    if (color && /^[0-9a-fA-F]{6}$/.test(color)) profile.color = `#${color.toLowerCase()}`
     // Workhub 1 wrote its prompts in one language; Workhub 2's AI review is the prompt with a language.
     if (usesSpanish) profile.aiReview = { ...DEFAULT_AI_REVIEW_SETTINGS, language: 'es' }
     if (p.sessionEnvironment?.some((v) => v.name)) note('notSupported', `profiles.${id}`, 'sessionEnvironment')

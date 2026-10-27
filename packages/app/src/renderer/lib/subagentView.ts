@@ -64,6 +64,20 @@ export function shortDuration(ms: number): string {
   return `${Math.floor(m / 60)} h ${m % 60} min`
 }
 
+/** How long a sub-agent that ended stays listed under its session in the sidebar (Workhub 1's retention). */
+export const SUBAGENT_RETENTION_MS = 5 * 60_000
+
+/**
+ * The sub-agents the sidebar lists under a session: every one at work, and the ones that ended
+ * less than `SUBAGENT_RETENTION_MS` after their last activity. Most recent first.
+ */
+export function visibleSubagents(subagents: readonly SubagentSummary[] | undefined, now: number): SubagentSummary[] {
+  const last = (s: SubagentSummary) => s.lastActivityAt ?? s.startedAt
+  return (subagents ?? [])
+    .filter((s) => isLive(s.status) || (last(s) !== undefined && now - last(s)! < SUBAGENT_RETENTION_MS))
+    .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
+}
+
 /** Polling the transcript while the sub-agent may still write to it. */
 export function isLive(status: string | undefined): boolean {
   return status === undefined || status === 'running' || status === 'background'

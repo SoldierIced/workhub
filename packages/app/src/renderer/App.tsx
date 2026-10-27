@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { appOptions, EMPTY_SESSION_GROUPS, groupOf, investigateSlowEndpointPrompt, notificationTitle, pickAgent, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember, type SlowTransaction } from '@workhub/core'
 import type { HealthEnvironmentView } from '@shared/health-api'
+import type { WorkspaceFolder } from '@shared/api'
 import { TooltipProvider } from './components/atoms'
 import { ToastProvider, useToast } from './components/molecules'
 import { NewSessionDialog, Sidebar, Toolbar } from './components/organisms'
@@ -12,13 +13,13 @@ import { runIntent, type IntentDeps } from './lib/links'
 import { keyProviders } from './lib/tickets'
 import type { SessionIntent } from '@shared/links-api'
 import { folderForService } from './lib/health'
-import { recentFolders, usageGroups } from './lib/home'
+import { usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
 import { NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
 import { readPrefs } from './lib/prefs'
 import { useAppearance } from './lib/appearance'
-import { listSessions, memberOf, updateGroups } from './lib/sessionGroups'
+import { listSessions, memberOf, sessionLabel, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage, useUsageAlerts } from './lib/usage'
@@ -35,7 +36,8 @@ import { HomeScreen } from './screens/HomeScreen'
 import { PlaceholderScreen } from './screens/PlaceholderScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
-import { SettingsScreen } from './screens/SettingsScreen'
+import { SettingsDialog } from './screens/SettingsDialog'
+import { SubagentSheet } from './screens/sessions/SubagentView'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, setViewing, startStore, useSessions } from './store'
 
@@ -54,6 +56,8 @@ function Shell() {
   const accountUsage = useAccountUsage()
   const [route, setRoute] = useState<Route>('home')
   const [settingsTab, setSettingsTab] = useState('general')
+  // Settings is a modal over whatever screen is up, not a screen of its own.
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [prFocus, setPrFocus] = useState<string | null>(null)
   const [agents, setAgents] = useState<EffectiveAgent[]>([])
@@ -77,6 +81,17 @@ function Shell() {
     void window.hub.config.effectiveAgents(activeProfileId).then(setAgents)
   }, [snap, activeProfileId])
 
+  // The sidebar's folder browser: the profile's folders and the folders inside them, read again when they change.
+  const [workspaces, setWorkspaces] = useState<WorkspaceFolder[]>([])
+  const folderKey = JSON.stringify(profile?.folders ?? [])
+  useEffect(() => {
+    let alive = true
+    void window.hub.profileFolders(activeProfileId).then((list) => alive && setWorkspaces(list), () => alive && setWorkspaces([]))
+    return () => {
+      alive = false
+    }
+  }, [activeProfileId, folderKey])
+
   // A module turned off in the active profile takes its screen with it.
   useEffect(() => {
     if (snap && !reachable.some((i) => i.route === route)) setRoute('home')
@@ -99,6 +114,7 @@ function Shell() {
   const openSession = useCallback((id: string) => {
     setSelectedSession(id)
     setRoute('sessions')
+    setSettingsOpen(false)
     // Opening a session from anywhere (Home, a ticket, a notification) shows it: its group unfolds.
     const view = latest.current.sessions.find((s) => s.view.id === id)?.view
     const group = view && groupOf(latest.current.groups, sessionIdentity(view))
@@ -125,14 +141,18 @@ function Shell() {
         // An AI reviewer's turns are reported by the review itself (Review panel and its notices).
         if (!data || data.view.readOnly || !options[NOTIFY_OPTION[kind]]) return
         const group = groupOf(stored, sessionIdentity(data.view))
-        window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id, kind })
+        window.hub.notifications.show({ title: notificationTitle(sessionLabel(data), group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id, kind })
       }),
     []
   )
   // Usage alerts (Settings → Usage): a click opens Home, where "Usage by agent" is.
-  useUsageAlerts(useCallback(() => setRoute('home'), []))
+  const showScreen = useCallback((r: Route) => {
+    setSettingsOpen(false)
+    setRoute(r)
+  }, [])
+  useUsageAlerts(useCallback(() => showScreen('home'), [showScreen]))
   // Slack notices have no session: their click opens the Slack screen.
-  useEffect(() => window.hub.notifications.onOpen((id) => (id ? openSession(id) : setRoute('slack'))), [openSession])
+  useEffect(() => window.hub.notifications.onOpen((id) => (id ? openSession(id) : showScreen('slack'))), [openSession, showScreen])
 
   // Members remember their title, agent and folder so they can be listed (and reopened) once closed.
   useEffect(() => {
@@ -142,18 +162,23 @@ function Shell() {
   }, [snap, groups, listed, liveKeys])
   const openPullRequest = useCallback((url?: string) => {
     setPrFocus(url ?? null)
-    setRoute('pullRequests')
-  }, [])
+    showScreen('pullRequests')
+  }, [showScreen])
   // A ticket window asked to show one of the sessions.
   useEffect(() => window.hub.tickets.onOpenSession(openSession), [openSession])
   const openSettings = useCallback((tab?: string) => {
     if (tab) setSettingsTab(tab)
-    setRoute('settings')
+    setSettingsOpen(true)
   }, [])
-  const navigate = useCallback((r: Route) => {
-    if (r === 'sessions') setSelectedSession(null)
-    setRoute(r)
-  }, [])
+  // Every way to Settings (sidebar, ⌘,, the menu bar icon, links to a tab) opens the modal.
+  const navigate = useCallback(
+    (r: Route, tab?: string) => {
+      if (r === 'settings') return openSettings(tab)
+      if (r === 'sessions') setSelectedSession(null)
+      showScreen(r)
+    },
+    [openSettings, showScreen]
+  )
   const newSession = useCallback((cwd?: string | null, agentKey?: string) => setDialog({ open: true, cwd: cwd ?? undefined, agentKey }), [])
   // The menu bar / notification area icon: it lists the sessions and opens screens and the new session dialog.
   useTraySync({ sessions, groups, locale, navigate, newSession: () => newSession() })
@@ -265,11 +290,12 @@ function Shell() {
             active={route === 'sessions'}
             onSelect={openSession}
             onReopen={(m) => void reopenMember(m)}
+            profiles={profiles}
           />
         }
         attentionCount={sessions.filter((s) => s.unseen).length}
         onDropOnSessions={(e) => dropOnSessionsTitle(e, liveKeys)}
-        folders={recentFolders(sessions, profile?.folders)}
+        workspaces={workspaces}
         onNewSessionIn={(f) => newSession(f)}
         usage={usageGroups(sessions, accountUsage)}
       />
@@ -304,8 +330,6 @@ function Shell() {
                 <SlackScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} />
               ) : route === 'automations' ? (
                 <AutomationsScreen profile={profile} agents={agents} onOpenSession={openSession} />
-              ) : route === 'settings' ? (
-                <SettingsScreen snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
               ) : (
                 <PlaceholderScreen route={route} title={t(ROUTE_LABEL[route])} />
               )}
@@ -323,6 +347,8 @@ function Shell() {
         initialAgentKey={dialog.agentKey}
         onStarted={openSession}
       />
+      <SubagentSheet />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
     </div>
   )
 }

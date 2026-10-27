@@ -104,6 +104,8 @@ export class SlackWatcherService {
   private skipReason: SlackSnapshot['skipReason']
   private delivering = false
   private readonly opening = new Map<string, number>()
+  /** Owners being opened right now: a wake and a click on "Open" at once share one session. */
+  private readonly resuming = new Map<string, Promise<SessionView>>()
   private readonly prStates = new Map<string, { state?: string; checkedAt: number }>()
   private hooks: SlackHookAccount[] = []
   private timers: ReturnType<typeof setInterval>[] = []
@@ -357,6 +359,8 @@ export class SlackWatcherService {
         update((t) => recordWake(t, 'pending', plan.reason, this.now(), false))
         return
       case 'notifyOnly':
+        // The replies were handed over as a notice: the next ones may open the session again.
+        if (plan.reason === 'openFailed') this.opening.delete(owner)
         this.deps.notice({ kind: 'notWoken', threadId: thread.id, title: thread.title, reason: plan.reason, replies: thread.pendingWake.map((r) => ({ user: r.user, text: r.text })) })
         update((t) => recordWake(t, 'notifyOnly', plan.reason, this.now(), true))
         return
@@ -364,14 +368,14 @@ export class SlackWatcherService {
         update((t) => recordWake(t, 'pending', 'transcriptMissing', this.now(), false))
         return
       case 'reopen': {
-        const config = await this.deps.configuration.current()
+        // Marked before anything is awaited, so no later pass opens a second copy meanwhile.
         this.opening.set(owner, now)
+        const config = await this.deps.configuration.current()
         try {
-          await this.deps.startSession({
-            profileId: config.activeProfileId ?? null,
+          await this.resumeOwner(owner, {
+            profileId: this.profileOf(owner, views, config),
             agentKey: plan.agentKey ?? this.agentKeyFor(config, located?.configDir) ?? 'claude',
             cwd: plan.cwd,
-            resumeAgentSessionId: owner,
             mode: 'app',
             cols: 100,
             rows: 30
@@ -491,15 +495,37 @@ export class SlackWatcherService {
     const located = await locateClaudeTranscript(thread.owner, await this.claudeDirs())
     if (!located?.cwd) return views.filter((v) => sessionIdentity(v) === thread.owner).sort((a, b) => b.startedAt - a.startedAt)[0]?.id ?? null
     const config = await this.deps.configuration.current()
-    const view = await this.deps.startSession({
-      profileId: config.activeProfileId ?? null,
+    const view = await this.resumeOwner(thread.owner, {
+      profileId: this.profileOf(thread.owner, views, config),
       agentKey: thread.ownerAgentKey ?? this.agentKeyFor(config, located.configDir) ?? 'claude',
       cwd: located.cwd,
-      resumeAgentSessionId: thread.owner,
       cols: 100,
       rows: 30
     })
     return view.id
+  }
+
+  /**
+   * Resumes a thread's owner, once: while it is being opened (a wake, a click on "Open") every
+   * other caller gets that same session, and one already open is returned instead of a copy.
+   */
+  private resumeOwner(owner: string, input: Omit<StartSessionInput, 'resumeAgentSessionId'>): Promise<SessionView> {
+    const inFlight = this.resuming.get(owner)
+    if (inFlight) return inFlight
+    const open = this.deps.driver
+      .views()
+      .filter((v) => sessionIdentity(v) === owner && v.state !== 'stopped' && v.state !== 'error')
+      .sort((a, b) => b.startedAt - a.startedAt)[0]
+    if (open) return Promise.resolve(open)
+    const started = this.deps.startSession({ ...input, resumeAgentSessionId: owner }).finally(() => this.resuming.delete(owner))
+    this.resuming.set(owner, started)
+    return started
+  }
+
+  /** The profile the owner last ran in here (its sidebar place and colour stay), else the active one. */
+  private profileOf(owner: string, views: readonly SessionView[], config: WorkhubConfig): string | null {
+    const last = views.filter((v) => sessionIdentity(v) === owner).sort((a, b) => b.startedAt - a.startedAt)[0]
+    return last?.profileId ?? config.activeProfileId ?? null
   }
 
   // The tracking hook (Settings → Slack)

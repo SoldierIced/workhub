@@ -216,10 +216,11 @@ const profile = z.object({
   health: healthSettings.optional(),
   slackArchiveMinutes: z.number().int().min(1).optional(),
   aiReview: aiReview.optional(),
-  accountFailover: z.enum(['ask', 'automatic', 'off']).optional()
+  accountFailover: z.enum(['ask', 'automatic', 'off']).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()
 })
 
-const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string() })
+const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string(), profileId: z.string().min(1).optional() })
 
 const sessionGroups = z.object({
   groups: z

@@ -50,14 +50,33 @@ export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
   return folderName(s.view.cwd)
 }
 
+/**
+ * A session's name outside the sidebar (menu bar icon, notifications): what it was asked, like its
+ * row; before anything is asked, its agent and folder, since there is no icon there to tell the agent.
+ */
+export function sessionLabel(s: Pick<SessionData, 'items' | 'view'>): string {
+  const asked = s.items.some((i) => i.kind === 'user' && i.text.trim())
+  return asked ? sessionName(s) : `${s.view.agentName} · ${folderName(s.view.cwd)}`
+}
+
 /** What a group remembers about an open session. */
 export function memberOf(s: ListedSession): GroupMember {
-  return { key: s.key, title: sessionName(s.data), agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
+  const member: GroupMember = { key: s.key, title: sessionName(s.data), agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
+  if (s.data.view.profileId) member.profileId = s.data.view.profileId
+  return member
 }
 
 /** The badge count and top state dot of a set of open sessions. */
 export function summarize(sessions: readonly SessionData[]): AttentionSummary {
   return aggregateAttention(sessions.map((s) => ({ state: s.view.state, unseen: s.unseen, awaitingAnswer: awaitingAnswer(s) })))
+}
+
+/**
+ * What a group's header shows, folded or not: how many of its open sessions need you (a reply to
+ * read, a question, an error) and the most urgent state. Closed members count for nothing.
+ */
+export function groupSummary(members: readonly { session?: ListedSession }[]): AttentionSummary {
+  return summarize(members.flatMap((m) => (m.session ? [m.session.data] : [])))
 }
 
 let writes: Promise<unknown> = Promise.resolve()

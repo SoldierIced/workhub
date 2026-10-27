@@ -159,6 +159,17 @@ describe('replaceSessionIdentity', () => {
     expect(s.top).toEqual([{ kind: 'group', id: 'a' }, { kind: 'group', id: 'b' }, { kind: 'session', key: 'n3' }])
   })
 
+  it('keeps a replaced session in its group when the replacement was saved on the top level while it started', () => {
+    // The renderer saved the layout while the new session was open but unplaced: it sat at the end of the top level.
+    const saved = { ...layout(), top: [...layout().top, { kind: 'session' as const, key: 'n1' }] }
+    const s = replaceSessionIdentity(saved, 's1', 'n1')
+    expect(keys(s, 'a')).toEqual(['n1', 's2'])
+    expect(s.top.some((x) => x.kind === 'session' && x.key === 'n1')).toBe(false)
+    // An ungrouped session keeps its own top-level place, listed once.
+    const top = replaceSessionIdentity({ ...layout(), top: [{ kind: 'session', key: 'n3' }, ...layout().top] }, 's3', 'n3')
+    expect(top.top).toEqual([{ kind: 'group', id: 'a' }, { kind: 'group', id: 'b' }, { kind: 'session', key: 'n3' }])
+  })
+
   it('never lists a session twice when the replacement already has a place', () => {
     const s = replaceSessionIdentity(layout(), 's1', 's2')
     expect(keys(s, 'a')).toEqual(['s2'])
@@ -216,7 +227,7 @@ describe('attention', () => {
     expect(statusLevel({ state: 'stopped' })).toBeNull()
   })
 
-  it('aggregates a count of unseen sessions and the top state', () => {
+  it('aggregates a count of sessions that need you and the top state', () => {
     expect(aggregateAttention([])).toEqual({ count: 0, level: null })
     expect(aggregateAttention([{ state: 'busy' }, { state: 'ready' }])).toEqual({ count: 0, level: 'working' })
     expect(aggregateAttention([{ state: 'busy' }, { state: 'ready', unseen: 'replied' }])).toEqual({ count: 1, level: 'readyToReview' })
@@ -227,6 +238,13 @@ describe('attention', () => {
         { state: 'error', unseen: 'error' }
       ])
     ).toEqual({ count: 3, level: 'error' })
+  })
+
+  it('counts every session in a group that needs you, seen or not, like the app icon badge', () => {
+    // A question already looked at but not answered, and an error, still need you; work in progress does not.
+    expect(aggregateAttention([{ state: 'ready', awaitingAnswer: true }, { state: 'error' }, { state: 'busy' }, { state: 'ready' }])).toEqual({ count: 2, level: 'error' })
+    expect(aggregateAttention([{ state: 'busy' }, { state: 'starting' }])).toEqual({ count: 0, level: 'working' })
+    expect(aggregateAttention([{ state: 'stopped', unseen: 'replied' }])).toEqual({ count: 1, level: 'readyToReview' })
   })
 
   it('puts the group name in front of the session title', () => {

@@ -2,6 +2,7 @@ import { Activity, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare,
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   appOptions,
+  automaticProfileColor,
   CONNECTION_KINDS,
   FAILOVER_MODES,
   failoverMode,
@@ -32,6 +33,7 @@ import { humanIssue, type IssueTarget } from '../lib/configIssues'
 import { showWorkhub1Migration, showWorkhub1Tokens, useWorkhub1Preview } from '../lib/workhub1'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { AiReviewProfileFields } from './AiReviewSettings'
+import { ProfileColorField } from './ProfileColorField'
 import { HealthSettings } from './HealthSettings'
 import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
@@ -126,7 +128,15 @@ function TabIntro({ text }: { text: string }) {
   return <p className="-mt-1 max-w-3xl text-base text-muted">{text}</p>
 }
 
-export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapshot | null; tab: string; onTabChange: (tab: string) => void }) {
+export interface SettingsScreenProps {
+  snap: ConfigSnapshot | null
+  tab: string
+  onTabChange: (tab: string) => void
+  /** Replaces the plain title, e.g. with the modal's title and close button. */
+  heading?: ReactNode
+}
+
+export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScreenProps) {
   const { t } = useI18n()
   const notify = useToast()
   const [issues, setIssues] = useState<ValidationIssue[]>([])
@@ -165,18 +175,18 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
     <div className="mx-auto flex w-full max-w-5xl flex-col px-8 pb-7">
       <Tabs
         variant="fill"
-      header={
-        <>
-          <h1 className="text-2xl font-semibold tracking-tight">{t('nav.settings')}</h1>
-          {snap.loadError && <Issues title={t('settings.loadError')} issues={[{ path: 'config.json', message: snap.loadError }]} />}
-          <StoredIssues snap={snap} onFix={fix} />
-          {showWorkhub1Tokens(window.hub.platform, workhub1) && (
-            <div className="rounded-lg border border-border bg-surface px-4 py-3 shadow-sm">
-              <Workhub1SecretsImport compact />
-            </div>
-          )}
-        </>
-      }
+        header={
+          <>
+            {heading ?? <h1 className="text-2xl font-semibold tracking-tight">{t('nav.settings')}</h1>}
+            {snap.loadError && <Issues title={t('settings.loadError')} issues={[{ path: 'config.json', message: snap.loadError }]} />}
+            <StoredIssues snap={snap} onFix={fix} />
+            {showWorkhub1Tokens(window.hub.platform, workhub1) && (
+              <div className="rounded-lg border border-border bg-surface px-4 py-3 shadow-sm">
+                <Workhub1SecretsImport compact />
+              </div>
+            )}
+          </>
+        }
         label={t('nav.settings')}
         value={tab}
         onChange={(v) => {
@@ -654,6 +664,11 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme" />
             </Field>
           </div>
+          <ProfileColorField
+            value={form.color}
+            automatic={automaticProfileColor(selected ? snap.config.profiles.findIndex((p) => p.id === selected) : snap.config.profiles.length)}
+            onChange={(color) => setForm(({ color: _old, ...rest }) => (color ? { ...rest, color } : rest))}
+          />
           <Field label={t('settings.folders')} hint={t('settings.foldersHint')} help={t('help.profile.folders')}>
             <Textarea
               rows={3}

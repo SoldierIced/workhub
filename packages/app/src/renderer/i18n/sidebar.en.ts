@@ -1,0 +1,25 @@
+/** English copy of the sidebar's profile colours, folder browser and sub-agent rows. */
+export const sidebarEn = {
+  'sidebar.profileBar': 'Profile {name}',
+  'sidebar.profileColor': 'Colour',
+  'sidebar.profileColorAuto': 'Automatic',
+  'sidebar.profileColorOption': 'Colour {n}',
+  'sidebar.profileColorHint': 'Marks the sessions of this profile in the sidebar, down the left edge of their rows.',
+  'sidebar.filterFolders': 'Filter folders',
+  'sidebar.clearFilter': 'Clear the filter',
+  'sidebar.results': 'Results',
+  'sidebar.noFolderMatch': 'No folder matches.',
+  'sidebar.favorites': 'Favorites',
+  'sidebar.recent': 'Recent',
+  'sidebar.allFolders': 'All folders',
+  'sidebar.addFavorite': 'Add {folder} to Favorites',
+  'sidebar.removeFavorite': 'Remove {folder} from Favorites',
+  'sidebar.openInFolder.one': '{count} open session here',
+  'sidebar.openInFolder.other': '{count} open sessions here',
+  'sidebar.subagents.show.one': 'Show {count} sub-agent',
+  'sidebar.subagents.show.other': 'Show {count} sub-agents',
+  'sidebar.subagents.hide.one': 'Hide {count} sub-agent',
+  'sidebar.subagents.hide.other': 'Hide {count} sub-agents',
+  'sidebar.subagents.list.one': '{count} sub-agent of {name}',
+  'sidebar.subagents.list.other': '{count} sub-agents of {name}'
+} as const

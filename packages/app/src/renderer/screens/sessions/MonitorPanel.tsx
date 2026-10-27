@@ -9,7 +9,6 @@ import type { SessionData } from '../../store'
 import { AiReviewSection } from './AiReviewPanel'
 import { SlackThreadsSection } from './SlackThreadsSection'
 import { openSubagent } from '../../lib/subagentView'
-import { SubagentSheet } from './SubagentView'
 
 const FIELD_LABEL: Record<MonitorField, MessageKey> = {
   title: 'monitor.title',
@@ -216,7 +215,6 @@ export function MonitorPanel({ data }: { data: SessionData }) {
           ))}
         </ListSection>
       )}
-      <SubagentSheet sessionId={v.id} />
       <SlackThreadsSection view={v} />
       <AiReviewSection view={v} />
     </aside>

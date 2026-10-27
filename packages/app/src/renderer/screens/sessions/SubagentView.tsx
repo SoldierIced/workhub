@@ -203,9 +203,14 @@ function Body({ sessionId, subagentId, depth }: { sessionId: string; subagentId:
 }
 
 /** The open sub-agent of this session, as a wide sheet over the session screen. */
-export function SubagentSheet({ sessionId }: { sessionId: string }) {
+/**
+ * The open sub-agent's conversation, of whichever session: mounted once (App), so a sub-agent
+ * opened from the sidebar or the Monitor shows whether or not that session's Monitor is up.
+ */
+export function SubagentSheet() {
   const open = useOpenSubagent()
-  const current = open?.sessionId === sessionId ? open.stack[open.stack.length - 1] : undefined
+  const sessionId = open?.sessionId ?? ''
+  const current = open ? open.stack[open.stack.length - 1] : undefined
   return (
     <RDialog.Root open={current !== undefined} onOpenChange={(o) => !o && closeSubagent()}>
       <RDialog.Portal>

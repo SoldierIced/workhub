@@ -20,6 +20,7 @@ const api: HubApi = {
   setTheme: (theme) => ipcRenderer.send('hub:setTheme', theme),
   getDefaultCwd: () => ipcRenderer.invoke('hub:defaultCwd'),
   pickFolder: () => ipcRenderer.invoke('hub:pickFolder'),
+  profileFolders: (profileId) => ipcRenderer.invoke('hub:profileFolders', profileId),
   openExternal: (url) => ipcRenderer.send('hub:openExternal', url),
   config: {
     get: () => ipcRenderer.invoke('config:get'),
@@ -174,7 +175,7 @@ const api: HubApi = {
   },
   tray: {
     setState: (state) => ipcRenderer.send('tray:state', state),
-    onNavigate: (cb) => subscribe<[TrayRoute]>('tray:navigate', cb),
+    onNavigate: (cb) => subscribe<[TrayRoute, string | undefined]>('tray:navigate', cb),
     onNewSession: (cb) => subscribe<[]>('tray:newSession', cb)
   }
 }

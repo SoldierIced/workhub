@@ -245,6 +245,11 @@ describe('Workhub 1 import: modules and options', () => {
     expect(p.options?.claudePlanUsage).toBeUndefined()
   })
 
+  it('keeps a profile colour, with or without its #, and drops one that is not a colour', () => {
+    const p = planWorkhub1Import({ profiles: [{ id: 'a', name: 'A', color: '#7A6FF0' }, { id: 'b', name: 'B', color: '12ab34' }, { id: 'c', name: 'C', color: 'blue' }] }, config(), home)
+    expect(p.profiles.map((x) => x.color)).toEqual(['#7a6ff0', '#12ab34', undefined])
+  })
+
   it('reads API-key auth and pinned TLS', () => {
     const p = planWorkhub1Import(
       { profiles: [{ id: 'acme', name: 'Acme' }], observability: { acme: { elasticURL: 'https://es.example.com', auth: { apiKey: {} }, tls: { pinned: { sha256: 'ab:cd' } } } } },
