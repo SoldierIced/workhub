@@ -23,7 +23,7 @@ export function SlackThreadsSection({ view }: { view: SessionView }) {
         <span className="ml-auto text-xs text-subtle tabular-nums">{threads.length}</span>
       </summary>
       <div className="mt-2">
-        <ThreadGroup threads={threads} me={snap.me} archiveMinutes={threadArchiveMinutes(profile)} now={Date.now()} actions={{ compact: true }} />
+        <ThreadGroup threads={threads} me={snap.me} archiveMinutes={threadArchiveMinutes(profile)} now={Date.now()} actions={{ compact: true, channelName: (id) => snap.settings.channels.find((c) => c.id === id)?.name ?? id }} />
       </div>
     </details>
   )
