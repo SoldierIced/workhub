@@ -12,11 +12,12 @@ function withCurrent(list: { value: string; label: string }[], current: string |
 }
 
 /** The models and modes the chosen agent offers (its CLI's listing, or what its last session reported). */
-function useAgentOptions(agentKey: string): { options: AgentOptionsView | null } {
+function useAgentOptions(agentKey: string | undefined): { options: AgentOptionsView | null } {
   const [options, setOptions] = useState<AgentOptionsView | null>(null)
   useEffect(() => {
     let live = true
     setOptions(null)
+    if (!agentKey) return
     void window.hub.agents.options(agentKey).then(
       (o) => live && setOptions(o),
       () => undefined
@@ -46,12 +47,13 @@ export function AutomationEditor({ automation, agents, channels, presets = [], o
   const [form, setForm] = useState<AutomationDefinition | null>(automation)
   const [otherChannel, setOtherChannel] = useState('')
   useEffect(() => setForm(automation), [automation])
+  // Every hook runs before the early return below: the editor mounts with no automation and gets one later.
+  const { options } = useAgentOptions(form?.agentKey)
   if (!form) return null
   const set = (patch: Partial<AutomationDefinition>) => setForm({ ...form, ...patch })
   const triggers = form.triggers
   const chosen = agents.find((a) => a.key === form.agentKey)
   const native = chosen?.agent.adapter === 'native'
-  const { options } = useAgentOptions(form.agentKey)
   const agentOptions = agents.some((a) => a.key === form.agentKey) ? agents : [...agents, { key: form.agentKey, label: form.agentKey } as EffectiveAgent]
 
   return (
