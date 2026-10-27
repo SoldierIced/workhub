@@ -1,5 +1,5 @@
-import type { CiStatus, DiffFile, Mergeability, PullRequestItem, PullRequestStatus, ReviewDecision } from '@workhub/core'
-import type { CodeHostLists } from '@shared/codehost-api'
+import type { CiStatus, CommentThread, DiffFile, Mergeability, PullRequestComment, PullRequestDetail, PullRequestItem, PullRequestReview, PullRequestStatus, ReviewDecision } from '@workhub/core'
+import { isPullRequestWindowTab, type CodeHostLists, type PullRequestWindowTab } from '../../shared/codehost-api'
 import type { Tone } from '../components/atoms'
 import type { MessageKey } from '../i18n/translate'
 
@@ -86,15 +86,37 @@ export function findItem(lists: Pick<CodeHostLists, 'mine' | 'toReview'> | undef
 }
 
 /** The hash a pull request window is opened with: `#pr?profile=<id>&url=<pull request url>`. */
-export function prWindowHash(profileId: string | null, url: string): string {
-  return `#pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}`
+export function prWindowHash(profileId: string | null, url: string, tab?: PullRequestWindowTab): string {
+  return `#pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}${tab ? `&tab=${tab}` : ''}`
 }
 
-export function parsePrWindowHash(hash: string): { profileId: string | null; url: string } | null {
+export function parsePrWindowHash(hash: string): { profileId: string | null; url: string; tab?: PullRequestWindowTab } | null {
   const m = /^#pr\?(.*)$/.exec(hash)
   if (!m) return null
   const params = new URLSearchParams(m[1])
   const url = params.get('url')
   if (!url) return null
-  return { profileId: params.get('profile') || null, url }
+  const tab = params.get('tab')
+  return { profileId: params.get('profile') || null, url, ...(isPullRequestWindowTab(tab) ? { tab } : {}) }
+}
+
+/** One entry of a PR's conversation: a comment, a review with something to say, or a thread on code lines. */
+export type TimelineEntry =
+  | { kind: 'comment'; id: string; at: number; comment: PullRequestComment }
+  | { kind: 'review'; id: string; at: number; review: PullRequestReview }
+  | { kind: 'thread'; id: string; at: number; thread: CommentThread }
+
+/**
+ * The conversation in time order (Workhub 1's timeline). A review that only wraps inline comments
+ * has no body and no verdict worth showing; its threads show on their own.
+ */
+export function conversationTimeline(detail: Pick<PullRequestDetail, 'comments' | 'reviews' | 'threads'>): TimelineEntry[] {
+  const entries: TimelineEntry[] = [
+    ...detail.comments.map((comment): TimelineEntry => ({ kind: 'comment', id: `c${comment.id}`, at: comment.createdAt ?? 0, comment })),
+    ...detail.reviews
+      .filter((r) => r.body.trim() !== '' || r.state === 'approved' || r.state === 'changesRequested')
+      .map((review): TimelineEntry => ({ kind: 'review', id: `r${review.id}`, at: review.submittedAt ?? 0, review })),
+    ...detail.threads.filter((t) => t.comments.length > 0).map((thread): TimelineEntry => ({ kind: 'thread', id: `t${thread.id}`, at: thread.comments[0]?.createdAt ?? 0, thread }))
+  ]
+  return entries.sort((a, b) => a.at - b.at)
 }

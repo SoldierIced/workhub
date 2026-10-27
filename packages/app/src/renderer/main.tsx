@@ -15,7 +15,7 @@ applyAppearance(readPrefs(), matchMedia('(prefers-color-scheme: dark)').matches)
 // `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…` a ticket.
 function root(hash: string): ReactElement {
   const pr = parsePrWindowHash(hash)
-  if (pr) return <PullRequestWindow profileId={pr.profileId} url={pr.url} />
+  if (pr) return <PullRequestWindow profileId={pr.profileId} url={pr.url} tab={pr.tab} />
   const ticket = parseTicketHash(hash)
   if (ticket) return <TicketWindowRoot profileId={ticket.profileId} ticketKey={ticket.key} />
   return <App />

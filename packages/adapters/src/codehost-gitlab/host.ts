@@ -165,6 +165,17 @@ export class GitLabCodeHost implements CodeHost {
     await this.glab(['api', '--method', 'POST', `${this.mr(ref)}/notes`, '--raw-field', `body=${body}`], 'Could not send the comment')
   }
 
+  async close(ref: PullRequestRef, options: { comment: string; deleteBranch: boolean; branch: string }): Promise<void> {
+    if (options.comment) await this.comment(ref, options.comment)
+    await this.glab(['api', '--method', 'PUT', this.mr(ref), '--raw-field', 'state_event=close'], 'Could not close the merge request')
+    if (options.deleteBranch && options.branch) {
+      await this.glab(
+        ['api', '--method', 'DELETE', `projects/${gitlabProjectPath(ref)}/repository/branches/${encodeURIComponent(options.branch)}`],
+        'Closed, but the branch could not be deleted'
+      )
+    }
+  }
+
   async replyToThread(ref: PullRequestRef, threadId: string, body: string): Promise<void> {
     if (!/^[0-9a-f]+$/i.test(threadId)) throw new CodeHostError('Bad thread id', 'unsupported')
     await this.glab(

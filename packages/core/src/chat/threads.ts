@@ -396,10 +396,32 @@ export function threadRows(threads: readonly TrackedThread[]): ThreadRow[] {
 
 /** Messages and threads that mention a PR, for its Slack badge. */
 export function linksForPullRequest(state: ChatWatcherState, url: string): { messages: ChatMessage[]; threads: TrackedThread[] } {
+  return pullRequestSlackLinks(Object.values(state.messages).flat(), state.threads, url)
+}
+
+/** The channel messages that link a PR and the threads about it (tracked for it, or a reply links it). */
+export function pullRequestSlackLinks(messages: readonly ChatMessage[], threads: readonly TrackedThread[], url: string): { messages: ChatMessage[]; threads: TrackedThread[] } {
   const key = canonicalUrl(url)
-  const messages = Object.values(state.messages)
-    .flat()
-    .filter((m) => m.prUrls.some((u) => canonicalUrl(u) === key))
-  const threads = state.threads.filter((t) => (t.prUrl && canonicalUrl(t.prUrl) === key) || t.replies.some((r) => pullRequestsIn(r.text).some((u) => canonicalUrl(u) === key)))
-  return { messages, threads }
+  return {
+    messages: messages.filter((m) => m.prUrls.some((u) => canonicalUrl(u) === key)),
+    threads: threads.filter((t) => (t.prUrl && canonicalUrl(t.prUrl) === key) || t.replies.some((r) => pullRequestsIn(r.text).some((u) => canonicalUrl(u) === key)))
+  }
+}
+
+/** What a Slack badge shows: how many threads and messages, and whether a thread has unread replies. */
+export interface SlackLinkSummary {
+  threads: number
+  messages: number
+  unread: boolean
+}
+
+/** The badge of a set of links; null when there is nothing in Slack, so no badge shows. */
+export function slackLinkSummary(links: { messages: readonly ChatMessage[]; threads: readonly TrackedThread[] }, me: string): SlackLinkSummary | null {
+  if (links.messages.length === 0 && links.threads.length === 0) return null
+  return { threads: links.threads.length, messages: links.messages.length, unread: links.threads.some((t) => !t.closed && hasUnread(t, me)) }
+}
+
+/** The open threads a session owns (by its stable identity), for the session row's badge. */
+export function threadsOfSession(threads: readonly TrackedThread[], identity: string): TrackedThread[] {
+  return threads.filter((t) => t.owner === identity && !t.closed)
 }

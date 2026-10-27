@@ -2,10 +2,11 @@ import { ArrowRight, GitPullRequest } from 'lucide-react'
 import { prName, type PullRequestItem } from '@workhub/core'
 import type { CodeHostLists } from '@shared/codehost-api'
 import { Button, Spinner } from '../../components/atoms'
-import { Card, CardBody, CardHeader, ListRow, StatTile } from '../../components/molecules'
+import { Card, CardBody, CardHeader, ListRow, SlackBadge, StatTile } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { installUrl, loginCommand } from '../../lib/pullRequests'
+import { usePullRequestSlack } from '../../lib/slackLinks'
 import { StatusBadge } from './PrBadges'
 
 /** Why the lists are not there, in a short line for a Home card or tile. */
@@ -45,6 +46,8 @@ export function PullRequestTile({ kind, lists, loading }: { kind: PullRequestTil
 
 export interface PullRequestCardProps {
   kind: PullRequestTileKind
+  /** For the Slack badge, which opens the PR's window on its Slack tab. */
+  profileId: string | null
   lists: CodeHostLists | null
   onOpenPullRequest: (url: string) => void
   onOpenAll: () => void
@@ -54,7 +57,7 @@ export interface PullRequestCardProps {
 const LIMIT = 5
 
 /** A Home list of pull requests: the first few, each opening in the Pull requests screen. */
-export function PullRequestCard({ kind, lists, onOpenPullRequest, onOpenAll, onOpenSettings }: PullRequestCardProps) {
+export function PullRequestCard({ kind, profileId, lists, onOpenPullRequest, onOpenAll, onOpenSettings }: PullRequestCardProps) {
   const { t, tn } = useI18n()
   const reason = useUnavailableReason(lists)
   const items: PullRequestItem[] = lists && lists.state === 'ready' ? lists[kind].filter((i) => !i.stale || kind === 'toReview') : []
@@ -92,20 +95,29 @@ export function PullRequestCard({ kind, lists, onOpenPullRequest, onOpenAll, onO
         ) : (
           <ul className="flex flex-col gap-0.5">
             {items.slice(0, LIMIT).map((item) => (
-              <li key={item.pr.url}>
-                <ListRow
-                  className="px-1.5"
-                  title={item.pr.title}
-                  subtitle={`${prName(item.pr, item.pr.provider)}${kind === 'toReview' ? ` · ${item.pr.author}` : ''}`}
-                  trailing={<StatusBadge status={item.status} />}
-                  onClick={() => onOpenPullRequest(item.pr.url)}
-                />
-              </li>
+              <HomePullRequestRow key={item.pr.url} item={item} profileId={profileId} showAuthor={kind === 'toReview'} onOpen={() => onOpenPullRequest(item.pr.url)} />
             ))}
             {items.length > LIMIT && <li className="px-1.5 text-xs text-subtle">{tn('home.more', items.length - LIMIT)}</li>}
           </ul>
         )}
       </CardBody>
     </Card>
+  )
+}
+
+/** A Home PR row; the Slack badge sits beside the row's button, not inside it. */
+function HomePullRequestRow({ item, profileId, showAuthor, onOpen }: { item: PullRequestItem; profileId: string | null; showAuthor: boolean; onOpen: () => void }) {
+  const slack = usePullRequestSlack(item.pr.url)
+  return (
+    <li className="flex items-center gap-1">
+      <ListRow
+        className="min-w-0 flex-1 px-1.5"
+        title={item.pr.title}
+        subtitle={`${prName(item.pr, item.pr.provider)}${showAuthor ? ` · ${item.pr.author}` : ''}`}
+        trailing={<StatusBadge status={item.status} />}
+        onClick={onOpen}
+      />
+      <SlackBadge summary={slack.summary} onOpen={() => void window.hub.codeHost.openWindow(profileId, item.pr.url, 'slack')} />
+    </li>
   )
 }

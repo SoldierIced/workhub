@@ -266,6 +266,7 @@ function Shell() {
             active={route === 'sessions'}
             onSelect={openSession}
             onReopen={(m) => void reopenMember(m)}
+            onOpenSlack={reachable.some((i) => i.route === 'slack') ? () => navigate('slack') : undefined}
           />
         }
         attentionCount={sessions.filter((s) => s.unseen).length}
