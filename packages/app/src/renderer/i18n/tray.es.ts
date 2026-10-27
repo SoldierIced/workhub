@@ -30,6 +30,7 @@ export const trayEs: Record<keyof typeof trayEn, string> = {
   'tray.usageUnknown': 'todavía sin lectura',
   'tray.window.5h': '5h',
   'tray.window.weekly': 'Semanal',
+  'tray.window.monthly': 'Mensual',
   'tray.section.pullRequests': 'Pull requests',
   'tray.pr.toReview': 'Esperando mi revisión: {count}',
   'tray.pr.mine': 'Míos: {count}',
