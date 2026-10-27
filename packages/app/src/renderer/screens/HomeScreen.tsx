@@ -1,6 +1,6 @@
-import { Activity, ArrowRight, Workflow } from 'lucide-react'
+import { ArrowRight, Workflow } from 'lucide-react'
 import type { ConnectionKind, Profile } from '@workhub/core'
-import { Badge, Button, STATE_TONE, StateDot, type Tone } from '../components/atoms'
+import { Button, STATE_TONE, StateDot, type Tone } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, ListRow, StatTile } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
@@ -11,6 +11,7 @@ import type { Route } from '../lib/nav'
 import { useTickets } from '../ticketsStore'
 import type { SessionData } from '../store'
 import { usePullRequestLists } from '../pullRequestsStore'
+import { HealthPills } from './health/HealthPills'
 import { PullRequestCard, PullRequestTile } from './pullRequests/HomeCards'
 
 const ATTENTION: Record<Attention, { title: MessageKey; empty: MessageKey; tone: Tone }> = {
@@ -67,14 +68,7 @@ export function HomeScreen({ profile, sessions, onOpenSession, onOpenSettings, o
         <p className="mt-0.5 text-base text-muted first-letter:uppercase">{formatDate(new Date(), { weekday: 'long', day: 'numeric', month: 'long' })}</p>
       </header>
 
-      {modules.has('health') && (
-        <div className="flex items-center gap-3 text-sm">
-          <span className="font-medium text-muted">{t('home.environments')}</span>
-          <Badge tone="neutral" icon={<Activity className="size-3" aria-hidden />}>
-            {hasConnection(profile, 'health') ? t('home.arrivesIn', { phase: 'P6' }) : t('home.notConnected.health')}
-          </Badge>
-        </div>
-      )}
+      {modules.has('health') && <HealthPills profile={profile} onOpenHealth={() => onNavigate?.('health')} onOpenSettings={onOpenSettings} />}
 
       <section aria-labelledby="needs-you">
         <div className="mb-2.5 flex items-baseline gap-2">

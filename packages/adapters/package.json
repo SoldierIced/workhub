@@ -21,7 +21,9 @@
     "./tracker-jira": "./src/tracker-jira/index.ts",
     "./tracker-linear": "./src/tracker-linear/index.ts",
     "./tracker-demo": "./src/tracker-demo/index.ts",
-    "./http": "./src/shared/http.ts"
+    "./http": "./src/shared/http.ts",
+    "./health-elastic": "./src/health-elastic/index.ts",
+    "./pr-events-json": "./src/pr-events-json/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

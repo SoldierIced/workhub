@@ -1,3 +1,5 @@
+import { healthEn } from './health.en'
+import { prEventsEn } from './prEvents.en'
 import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
@@ -340,5 +342,7 @@ export const en = {
   'import.noteNotSupported': 'not imported: {detail}',
   ...prEn,
   ...ticketsEn,
-  ...updatesEn
+  ...updatesEn,
+  ...healthEn,
+  ...prEventsEn
 } as const

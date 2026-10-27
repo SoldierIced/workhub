@@ -15,7 +15,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // 2 -> 3: sidebar session groups (`sessionGroups`) and the notification switches in `options`.
   // Both are optional and default, so the document is unchanged; the bump keeps an older Workhub
   // from loading the file and dropping the groups on its next save.
-  2: (raw) => raw
+  2: (raw) => raw,
+  // 3 -> 4 (p6b-health-and-pr-events): the per-profile Health setup (`profiles[].health`) and the
+  // pull request notification switches (`options.notifyPrEvents`). Both are optional and default,
+  // so the document is unchanged; the bump keeps an older Workhub from loading the file and
+  // dropping them on its next save.
+  3: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

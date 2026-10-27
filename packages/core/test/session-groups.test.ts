@@ -236,11 +236,11 @@ describe('attention', () => {
 
 describe('config version 3', () => {
   it('migrates a version 2 document unchanged, with the notification switches on', () => {
-    const migrated = migrateConfig({ version: 2, profiles: [{ id: 'acme', name: 'Acme' }] })
+    const migrated = migrateConfig({ version: 2, profiles: [{ id: 'acme', name: 'Acme' }] }, undefined, 3)
     expect(migrated).toEqual({ version: 3, profiles: [{ id: 'acme', name: 'Acme' }] })
     const parsed = parseConfig({ version: 2, options: { claudePlanUsage: true } })
     expect(parsed.version).toBe(CONFIG_VERSION)
-    expect(parsed.options).toEqual({ claudePlanUsage: true, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false })
+    expect(parsed.options).toMatchObject({ claudePlanUsage: true, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true })
     expect(parsed.sessionGroups).toBeUndefined()
   })
 

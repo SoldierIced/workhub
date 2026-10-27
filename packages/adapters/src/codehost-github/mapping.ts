@@ -97,8 +97,17 @@ export function mapSearchNode(node: unknown, provider = 'github'): PullRequest |
     deletions: num(n['deletions']),
     changedFiles: num(n['changedFiles']),
     updatedAt: epoch(n['updatedAt']),
-    headSha: str(commit['oid']) || undefined
+    headSha: str(commit['oid']) || undefined,
+    commentCount: commentCountOf(n)
   }
+}
+
+/** Conversation comments plus review threads, so a new comment moves it; undefined when the node carries neither count. */
+function commentCountOf(node: Record<string, unknown>): number | undefined {
+  const comments = obj(node['comments'])['totalCount']
+  const threads = obj(node['reviewThreads'])['totalCount']
+  if (typeof comments !== 'number' && typeof threads !== 'number') return undefined
+  return num(comments) + num(threads)
 }
 
 export function mapSearchResponse(stdout: string, provider = 'github'): PullRequest[] {

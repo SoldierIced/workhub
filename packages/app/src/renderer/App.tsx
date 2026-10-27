@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember } from '@workhub/core'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, investigateSlowEndpointPrompt, notificationTitle, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember, type SlowTransaction } from '@workhub/core'
+import type { HealthEnvironmentView } from '@shared/health-api'
 import { TooltipProvider } from './components/atoms'
 import { ToastProvider, useToast } from './components/molecules'
 import { NewSessionDialog, Sidebar, Toolbar } from './components/organisms'
 import { dropOnSessionsTitle, SessionList } from './components/organisms/SessionList'
 import { refreshConfig, useConfig } from './configStore'
 import { I18nProvider, useI18n } from './i18n/I18nProvider'
+import { setComposerDraft } from './lib/drafts'
+import { folderForService } from './lib/health'
 import { recentFolders, usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
@@ -15,7 +18,9 @@ import { listSessions, memberOf, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage } from './lib/usage'
+import { usePrEventNotifications } from './lib/usePrEventNotifications'
 import { HistoryScreen } from './screens/HistoryScreen'
+import { HealthScreen } from './screens/HealthScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { PlaceholderScreen } from './screens/PlaceholderScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
@@ -39,7 +44,7 @@ function useTheme(): 'light' | 'dark' {
 }
 
 function Shell() {
-  const { t } = useI18n()
+  const { t, tn } = useI18n()
   const toast = useToast()
   const platform = usePlatform()
   const theme = useTheme()
@@ -80,8 +85,9 @@ function Shell() {
   const listed = useMemo(() => listSessions(sessions), [sessions])
   const liveKeys = useMemo(() => listed.map((s) => s.key), [listed])
   // Latest values for callbacks that outlive a render (notifications, opening a session).
-  const latest = useRef({ sessions, groups, snap, t, liveKeys })
-  latest.current = { sessions, groups, snap, t, liveKeys }
+  const latest = useRef({ sessions, groups, snap, t, tn, liveKeys })
+  latest.current = { sessions, groups, snap, t, tn, liveKeys }
+  usePrEventNotifications(() => latest.current)
 
   const openSession = useCallback((id: string) => {
     setSelectedSession(id)
@@ -170,6 +176,21 @@ function Shell() {
     }
   }
 
+  // Investigate with Claude: a new app-mode session in the service's folder with the summary in the composer, not sent.
+  const investigate = async (env: HealthEnvironmentView, tx: SlowTransaction) => {
+    const claude = agents.find((a) => a.agent.id === 'claude')
+    if (!claude) return toast(t('health.investigate.noAgent'), 'danger')
+    try {
+      const cwd = folderForService(profile?.folders ?? [], tx.service) ?? (await window.hub.getDefaultCwd())
+      const view = await window.hub.sessions.start({ profileId: activeProfileId, agentKey: claude.key, cwd, cols: 100, rows: 30, mode: 'app', model: readPrefs().models[claude.key] })
+      setComposerDraft(view.id, investigateSlowEndpointPrompt({ name: env.name, slowFlowHours: env.slowFlowHours }, tx))
+      openSession(view.id)
+      toast(t('health.investigate.drafted'))
+    } catch (e) {
+      toast(t('health.investigate.failed', { message: e instanceof Error ? e.message : String(e) }), 'danger')
+    }
+  }
+
   const selectProfile = async (id: string) => {
     const r = await window.hub.config.setActiveProfile(id)
     if (r.ok) await refreshConfig()
@@ -228,6 +249,8 @@ function Shell() {
                 <HistoryScreen profileId={activeProfileId} onOpened={openSession} />
               ) : route === 'pullRequests' ? (
                 <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
+              ) : route === 'health' ? (
+                <HealthScreen profile={profile} onOpenSettings={openSettings} onInvestigate={(env, tx) => void investigate(env, tx)} />
               ) : route === 'tickets' ? (
                 <TicketsScreen profile={profile} sessions={sessions} onOpenSettings={openSettings} />
               ) : route === 'settings' ? (
