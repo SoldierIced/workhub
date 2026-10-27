@@ -96,6 +96,7 @@ import { StateFile } from './state-file'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
 import { spendSources, TokenSpendService } from './token-spend'
+import { ApiSpendService, CostLedger, spendAgentId, type CostLedgerState } from './api-spend'
 import { UpdateService } from './updates'
 import { buildAppMenuTemplate } from './app-menu'
 import { SessionNames } from './session-names'
@@ -260,6 +261,15 @@ async function kiroSpend(): Promise<CreditSpend | null> {
   kiroSpendCache = { at: now, value }
   return value
 }
+// The cost other agents report in their session updates, per day (API-billed agents' spend).
+const costLedger = new CostLedger(new StateFile<CostLedgerState>(join(dataDir, 'api-spend-ledger.json'), 1_000))
+/** A session reported its running cost: kept for the API spend of agents not read from files. */
+function recordSessionCost(sessionId: string, amount: number): void {
+  const view = sessions.list().find((v) => v.id === sessionId)
+  if (!view?.agentId) return
+  const agent = configCache ? knownAgents(configCache).find((a) => a.id === view.agentId) : undefined
+  costLedger.record(spendAgentId(agent, view.agentId), view.agentSessionId ?? view.id, amount)
+}
 // Token spend per folder for Home: scanned in the background from start-up, cached on disk.
 const tokenSpend = new TokenSpendService({
   config: () => configuration.current(),
@@ -267,6 +277,8 @@ const tokenSpend = new TokenSpendService({
   sources: async () => spendSources(await configuration.current(), homedir(), kiroDir),
   emit: () => send('usage:folderSpendChanged')
 })
+// Spend of agents billed by API key, per agent and day (Home's usage and token spend cards).
+const apiSpend = new ApiSpendService({ config: () => configuration.current(), home: homedir(), costs: (include) => tokenSpend.costs(include), ledger: costLedger })
 // The names the user gave sessions, by identity (Rename…).
 const sessionNames = new SessionNames(new StateFile(join(dataDir, 'session-names.json'), 300))
 const sessions = new SessionManager({
@@ -282,6 +294,7 @@ const sessions = new SessionManager({
   history: historySources,
   onAgentOptions: (agentId, accountId, options) => agentOptions.record(agentId, accountId, options),
   emitEvent: (e) => {
+    if (e.type === 'monitor' && e.snapshot.cost?.currency === 'USD') recordSessionCost(e.sessionId, e.snapshot.cost.amount)
     driver.onEvent(e)
     continuity.onEvent(e)
     aiReview.onEvent(e)
@@ -719,6 +732,7 @@ function registerIpc(): void {
   ipc.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
   ipc.handle('usage:refreshNow', () => usage.refresh({ force: true }))
   ipc.handle('usage:kiroSpend', () => kiroSpend())
+  ipc.handle('usage:apiSpend', () => apiSpend.summary())
   ipc.handle('usage:folderSpend', (_e, profileId?: string | null) => tokenSpend.forProfile(typeof profileId === 'string' ? profileId : null))
   ipc.handle('usage:sessionBudgets', () => sessionBudgets.load({}))
   ipc.handle('usage:setSessionBudget', (_e, identity: unknown, ceilings: unknown) => {

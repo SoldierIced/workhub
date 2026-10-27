@@ -13,9 +13,10 @@ import { open, readdir, stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { mergeSpend, pruneSpend, type SpendBuckets } from '@workhub/core'
 import { isCompressed, readRollout } from '../transcript-codex/files'
-import { claudePending, claudeSpendLine, codexSpendLine, kiroSpendFile, type ClaudeSpendState, type CodexSpendState } from './parsers'
+import { claudePending, claudeSpendLine, codexSpendLine, emptyCosts, kiroSpendFile, type ClaudeSpendState, type CodexSpendState, type CostBuckets } from './parsers'
 
-export const SPEND_CACHE_VERSION = 1
+// 2: entries also keep what the spend cost (`costs`), so older caches are read again.
+export const SPEND_CACHE_VERSION = 2
 
 export interface SpendFileEntry {
   size: number
@@ -24,6 +25,8 @@ export interface SpendFileEntry {
   offset: number
   state?: ClaudeSpendState | CodexSpendState
   buckets: SpendBuckets
+  /** What the committed spend cost at list prices (see `CostBuckets`). */
+  costs?: CostBuckets
 }
 
 export interface SpendCache {
@@ -137,6 +140,7 @@ export class TokenSpendScanner {
       if (!info?.isFile() || info.mtimeMs < since) continue
       const entry = await this.read(path, kind, info.size, info.mtimeMs, this.cache.files[path])
       entry.buckets = pruneSpend(entry.buckets, sinceDay)
+      if (entry.costs) entry.costs = { usd: pruneSpend(entry.costs.usd, sinceDay), unpriced: pruneSpend(entry.costs.unpriced, sinceDay) }
       next[path] = entry
     }
     this.cache = { version: SPEND_CACHE_VERSION, files: next }
@@ -153,7 +157,10 @@ export class TokenSpendScanner {
         kiroSpendFile(text, buckets)
       } else {
         const state: CodexSpendState = {}
-        for (const line of (await readRollout(path)).split('\n')) if (line.trim()) codexSpendLine(line, state, buckets)
+        const costs = emptyCosts()
+        for (const line of (await readRollout(path)).split('\n')) if (line.trim()) codexSpendLine(line, state, buckets, costs)
+        await tick()
+        return { size, mtimeMs, offset: 0, state, buckets, costs }
       }
       await tick()
       return { size, mtimeMs, offset: 0, buckets }
@@ -161,11 +168,34 @@ export class TokenSpendScanner {
     // An append-only file resumes; one that shrank was rewritten and is read from the start.
     const resume = prev && prev.offset <= size && prev.size <= size
     const buckets: SpendBuckets = resume ? { ...prev.buckets } : {}
+    const costs: CostBuckets = resume && prev.costs ? structuredClone(prev.costs) : emptyCosts()
     const state = resume ? structuredClone(prev.state ?? {}) : {}
     const offset = await readLinesFrom(path, resume ? prev.offset : 0, size, (line) =>
-      kind === 'claude' ? claudeSpendLine(line, state as ClaudeSpendState, buckets) : codexSpendLine(line, state as CodexSpendState, buckets)
+      kind === 'claude' ? claudeSpendLine(line, state as ClaudeSpendState, buckets, undefined, costs) : codexSpendLine(line, state as CodexSpendState, buckets, costs)
     )
-    return { size, mtimeMs, offset, state, buckets }
+    return { size, mtimeMs, offset, state, buckets, costs }
+  }
+
+  /**
+   * The cost (and tokens) of the files `include` picks over the days from `sinceDay` on: the
+   * scanned files billed by API key, chosen by the caller. The pending Claude message counts.
+   */
+  costs(sinceDay: string, include: (path: string, entry: SpendFileEntry) => boolean): { usd: SpendBuckets; unpriced: SpendBuckets; tokens: SpendBuckets } {
+    const out = { usd: {} as SpendBuckets, unpriced: {} as SpendBuckets, tokens: {} as SpendBuckets }
+    for (const [path, entry] of Object.entries(this.cache.files)) {
+      if (!entry.costs || !include(path, entry)) continue
+      mergeSpend(out.usd, pruneSpend(entry.costs.usd, sinceDay))
+      mergeSpend(out.unpriced, pruneSpend(entry.costs.unpriced, sinceDay))
+      mergeSpend(out.tokens, pruneSpend(entry.buckets, sinceDay))
+      const state = entry.state as ClaudeSpendState | undefined
+      if (state?.pending) {
+        const pending = emptyCosts()
+        mergeSpend(out.tokens, pruneSpend(claudePending(state, pending), sinceDay))
+        mergeSpend(out.usd, pruneSpend(pending.usd, sinceDay))
+        mergeSpend(out.unpriced, pruneSpend(pending.unpriced, sinceDay))
+      }
+    }
+    return out
   }
 
   private total(sinceDay: string): SpendBuckets {

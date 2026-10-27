@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { accountAgentId, appOptions, type CreditSpend, type SessionCeilings, type UsageBudgetOptions } from '@workhub/core'
+import { accountAgentId, appOptions, type ApiAgentSpend, type CreditSpend, type SessionCeilings, type UsageBudgetOptions } from '@workhub/core'
 import type { AccountUsage, UsageAlert } from '@shared/api'
 import { useConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
@@ -76,6 +76,33 @@ export function useKiroSpend(): CreditSpend | null {
     }
   }, [])
   return spend
+}
+
+/** Spend of agents billed by API key, per agent over the last 7 days; read on mount and every minute. */
+export function useApiSpend(): ApiAgentSpend[] {
+  const [spend, setSpend] = useState<ApiAgentSpend[]>([])
+  useEffect(() => {
+    let live = true
+    const read = () =>
+      void window.hub.usage.apiSpend().then(
+        (s) => live && setSpend(s),
+        () => undefined
+      )
+    read()
+    const timer = setInterval(read, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [])
+  return spend
+}
+
+/** The hover text of one agent's API spend: each day's amount, and the tokens no price covers. */
+export function apiSpendDetail(spend: ApiAgentSpend, money: (usd: number) => string, unpriced: (tokens: number) => string): string {
+  const lines = spend.days.map((d) => `${d.day}: ${money(d.usd)}`)
+  if (spend.unpricedTokens > 0) lines.push('', unpriced(spend.unpricedTokens))
+  return lines.join('\n')
 }
 
 /** The current time, updated every `everyMs` (reset countdowns, windows that reset meanwhile). */

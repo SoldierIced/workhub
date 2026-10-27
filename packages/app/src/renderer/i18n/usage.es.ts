@@ -75,5 +75,10 @@ export const usageEs: Record<keyof typeof usageEn, string> = {
   'agentUsage.refresh': 'Actualizar el uso',
   'agentUsage.refreshing': 'Leyendo el uso…',
   'agentUsage.updatedAt': 'Actualizado {time}',
-  'agentUsage.notReadYet': 'Todavía sin leer'
+  'agentUsage.notReadYet': 'Todavía sin leer',
+  'agentUsage.apiSpend': 'Gasto por API',
+  'agentUsage.apiSpendHelp': 'Agentes que se cobran por clave de API (OpenCode, Codex o Claude con clave de API, agentes ACP que informan un costo), según lo que informan sus sesiones, con precios de lista cuando solo se conocen los tokens.',
+  'agentUsage.apiSpendShort': '{today} hoy · {week} en 7 días',
+  'agentUsage.apiSpendDays': 'Gasto por día, últimos 7 días',
+  'agentUsage.apiUnpriced': 'No se incluyen {tokens} tokens de modelos sin precio conocido.'
 }
