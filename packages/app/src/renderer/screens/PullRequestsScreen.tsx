@@ -164,12 +164,14 @@ export function PullRequestsScreen({ profile, focusUrl, onOpenSettings }: PullRe
             <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-subtle" aria-hidden />
             <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('pr.search')} aria-label={t('pr.search')} className="pl-8" />
           </div>
-          <div className="flex items-center gap-2 text-xs text-subtle">
-            <span>{tn('pr.count', visible.length)}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle">
+            <span className="whitespace-nowrap">{tn('pr.count', visible.length)}</span>
             {lists.demo && <Badge tone="warning">{t('pr.demo')}</Badge>}
-            <span className="ml-auto">{lists.updatedAt ? t('pr.updated', { time: relativeTime(lists.updatedAt, Date.now(), locale) }) : ''}</span>
-            {loading && <Spinner className="size-3" />}
-            <IconButton size="sm" label={t('pr.refresh')} icon={<RefreshCw className="size-3.5" aria-hidden />} onClick={refresh} />
+            <span className="ml-auto flex items-center gap-2">
+              <span className="whitespace-nowrap">{lists.updatedAt ? t('pr.updated', { time: relativeTime(lists.updatedAt, Date.now(), locale) }) : ''}</span>
+              {loading && <Spinner className="size-3" />}
+              <IconButton size="sm" label={t('pr.refresh')} icon={<RefreshCw className="size-3.5" aria-hidden />} onClick={refresh} />
+            </span>
           </div>
           {lists.message && <p className="text-xs text-warning">{t('pr.partialError', { message: lists.message })}</p>}
         </div>

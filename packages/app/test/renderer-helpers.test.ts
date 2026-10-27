@@ -205,4 +205,17 @@ describe('Workhub 1 import preview', () => {
     expect(mergedPrefs({ language: 'en', models: {} }, full.prefs)).toEqual({ models: { 'claude:main': 'opus' } })
     expect(mergedPrefs({ language: 'en', models: {} }, undefined)).toEqual({})
   })
+
+  it('carries Workhub 1 appearance only over defaults, known themes only, clamped', () => {
+    const appearance = { terminalTheme: 'Dracula', terminalFontFamily: 'Menlo', terminalFontSize: 30, chatFontSize: 15, textSize: 16 }
+    expect(mergedPrefs({ language: 'en', models: {}, terminalTheme: '', terminalFontFamily: '', terminalFontSize: 13, chatFontSize: 13, textSize: 13 }, { appearance })).toEqual({
+      terminalTheme: 'Dracula',
+      terminalFontFamily: 'Menlo',
+      terminalFontSize: 24,
+      chatFontSize: 15,
+      textSize: 16
+    })
+    expect(mergedPrefs({ language: 'en', models: {}, terminalTheme: 'Nord', terminalFontFamily: 'SF Mono', terminalFontSize: 15, chatFontSize: 13, textSize: 14 }, { appearance })).toEqual({ chatFontSize: 15 })
+    expect(mergedPrefs({ language: 'en', models: {} }, { appearance: { terminalTheme: 'No Such Theme' } })).toEqual({})
+  })
 })

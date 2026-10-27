@@ -10,6 +10,8 @@ import { prEs } from './pullRequests.es'
 import { ticketsEs } from './tickets.es'
 import { updatesEs } from './updates.es'
 import { usageEs } from './usage.es'
+import { appearanceEs } from './appearance.es'
+import { settingsHelpEs } from './settingsHelp.es'
 import { trayEs } from './tray.es'
 import { agentsEs } from './agents.es'
 
@@ -365,7 +367,12 @@ export const es: Record<keyof typeof en, string> = {
   'import.language': 'Idioma de la interfaz',
   'import.notCarried': 'No se importa',
   'import.secrets': 'Importar tokens de Workhub 1',
-  'import.secretsHint': 'Copia los tokens de Jira y Elastic que Workhub 1 guarda en tu llavero. macOS te pedirá permitir el acceso para cada ítem; elige Permitir. Los tokens pasan directo al almacén de secretos de Workhub 2 y nunca se muestran.',
+  'import.secretsHint': 'Workhub 1 guardaba tus tokens de Jira y Elastic en el llavero de macOS. Esto los copia aquí para que no tengas que pegarlos de nuevo. macOS pide permiso una vez por cada token: elige Permitir. Los tokens se guardan cifrados en esta computadora y nunca se muestran.',
+  'import.secretsBanner': 'A algunas conexiones traídas de Workhub 1 les falta su token. Workhub puede copiarlos del llavero de macOS, donde los guardaba Workhub 1; macOS te pide permiso para cada uno, y los tokens se guardan cifrados y nunca se muestran.',
+  'import.secretsDone': 'Tokens importados de Workhub 1: {count}.',
+  'import.secretsSomeLeft': 'Tokens que no se pudieron importar: {count}. Puedes ingresarlos a mano.',
+  'import.migrate': 'Migrar desde Workhub 1',
+  'import.migrateHint': 'Se encontró Workhub 1 en esta Mac.',
   'import.secretsNone': 'Ninguna conexión de Workhub 1 está esperando un token.',
   'import.secretsImported': 'token importado',
   'import.secretsNotFound': 'no se encontró en el llavero de Workhub 1',
@@ -384,5 +391,6 @@ export const es: Record<keyof typeof en, string> = {
   ...sessionsUxEs,
   ...trayEs,
   ...agentsEs,
-  ...aiReviewEs
+  ...appearanceEs,
+  ...settingsHelpEs
 }

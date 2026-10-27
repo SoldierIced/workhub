@@ -64,8 +64,11 @@ export interface ConfigApi {
   /** Stores the sidebar groups (computed in the renderer with the pure functions of core). */
   saveSessionGroups(groups: SessionGroups): Promise<Result<WorkhubConfig>>
   effectiveAgents(profileId: string | null): Promise<EffectiveAgent[]>
-  /** Workhub 1's settings mapped onto this config, read-only (macOS). `available: false` when Workhub 1 has none here. */
-  previewWorkhub1Import(): Promise<{ available: boolean; plan?: ImportPlan; error?: string }>
+  /**
+   * Workhub 1's settings mapped onto this config, read-only (macOS). `available: false` when Workhub 1
+   * has none here. `pendingSecrets`: the connections from Workhub 1 still missing their token (names only).
+   */
+  previewWorkhub1Import(): Promise<Workhub1Preview>
   /** Reads Workhub 1's settings again and adds what the preview showed. Never writes to Workhub 1. */
   applyWorkhub1Import(): Promise<Result<WorkhubConfig>>
   /** macOS: copies the tokens of Workhub 1's Keychain items (macOS asks to allow each) into the secret store. Statuses only, never a secret. */
@@ -312,4 +315,12 @@ export interface HubApi {
   automations: AutomationsApi
   aiReview: AiReviewApi
   tray: TrayApi
+}
+
+/** What Settings knows about Workhub 1 on this machine (see `previewWorkhub1Import`). */
+export interface Workhub1Preview {
+  available: boolean
+  plan?: ImportPlan
+  error?: string
+  pendingSecrets?: { connectionId: string; name: string }[]
 }

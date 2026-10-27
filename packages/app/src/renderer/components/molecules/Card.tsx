@@ -1,5 +1,6 @@
 import type { HTMLAttributes, ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { HelpTip } from './HelpTip'
 
 export function Card({ className, children, ...rest }: HTMLAttributes<HTMLElement>) {
   return (
@@ -15,16 +16,19 @@ export interface CardHeaderProps {
   meta?: ReactNode
   actions?: ReactNode
   icon?: ReactNode
+  /** Longer explanation, in an (i) tooltip next to the title. */
+  help?: ReactNode
   /** Heading level for the title; defaults to h2. */
   as?: 'h2' | 'h3'
   className?: string
 }
 
-export function CardHeader({ title, meta, actions, icon, as: H = 'h2', className }: CardHeaderProps) {
+export function CardHeader({ title, meta, actions, icon, help, as: H = 'h2', className }: CardHeaderProps) {
   return (
     <header className={cn('flex min-h-11 items-center gap-2 px-4 pt-3 pb-2', className)}>
       {icon && <span className="text-muted">{icon}</span>}
       <H className="text-md font-semibold text-text">{title}</H>
+      {help && <HelpTip text={help} label={typeof title === 'string' ? title : undefined} />}
       {meta && <span className="truncate text-sm text-muted">{meta}</span>}
       {actions && <div className="ml-auto flex items-center gap-1.5">{actions}</div>}
     </header>

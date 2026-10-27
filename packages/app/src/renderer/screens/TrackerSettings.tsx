@@ -50,12 +50,15 @@ function toForm(c: Connection, activeTracker: string | undefined): Form {
 type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 
 /** Settings → Trackers: where the Tickets screen reads from, with a connection test. */
-export function TrackerSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
+export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot; run: Run; initialId?: string }) {
   const { t } = useI18n()
   const trackers = snap.config.connections.filter((c) => c.kind === 'tracker')
   const activeProfile = snap.config.profiles.find((p) => p.id === snap.config.activeProfileId)
   const [demo, setDemo] = useState(false)
-  const [form, setForm] = useState<Form>(emptyForm())
+  const [form, setForm] = useState<Form>(() => {
+    const initial = trackers.find((c) => c.id === initialId)
+    return initial ? toForm(initial, activeProfile?.connections.tracker) : emptyForm()
+  })
   const [test, setTest] = useState<{ state: 'idle' | 'running' } | { state: 'ok' | 'failed'; text: string }>({ state: 'idle' })
 
   useEffect(() => {
@@ -124,10 +127,11 @@ export function TrackerSettings({ snap, run }: { snap: ConfigSnapshot; run: Run 
     <div className="flex flex-col gap-4">
       <p className="text-base text-muted">{t('trackers.intro')}</p>
       {demo && <p className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning">{t('trackers.demoNote')}</p>}
-      <div className="grid grid-cols-[17rem_minmax(0,1fr)] items-start gap-4">
+      <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <Card>
           <CardHeader
             title={t('trackers.list')}
+            help={t('help.trackers.list')}
             as="h2"
             actions={
               <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => select(null)}>
@@ -176,7 +180,7 @@ export function TrackerSettings({ snap, run }: { snap: ConfigSnapshot; run: Run 
                 </>
               )}
               <Field label={isJira ? t('trackers.token') : t('trackers.apiKey')} hint={isJira ? t('trackers.tokenHintJira') : t('trackers.tokenHintLinear')} className="col-span-2">
-                <Input type="password" value={form.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={stored ? t('trackers.tokenStored') : t('trackers.tokenNotSet')} autoComplete="off" />
+                <Input type="password" autoFocus={Boolean(initialId)} value={form.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={stored ? t('trackers.tokenStored') : t('trackers.tokenNotSet')} autoComplete="off" />
               </Field>
               <Field label={t('trackers.projectKeys')} hint={t('trackers.projectKeysHint')}>
                 <Input value={form.projectKeys} onChange={(e) => set({ projectKeys: e.target.value })} placeholder="ABC, WEB" spellCheck={false} />
