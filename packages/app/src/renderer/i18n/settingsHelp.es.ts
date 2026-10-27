@@ -70,6 +70,13 @@ export const settingsHelpEs: Record<keyof typeof settingsHelpEn, string> = {
   'help.aiReview.idleSeconds': 'Cuánto tiempo debe quedar inactiva una sesión de desarrollo después de un turno antes de que empiece una revisión automática.',
 
   'issues.title': 'Algunas opciones necesitan tu atención',
+  'issues.profileName': 'Ponele un nombre al perfil.',
+  'issues.profileIdMissing': 'Ponele un id al perfil.',
+  'issues.profileId': 'El id solo puede usar letras minúsculas, dígitos, ".", "_" o "-", y debe empezar con una letra o un dígito.',
+  'issues.profileIdTaken': 'Otro perfil ya usa este id.',
+  'issues.invalidValue': 'Un valor en {where} no es válido. Revisalo e intentá de nuevo.',
+  'issues.unexpected': 'No se pudo guardar el cambio. Revisá los valores e intentá de nuevo.',
+  'error.unexpected': 'Algo salió mal. Intentá de nuevo.',
   'issues.raw': '{path}: {message}',
   'issues.secret': '{name} necesita su token.',
   'issues.secret.action': 'Ingresar token',

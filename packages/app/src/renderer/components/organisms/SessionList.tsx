@@ -35,6 +35,7 @@ import { STATE_TONE, StateDot } from '../atoms/StateDot'
 import { Dialog } from '../molecules/Dialog'
 import { Field } from '../molecules/Field'
 import type { SessionData } from '../../store'
+import { errorText } from '../../lib/errorText'
 
 export const SESSION_DRAG = 'application/x-workhub-session'
 
@@ -130,7 +131,7 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
   const live = useMemo(() => new Set(liveKeys), [liveKeys])
 
   const closeNow = (data: SessionData) =>
-    void window.hub.sessions.close(data.view.id).catch((e: unknown) => pushItem(data.view.id, 'error', t('sessions.closeFailed', { message: e instanceof Error ? e.message : String(e) })))
+    void window.hub.sessions.close(data.view.id).catch((e: unknown) => pushItem(data.view.id, 'error', t('sessions.closeFailed', { message: errorText(e) })))
   /** Stops the session and drops it from the open sessions; a working one asks first. */
   const requestClose = (data: SessionData) => (isWorking(data) ? setClosing(data) : closeNow(data))
 

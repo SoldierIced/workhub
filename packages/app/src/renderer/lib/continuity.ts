@@ -12,6 +12,7 @@ import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { flagAttention } from '../store'
 import { setComposerDraft } from './drafts'
+import { errorText } from './errorText'
 
 let offers: Record<string, ContinuityOffer> = {}
 const listeners = new Set<() => void>()
@@ -72,7 +73,7 @@ export function useContinuityActions() {
       toast(t('continuity.toast.moved', { account: next.accountName ?? accountOfLabel(next.label) }))
       return true
     } catch (e) {
-      toast(t('continuity.toast.failed', { message: e instanceof Error ? e.message : String(e) }), 'danger')
+      toast(t('continuity.toast.failed', { message: errorText(e) }), 'danger')
       return false
     }
   }
@@ -85,7 +86,7 @@ export function useContinuityActions() {
       toast(r.summaryFailed ? t('continuity.toast.summaryFailed') : t('continuity.toast.handedOff', { agent: label }), r.summaryFailed ? 'danger' : undefined)
       return true
     } catch (e) {
-      toast(t('continuity.toast.failed', { message: e instanceof Error ? e.message : String(e) }), 'danger')
+      toast(t('continuity.toast.failed', { message: errorText(e) }), 'danger')
       return false
     }
   }

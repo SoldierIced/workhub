@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import type { Ticket } from '@workhub/core'
 import type { TicketsStatus } from '@shared/tickets-api'
 import { useConfig } from './configStore'
+import { errorText } from './lib/errorText'
 
 /** The tickets of each profile, shared by Home and the Tickets screen, refreshed every five minutes (Workhub 1's loop). */
 export interface ProfileTickets {
@@ -44,7 +45,7 @@ export function loadTickets(profileId: string): Promise<void> {
       if (result.ok) set(profileId, { status, tickets: result.value, loading: false, error: undefined, fetchedAt: Date.now() })
       else set(profileId, { status, loading: false, error: result.error })
     } catch (error) {
-      set(profileId, { loading: false, error: error instanceof Error ? error.message : String(error) })
+      set(profileId, { loading: false, error: errorText(error) })
     }
   })().finally(() => inFlight.delete(profileId))
   inFlight.set(profileId, run)

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import type { HealthView } from '@shared/health-api'
 import { useConfig } from './configStore'
+import { errorText } from './lib/errorText'
 
 /** The Health read of each profile, shared by Home and the Health screen. The main process decides when to read the cluster again; this only asks. */
 export interface ProfileHealth {
@@ -29,7 +30,7 @@ export function loadHealth(profileId: string | null, force = false): Promise<voi
     try {
       set(key, { view: await window.hub.health.get(profileId, force), loading: false, error: undefined })
     } catch (error) {
-      set(key, { loading: false, error: error instanceof Error ? error.message : String(error) })
+      set(key, { loading: false, error: errorText(error) })
     }
   })().finally(() => inFlight.delete(key))
   inFlight.set(key, run)

@@ -68,6 +68,13 @@ export const settingsHelpEn = {
   'help.aiReview.idleSeconds': 'How long a dev session must stay idle after a turn before an automatic review starts.',
 
   'issues.title': 'Some settings need your attention',
+  'issues.profileName': 'Give the profile a name.',
+  'issues.profileIdMissing': 'Give the profile an id.',
+  'issues.profileId': 'The id can only use lowercase letters, digits, ".", "_" or "-", and must start with a letter or digit.',
+  'issues.profileIdTaken': 'Another profile already uses this id.',
+  'issues.invalidValue': 'A value in {where} is not valid. Check it and try again.',
+  'issues.unexpected': 'The change could not be saved. Check the values and try again.',
+  'error.unexpected': 'Something went wrong. Please try again.',
   'issues.raw': '{path}: {message}',
   'issues.secret': '{name} needs its token.',
   'issues.secret.action': 'Enter token',

@@ -10,6 +10,7 @@ import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { ESCALATION_TEXT } from '../../lib/useAiReviewNotices'
+import { errorText } from '../../lib/errorText'
 
 export const REVIEW_STATUS_TONE: Record<ReviewStatus, Tone> = {
   reviewing: 'info',
@@ -47,7 +48,7 @@ function useStartReview(view: SessionView) {
       const r = await window.hub.aiReview.start(view.id, override)
       if (!r.ok) toast(t(BLOCKER_TEXT[r.reason], { window: r.detail ?? '' }), r.reason === 'budget' ? undefined : 'danger')
     } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'danger')
+      toast(errorText(e), 'danger')
     } finally {
       setPending(false)
     }

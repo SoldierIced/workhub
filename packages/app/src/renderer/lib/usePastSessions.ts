@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { historyId } from '@workhub/core'
 import type { HistoryItem } from '@shared/api'
+import { errorText } from './errorText'
 
 export interface PastSessionsState {
   entries: HistoryItem[]
@@ -22,7 +23,7 @@ export function usePastSessions(): PastSessionsState {
         setState({ entries: history.entries, open, loading: false })
       },
       (e: unknown) => {
-        if (!cancelled) setState({ entries: [], open: new Set(), loading: false, error: e instanceof Error ? e.message : String(e) })
+        if (!cancelled) setState({ entries: [], open: new Set(), loading: false, error: errorText(e) })
       }
     )
     return () => {

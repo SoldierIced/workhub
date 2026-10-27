@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { emptyConfig, type ConnectionProvider, type WorkhubConfig } from '@workhub/core'
-import { humanIssue } from '../src/renderer/lib/configIssues'
+import { errorText } from '../src/renderer/lib/errorText'
+import { friendlyIssue, humanIssue, profileFieldErrors } from '../src/renderer/lib/configIssues'
 
 const providers = [
   { id: 'jira', kind: 'tracker', name: 'Jira', requiresSecret: true, requiresEndpoint: true },
@@ -54,5 +55,27 @@ describe('stored config problems in plain words', () => {
     expect(h.message).toBe('issues.raw')
     expect(h.params).toEqual({ path: 'activeProfileId', message: 'unknown profile "x"' })
     expect(h.action).toBeUndefined()
+  })
+})
+
+describe('friendly messages', () => {
+  const t = (k: string, p?: Record<string, unknown>) => `${k}${p ? JSON.stringify(p) : ''}`
+  it('maps schema issues to sentences, never JSON', () => {
+    expect(friendlyIssue({ path: 'profiles.#2.name', message: 'Too small', code: 'too_small' }, t)).toBe('issues.profileName')
+    expect(friendlyIssue({ path: 'profiles.#2.id', message: 'Too small', code: 'too_small' }, t)).toBe('issues.profileIdMissing')
+    expect(friendlyIssue({ path: 'profiles.Bad.id', message: 'x', code: 'invalid_format' }, t)).toBe('issues.profileId')
+    expect(friendlyIssue({ path: 'config', message: '[{"code":"x"}]', code: 'unexpected' }, t)).toBe('issues.unexpected')
+  })
+
+  it('validates a profile form per field', () => {
+    expect(profileFieldErrors({ id: '', name: '' })).toEqual({ id: 'issues.profileIdMissing', name: 'issues.profileName' })
+    expect(profileFieldErrors({ id: 'Bad Id', name: 'x' })).toEqual({ id: 'issues.profileId' })
+    expect(profileFieldErrors({ id: 'acme', name: 'Acme' }, ['acme'])).toEqual({ id: 'issues.profileIdTaken' })
+    expect(profileFieldErrors({ id: 'acme', name: 'Acme' })).toEqual({})
+  })
+
+  it('hides dumped validation errors from error text', () => {
+    expect(errorText(new Error("Error invoking remote method 'config:saveProfile': ZodError: [ { \"code\": \"too_small\" } ]"))).toBe('Something went wrong. Please try again.')
+    expect(errorText(new Error("Error invoking remote method 'x': Error: disk full"))).toBe('disk full')
   })
 })

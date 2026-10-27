@@ -8,6 +8,7 @@ import { useI18n } from '../i18n/I18nProvider'
 import { folderName } from '../lib/home'
 import { resumeInput } from '../lib/links'
 import { readPrefs } from '../lib/prefs'
+import { errorText } from '../lib/errorText'
 
 export interface HistoryScreenProps {
   profileId: string | null
@@ -46,7 +47,7 @@ export function HistoryScreen({ profileId, onOpened }: HistoryScreenProps) {
     try {
       setResult(await window.hub.history.list())
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setLoading(false)
     }
@@ -70,7 +71,7 @@ export function HistoryScreen({ profileId, onOpened }: HistoryScreenProps) {
       const view = await window.hub.sessions.start(await resumeInput(profileId, e, mode, (key) => readPrefs().models[key], () => window.hub.getDefaultCwd()))
       onOpened(view.id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorText(err))
     } finally {
       setOpening(null)
     }

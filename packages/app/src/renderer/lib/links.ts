@@ -15,6 +15,7 @@ import type { HistoryItem, StartSessionInput } from '@shared/api'
 import type { PullRequestTarget, SessionIntent, TicketTarget } from '@shared/links-api'
 import { translate, type Locale, type MessageKey, type Params } from '../i18n/translate'
 import type { SessionData } from '../store'
+import { errorText } from './errorText'
 
 /** Prompt drafted for "Ask Claude to review". It goes into the composer; the app never sends it. */
 export function reviewPrompt(locale: Locale, pr: PullRequestTarget): string {
@@ -109,7 +110,7 @@ export async function runIntent(deps: IntentDeps, intent: SessionIntent): Promis
     const view = await deps.start({ profileId: intent.profileId, agentKey: agent.key, cwd, cols: 100, rows: 30, model: deps.model(agent.key) })
     return { kind: 'started', sessionId: view.id, folder: cwd, drafted: false }
   } catch (e) {
-    return failure('links.failed', { message: e instanceof Error ? e.message : String(e) })
+    return failure('links.failed', { message: errorText(e) })
   }
 }
 

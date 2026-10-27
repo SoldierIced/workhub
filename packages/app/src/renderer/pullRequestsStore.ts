@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import type { CodeHostLists } from '@shared/codehost-api'
+import { errorText } from './lib/errorText'
 
 /** How often the lists refresh while a screen that shows them is open (Workhub 1: every 180 s). */
 export const REFRESH_MS = 180_000
@@ -28,7 +29,7 @@ export async function refreshPullRequests(profileId: string | null, force = fals
   try {
     set(key, { lists: await window.hub.codeHost.lists(profileId, force), loading: false })
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e)
+    const message = errorText(e)
     set(key, { lists: { state: 'error', message, mine: [], toReview: [], ...(current.lists ? { mine: current.lists.mine, toReview: current.lists.toReview } : {}) }, loading: false })
   }
 }

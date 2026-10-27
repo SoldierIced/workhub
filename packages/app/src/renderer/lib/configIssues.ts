@@ -68,3 +68,28 @@ export function humanIssue(issue: ValidationIssue, config: WorkhubConfig, provid
 
   return raw
 }
+
+const PROFILE_ID = /^[a-z0-9][a-z0-9._-]*$/
+
+/** What is wrong with a profile form, per field, before anything is sent to be saved. */
+export function profileFieldErrors(profile: { id: string; name: string }, takenIds: readonly string[] = []): { id?: MessageKey; name?: MessageKey } {
+  const errors: { id?: MessageKey; name?: MessageKey } = {}
+  if (!profile.name.trim()) errors.name = 'issues.profileName'
+  if (!profile.id) errors.id = 'issues.profileIdMissing'
+  else if (!PROFILE_ID.test(profile.id)) errors.id = 'issues.profileId'
+  else if (takenIds.includes(profile.id)) errors.id = 'issues.profileIdTaken'
+  return errors
+}
+
+/**
+ * A validation issue as one friendly sentence. Shape rules from the schema (they carry a `code`)
+ * and unexpected failures never show their raw text; cross-reference messages are already plain.
+ */
+export function friendlyIssue(issue: ValidationIssue, t: (key: MessageKey, params?: Params) => string): string {
+  if (issue.code === 'unexpected') return t('issues.unexpected')
+  if (!issue.code) return `${issue.path}: ${issue.message}`
+  const [section, , field] = issue.path.split('.')
+  if (section === 'profiles' && field === 'name') return t('issues.profileName')
+  if (section === 'profiles' && field === 'id') return t(issue.code === 'too_small' ? 'issues.profileIdMissing' : 'issues.profileId')
+  return t('issues.invalidValue', { where: issue.path })
+}

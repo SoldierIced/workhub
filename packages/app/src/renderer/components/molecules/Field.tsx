@@ -7,13 +7,15 @@ export interface FieldProps {
   hint?: ReactNode
   /** Longer explanation, in an (i) tooltip next to the label. */
   help?: ReactNode
+  /** A problem with the value, shown under the control. */
+  error?: string
   /** The control; it receives the generated id so the label points at it. */
   children: ReactElement<{ id?: string }>
   className?: string
 }
 
 /** A labelled form control. */
-export function Field({ label, hint, help, children, className }: FieldProps) {
+export function Field({ label, hint, help, error, children, className }: FieldProps) {
   const id = useId()
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
@@ -25,6 +27,11 @@ export function Field({ label, hint, help, children, className }: FieldProps) {
       </span>
       {cloneElement(children, { id })}
       {hint && <p className="text-xs text-subtle">{hint}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

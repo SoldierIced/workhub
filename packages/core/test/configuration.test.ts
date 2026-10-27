@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ConfigurationService,
   createAccount,
@@ -215,5 +215,23 @@ describe('secretForConnectionTest', () => {
     expect(await secretForConnectionTest(cfg, secrets, { ...saved, endpoint: 'https://attacker.example.net' }, { action: 'keep' })).toEqual({ ok: false, error: RETYPE_SECRET_TO_TEST })
     expect(await secretForConnectionTest(cfg, secrets, { ...saved, endpoint: undefined }, { action: 'keep' })).toEqual({ ok: false, error: RETYPE_SECRET_TO_TEST })
     expect(await secretForConnectionTest(cfg, secrets, { ...saved, id: 'other', secretRef: 'connection/other' }, { action: 'keep' })).toEqual({ ok: true, secret: null })
+  })
+})
+
+describe('schema rules inside validation', () => {
+  it('reports what the config schema would reject, by item id or position', () => {
+    const bad = { ...config(), profiles: [profile({ id: '', name: '' })] }
+    const found = validateConfig(bad).filter((i) => i.code)
+    expect(found.map((i) => i.path)).toEqual(expect.arrayContaining(['profiles.#0.id', 'profiles.#0.name']))
+    expect(validateConfig({ ...config(), profiles: [profile({ id: 'Bad Id' })] }).some((i) => i.path === 'profiles.Bad Id.id' && i.code === 'invalid_format')).toBe(true)
+  })
+
+  it('refuses an incomplete profile as a result and never reaches the store', async () => {
+    const store = new MemoryConfigStore(config())
+    const service = new ConfigurationService(store, new MemorySecrets())
+    const saved = vi.spyOn(store, 'save')
+    const r = await service.saveProfile(profile({ id: '', name: '' }))
+    expect(r.ok).toBe(false)
+    expect(saved).not.toHaveBeenCalled()
   })
 })

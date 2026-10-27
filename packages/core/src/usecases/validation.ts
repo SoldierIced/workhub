@@ -1,12 +1,14 @@
 import { isValidEnvName, type AgentDefinition } from '../domain/agent'
 import { BUILTIN_AGENTS } from '../domain/builtin-agents'
 import { CONNECTION_KINDS, findProvider } from '../domain/connection'
-import type { WorkhubConfig } from '../config/schema'
+import { configSchema, type WorkhubConfig } from '../config/schema'
 
 export interface ValidationIssue {
   /** Dotted path of the offending value, e.g. `profiles.work.connections.tracker`. */
   path: string
   message: string
+  /** Set on issues that come from the config schema (shape rules): the Zod issue code, e.g. `too_small`. */
+  code?: string
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; issues: ValidationIssue[] }
@@ -41,13 +43,38 @@ function checkEnv(env: Record<string, string> | undefined, path: string, issues:
   }
 }
 
+const LISTS = new Set(['connections', 'agents', 'accounts', 'profiles'])
+
 /**
- * Cross-reference rules the schema cannot express: unique ids, providers that exist and match
+ * The shape rules of `configSchema` as issues, so a change the store would refuse is refused up
+ * front as a result instead of throwing at save time. Zod paths use list positions
+ * (`profiles.2.id`); here an item is named by its id (`profiles.work.id`), or `#<position>` while
+ * it has no usable id yet.
+ */
+export function schemaIssues(config: WorkhubConfig): ValidationIssue[] {
+  const parsed = configSchema.safeParse(config)
+  if (parsed.success) return []
+  return parsed.error.issues.map((issue) => {
+    const path: string[] = []
+    let node: unknown = config
+    issue.path.forEach((seg, i) => {
+      node = node !== null && typeof node === 'object' ? (node as Record<string | number, unknown>)[seg as string | number] : undefined
+      if (i === 1 && LISTS.has(String(issue.path[0]))) {
+        const id = (node as { id?: unknown } | undefined)?.id
+        path.push(typeof id === 'string' && id.trim() ? id : `#${String(seg)}`)
+      } else path.push(String(seg))
+    })
+    return { path: path.join('.'), message: issue.message, code: issue.code }
+  })
+}
+
+/**
+ * Every shape rule of the schema (`schemaIssues`) plus the cross-reference rules it cannot express: unique ids, providers that exist and match
  * the connection kind, endpoint and secret where the provider needs them, and profiles that
  * only reference existing connections of the right kind and existing accounts and agents.
  */
 export function validateConfig(config: WorkhubConfig): ValidationIssue[] {
-  const issues: ValidationIssue[] = []
+  const issues: ValidationIssue[] = schemaIssues(config)
   for (const [list, items] of [
     ['connections', config.connections],
     ['agents', config.agents],
