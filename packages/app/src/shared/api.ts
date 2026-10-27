@@ -131,6 +131,8 @@ export interface SessionView extends Session {
   readOnly?: boolean
   /** The session continues another one: moved from another account, or handed off from another agent. */
   origin?: SessionOrigin
+  /** Reopened (resumed by its agent session id, or restarted under its old identity), not new. */
+  resumed?: boolean
   /** The engine picked while a turn was running: the hand-over waits for the turn to end. */
   pendingMode?: 'app' | 'console'
   /** Epoch ms when `state` last changed (the header's activity timer). */
