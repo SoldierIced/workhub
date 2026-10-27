@@ -1,3 +1,4 @@
+import { AgentIcon } from '../atoms/AgentIcon'
 import { FolderOpen, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { pickAgent, type EffectiveAgent } from '@workhub/core'
@@ -157,7 +158,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, prefer
           <Select
             value={agentKey}
             onChange={setAgentKey}
-            options={agents.map((a) => ({ value: a.key, label: installed[a.agent.id] === false ? `${a.label} (${t('newSession.notInstalled')})` : a.label }))}
+            options={agents.map((a) => ({ value: a.key, icon: <AgentIcon agentId={a.agent.id} adapter={a.agent.adapter} />, label: installed[a.agent.id] === false ? `${a.label} (${t('newSession.notInstalled')})` : a.label }))}
             placeholder={t('session.noAgents')}
           />
         </Field>

@@ -15,6 +15,8 @@ import { appearanceEn } from './appearance.en'
 import { settingsHelpEn } from './settingsHelp.en'
 import { trayEn } from './tray.en'
 import { trayPopoverEn } from './trayPopover.en'
+import { appBadgeEn } from './appBadge.en'
+import { sidebarEn } from './sidebar.en'
 import { agentsEn } from './agents.en'
 import { toolViewEn } from './toolView.en'
 /**
@@ -50,7 +52,7 @@ export const en = {
   'sidebar.navigation': 'Navigation',
   'sidebar.sessionList': 'Open sessions',
   'sidebar.folders': 'Folders',
-  'sidebar.foldersEmpty': 'Folders you start sessions in show up here.',
+  'sidebar.foldersEmpty': 'Your profile folders and the folders you start sessions in show up here.',
   'sidebar.newSessionIn': 'New session in {folder}',
   'groups.new': 'New group',
   'groups.newTitle': 'New group',
@@ -416,6 +418,8 @@ export const en = {
   ...sessionMonitorEn,
   ...trayEn,
   ...trayPopoverEn,
+  ...appBadgeEn,
+  ...sidebarEn,
   ...agentsEn,
   ...appearanceEn,
   ...settingsHelpEn,

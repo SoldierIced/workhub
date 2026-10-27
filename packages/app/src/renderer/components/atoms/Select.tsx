@@ -1,10 +1,13 @@
 import { Check, ChevronDown } from 'lucide-react'
 import { Select as RSelect } from 'radix-ui'
+import type { ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
 export interface SelectOption {
   value: string
   label: string
+  /** A mark shown before the label, in the list and in the closed select. */
+  icon?: ReactNode
 }
 
 /** Radix forbids an empty item value; an empty value ("none") maps to this sentinel internally. */
@@ -58,7 +61,16 @@ export function Select({ value, onChange, options, disabled, placeholder, classN
                 <RSelect.ItemIndicator className="absolute left-2 inline-flex">
                   <Check className="size-3.5 text-accent" aria-hidden />
                 </RSelect.ItemIndicator>
-                <RSelect.ItemText>{o.label}</RSelect.ItemText>
+                <RSelect.ItemText>
+                  {o.icon ? (
+                    <span className="inline-flex items-center gap-2">
+                      {o.icon}
+                      {o.label}
+                    </span>
+                  ) : (
+                    o.label
+                  )}
+                </RSelect.ItemText>
               </RSelect.Item>
             ))}
           </RSelect.Viewport>

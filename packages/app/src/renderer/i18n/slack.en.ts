@@ -95,6 +95,7 @@ export const slackEn = {
   'slack.notice.notWoken.automationOff': 'its automation is off',
   'slack.notice.notWoken.noReplies': 'its automation takes no replies',
   'slack.notice.notWoken.openElsewhere': 'it is open in another terminal',
+  'slack.notice.notWoken.openFailed': 'the session opened for them failed or was stopped; the next reply tries again',
   'slack.notice.notWoken.budget': 'its account is past its usage ceiling; the replies wait until it resets or the ceiling changes',
   'slack.notice.automationFailed': 'Automation "{name}" failed',
   'slack.auto': 'auto',

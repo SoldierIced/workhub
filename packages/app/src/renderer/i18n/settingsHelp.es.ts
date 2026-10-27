@@ -46,6 +46,7 @@ export const settingsHelpEs: Record<keyof typeof settingsHelpEn, string> = {
   'help.account.configDir': 'La carpeta que guarda el inicio de sesión y la configuración de esta cuenta (para Claude, algo como ~/.claude-work). Otra carpeta es otra cuenta.',
   'help.account.env': 'Variables de entorno extra para las sesiones de esta cuenta, como una clave de API.',
   'help.general.otherNotifications': "Notificaciones de escritorio que no son de una sesión: respuestas de Slack, ejecuciones de automatizaciones, cambios en tickets y alertas de salud. Pausar las silencia todas por un tiempo.",
+  'help.general.appBadge': "Muestra en el ícono de la app la cantidad de sesiones que te necesitan (una respuesta sin leer, una pregunta esperando respuesta o un error): el Dock en macOS, el botón de la barra de tareas en Windows, el lanzador en Linux. Desaparece a medida que miras las sesiones.",
   'help.general.menuBar': "Si está activado, cerrar la ventana deja Workhub funcionando en la barra de menús (o el área de notificaciones), así las sesiones, Slack y las automatizaciones siguen trabajando.",
   'help.account.command': "El programa que se inicia para las sesiones de esta cuenta. Déjalo vacío para usar el comando del propio agente; complétalo si esta cuenta necesita otro binario o un envoltorio.",
   'help.account.defaultModel': "El modelo con el que empiezan las sesiones nuevas de esta cuenta. Vacío usa el del agente; igual puedes cambiarlo desde el encabezado de la sesión.",

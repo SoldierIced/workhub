@@ -70,11 +70,13 @@ export interface AppOptions {
   notifyHealth: boolean
   /** Closing the main window keeps the app running in the menu bar / notification area. */
   keepInTray: boolean
+  /** A badge on the app icon (Dock, taskbar, launcher) with the number of sessions that need a look. */
+  showAppBadge: boolean
   /** "Pause notifications": nothing is shown until this moment (epoch ms). Unset when not paused. */
   notificationsPausedUntil?: number
 }
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true, showAppBadge: true }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -215,10 +217,11 @@ const profile = z.object({
   health: healthSettings.optional(),
   slackArchiveMinutes: z.number().int().min(1).optional(),
   aiReview: aiReview.optional(),
-  accountFailover: z.enum(['ask', 'automatic', 'off']).optional()
+  accountFailover: z.enum(['ask', 'automatic', 'off']).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()
 })
 
-const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string() })
+const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string(), profileId: z.string().min(1).optional() })
 
 const sessionGroups = z.object({
   groups: z
@@ -312,6 +315,7 @@ export const configSchema = z.object({
       notifyTickets: z.boolean().default(true),
       notifyHealth: z.boolean().default(true),
       keepInTray: z.boolean().default(true),
+      showAppBadge: z.boolean().default(true),
       notificationsPausedUntil: z.number().int().nonnegative().optional()
     })
     .optional(),

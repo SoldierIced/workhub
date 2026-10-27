@@ -1,15 +1,16 @@
-import { Folder, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { DragEvent, ReactNode } from 'react'
-import type { Profile } from '@workhub/core'
-import type { SessionView } from '@shared/api'
+import { profileColor, type Profile } from '@workhub/core'
+import type { SessionView, WorkspaceFolder } from '@shared/api'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
-import { folderName, type UsageGroup } from '../../lib/home'
+import type { UsageGroup } from '../../lib/home'
 import type { NavItem, Route } from '../../lib/nav'
 import { usePlatform } from '../../lib/platform'
 import { ROUTE_ICON, ROUTE_LABEL } from '../../lib/routes'
 import { IconButton } from '../atoms/IconButton'
 import { Kbd } from '../atoms/Kbd'
+import { FolderBrowser } from './FolderBrowser'
 import { ProfileSwitcher } from './ProfileSwitcher'
 import { UsageCard } from './UsageCard'
 
@@ -30,7 +31,8 @@ export interface SidebarProps {
   attentionCount: number
   /** A session dropped on the Sessions item leaves its group. */
   onDropOnSessions: (e: DragEvent) => void
-  folders: string[]
+  /** The active profile's folders and the folders inside them (`window.hub.profileFolders`). */
+  workspaces: WorkspaceFolder[]
   onNewSessionIn: (folder: string | null) => void
   usage: UsageGroup[]
 }
@@ -125,26 +127,13 @@ export function Sidebar(props: SidebarProps) {
         >
           {t('sidebar.folders')}
         </SectionTitle>
-        {props.folders.length === 0 ? (
-          <p className="px-2.5 py-1 text-xs text-subtle">{t('sidebar.foldersEmpty')}</p>
-        ) : (
-          <ul className="flex flex-col gap-0.5">
-            {props.folders.map((f) => (
-              <li key={f}>
-                <button
-                  type="button"
-                  title={f}
-                  onClick={() => props.onNewSessionIn(f)}
-                  aria-label={t('sidebar.newSessionIn', { folder: folderName(f) })}
-                  className="flex h-7 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-base text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
-                >
-                  <Folder className="size-3.5 shrink-0 text-subtle" aria-hidden />
-                  <span className="truncate">{folderName(f)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <FolderBrowser
+          workspaces={props.workspaces}
+          sessions={props.sessions}
+          profileId={props.activeProfileId}
+          accent={profileColor(props.profiles, props.activeProfileId)}
+          onOpen={(f) => props.onNewSessionIn(f)}
+        />
       </div>
       <div className="shrink-0 px-3 pb-3">
         <UsageCard groups={props.usage} running={running} />
