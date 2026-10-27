@@ -4,7 +4,7 @@ import type { ChatNoticeEvent } from '@shared/chat-api'
 import { useToast } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
-import { pushUser } from '../store'
+import { pushTurnEnd, pushUser } from '../store'
 
 const NOT_WOKEN: Record<string, MessageKey> = {
   automationOff: 'slack.notice.notWoken.automationOff',
@@ -49,9 +49,11 @@ export function useChatNotices(): void {
       if (n.kind !== 'tracking') window.hub.notifications.show({ title: w.title, body: w.body, sessionId: '', kind: automation ? 'automations' : 'slack', route: automation ? 'automations' : 'slack' })
     })
     const offPrompted = window.hub.automations.onPrompted((id, text) => pushUser(id, text))
+    const offTurnEnded = window.hub.automations.onTurnEnded((id, stopReason) => pushTurnEnd(id, stopReason))
     return () => {
       offNotice()
       offPrompted()
+      offTurnEnded()
     }
   }, [t, tn, toast])
 }

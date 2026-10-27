@@ -130,6 +130,8 @@ export interface AutomationsApi {
   onChanged(cb: (snapshot: AutomationsSnapshot) => void): () => void
   /** A prompt Workhub typed into a session's chat, so the chat shows it. */
   onPrompted(cb: (sessionId: string, text: string) => void): () => void
+  /** The turn of such a prompt ended, so the chat shows its end like the user's own turns. */
+  onTurnEnded(cb: (sessionId: string, stopReason: string) => void): () => void
   /** The stored config changed outside the renderer (an automation moved a session's sidebar place). */
   onConfigChanged(cb: () => void): () => void
 }

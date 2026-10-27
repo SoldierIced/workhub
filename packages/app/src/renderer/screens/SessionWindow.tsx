@@ -11,7 +11,7 @@ import { folderName } from '../lib/home'
 import { usePlatform } from '../lib/platform'
 import { closeSubagent } from '../lib/subagentView'
 import { sessionTitle } from '../lib/windows'
-import { pushUser, seedSession, setViewing, startStore, useSessions } from '../store'
+import { pushTurnEnd, pushUser, seedSession, setViewing, startStore, useSessions } from '../store'
 import { SessionPane } from './SessionsScreen'
 import { SubagentBody } from './sessions/SubagentView'
 
@@ -105,6 +105,7 @@ function SessionWindow({ sessionId }: { sessionId: string }) {
     })
     setViewing(sessionId)
     const offPrompted = window.hub.automations.onPrompted((id, text) => id === sessionId && pushUser(id, text))
+    const offTurnEnded = window.hub.automations.onTurnEnded((id, stopReason) => id === sessionId && pushTurnEnd(id, stopReason))
     const offMenu = window.hub.menu.onCommand((command) => {
       if (command.kind === 'closeSession') void window.hub.sessions.close(sessionId)
       if (command.kind === 'showMode') void window.hub.sessions.setMode(sessionId, command.mode).catch(() => undefined)
@@ -112,6 +113,7 @@ function SessionWindow({ sessionId }: { sessionId: string }) {
     void window.hub.sessions.list().then(() => setLoaded(true))
     return () => {
       offPrompted()
+      offTurnEnded()
       offMenu()
     }
   }, [sessionId])

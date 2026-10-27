@@ -157,7 +157,7 @@ const ticketService = new TicketService(configuration, secrets, process.env['WOR
 
 let win: BrowserWindow | null = null
 /** What session and sub-agent windows follow too: the sessions' live state and what their screens show. */
-const SHARED_CHANNELS = new Set(['session:event', 'session:changed', 'session:removed', 'session:replay', 'automations:prompted', 'aiReview:changed', 'usage:changed'])
+const SHARED_CHANNELS = new Set(['session:event', 'session:changed', 'session:removed', 'session:replay', 'automations:prompted', 'automations:turnEnded', 'aiReview:changed', 'usage:changed'])
 const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   if (SHARED_CHANNELS.has(channel)) sessionWindows.broadcastShared(channel, args)
@@ -366,6 +366,7 @@ const updates = new UpdateService((s) => send('updates:changed', s))
 // Slack watcher and automations (P6a). WORKHUB_DEMO_SLACK=1 reads synthetic Slack instead of
 // asking an agent, and never touches a Claude account's settings.
 const driver = new SessionDriver(sessions, (id, text) => send('automations:prompted', id, text))
+driver.onTurnEnded = (id, stopReason) => send('automations:turnEnded', id, stopReason)
 const demoSlack = process.env['WORKHUB_DEMO_SLACK'] === '1' ? new DemoChatSource() : null
 // One start per session identity: the sidebar's reopen and a Slack wake for the same session share it.
 const ownerStarts = new OwnerStarts({ views: () => sessions.list(), start: (input) => sessions.start(input) })
@@ -429,6 +430,7 @@ const aiReview = new AiReviewService({
   emit: (snap) => send('aiReview:changed', snap),
   notice: (n) => send('aiReview:notice', n),
   showPrompt: (id, text) => send('automations:prompted', id, text),
+  showTurnEnd: (id, stopReason) => send('automations:turnEnded', id, stopReason),
   ticketPrefixes,
   ticketTitle: async (profileId, key) => {
     if (!profileId) return undefined
@@ -488,7 +490,8 @@ const continuity = new ContinuityService({
   },
   emitOffer: (offer) => send('continuity:offer', offer),
   emitMoved: (moved) => send('continuity:moved', moved),
-  showPrompt: (id, text) => send('automations:prompted', id, text)
+  showPrompt: (id, text) => send('automations:prompted', id, text),
+  showTurnEnd: (id, stopReason) => send('automations:turnEnded', id, stopReason)
 })
 
 async function snapshot(): Promise<ConfigSnapshot> {

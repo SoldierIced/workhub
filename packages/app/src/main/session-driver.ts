@@ -29,6 +29,8 @@ export class SessionDriver {
   private viewing: string | null = null
   /** Called when a session gets its real identity after starting (ACP agents). */
   onIdentityChanged: (oldKey: string, newKey: string) => void = () => undefined
+  /** Called when a turn this driver typed into a chat ends, so the chat shows its end like the user's own turns. */
+  onTurnEnded: (sessionId: string, stopReason: string) => void = () => undefined
 
   constructor(
     private readonly sessions: DrivableSessions,
@@ -93,7 +95,10 @@ export class SessionDriver {
       }
       if (!turn) return 'waiting'
       this.onPrompted(sessionId, text)
-      void turn.catch(() => undefined)
+      turn.then(
+        (stopReason) => this.onTurnEnded(sessionId, stopReason),
+        () => undefined
+      )
       return 'delivered'
     }
     this.lastOutput.set(sessionId, this.now())

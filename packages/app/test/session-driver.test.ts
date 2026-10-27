@@ -122,6 +122,17 @@ describe('session driver', () => {
     await late
   })
 
+  it('reports the end of a turn it typed, so the chat shows it like a user turn', async () => {
+    const { views, driver, endTurn } = setup()
+    const ended: [string, string][] = []
+    driver.onTurnEnded = (id, reason) => void ended.push([id, reason])
+    views.push(view('v1', 'ready'))
+    expect(await driver.deliver('v1', 'wake')).toBe('delivered')
+    expect(ended).toEqual([])
+    await endTurn()
+    expect(ended).toEqual([['v1', 'end_turn']])
+  })
+
   it('expands ~ in automation folders', () => {
     expect(expandHome('~', '/home/me')).toBe('/home/me')
     expect(expandHome('~/work', '/home/me')).toBe('/home/me/work')
