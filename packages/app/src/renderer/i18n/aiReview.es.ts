@@ -4,7 +4,6 @@ import type { aiReviewEn } from './aiReview.en'
 export const aiReviewEs: Record<keyof typeof aiReviewEn, string> = {
   'aiReview.button': 'Revisar antes del PR',
   'aiReview.buttonHint': 'Un agente revisor lee esta rama contra su base en una sola pasada exhaustiva y envía los hallazgos aquí',
-  'aiReview.started': 'Revisión con IA iniciada en {branch}',
   'aiReview.blocked.disabled': 'La revisión con IA está desactivada en este perfil (Ajustes → Perfiles).',
   'aiReview.blocked.notRepo': 'La carpeta de esta sesión no es un repositorio git.',
   'aiReview.blocked.detached': 'HEAD está separado: cambia a una rama para revisarla.',

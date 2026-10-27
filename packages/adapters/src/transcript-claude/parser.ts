@@ -79,6 +79,8 @@ export class ClaudeTranscriptParser {
   private readonly keys: string[] = []
   private readonly jiraCalls = new Set<string>()
   private closedTurnsMs = 0
+  /** Ids of the assistant messages of the current turn, in order. */
+  private turnMessages: string[] = []
   private turnStart: number | undefined
   private turnLast: number | undefined
   private permissionMode: string | undefined
@@ -111,6 +113,7 @@ export class ClaudeTranscriptParser {
       if (id && usage) {
         // A streamed message repeats its usage on every block it writes.
         this.usage.set(id, usage)
+        if (!this.turnMessages.includes(id)) this.turnMessages.push(id)
         this.contextTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)
       }
       if (this.options.ticketPrefixes?.length) {
@@ -152,6 +155,7 @@ export class ClaudeTranscriptParser {
       // Slash commands Claude Code runs locally write user entries but no turn.
       if (!text.includes('<command-name>') && !text.includes('<local-command') && !text.startsWith('[Request interrupted')) {
         this.closeTurn()
+        this.turnMessages = []
         this.turnStart = at
         this.turnLast = at
         this.noteKeys(text)
@@ -190,6 +194,8 @@ export class ClaudeTranscriptParser {
     if (this.model) snap.model = this.model
     if (this.usage.size) {
       snap.tokens = tokens
+      const requests = this.turnMessages.map((id) => this.usage.get(id)).filter((u): u is TokenUsage => !!u).map((u) => (u.input ?? 0) + (u.cacheWrite ?? 0) + (u.output ?? 0))
+      if (requests.length) snap.turnRequests = requests
       const cost = estimateCost(this.model, tokens)
       if (cost) snap.cost = cost
       const size = contextWindow(this.model, this.contextTokens)

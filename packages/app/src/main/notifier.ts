@@ -79,6 +79,13 @@ export class Notifier {
     return true
   }
 
+  /** Empties the recent list ("Clear all" in the menu bar icon). */
+  clearRecent(): void {
+    if (!this.recentList.length) return
+    this.recentList.splice(0)
+    this.deps.onShown?.()
+  }
+
   private forget(id: string): void {
     const i = this.recentList.findIndex((n) => n.id === id)
     if (i >= 0) this.recentList.splice(i, 1)

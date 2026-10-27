@@ -7,6 +7,7 @@
  */
 import { statusLevel, type AttentionKind, type StatusLevel } from '../domain/attention'
 import type { SessionState } from '../domain/session'
+import type { AutomationHealth } from '../automations/engine'
 import type { HealthState } from '../health/types'
 import type { PausePreset } from '../notifications/policy'
 
@@ -36,6 +37,18 @@ export interface TrayPrEvent {
   title: string
 }
 
+/** An enabled automation, as the tray lists it (Workhub 1's menu bar "Automations"). */
+export interface TrayAutomation {
+  id: string
+  name: string
+  health: AutomationHealth
+  /** Runs started today. */
+  startedToday: number
+  /** The kind of wait (`limit`, `usage`…): the part of the engine's reason before the first dot. */
+  waitReason?: string
+  lastError?: string
+}
+
 export type TraySlackHealth = 'off' | 'watching' | 'checking' | 'paused' | 'failing'
 
 export interface TrayState {
@@ -51,6 +64,8 @@ export interface TrayState {
   health: { state: HealthState | null; degraded: readonly string[] } | null
   /** Null while the Slack watcher is off. */
   slack: { health: TraySlackHealth; open: number; unread: number; error?: string } | null
+  /** Enabled automations of the active profile; unset or empty hides the section. */
+  automations?: readonly TrayAutomation[]
   /** Notifications shown lately, newest first (Workhub 1's "Notifications" list). */
   notifications?: readonly { id: string; title: string; at?: number }[]
   /** Epoch ms; unset or in the past when notifications are not paused. */
@@ -70,6 +85,8 @@ export type TrayAction =
   | { kind: 'openPullRequest'; profileId: string; url: string }
   /** Does what a click on that notification does. */
   | { kind: 'openNotification'; id: string }
+  /** Empties the recent notifications list. */
+  | { kind: 'clearNotifications' }
   | { kind: 'newSession' }
   | { kind: 'pause'; preset: PausePreset }
   | { kind: 'resume' }
@@ -151,6 +168,27 @@ const LEVEL_KEY: Record<StatusLevel, string> = {
 }
 
 
+/** "running · 3 today", "failed: …", "waiting: rate limit reached"… (the words come from `t`). */
+export function automationLine(a: TrayAutomation, t: TrayText['t']): string {
+  switch (a.health) {
+    case 'running':
+      return t('tray.automation.running', { count: a.startedToday })
+    case 'idle':
+      return t('tray.automation.idle', { count: a.startedToday })
+    case 'failing':
+      return t('tray.automation.failing', { error: a.lastError ? truncate(a.lastError, 60) : t('tray.automation.error') })
+    case 'waiting': {
+      if (!a.waitReason) return t('tray.automation.queued')
+      const reason = t(`automations.reason.${a.waitReason}`)
+      return reason.startsWith('automations.reason.') ? t('tray.automation.queued') : t('tray.automation.waiting', { reason })
+    }
+    case 'paused':
+      return t('tray.automation.paused')
+    case 'off':
+      return t('tray.automation.off')
+  }
+}
+
 const truncate = (s: string, max = 48) => (s.length > max ? `${s.slice(0, max - 1)}…` : s)
 
 function sessionLine(session: TraySession, level: StatusLevel | null, text: TrayText): string {
@@ -216,6 +254,13 @@ export function buildTrayMenu(state: TrayState, text: TrayText, now = Date.now()
     }
   }
 
+  // Automations.
+  if (state.automations?.length) {
+    items.push({ type: 'separator' })
+    items.push({ type: 'label', label: t('tray.section.automations') })
+    for (const a of state.automations) items.push({ type: 'action', label: `${truncate(a.name, 32)}: ${automationLine(a, t)}`, action: nav('automations') })
+  }
+
   // Health and Slack.
   if (state.health || state.slack) items.push({ type: 'separator' })
   if (state.health) {
@@ -235,7 +280,11 @@ export function buildTrayMenu(state: TrayState, text: TrayText, now = Date.now()
     items.push({
       type: 'submenu',
       label: t('tray.section.notifications'),
-      items: state.notifications.slice(0, TRAY_NOTIFICATION_LIMIT).map((n) => ({ type: 'action', label: truncate(n.title, 64), action: { kind: 'openNotification', id: n.id } }))
+      items: [
+        ...state.notifications.slice(0, TRAY_NOTIFICATION_LIMIT).map((n): TrayItem => ({ type: 'action', label: truncate(n.title, 64), action: { kind: 'openNotification', id: n.id } })),
+        { type: 'separator' },
+        { type: 'action', label: t('tray.notifications.clear'), action: { kind: 'clearNotifications' } }
+      ]
     })
   }
 

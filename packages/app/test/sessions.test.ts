@@ -240,6 +240,37 @@ describe('SessionManager', () => {
   })
 })
 
+describe('derived active time', () => {
+  const activeOf = (events: AgentEvent[]) => events.filter((e) => e.type === 'monitor' && e.snapshot.activeTimeMs !== undefined).map((e) => (e as Extract<AgentEvent, { type: 'monitor' }>).snapshot.activeTimeMs!)
+
+  it('counts the time a session spends busy when the agent reports none', async () => {
+    const { manager, native, events } = setup()
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    await flush()
+    native.emit({ sessionId: view.id, type: 'state', state: 'busy' })
+    await new Promise((r) => setTimeout(r, 30))
+    native.emit({ sessionId: view.id, type: 'state', state: 'ready' })
+    const reported = activeOf(events)
+    expect(reported.at(-1)).toBeGreaterThanOrEqual(25)
+    const settled = reported.at(-1)
+    native.emit({ sessionId: view.id, type: 'state', state: 'busy' })
+    native.emit({ sessionId: view.id, type: 'state', state: 'ready' })
+    expect(activeOf(events).at(-1)).toBeGreaterThanOrEqual(settled!)
+  })
+
+  it('leaves the time to the agent once it reports its own', async () => {
+    const { manager, native, events } = setup()
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    await flush()
+    native.emit({ sessionId: view.id, type: 'monitor', snapshot: { activeTimeMs: 9999 } })
+    const before = activeOf(events).length
+    native.emit({ sessionId: view.id, type: 'state', state: 'busy' })
+    await new Promise((r) => setTimeout(r, 10))
+    native.emit({ sessionId: view.id, type: 'state', state: 'ready' })
+    expect(activeOf(events).length).toBe(before)
+  })
+})
+
 describe('session identity', () => {
   it('keys a Claude session by its own session id, which a resume keeps', async () => {
     const { manager } = setup()

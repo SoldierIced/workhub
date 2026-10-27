@@ -4,7 +4,7 @@ vi.mock('electron', () => ({ BrowserWindow: class {}, screen: {}, Menu: {}, nati
 
 import { POPOVER_MAX_HEIGHT, POPOVER_MIN_HEIGHT, popoverHeight, popoverWindowOptions } from '../src/main/tray-popover'
 import { trayClickBehavior } from '../src/main/tray'
-import { agentGlyph, elapsed, nextFocus, sessionChip } from '../src/renderer/lib/trayPopover'
+import { elapsed, nextFocus, sessionChip } from '../src/renderer/lib/trayPopover'
 import { trayPopoverEn } from '../src/renderer/i18n/trayPopover.en'
 import { trayPopoverEs } from '../src/renderer/i18n/trayPopover.es'
 import { placeholders } from '../src/renderer/i18n/translate'
@@ -59,12 +59,6 @@ describe('tray popover renderer helpers', () => {
     expect(nextFocus(1, 3, 'End')).toBe(2)
     expect(nextFocus(1, 0, 'ArrowDown')).toBeNull()
     expect(nextFocus(1, 3, 'a')).toBeNull()
-  })
-
-  it('gives every agent a stable mark', () => {
-    expect(agentGlyph('claude-code').letter).toBe('C')
-    expect(agentGlyph(undefined).letter).toBe('?')
-    expect(agentGlyph('zed')).toEqual(agentGlyph('zed'))
   })
 
   it('has Spanish for every English key with the same placeholders', () => {

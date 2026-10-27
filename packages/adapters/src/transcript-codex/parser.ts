@@ -139,6 +139,8 @@ export class CodexRolloutParser {
   private primary: PlanUsageWindow | undefined
   private secondary: PlanUsageWindow | undefined
   private activeMs = 0
+  private lastTotal: number | undefined
+  private turnRequests: number[] = []
   private turnStart: number | undefined
   private readonly tools = new Map<string, ToolCallSummary>()
   private readonly prs: string[] = []
@@ -180,7 +182,15 @@ export class CodexRolloutParser {
         const info = obj(payload['info'])
         if (info) {
           this.total = obj(info['total_token_usage']) ?? this.total
-          this.last = obj(info['last_token_usage']) ?? this.last
+          const last = obj(info['last_token_usage'])
+          this.last = last ?? this.last
+          // Codex repeats a token_count; a request counts once, when the running total moves.
+          const total = num(obj(info['total_token_usage'])?.['total_tokens'])
+          if (last && total !== undefined && total !== this.lastTotal) {
+            const t = codexTokens(last)
+            this.turnRequests.push((t?.input ?? 0) + (t?.output ?? 0))
+          }
+          if (total !== undefined) this.lastTotal = total
           this.contextWindow = num(info['model_context_window']) ?? this.contextWindow
         }
         const limits = obj(payload['rate_limits'])
@@ -193,6 +203,7 @@ export class CodexRolloutParser {
       case 'task_started':
       case 'turn_started':
         this.turnStart = at
+        this.turnRequests = []
         break
       case 'task_complete':
       case 'turn_complete':
@@ -255,6 +266,7 @@ export class CodexRolloutParser {
     }
     const windows = [this.primary, this.secondary].filter((w): w is PlanUsageWindow => !!w)
     if (windows.length) out.planUsage = windows
+    if (this.turnRequests.length) out.turnRequests = [...this.turnRequests]
     if (this.activeMs > 0) out.activeTimeMs = this.activeMs
     if (this.tools.size) out.toolCalls = [...this.tools.values()]
     if (this.prs.length) out.pullRequests = [...this.prs]
