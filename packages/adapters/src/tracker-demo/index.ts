@@ -1,6 +1,7 @@
 import {
   TrackerError,
   isTicketKey,
+  pullRequestUrlsIn,
   type ConnectionTest,
   type ListTicketsOptions,
   type StatusCategory,
@@ -179,7 +180,9 @@ export class DemoTracker implements TicketTracker {
 
   private ticket(seed: Seed): Ticket {
     const s = STATES[this.state.get(seed.key) ?? seed.state]!
+    const prs = pullRequestUrlsIn([seed.description, ...seed.comments.map((c) => c.body)].join('\n'))
     return {
+      pullRequestUrls: prs.length > 0 ? prs : undefined,
       key: seed.key,
       provider: this.provider,
       title: seed.title,

@@ -8,7 +8,7 @@ import { writeFileSync } from 'node:fs'
 // Requires the app to be running with --remote-debugging-port (default 9222, or CDP_PORT).
 const port = process.env.CDP_PORT ?? '9222'
 const targets = await (await fetch(`http://localhost:${port}/json`)).json()
-const page = targets.find((t) => t.type === 'page')
+const page = targets.find((t) => t.type === 'page' && (!process.env.CDP_URL_MATCH || t.url.includes(process.env.CDP_URL_MATCH)))
 const ws = new WebSocket(page.webSocketDebuggerUrl)
 await new Promise((r) => (ws.onopen = r))
 let id = 0

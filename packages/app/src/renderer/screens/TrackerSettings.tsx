@@ -87,7 +87,7 @@ export function TrackerSettings({ snap, run }: { snap: ConfigSnapshot; run: Run 
       kind: 'tracker',
       provider: form.provider,
       ...(form.name.trim() ? { name: form.name.trim() } : {}),
-      ...(isJira && form.site.trim() ? { endpoint: form.site.trim() } : {}),
+      ...(isJira && form.site.trim() ? { endpoint: /^https?:\/\//i.test(form.site.trim()) ? form.site.trim() : `https://${form.site.trim()}` } : {}),
       settings
     }
   }
