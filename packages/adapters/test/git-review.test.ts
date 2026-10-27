@@ -1,10 +1,10 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { pushBlockEnv } from '@workhub/core'
-import { GitReview, parseStatus, truncateDiff, type GitRunner } from '../src/git-review'
+import { GitReview, parseNumstat, parseStatus, truncateDiff, type GitRunner } from '../src/git-review'
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim()
 
@@ -80,7 +80,51 @@ describe('GitReview on a real repository', () => {
   })
 })
 
+describe('local changes', () => {
+  let dir: string
+  const g = new GitReview()
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'workhub-local-changes-'))
+    for (const name of ['api', 'web']) {
+      const repo = join(dir, name)
+      git(dir, 'init', '--quiet', '-b', 'main', repo)
+      writeFileSync(join(repo, 'a.txt'), 'one\ntwo\n')
+      git(repo, 'add', '.')
+      git(repo, 'commit', '--quiet', '-m', 'init')
+    }
+    mkdirSync(join(dir, 'notes'))
+    // api: one line changed, one added, an untracked file; web stays clean.
+    writeFileSync(join(dir, 'api', 'a.txt'), 'one\nTWO\nthree\n')
+    writeFileSync(join(dir, 'api', 'new.txt'), 'x\n')
+  })
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('reads one repository, even from a folder inside it', async () => {
+    const r = await g.localChanges(join(dir, 'api'))
+    expect(r).toMatchObject({ nested: false, scanned: 1, repos: [{ name: 'api', branch: 'main', files: 2, additions: 2, deletions: 1 }] })
+    expect((await g.localChanges(join(dir, 'web')))?.repos[0]).toMatchObject({ files: 0, additions: 0, deletions: 0 })
+  })
+
+  it('sums a folder of repositories, listing only the ones with changes', async () => {
+    const r = await g.localChanges(dir)
+    expect(r?.nested).toBe(true)
+    expect(r?.scanned).toBe(2)
+    expect(r?.repos.map((x) => x.name)).toEqual(['api'])
+  })
+
+  it('is null for a folder with no repository', async () => {
+    expect(await g.localChanges(join(dir, 'notes'))).toBeNull()
+  })
+})
+
 describe('git-review helpers', () => {
+  it('adds up numstat lines and skips binary files', () => {
+    expect(parseNumstat('3\t1\ta.ts\n-\t-\timg.png\n10\t0\tb.ts\n')).toEqual({ additions: 13, deletions: 1 })
+    expect(parseNumstat('')).toEqual({ additions: 0, deletions: 0 })
+  })
+
   it('parses porcelain status with renames', () => {
     expect(parseStatus(' M a.ts\0R  new.ts\0old.ts\0?? c.ts\0')).toEqual(['a.ts', 'new.ts', 'c.ts'])
   })

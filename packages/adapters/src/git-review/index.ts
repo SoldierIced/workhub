@@ -8,9 +8,9 @@
  * ignore external diff drivers and textconv filters configured in the repository.
  */
 import { execFile } from 'node:child_process'
-import { mkdir, rm } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import type { RepoFacts } from '@workhub/core'
+import { mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
+import type { LocalChanges, RepoChanges, RepoFacts } from '@workhub/core'
 
 /** Options every call adds: no hooks, no pager, no colors (external diff tools are refused per diff command). */
 const SAFE = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.pager=cat', '-c', 'color.ui=false']
@@ -58,6 +58,22 @@ export function parseStatus(out: string): string[] {
   }
   return files
 }
+
+/** Lines added and removed out of `git diff --numstat` (binary files, `-\t-`, add nothing). */
+export function parseNumstat(out: string): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+  for (const line of out.split('\n')) {
+    const [a, d] = line.split('\t')
+    if (a === undefined || d === undefined) continue
+    additions += Number.parseInt(a, 10) || 0
+    deletions += Number.parseInt(d, 10) || 0
+  }
+  return { additions, deletions }
+}
+
+/** How many folders of a folder of repositories are read, at most. */
+const MAX_NESTED_REPOS = 80
 
 export class GitReview {
   constructor(private readonly git: GitRunner = runGit) {}
@@ -119,6 +135,40 @@ export class GitReview {
     const status = await this.git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=normal'])
     const dirtyFiles = status.ok ? parseStatus(status.stdout) : []
     return { root, branch, headSha, base: resolved?.name ?? base, baseRef: resolved?.ref ?? null, ahead, dirty: dirtyFiles.length > 0, dirtyFiles }
+  }
+
+  /** One repository's uncommitted changes against HEAD (staged, unstaged and untracked paths). */
+  async repoChanges(root: string): Promise<RepoChanges> {
+    const [status, numstat, branch] = await Promise.all([
+      this.git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=normal']),
+      this.out(root, ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--numstat', 'HEAD']),
+      this.out(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
+    ])
+    const files = status.ok ? parseStatus(status.stdout).length : 0
+    return { name: basename(root), root, branch: branch || null, files, ...parseNumstat(numstat ?? '') }
+  }
+
+  /**
+   * The monitor's "Local changes" of a folder: its repository, else each repository right inside
+   * it (Workhub 1's folder of repos), listing only the ones with changes. Null when there is none.
+   */
+  async localChanges(cwd: string): Promise<LocalChanges | null> {
+    const root = await this.out(cwd, ['rev-parse', '--show-toplevel'])
+    if (root) return { nested: false, scanned: 1, repos: [await this.repoChanges(root)] }
+    const entries = await readdir(cwd, { withFileTypes: true }).catch(() => [])
+    const folders = entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).slice(0, MAX_NESTED_REPOS)
+    const repos = (
+      await Promise.all(
+        folders.map(async (e) => {
+          const dir = join(cwd, e.name)
+          // A `.git` folder (or file, in a worktree) marks a repository's root; anything deeper is not read.
+          return (await stat(join(dir, '.git')).then(() => true, () => false)) ? dir : null
+        })
+      )
+    ).filter((d): d is string => d !== null)
+    if (!repos.length) return null
+    const changes = await Promise.all(repos.map((r) => this.repoChanges(r)))
+    return { nested: true, scanned: repos.length, repos: changes.filter((c) => c.files > 0) }
   }
 
   async mergeBase(root: string, a: string, b: string): Promise<string | null> {

@@ -25,10 +25,14 @@ export interface Prefs {
   chatFontSize: number
   /** Base text size of the whole app in px; every text style scales with it. */
   textSize: number
+  /** Width of the session monitor panel in px. */
+  monitorWidth: number
+  /** Monitor sections the user folded (section ids). */
+  monitorCollapsed: string[]
 }
 
 /** Ranges of the size preferences, as Workhub 1 offered them. */
-export const SIZE_RANGES = { terminalFontSize: [10, 24], chatFontSize: [11, 20], textSize: [11, 20] } as const
+export const SIZE_RANGES = { terminalFontSize: [10, 24], chatFontSize: [11, 20], textSize: [11, 20], monitorWidth: [240, 560] } as const
 /** The app's base text size (styles.css `--text-base`). */
 export const BASE_TEXT_SIZE = 13
 
@@ -43,7 +47,9 @@ export const DEFAULT_PREFS: Prefs = {
   terminalFontFamily: '',
   terminalFontSize: 13,
   chatFontSize: BASE_TEXT_SIZE,
-  textSize: BASE_TEXT_SIZE
+  textSize: BASE_TEXT_SIZE,
+  monitorWidth: 320,
+  monitorCollapsed: []
 }
 
 /** A size clamped into its range, rounded; the default for anything that is not a number. */
@@ -69,7 +75,9 @@ export function parsePrefs(raw: string | null): Prefs {
       terminalFontFamily: str(v.terminalFontFamily),
       terminalFontSize: clampSize('terminalFontSize', v.terminalFontSize),
       chatFontSize: clampSize('chatFontSize', v.chatFontSize),
-      textSize: clampSize('textSize', v.textSize)
+      textSize: clampSize('textSize', v.textSize),
+      monitorWidth: clampSize('monitorWidth', v.monitorWidth),
+      monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : []
     }
   } catch {
     return DEFAULT_PREFS

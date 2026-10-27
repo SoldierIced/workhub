@@ -1,0 +1,106 @@
+import { describe, expect, it } from 'vitest'
+import type { PullRequestItem } from '@workhub/core'
+import { changesTotal, contextView, dragWidth, pullRequestLabel, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
+import { DEFAULT_PREFS, parsePrefs } from '../src/renderer/lib/prefs'
+import { abbreviateFolder, activityElapsed, activityOf, formatClock, formatSince, headerDensity } from '../src/renderer/lib/sessionHeader'
+
+describe('session header', () => {
+  it('abbreviates the folder from the home folder and keeps the last two folders of a long path', () => {
+    expect(abbreviateFolder('/Users/ana/src/web')).toBe('~/src/web')
+    expect(abbreviateFolder('/Users/ana/Desktop/proyectos/wayni/payments')).toBe('~/…/wayni/payments')
+    expect(abbreviateFolder('/home/bob')).toBe('~')
+    expect(abbreviateFolder('/srv/a/b/c/d')).toBe('/…/c/d')
+    expect(abbreviateFolder('C:\\Users\\Ana\\code\\acme\\web\\api')).toBe('~\\…\\web\\api')
+  })
+
+  it('names the activity, with "needs you" while a question waits', () => {
+    expect(activityOf('busy', false)).toBe('working')
+    expect(activityOf('busy', true)).toBe('needsYou')
+    expect(activityOf('ready', false)).toBe('idle')
+    expect(activityOf('starting', false)).toBe('starting')
+    expect(activityOf('error', false)).toBe('error')
+  })
+
+  it('counts working time as a clock and idle time in minutes', () => {
+    expect(formatClock(83_000)).toBe('1:23')
+    expect(formatClock(3_723_000)).toBe('1:02:03')
+    expect(formatClock(-5)).toBe('0:00')
+    expect(formatSince(40_000)).toBe('<1 min')
+    expect(formatSince(125_000)).toBe('2 min')
+    expect(formatSince(2 * 3_600_000 + 5 * 60_000)).toBe('2 h 5 min')
+    expect(formatSince(27 * 3_600_000)).toBe('1 d 3 h')
+    expect(activityElapsed('working', 1_000, 84_000)).toBe('1:23')
+    expect(activityElapsed('idle', 0, 120_000)).toBe('2 min')
+  })
+
+  it('moves controls into "More" as the header narrows', () => {
+    expect(headerDensity(1400)).toBe('full')
+    expect(headerDensity(1100)).toBe('compact')
+    expect(headerDensity(900)).toBe('narrow')
+  })
+})
+
+describe('monitor view model', () => {
+  it('splits the session time into thinking, tools and idle', () => {
+    const calls = [
+      { id: 'a', title: 'Read', startedAt: 10_000, endedAt: 14_000, status: 'completed' },
+      { id: 'b', title: 'Run', startedAt: 50_000, status: 'in_progress' },
+      { id: 'c', title: 'No start', endedAt: 5 }
+    ]
+    expect(toolTimeMs(calls, 60_000)).toBe(14_000)
+    const time = sessionTime(0, 100_000, 40_000, calls)
+    expect(time).toEqual({ aliveMs: 100_000, activeMs: 40_000, toolMs: 40_000, thinkingMs: 0, idleMs: 60_000, activePercent: 40 })
+    expect(sessionTime(0, 100_000, 40_000, calls.slice(0, 1))).toMatchObject({ toolMs: 4_000, thinkingMs: 36_000 })
+  })
+
+  it('reads the context window from a percent or from used and size, orange over 80%', () => {
+    expect(contextView(undefined)).toBeNull()
+    expect(contextView({ used: 10 })).toBeNull()
+    expect(contextView({ used: 170_000, size: 200_000 })).toEqual({ used: 170_000, size: 200_000, fraction: 0.85, high: true })
+    expect(contextView({ percent: 42 })).toMatchObject({ fraction: 0.42, high: false })
+    expect(contextView({ percent: 130 })?.fraction).toBe(1)
+  })
+
+  it('adds up the subagents tokens it knows', () => {
+    expect(subagentTokens([])).toBeUndefined()
+    expect(subagentTokens([{ id: 'a', tokens: { total: 100 } }, { id: 'b' }, { id: 'c', tokens: { total: 50 } }])).toBe(150)
+  })
+
+  it('labels pull requests of GitHub and GitLab', () => {
+    expect(pullRequestLabel('https://github.com/acme/web/pull/12')).toBe('acme/web#12')
+    expect(pullRequestLabel('https://gitlab.com/group/sub/app/-/merge_requests/7')).toBe('group/sub/app!7')
+    expect(pullRequestLabel('https://www.example.com/x')).toBe('example.com/x')
+  })
+
+  it('sums local changes over the repositories', () => {
+    const repo = (name: string, files: number, additions: number, deletions: number) => ({ name, root: `/r/${name}`, branch: 'feat/x', files, additions, deletions })
+    expect(changesTotal({ nested: true, scanned: 3, repos: [repo('a', 2, 10, 1), repo('b', 1, 0, 4)] })).toEqual({ repos: 2, files: 3, additions: 10, deletions: 5 })
+    expect(changesTotal({ nested: false, scanned: 1, repos: [repo('a', 0, 0, 0)] })).toEqual({ repos: 0, files: 0, additions: 0, deletions: 0 })
+  })
+
+  it("finds the session's pull requests by touched URL or by its repositories' branches", () => {
+    const item = (repo: string, number: number, branch: string, state: 'open' | 'merged' = 'open', ticketKeys: string[] = []): PullRequestItem =>
+      ({ pr: { provider: 'github', owner: 'acme', repo, number, url: `https://github.com/acme/${repo}/pull/${number}`, branch, state }, ticketKeys }) as unknown as PullRequestItem
+    const items = [item('web', 1, 'feat/login', 'open', ['ABC-1']), item('api', 2, 'main'), item('api', 3, 'feat/other', 'merged'), item('docs', 4, 'feat/login'), item('web', 1, 'feat/login')]
+    const repos = [
+      { name: 'web', root: '/r/web', branch: 'feat/login', files: 0, additions: 0, deletions: 0 },
+      { name: 'api', root: '/r/api', branch: 'main', files: 0, additions: 0, deletions: 0 }
+    ]
+    const found = sessionPullRequests(items, ['https://github.com/acme/api/pull/3'], repos)
+    // web#1 by branch (once), api#3 touched even though merged; api#2 is on a shared branch; docs is another repo.
+    expect(found.map((p) => p.pr.number)).toEqual([1, 3])
+    expect(sessionTicketKeys(found, ['XYZ-9', 'ABC-1'])).toEqual(['ABC-1', 'XYZ-9'])
+  })
+
+  it('resizes the panel from its left edge within bounds', () => {
+    expect(dragWidth(320, 1000, 950, 240, 560)).toBe(370)
+    expect(dragWidth(320, 1000, 1200, 240, 560)).toBe(240)
+    expect(dragWidth(320, 1000, 500, 240, 560)).toBe(560)
+  })
+
+  it('keeps the monitor width and folded sections in the preferences', () => {
+    expect(DEFAULT_PREFS.monitorWidth).toBe(320)
+    expect(parsePrefs('{"monitorWidth":2000,"monitorCollapsed":["tokens",3]}')).toMatchObject({ monitorWidth: 560, monitorCollapsed: ['tokens'] })
+    expect(parsePrefs('{"monitorWidth":"x"}').monitorWidth).toBe(320)
+  })
+})

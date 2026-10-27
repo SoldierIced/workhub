@@ -1,6 +1,7 @@
 import { linksEn } from './links.en'
 import { aiReviewEn } from './aiReview.en'
 import { sessionsUxEn } from './sessionsUx.en'
+import { sessionMonitorEn } from './sessionMonitor.en'
 import { healthEn } from './health.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
@@ -393,6 +394,7 @@ export const en = {
   ...aiReviewEn,
   ...continuityEn,
   ...sessionsUxEn,
+  ...sessionMonitorEn,
   ...trayEn,
   ...agentsEn,
   ...appearanceEn,
