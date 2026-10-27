@@ -1,0 +1,138 @@
+/**
+ * Token spend per folder of a profile, from the token buckets the transcript scanners keep
+ * (Workhub 1's "Claude by folder" card, extended to Codex and Kiro). Pure: the caller reads the
+ * transcripts and the folders.
+ *
+ * A bucket is the fresh tokens (input + cache write + output; cache reads are left out, as in
+ * Workhub 1) one agent spent on one local day while working in one path.
+ */
+import { localDayKey, startOfLocalDay } from './credits'
+
+export type SpendAgent = 'claude' | 'codex' | 'kiro'
+export const SPEND_AGENTS: readonly SpendAgent[] = ['claude', 'codex', 'kiro']
+
+/** Tokens per bucket key (see `spendKey`). */
+export type SpendBuckets = Record<string, number>
+
+/** The days the Home card covers, today included. */
+export const SPEND_DAYS = 7
+
+const SEP = '\t'
+
+/** The bucket of a day, an agent and the path the agent worked in. */
+export function spendKey(day: string, agent: SpendAgent, path: string): string {
+  return `${day}${SEP}${agent}${SEP}${path}`
+}
+
+export function parseSpendKey(key: string): { day: string; agent: SpendAgent; path: string } | null {
+  const first = key.indexOf(SEP)
+  const second = key.indexOf(SEP, first + 1)
+  if (first < 0 || second < 0) return null
+  const agent = key.slice(first + 1, second)
+  if (!(SPEND_AGENTS as readonly string[]).includes(agent)) return null
+  return { day: key.slice(0, first), agent: agent as SpendAgent, path: key.slice(second + 1) }
+}
+
+/** Adds tokens to a bucket; nothing for a missing time or a non-positive amount. */
+export function addSpend(buckets: SpendBuckets, at: number | undefined, agent: SpendAgent, path: string | undefined, tokens: number): void {
+  if (at === undefined || !Number.isFinite(at) || !path || !Number.isFinite(tokens) || tokens <= 0) return
+  const key = spendKey(localDayKey(new Date(at)), agent, path)
+  buckets[key] = (buckets[key] ?? 0) + tokens
+}
+
+/** Sums bucket sets into `into`. */
+export function mergeSpend(into: SpendBuckets, ...sets: readonly SpendBuckets[]): SpendBuckets {
+  for (const set of sets) for (const [k, v] of Object.entries(set)) into[k] = (into[k] ?? 0) + v
+  return into
+}
+
+/** The first day (`YYYY-MM-DD`) of the window that ends today. */
+export function spendWindowStart(now: number, days = SPEND_DAYS): string {
+  return localDayKey(new Date(startOfLocalDay(now, days - 1)))
+}
+
+/** Drops buckets older than `sinceDay` (keys start with the day, so a string compare is enough). */
+export function pruneSpend(buckets: SpendBuckets, sinceDay: string): SpendBuckets {
+  const out: SpendBuckets = {}
+  for (const [k, v] of Object.entries(buckets)) if (k.slice(0, 10) >= sinceDay) out[k] = v
+  return out
+}
+
+export interface FolderSpendEntry {
+  /** What the card shows: a child folder's name, or the profile folder's own name. */
+  name: string
+  path: string
+  /** True for work at the top of a folder that is split into child folders ("wayni (root)"). */
+  root: boolean
+  tokens: number
+  byAgent: Partial<Record<SpendAgent, number>>
+}
+
+const norm = (p: string) => p.replaceAll('\\', '/').replace(/\/+$/, '')
+const lastSegment = (p: string) => norm(p).split('/').filter(Boolean).pop() ?? p
+
+/**
+ * Where a path's work counts for a profile, or null when it is outside every profile folder.
+ * The deepest profile folder that holds the path wins. A folder listed in `children` (a container
+ * of repositories, like Workhub 1's profile roots) is split by its child folders: work in
+ * `<folder>/<child>/…` goes to the child, and `_worktrees/<child>-<branch>` to the longest child
+ * name it starts with; anything else in it (hidden folders, files, made-up paths) goes to the
+ * folder itself, marked `root`. A folder without children is one entry.
+ */
+export function attributeFolder(
+  path: string,
+  folders: readonly string[],
+  children: Readonly<Record<string, readonly string[]>> = {}
+): { name: string; path: string; root: boolean } | null {
+  const target = norm(path)
+  let best: string | undefined
+  for (const f of folders) {
+    const folder = norm(f)
+    if (!folder) continue
+    if ((target === folder || target.startsWith(`${folder}/`)) && (!best || folder.length > norm(best).length)) best = f
+  }
+  if (best === undefined) return null
+  const folder = norm(best)
+  const kids = children[best] ?? children[folder]
+  if (!kids?.length) return { name: lastSegment(folder), path: folder, root: false }
+  const rest = target.slice(folder.length + 1).split('/').filter(Boolean)
+  let child = rest[0]
+  if (child === '_worktrees' && rest[1]) {
+    const worktree = rest[1]
+    child = kids.filter((k) => worktree.startsWith(k)).sort((a, b) => b.length - a.length)[0]
+  }
+  if (child && !child.startsWith('.') && kids.includes(child)) return { name: child, path: `${folder}/${child}`, root: false }
+  return { name: lastSegment(folder), path: folder, root: true }
+}
+
+/**
+ * Tokens per folder of a profile over the days from `sinceDay` on, largest first. Work outside
+ * the profile's folders is left out, so each profile shows only its own spend.
+ */
+export function folderSpend(
+  buckets: SpendBuckets,
+  folders: readonly string[],
+  options: { sinceDay: string; children?: Readonly<Record<string, readonly string[]>> }
+): FolderSpendEntry[] {
+  const byPath = new Map<string, FolderSpendEntry>()
+  const placeOf = new Map<string, ReturnType<typeof attributeFolder>>()
+  for (const [key, tokens] of Object.entries(buckets)) {
+    const parsed = parseSpendKey(key)
+    if (!parsed || parsed.day < options.sinceDay || !(tokens > 0)) continue
+    let place = placeOf.get(parsed.path)
+    if (place === undefined) {
+      place = attributeFolder(parsed.path, folders, options.children)
+      placeOf.set(parsed.path, place)
+    }
+    if (!place) continue
+    const id = `${place.root ? 'root' : 'dir'}:${place.path}`
+    let entry = byPath.get(id)
+    if (!entry) {
+      entry = { ...place, tokens: 0, byAgent: {} }
+      byPath.set(id, entry)
+    }
+    entry.tokens += tokens
+    entry.byAgent[parsed.agent] = (entry.byAgent[parsed.agent] ?? 0) + tokens
+  }
+  return [...byPath.values()].sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name))
+}

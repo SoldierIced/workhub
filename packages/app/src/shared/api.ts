@@ -5,6 +5,7 @@ import type {
   AgentCapabilities,
   BudgetStatus,
   CreditSpend,
+  FolderSpendEntry,
   AgentDefinition,
   AgentEvent,
   AgentAccount,
@@ -255,6 +256,18 @@ export interface AgentsApi {
   options(agentKey: string, refresh?: boolean): Promise<AgentOptionsView>
 }
 
+/** Home's "Token spend by folder" card. */
+export interface FolderSpendResult {
+  entries: FolderSpendEntry[]
+  /** The days covered, today included. */
+  days: number
+  /** When the last background scan of this run ended; null before the first one (the figures are then the cached ones). */
+  scannedAt: number | null
+  scanning: boolean
+  /** False when the profile has no folders: there is nothing to attribute spend to. */
+  hasFolders: boolean
+}
+
 export interface UsageApi {
   /** The last reads, and a fresh read when `refresh` is set. Empty while the option is off. */
   get(refresh?: boolean): Promise<AccountUsage[]>
@@ -263,6 +276,13 @@ export interface UsageApi {
    * not expose the credits left; null when no Kiro session data is found.
    */
   kiroSpend(): Promise<CreditSpend | null>
+  /**
+   * Token spend per folder of a profile (the active one when omitted) over the last days, from the
+   * transcripts scanned in the background and cached in the data folder.
+   */
+  folderSpend(profileId?: string | null): Promise<FolderSpendResult>
+  /** A background scan finished; ask `folderSpend` again. */
+  onFolderSpendChanged(cb: () => void): () => void
   onChanged(cb: (usage: AccountUsage[]) => void): () => void
   /** Threshold and ceiling crossings, once per window reset, while alerts are on. */
   onAlerts(cb: (alerts: UsageAlert[]) => void): () => void

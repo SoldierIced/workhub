@@ -84,6 +84,8 @@ const api: HubApi = {
   usage: {
     get: (refresh) => ipcRenderer.invoke('usage:get', refresh),
     kiroSpend: () => ipcRenderer.invoke('usage:kiroSpend'),
+    folderSpend: (profileId) => ipcRenderer.invoke('usage:folderSpend', profileId),
+    onFolderSpendChanged: (cb) => subscribe<[]>('usage:folderSpendChanged', cb),
     onChanged: (cb) => subscribe<[AccountUsage[]]>('usage:changed', cb),
     onAlerts: (cb) => subscribe<[UsageAlert[]]>('usage:alerts', cb),
     notify: (n) => ipcRenderer.send('usage:notify', n),
