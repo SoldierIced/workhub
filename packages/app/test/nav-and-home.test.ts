@@ -118,10 +118,14 @@ describe('home figures', () => {
 
 describe('preferences', () => {
   it('parse stored values and fall back on anything unexpected', () => {
-    expect(parsePrefs(null)).toEqual({ theme: 'system', language: 'system' })
-    expect(parsePrefs('{"theme":"light","language":"es"}')).toEqual({ theme: 'light', language: 'es' })
-    expect(parsePrefs('{"theme":"neon","language":"fr"}')).toEqual({ theme: 'system', language: 'system' })
-    expect(parsePrefs('not json')).toEqual({ theme: 'system', language: 'system' })
+    expect(parsePrefs(null)).toEqual({ theme: 'system', language: 'system', models: {} })
+    expect(parsePrefs('{"theme":"light","language":"es"}')).toEqual({ theme: 'light', language: 'es', models: {} })
+    expect(parsePrefs('{"theme":"neon","language":"fr","models":[1]}')).toEqual({ theme: 'system', language: 'system', models: {} })
+    expect(parsePrefs('not json')).toEqual({ theme: 'system', language: 'system', models: {} })
+  })
+
+  it('keep the remembered model per agent key and drop anything that is not a model id', () => {
+    expect(parsePrefs('{"models":{"claude":"haiku","claude:work":"","kiro":3}}').models).toEqual({ claude: 'haiku' })
   })
 
   it('resolve the theme against the OS', () => {

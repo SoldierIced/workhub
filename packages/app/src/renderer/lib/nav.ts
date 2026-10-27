@@ -55,7 +55,6 @@ export const SCREEN_PHASE: Partial<Record<Route, string>> = {
   tickets: 'P4',
   slack: 'P6',
   automations: 'P6',
-  history: 'P2',
   flows: 'P7',
   health: 'P6'
 }

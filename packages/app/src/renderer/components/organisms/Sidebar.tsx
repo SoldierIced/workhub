@@ -1,10 +1,10 @@
 import { Folder, Plus } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { PlanUsageWindow, Profile } from '@workhub/core'
+import type { Profile } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
-import { folderName } from '../../lib/home'
+import { folderName, type UsageGroup } from '../../lib/home'
 import type { NavItem, Route } from '../../lib/nav'
 import { usePlatform } from '../../lib/platform'
 import { ROUTE_ICON, ROUTE_LABEL } from '../../lib/routes'
@@ -28,7 +28,7 @@ export interface SidebarProps {
   onSelectSession: (id: string) => void
   folders: string[]
   onNewSessionIn: (folder: string | null) => void
-  usage: PlanUsageWindow[]
+  usage: UsageGroup[]
 }
 
 function SectionTitle({ children, action }: { children: string; action?: ReactNode }) {
@@ -102,9 +102,10 @@ export function Sidebar(props: SidebarProps) {
                 >
                   <StateDot tone={STATE_TONE[s.state]} pulse={s.state === 'busy' || s.state === 'starting'} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base">{s.label}</span>
+                    <span className="block truncate text-base">{s.agentName}</span>
                     <span className="block truncate text-xs text-subtle">
-                      {folderName(s.cwd)} · {t(`state.${s.state}`)}
+                      {folderName(s.cwd)} · {s.accountName ? `${s.accountName} · ` : ''}
+                      {t(`state.${s.state}`)}
                     </span>
                   </span>
                 </button>
@@ -139,7 +140,7 @@ export function Sidebar(props: SidebarProps) {
         )}
       </div>
       <div className="shrink-0 px-3 pb-3">
-        <UsageCard windows={props.usage} running={running} />
+        <UsageCard groups={props.usage} running={running} />
       </div>
     </aside>
   )

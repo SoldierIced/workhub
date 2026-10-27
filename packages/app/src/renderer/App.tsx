@@ -5,12 +5,14 @@ import { ToastProvider } from './components/molecules'
 import { NewSessionDialog, Sidebar, Toolbar } from './components/organisms'
 import { refreshConfig, useConfig } from './configStore'
 import { I18nProvider, useI18n } from './i18n/I18nProvider'
-import { planUsage, recentFolders } from './lib/home'
+import { recentFolders, usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
 import { resolveTheme, usePrefs, useSystemDark } from './lib/prefs'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
+import { useAccountUsage } from './lib/usage'
+import { HistoryScreen } from './screens/HistoryScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { PlaceholderScreen } from './screens/PlaceholderScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
@@ -37,6 +39,7 @@ function Shell() {
   const theme = useTheme()
   const snap = useConfig()
   const sessionMap = useSessions()
+  const accountUsage = useAccountUsage()
   const [route, setRoute] = useState<Route>('home')
   const [settingsTab, setSettingsTab] = useState('general')
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
@@ -119,9 +122,9 @@ function Shell() {
         sessions={sessions.map((s) => s.view)}
         selectedSessionId={selectedSession}
         onSelectSession={openSession}
-        folders={recentFolders(sessions)}
+        folders={recentFolders(sessions, profile?.folders)}
         onNewSessionIn={(f) => newSession(f)}
-        usage={planUsage(sessions)}
+        usage={usageGroups(sessions, accountUsage)}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-bg">
         <Toolbar title={title} agents={agents} onNewSession={(key) => newSession(null, key)} onOpenSettings={() => openSettings()} />
@@ -134,6 +137,8 @@ function Shell() {
             <div key={route} className="h-full animate-fade-in overflow-y-auto">
               {route === 'home' ? (
                 <HomeScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} />
+              ) : route === 'history' ? (
+                <HistoryScreen profileId={activeProfileId} onOpened={openSession} />
               ) : route === 'settings' ? (
                 <SettingsScreen snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
               ) : (

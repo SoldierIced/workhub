@@ -1,20 +1,26 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { AcpRuntime } from '@workhub/adapters/agent-acp'
+import { ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
+import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
+import { readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
 import {
+  appOptions,
   CONNECTION_PROVIDERS,
   ConfigurationService,
   knownAgents,
+  planWorkhub1Import,
   resolveEffectiveAgents,
   validateConfig,
   type Result,
   type WorkhubConfig
 } from '@workhub/core'
-import type { ConfigSnapshot, ThemePreference } from '../shared/api'
+import type { AccountUsage, ConfigSnapshot, HistoryItem, HistoryResult, SessionMode, ThemePreference } from '../shared/api'
+import { claudeAccounts, UsageService } from './claude-accounts'
 import { SessionManager } from './session-manager'
 
 // Dev layout: packages/app/out/main -> packages/app. Packaging is P8.
@@ -47,21 +53,56 @@ const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
 
+// Workhub 1's Agent SDK bridge, run with Electron's own Node (dev layout; packaging is P8).
+const bridgeDir = join(repoRoot, 'packages', 'adapters', 'src', 'agent-claude-native', 'bridge')
+const terminal = new TerminalRuntime()
 const runtimes = {
+  native: new ClaudeNativeRuntime({ bridgeDir }),
   acp: new AcpRuntime({
     clientName: 'workhub',
     clientVersion: app.getVersion(),
     // Agent adapters installed with the app (claude-agent-acp) are found through PATH.
     extraPath: [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
   }),
-  terminal: new TerminalRuntime()
+  terminal
 }
-const sessions = new SessionManager(
-  configuration,
+const claudeHistory = new ClaudeSessionHistory({ bridgeDir })
+const sessions = new SessionManager({
+  config: configuration,
   runtimes,
-  (e) => send('session:event', e),
-  (s) => send('session:changed', s)
+  terminal,
+  transcripts: [new ClaudeTranscriptReader()],
+  history: { claude: claudeHistory },
+  emitEvent: (e) => send('session:event', e),
+  emitChanged: (s) => send('session:changed', s),
+  emitReplay: (id, messages) => send('session:replay', id, messages)
+})
+const usage = new UsageService(
+  new ClaudePlanUsageReader({ userAgent: `workhub/${app.getVersion()}` }),
+  async () => {
+    const config = await configuration.current()
+    return { enabled: appOptions(config).claudePlanUsage, accounts: claudeAccounts(config, homedir()) }
+  },
+  (u: AccountUsage[]) => send('usage:changed', u)
 )
+
+/** Every session of every Claude account, newest first. Accounts that fail are reported, not fatal. */
+async function listHistory(): Promise<HistoryResult> {
+  const config = await configuration.current()
+  const result: HistoryResult = { entries: [], errors: [] }
+  await Promise.all(
+    claudeAccounts(config, homedir()).map(async (a) => {
+      try {
+        const entries = await claudeHistory.list({ agentId: 'claude', accountId: a.accountId, configDir: a.configDir })
+        result.entries.push(...entries.map((e): HistoryItem => ({ ...e, accountName: a.name || undefined })))
+      } catch (err) {
+        result.errors.push({ account: a.name, message: err instanceof Error ? err.message : String(err) })
+      }
+    })
+  )
+  result.entries.sort((x, y) => y.lastModified - x.lastModified)
+  return result
+}
 
 async function snapshot(): Promise<ConfigSnapshot> {
   const config = await configuration.current()
@@ -136,10 +177,45 @@ function registerIpc(): void {
   ipcMain.handle('config:effectiveAgents', async (_e, profileId: string | null) =>
     resolveEffectiveAgents(await configuration.current(), profileId)
   )
+  ipcMain.handle(
+    'config:saveOptions',
+    guarded(async (o) => {
+      const r = await configuration.saveOptions(o)
+      if (r.ok) void usage.refresh()
+      return r
+    })
+  )
+  // Workhub 1's settings are only ever read (`defaults export`); nothing is written back.
+  ipcMain.handle('config:previewWorkhub1Import', async () => {
+    try {
+      const v1 = await readWorkhub1Settings()
+      if (!v1) return { available: false }
+      return { available: true, plan: planWorkhub1Import(v1, await configuration.current(), homedir()) }
+    } catch (err) {
+      return { available: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle(
+    'config:applyWorkhub1Import',
+    guarded(async () => {
+      const v1 = await readWorkhub1Settings()
+      if (!v1) return { ok: false, issues: [{ path: 'import', message: 'Workhub 1 settings not found' }] }
+      return configuration.addImported(planWorkhub1Import(v1, await configuration.current(), homedir()))
+    })
+  )
+  ipcMain.on('hub:openExternal', (_e, url: string) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+  })
+
+  ipcMain.handle('history:list', () => listHistory())
+  ipcMain.handle('usage:get', (_e, refresh?: boolean) => (refresh ? usage.refresh() : usage.current()))
 
   ipcMain.handle('sessions:list', () => sessions.list())
   ipcMain.handle('sessions:start', (_e, input) => sessions.start(input))
-  ipcMain.handle('sessions:prompt', (_e, id: string, text: string) => sessions.prompt(id, text))
+  ipcMain.handle('sessions:prompt', (_e, id: string, text: string, images) => sessions.prompt(id, text, images))
+  ipcMain.handle('sessions:setMode', (_e, id: string, mode: SessionMode) => sessions.setMode(id, mode))
+  ipcMain.handle('sessions:setModel', (_e, id: string, model: string | null) => sessions.setModel(id, model))
+  ipcMain.on('sessions:mcp', (_e, id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string) => sessions.mcp(id, action, server))
   ipcMain.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
   ipcMain.handle('sessions:stop', (_e, id: string) => sessions.stop(id))
   ipcMain.on('sessions:permission', (_e, id: string, requestId: string, optionId: string | null) =>
@@ -165,6 +241,17 @@ function createWindow(): void {
       sandbox: true
     }
   })
+  // Links in agent replies open in the default browser, never inside the app window.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== win?.webContents.getURL()) {
+      event.preventDefault()
+      if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+    }
+  })
   if (process.env['ELECTRON_RENDERER_URL']) void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
 }
@@ -177,6 +264,7 @@ void app.whenReady().then(async () => {
   }
   registerIpc()
   createWindow()
+  usage.start()
 })
 
 let quitting = false
@@ -185,6 +273,7 @@ app.on('before-quit', (event) => {
   // Give agent processes a chance to exit before the app does.
   event.preventDefault()
   quitting = true
+  usage.stop()
   void sessions.stopAll().finally(() => app.quit())
 })
 app.on('window-all-closed', () => app.quit())

@@ -2,6 +2,7 @@ import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { EffectiveAgent } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
+import { readPrefs } from '../../lib/prefs'
 import { Button } from '../atoms/Button'
 import { IconButton } from '../atoms/IconButton'
 import { Input } from '../atoms/Input'
@@ -35,7 +36,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, initia
         ? initialAgentKey
         : agents.some((a) => a.key === k)
           ? k
-          : (agents.find((a) => a.agent.id === 'kiro')?.key ?? agents[0]?.key ?? '')
+          : (agents.find((a) => a.agent.id === 'claude')?.key ?? agents[0]?.key ?? '')
     )
     if (initialCwd) setCwd(initialCwd)
     else void window.hub.getDefaultCwd().then((d) => setCwd((c) => c || d))
@@ -45,7 +46,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, initia
     setError('')
     setBusy(true)
     try {
-      const view = await window.hub.sessions.start({ profileId, agentKey, cwd, cols: 100, rows: 30 })
+      const view = await window.hub.sessions.start({ profileId, agentKey, cwd, cols: 100, rows: 30, model: readPrefs().models[agentKey] })
       onOpenChange(false)
       onStarted(view.id)
     } catch (e) {

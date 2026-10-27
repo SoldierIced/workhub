@@ -9,10 +9,12 @@ import type { LanguagePreference } from '../i18n/translate'
 export interface Prefs {
   theme: ThemePreference
   language: LanguagePreference
+  /** The model last picked per agent key (`claude`, `claude:work`), used for the next session. */
+  models: Record<string, string>
 }
 
 const KEY = 'workhub.prefs'
-const DEFAULTS: Prefs = { theme: 'system', language: 'system' }
+const DEFAULTS: Prefs = { theme: 'system', language: 'system', models: {} }
 
 export function parsePrefs(raw: string | null): Prefs {
   if (!raw) return DEFAULTS
@@ -20,11 +22,17 @@ export function parsePrefs(raw: string | null): Prefs {
     const v = JSON.parse(raw) as Partial<Prefs>
     return {
       theme: v.theme === 'light' || v.theme === 'dark' || v.theme === 'system' ? v.theme : DEFAULTS.theme,
-      language: v.language === 'en' || v.language === 'es' || v.language === 'system' ? v.language : DEFAULTS.language
+      language: v.language === 'en' || v.language === 'es' || v.language === 'system' ? v.language : DEFAULTS.language,
+      models: modelMap(v.models)
     }
   } catch {
     return DEFAULTS
   }
+}
+
+function modelMap(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  return Object.fromEntries(Object.entries(raw).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== ''))
 }
 
 let prefs: Prefs = typeof localStorage === 'undefined' ? DEFAULTS : parsePrefs(localStorage.getItem(KEY))
@@ -32,6 +40,14 @@ const listeners = new Set<() => void>()
 
 export function readPrefs(): Prefs {
   return prefs
+}
+
+/** Remembers the model picked for an agent key; the next session of that agent starts with it. */
+export function rememberModel(agentKey: string, modelId: string | null): void {
+  const models = { ...prefs.models }
+  if (modelId) models[agentKey] = modelId
+  else delete models[agentKey]
+  setPrefs({ models })
 }
 
 export function setPrefs(patch: Partial<Prefs>): void {

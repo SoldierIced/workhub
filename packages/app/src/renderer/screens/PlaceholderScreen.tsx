@@ -11,7 +11,6 @@ const DESCRIPTION: Partial<Record<Route, MessageKey>> = {
   tickets: 'placeholder.tickets',
   slack: 'placeholder.slack',
   automations: 'placeholder.automations',
-  history: 'placeholder.history',
   flows: 'placeholder.flows',
   health: 'placeholder.health'
 }

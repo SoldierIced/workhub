@@ -1,5 +1,6 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
 import type {
+  AppOptions,
   AgentCapabilities,
   AgentDefinition,
   AgentEvent,
@@ -7,6 +8,12 @@ import type {
   Connection,
   ConnectionProvider,
   EffectiveAgent,
+  HistoryEntry,
+  HistoryMessage,
+  ImageInput,
+  ImportPlan,
+  ModelOption,
+  PlanUsageWindow,
   Profile,
   Result,
   SecretChange,
@@ -39,16 +46,45 @@ export interface ConfigApi {
   saveProfile(profile: Profile): Promise<Result<WorkhubConfig>>
   deleteProfile(id: string): Promise<Result<WorkhubConfig>>
   setActiveProfile(id: string): Promise<Result<WorkhubConfig>>
+  saveOptions(options: Partial<AppOptions>): Promise<Result<WorkhubConfig>>
   effectiveAgents(profileId: string | null): Promise<EffectiveAgent[]>
+  /** Workhub 1's settings mapped onto this config, read-only (macOS). `available: false` when Workhub 1 has none here. */
+  previewWorkhub1Import(): Promise<{ available: boolean; plan?: ImportPlan; error?: string }>
+  /** Reads Workhub 1's settings again and adds what the preview showed. Never writes to Workhub 1. */
+  applyWorkhub1Import(): Promise<Result<WorkhubConfig>>
+}
+
+/**
+ * What a session shows. `app`: the structured chat (agents with app mode). `console`: the agent's
+ * own terminal UI (or the CLI of a terminal agent). `shell`: a shell in the session's folder,
+ * next to the agent, which keeps running.
+ */
+export type SessionMode = 'app' | 'console' | 'shell'
+
+/** The terminal channels of a session; their output arrives as `output` events with these ids. */
+export function terminalChannel(sessionId: string, channel: 'console' | 'shell'): string {
+  return `${sessionId}:${channel}`
 }
 
 /** A session as the renderer sees it. */
 export interface SessionView extends Session {
   label: string
   agentName: string
+  /** The account's name, when the session runs with one. */
+  accountName?: string
   adapter: AgentDefinition['adapter']
   capabilities: AgentCapabilities
   screens: SessionScreen[]
+  /** The modes this session can show, and the one on screen. */
+  modes: SessionMode[]
+  mode: SessionMode
+  /** Whether the shell next to the agent is running. */
+  shellRunning: boolean
+  /** Models the session can switch to (native Claude), and the current one. */
+  models?: ModelOption[]
+  currentModelId?: string
+  /** The runtime offers live controls: model switch and MCP reconnect/toggle. */
+  controls: boolean
 }
 
 export interface StartSessionInput {
@@ -57,20 +93,63 @@ export interface StartSessionInput {
   cwd: string
   cols?: number
   rows?: number
+  /** `console` opens the agent's own terminal UI instead of the chat; the default is `app` where the agent has it. */
+  mode?: 'app' | 'console'
+  /** Continue a past session (from the history) instead of starting a new one. */
+  resumeAgentSessionId?: string
+  /** Model to start with (remembered per agent and account by the renderer). */
+  model?: string
+}
+
+/** A past session, plus its account's name for the history screen. */
+export interface HistoryItem extends HistoryEntry {
+  accountName?: string
+}
+
+export interface HistoryResult {
+  entries: HistoryItem[]
+  /** Accounts that could not be listed, with the reason. */
+  errors: { account: string; message: string }[]
+}
+
+/** Plan usage of one Claude account (Settings: opt-in). */
+export interface AccountUsage {
+  accountId: string | null
+  name: string
+  windows: PlanUsageWindow[]
+  error?: string
+  /** Epoch milliseconds of the read. */
+  at: number
 }
 
 export interface SessionsApi {
   list(): Promise<SessionView[]>
   /** Returns at once with the session in `starting`; progress arrives through onChanged. */
   start(input: StartSessionInput): Promise<SessionView>
-  prompt(id: string, text: string): Promise<string>
+  prompt(id: string, text: string, images?: ImageInput[]): Promise<string>
   cancel(id: string): Promise<void>
   stop(id: string): Promise<void>
   respondPermission(id: string, requestId: string, optionId: string | null): void
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
+  /** Switches what the session shows; app and console hand the same agent session over. */
+  setMode(id: string, mode: SessionMode): Promise<void>
+  setModel(id: string, modelId: string | null): Promise<void>
+  mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void
   onEvent(cb: (e: AgentEvent) => void): () => void
   onChanged(cb: (s: SessionView) => void): () => void
+  /** Earlier messages of a resumed session, to show before the new turns. */
+  onReplay(cb: (id: string, messages: HistoryMessage[]) => void): () => void
+}
+
+export interface HistoryApi {
+  list(): Promise<HistoryResult>
+}
+
+export interface UsageApi {
+  /** The last reads, and a fresh read when `refresh` is set. Empty while the option is off. */
+  get(refresh?: boolean): Promise<AccountUsage[]>
+  onChanged(cb: (usage: AccountUsage[]) => void): () => void
 }
 
 /** The OS family the app runs on; the renderer uses it for shortcut labels and window chrome. */
@@ -89,6 +168,10 @@ export interface HubApi {
   setTheme(theme: ThemePreference): void
   getDefaultCwd(): Promise<string>
   pickFolder(): Promise<string | null>
+  /** Opens an http(s) link in the default browser. */
+  openExternal(url: string): void
   config: ConfigApi
   sessions: SessionsApi
+  history: HistoryApi
+  usage: UsageApi
 }

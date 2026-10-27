@@ -1,4 +1,5 @@
 import type { ConnectionKind, PlanUsageWindow, Profile, SessionMonitorSnapshot, SessionState } from '@workhub/core'
+import type { AccountUsage } from '@shared/api'
 import type { ChatItem } from '../store'
 
 /** What a session needs from the user, as the Home "Needs you" tiles group it (Workhub 1's four tiles). */
@@ -7,7 +8,7 @@ export const ATTENTION_ORDER: readonly Attention[] = ['needsReply', 'ready', 'wo
 
 /** The parts of a session the Home screen reads. */
 export interface SessionSummary {
-  view: { id: string; state: SessionState; cwd: string; startedAt: number }
+  view: { id: string; state: SessionState; cwd: string; startedAt: number; accountId?: string | null; accountName?: string }
   items: ChatItem[]
   monitor: SessionMonitorSnapshot
 }
@@ -87,9 +88,38 @@ export function planUsage(sessions: SessionSummary[]): PlanUsageWindow[] {
   return [...byWindow.values()]
 }
 
-/** Distinct session folders, most recently used first. */
-export function recentFolders(sessions: SessionSummary[]): string[] {
-  const seen = new Set<string>()
+/** Plan usage of one account, as the sidebar card shows it. `name` is empty for the default folder. */
+export interface UsageGroup {
+  key: string
+  name: string
+  windows: PlanUsageWindow[]
+  error?: string
+}
+
+/**
+ * Plan usage per account: what running sessions reported, replaced by the account's own read
+ * when the user turned that read on (Settings → General). Accounts without data are left out.
+ */
+export function usageGroups(sessions: SessionSummary[], reads: AccountUsage[]): UsageGroup[] {
+  const groups = new Map<string, UsageGroup>()
+  for (const s of sessions) {
+    if (!s.monitor.planUsage?.length) continue
+    const key = s.view.accountId ?? ''
+    const g = groups.get(key) ?? { key, name: s.view.accountName ?? '', windows: [] }
+    g.windows = planUsage([{ ...s, monitor: { planUsage: [...g.windows, ...s.monitor.planUsage] } }])
+    groups.set(key, g)
+  }
+  for (const r of reads) {
+    const key = r.accountId ?? ''
+    if (r.windows.length) groups.set(key, { key, name: r.name, windows: r.windows })
+    else if (r.error && !groups.has(key)) groups.set(key, { key, name: r.name, windows: [], error: r.error })
+  }
+  return [...groups.values()]
+}
+
+/** Distinct folders: the profile's own first (in its order), then session folders, most recently used first. */
+export function recentFolders(sessions: SessionSummary[], profileFolders: string[] = []): string[] {
+  const seen = new Set<string>(profileFolders)
   for (const s of [...sessions].sort((a, b) => b.view.startedAt - a.view.startedAt)) seen.add(s.view.cwd)
   return [...seen]
 }

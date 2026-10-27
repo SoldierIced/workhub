@@ -1,6 +1,7 @@
 import { FolderCog, Languages, Palette, Plug, Plus, Trash2, Users, UserCog } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import {
+  appOptions,
   CONNECTION_KINDS,
   NO_MODULES,
   OPTIONAL_MODULES,
@@ -17,6 +18,7 @@ import {
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
+import { Workhub1Import } from '../components/organisms'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
@@ -111,7 +113,7 @@ export function SettingsScreen({ snap, tab, onTabChange }: { snap: ConfigSnapsho
           onTabChange(v)
         }}
         items={[
-          { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: <GeneralSection snap={snap} /> },
+          { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} />) },
           { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: <AppearanceSection /> },
           { value: 'profiles', label: t('settings.profiles'), icon: <Users className="size-4" aria-hidden />, content: section(<ProfilesSection snap={snap} run={run} />) },
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection snap={snap} run={run} />) },
@@ -141,9 +143,11 @@ function SettingRow({ label, children }: { label: string; children: ReactNode })
   )
 }
 
-function GeneralSection({ snap }: { snap: ConfigSnapshot }) {
+function GeneralSection({ snap, run }: SectionProps) {
   const { t } = useI18n()
   const { language } = usePrefs()
+  const options = appOptions(snap.config)
+  const editable = !snap.loadError
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <SettingsGroup title={t('settings.interface')} footnote={t('settings.languageHint')}>
@@ -160,6 +164,20 @@ function GeneralSection({ snap }: { snap: ConfigSnapshot }) {
           />
         </SettingRow>
       </SettingsGroup>
+      <SettingsGroup title={t('settings.claude')} footnote={t('settings.planUsageNote')}>
+        <SwitchRow label={t('settings.planUsage')} hint={t('settings.planUsageHint')}>
+          <Switch
+            checked={options.claudePlanUsage}
+            disabled={!editable}
+            onChange={(on) => void run(() => window.hub.config.saveOptions({ claudePlanUsage: on })).then((ok) => ok && void window.hub.usage.get(true))}
+          />
+        </SwitchRow>
+      </SettingsGroup>
+      {window.hub.platform === 'mac' && editable && (
+        <SettingsGroup title={t('import.group')}>
+          <Workhub1Import run={run} />
+        </SettingsGroup>
+      )}
       <SettingsGroup title={t('settings.storage')}>
         <div className="flex items-center gap-3 py-3">
           <FolderCog className="size-4 text-muted" aria-hidden />
@@ -471,7 +489,10 @@ function ProfilesSection({ snap, run }: SectionProps) {
   const allAgents = form.agentIds === undefined
 
   const save = async () => {
-    if (await run(() => window.hub.config.saveProfile(form))) setSelected(form.id)
+    const folders = form.folders?.map((f) => f.trim()).filter(Boolean)
+    const profile: Profile = { ...form, folders: folders?.length ? folders : undefined }
+    if (!profile.folders) delete profile.folders
+    if (await run(() => window.hub.config.saveProfile(profile))) setSelected(form.id)
   }
 
   return (
@@ -495,6 +516,17 @@ function ProfilesSection({ snap, run }: SectionProps) {
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme" />
             </Field>
           </div>
+          <Field label={t('settings.folders')} hint={t('settings.foldersHint')}>
+            <Textarea
+              rows={3}
+              value={(form.folders ?? []).join('\n')}
+              spellCheck={false}
+              onChange={(e) => {
+                const folders = e.target.value.split('\n')
+                setForm({ ...form, folders: folders.some((f) => f.trim()) ? folders : undefined })
+              }}
+            />
+          </Field>
           <FieldGroup legend={t('settings.connections')}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2">
               {CONNECTION_KINDS.map((kind) => (

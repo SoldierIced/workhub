@@ -1,30 +1,100 @@
 import { randomUUID } from 'node:crypto'
 import {
+  BUILTIN_AGENTS,
+  consoleCommand,
+  hasSessionControls,
   isTerminalControl,
+  knownAgents,
   launchEnvironment,
   resolveEffectiveAgents,
   sessionScreens,
+  type AgentAccount,
   type AgentAdapterKind,
+  type AgentDefinition,
   type AgentEvent,
   type AgentRuntime,
-  type ConfigurationService
+  type ConfigurationService,
+  type EffectiveAgent,
+  type HistoryMessage,
+  type ImageInput,
+  type SessionHistorySource,
+  type TranscriptReader,
+  type WorkhubConfig
 } from '@workhub/core'
-import type { SessionView, StartSessionInput } from '../shared/api'
+import { terminalChannel, type SessionMode, type SessionView, type StartSessionInput } from '../shared/api'
+
+/** What runs the session right now: the agent's runtime (app) or the agent's own TUI in a PTY (console). */
+type Engine = 'app' | 'console'
+
+interface ManagedSession {
+  view: SessionView
+  agent: AgentDefinition
+  account: AgentAccount | null
+  env: Record<string, string>
+  runtime: AgentRuntime
+  engine: Engine
+  /** Set while the session hands over from one engine to the other. */
+  switching: boolean
+  /** The last transcript snapshot sent, to skip polls that found nothing new. */
+  lastMonitor?: string
+}
+
+export interface SessionManagerDeps {
+  config: ConfigurationService
+  runtimes: Partial<Record<AgentAdapterKind, AgentRuntime>>
+  /** Runs consoles and shells. */
+  terminal: AgentRuntime
+  transcripts: TranscriptReader[]
+  /** Past sessions per agent id (Claude), to replay a resumed session in the app. */
+  history: Partial<Record<string, SessionHistorySource>>
+  emitEvent: (e: AgentEvent) => void
+  emitChanged: (s: SessionView) => void
+  emitReplay: (id: string, messages: HistoryMessage[]) => void
+  /** How often transcripts are read for the monitor (Workhub 1: every 3 s). */
+  pollMs?: number
+}
+
+const SHELL = BUILTIN_AGENTS.find((a) => a.id === 'shell')!
+
+/** Ticket project keys configured on the tracker connections (`projectKeys=ABC,DEF`). */
+export function ticketPrefixes(config: WorkhubConfig): string[] {
+  return config.connections
+    .filter((c) => c.kind === 'tracker')
+    .flatMap((c) => (c.settings['projectKeys'] ?? '').split(/[,\s]+/))
+    .map((k) => k.trim().toUpperCase())
+    .filter(Boolean)
+}
 
 /**
- * Owns every session of the app: picks the runtime by adapter kind, keeps the session state
- * the renderer shows, and forwards runtime events.
+ * The agent and account behind an agent key. The active profile's offer comes first; a key the
+ * profile does not offer (a history entry of another account) is resolved from the config.
+ */
+export function resolveChoice(config: WorkhubConfig, profileId: string | null, agentKey: string): EffectiveAgent | null {
+  const offered = resolveEffectiveAgents(config, profileId).find((e) => e.key === agentKey)
+  if (offered) return offered
+  const [agentId, accountId] = agentKey.split(':')
+  const agent = knownAgents(config).find((a) => a.id === agentId)
+  if (!agent) return null
+  const account = accountId ? config.accounts.find((a) => a.id === accountId) : undefined
+  if (accountId && !account) return null
+  return { key: agentKey, agent, account: account ?? null, label: account ? `${agent.name} - ${account.name}` : agent.name }
+}
+
+/**
+ * Owns every session of the app: picks the runtime by adapter kind, hands a session between its
+ * chat and its console, runs the shell next to it, reads its transcript into the monitor and
+ * keeps the session state the renderer shows.
  */
 export class SessionManager {
-  private readonly sessions = new Map<string, { view: SessionView; runtime: AgentRuntime }>()
+  private readonly sessions = new Map<string, ManagedSession>()
+  private readonly timer: ReturnType<typeof setInterval>
+  private polling = false
 
-  constructor(
-    private readonly config: ConfigurationService,
-    private readonly runtimes: Partial<Record<AgentAdapterKind, AgentRuntime>>,
-    private readonly emitEvent: (e: AgentEvent) => void,
-    private readonly emitChanged: (s: SessionView) => void
-  ) {
-    for (const runtime of Object.values(runtimes)) runtime.subscribe((e) => this.onEvent(e))
+  constructor(private readonly deps: SessionManagerDeps) {
+    const runtimes = new Set([...Object.values(deps.runtimes), deps.terminal])
+    for (const runtime of runtimes) runtime?.subscribe((e) => this.onEvent(e))
+    this.timer = setInterval(() => void this.pollTranscripts(), deps.pollMs ?? 3000)
+    this.timer.unref?.()
   }
 
   list(): SessionView[] {
@@ -32,90 +102,251 @@ export class SessionManager {
   }
 
   async start(input: StartSessionInput): Promise<SessionView> {
-    const config = await this.config.current()
-    const choice = resolveEffectiveAgents(config, input.profileId).find((e) => e.key === input.agentKey)
+    const config = await this.deps.config.current()
+    const choice = resolveChoice(config, input.profileId, input.agentKey)
     if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
-    const runtime = this.runtimes[choice.agent.adapter]
-    if (!runtime) throw new Error(`no runtime for adapter "${choice.agent.adapter}" yet (native adapters arrive in P2)`)
+    const { agent, account } = choice
+    const runtime = agent.adapter === 'terminal' ? this.deps.terminal : this.deps.runtimes[agent.adapter]
+    if (!runtime) throw new Error(`no runtime for adapter "${agent.adapter}"`)
 
-    const capabilities = runtime.capabilities(choice.agent)
+    const capabilities = runtime.capabilities(agent)
+    const modes: SessionMode[] = []
+    if (agent.adapter !== 'terminal' && capabilities.appMode) modes.push('app')
+    if (agent.adapter === 'terminal' || agent.console) modes.push('console')
+    modes.push('shell')
+    const engine: Engine = modes[0] === 'app' && input.mode !== 'console' ? 'app' : 'console'
+    // Agents with a console share one session id between chat, console and transcript.
+    const agentSessionId = input.resumeAgentSessionId ?? (agent.console || agent.adapter === 'native' ? randomUUID() : undefined)
+
     const view: SessionView = {
       id: randomUUID(),
-      agentId: choice.agent.id,
-      accountId: choice.account?.id ?? null,
+      agentId: agent.id,
+      accountId: account?.id ?? null,
+      accountName: account?.name,
       profileId: input.profileId,
       cwd: input.cwd,
       state: 'starting',
+      agentSessionId,
       permissionMode: null,
       startedAt: Date.now(),
       label: choice.label,
-      agentName: choice.agent.name,
-      adapter: choice.agent.adapter,
+      agentName: agent.name,
+      adapter: agent.adapter,
       capabilities,
-      screens: sessionScreens(capabilities)
+      screens: sessionScreens(capabilities),
+      modes,
+      mode: engine,
+      shellRunning: false,
+      controls: hasSessionControls(runtime)
     }
-    this.sessions.set(view.id, { view, runtime })
-    this.emitChanged(view)
+    const session: ManagedSession = { view, agent, account, env: launchEnvironment(agent, account), runtime, engine, switching: false }
+    this.sessions.set(view.id, session)
+    this.deps.emitChanged(view)
 
+    const resume = Boolean(input.resumeAgentSessionId)
     // session/new can take 10-15 s: answer now, report progress through `changed` events.
-    void runtime
-      .start({
-        sessionId: view.id,
-        agent: choice.agent,
-        account: choice.account,
-        cwd: input.cwd,
-        env: launchEnvironment(choice.agent, choice.account),
-        cols: input.cols,
-        rows: input.rows
+    void (engine === 'app' ? this.startApp(session, { resume, model: input.model, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows))
+      .then(() => {
+        if (resume && engine === 'app') void this.replay(session)
       })
-      .then((started) =>
-        this.update(view.id, {
-          agentSessionId: started.agentSessionId,
-          agentName: started.agentName,
-          permissionMode: started.permissionMode,
-          currentModeId: started.currentModeId,
-          availableModes: started.availableModes
-        })
-      )
       .catch((err: unknown) => this.update(view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) }))
     return view
   }
 
-  async prompt(id: string, text: string): Promise<string> {
-    return (await this.require(id).runtime.prompt(id, text)).stopReason
+  async prompt(id: string, text: string, images?: ImageInput[]): Promise<string> {
+    const s = this.require(id)
+    if (s.engine !== 'app') throw new Error('the session is in its console; type there')
+    const usable = s.view.capabilities.imageInput && images?.length ? images : undefined
+    return (await s.runtime.prompt(id, text, usable)).stopReason
   }
 
   async cancel(id: string): Promise<void> {
-    await this.require(id).runtime.cancel(id)
+    const s = this.require(id)
+    if (s.engine === 'app') await s.runtime.cancel(id)
+    else await this.deps.terminal.cancel(terminalChannel(id, 'console'))
   }
 
   async stop(id: string): Promise<void> {
-    await this.require(id).runtime.stop(id)
-    this.update(id, { state: 'stopped' })
+    const s = this.require(id)
+    s.switching = true
+    await Promise.all([
+      s.engine === 'app' ? s.runtime.stop(id) : this.deps.terminal.stop(terminalChannel(id, 'console')),
+      this.deps.terminal.stop(terminalChannel(id, 'shell'))
+    ])
+    s.switching = false
+    this.update(id, { state: 'stopped', shellRunning: false })
+  }
+
+  /**
+   * Shows another mode. App and console hand the same agent session over: the running engine
+   * stops (Claude ends cleanly) and the other resumes it, as Workhub 1 does. The shell starts once
+   * and keeps running beside the agent.
+   */
+  async setMode(id: string, mode: SessionMode): Promise<void> {
+    const s = this.require(id)
+    if (!s.view.modes.includes(mode)) throw new Error(`mode ${mode} is not available for this session`)
+    if (mode === 'shell') {
+      if (!s.view.shellRunning) await this.startShell(s)
+      this.update(id, { mode })
+      return
+    }
+    const live = s.view.state !== 'stopped' && s.view.state !== 'error'
+    if (mode === s.engine && live) {
+      this.update(id, { mode })
+      return
+    }
+    s.switching = true
+    try {
+      if (live) await (s.engine === 'app' ? s.runtime.stop(id) : this.deps.terminal.stop(terminalChannel(id, 'console')))
+      s.engine = mode
+      this.update(id, { mode, state: 'starting', error: undefined })
+    } finally {
+      s.switching = false
+    }
+    const hasHistory = await this.hasTranscript(s)
+    if (mode === 'app') await this.startApp(s, { resume: hasHistory, model: s.view.currentModelId })
+    else await this.startConsole(s)
+  }
+
+  async setModel(id: string, modelId: string | null): Promise<void> {
+    const s = this.require(id)
+    if (!hasSessionControls(s.runtime)) throw new Error('this agent cannot switch models')
+    await s.runtime.setModel(id, modelId)
+    this.update(id, { currentModelId: modelId ?? undefined })
+  }
+
+  mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void {
+    const s = this.sessions.get(id)
+    if (!s || s.engine !== 'app' || !hasSessionControls(s.runtime)) return
+    if (action === 'refresh') s.runtime.refreshMcp(id)
+    else if (server && action === 'reconnect') s.runtime.reconnectMcp(id, server)
+    else if (server) s.runtime.toggleMcp(id, server, action === 'enable')
   }
 
   respondPermission(id: string, requestId: string, optionId: string | null): void {
     this.sessions.get(id)?.runtime.respondPermission(id, requestId, optionId)
   }
 
-  write(id: string, data: string): void {
-    const rt = this.sessions.get(id)?.runtime
-    if (rt && isTerminalControl(rt)) rt.write(id, data)
+  /** Raw input for a session's terminal channel (`<id>:console` or `<id>:shell`). */
+  write(channelId: string, data: string): void {
+    if (isTerminalControl(this.deps.terminal)) this.deps.terminal.write(channelId, data)
   }
 
-  resize(id: string, cols: number, rows: number): void {
-    const rt = this.sessions.get(id)?.runtime
-    if (rt && isTerminalControl(rt)) rt.resize(id, cols, rows)
+  resize(channelId: string, cols: number, rows: number): void {
+    if (isTerminalControl(this.deps.terminal)) this.deps.terminal.resize(channelId, cols, rows)
   }
 
   async stopAll(): Promise<void> {
-    await Promise.all(Object.values(this.runtimes).map((r) => r.stopAll()))
+    clearInterval(this.timer)
+    for (const s of this.sessions.values()) s.switching = true
+    const runtimes = new Set([...Object.values(this.deps.runtimes), this.deps.terminal])
+    await Promise.all([...runtimes].map((r) => r?.stopAll()))
   }
 
+  private async startApp(s: ManagedSession, opts: { resume: boolean; model?: string; cols?: number; rows?: number }): Promise<void> {
+    const started = await s.runtime.start({
+      sessionId: s.view.id,
+      agent: s.agent,
+      account: s.account,
+      cwd: s.view.cwd,
+      env: s.env,
+      agentSessionId: s.view.agentSessionId,
+      resume: opts.resume,
+      model: opts.model,
+      cols: opts.cols,
+      rows: opts.rows
+    })
+    const patch: Partial<SessionView> = { agentSessionId: started.agentSessionId ?? s.view.agentSessionId, agentName: started.agentName }
+    if (started.permissionMode) patch.permissionMode = started.permissionMode
+    if (started.currentModeId) patch.currentModeId = started.currentModeId
+    if (started.availableModes) patch.availableModes = started.availableModes
+    this.update(s.view.id, patch)
+  }
+
+  private async startConsole(s: ManagedSession, cols?: number, rows?: number): Promise<void> {
+    const launch =
+      s.agent.adapter === 'terminal'
+        ? { command: s.agent.command, args: s.agent.args }
+        : consoleCommand(s.agent.console!, s.view.agentSessionId, await this.hasTranscript(s))
+    const agent: AgentDefinition = { ...s.agent, adapter: 'terminal', command: launch.command, args: launch.args }
+    const started = await this.deps.terminal.start({
+      sessionId: terminalChannel(s.view.id, 'console'),
+      agent,
+      account: s.account,
+      cwd: s.view.cwd,
+      env: s.env,
+      cols: cols ?? 100,
+      rows: rows ?? 30
+    })
+    // The console does not report a permission mode; keep the one the chat last showed.
+    if (!s.view.permissionMode) this.update(s.view.id, { permissionMode: started.permissionMode })
+  }
+
+  private async startShell(s: ManagedSession): Promise<void> {
+    await this.deps.terminal.start({ sessionId: terminalChannel(s.view.id, 'shell'), agent: SHELL, account: null, cwd: s.view.cwd, env: s.env, cols: 100, rows: 30 })
+    this.update(s.view.id, { shellRunning: true })
+  }
+
+  private async hasTranscript(s: ManagedSession): Promise<boolean> {
+    const reader = this.reader(s)
+    if (!reader || !s.view.agentSessionId) return false
+    return reader.exists({ agentSessionId: s.view.agentSessionId, cwd: s.view.cwd, configDir: s.account?.configDir })
+  }
+
+  private reader(s: ManagedSession): TranscriptReader | undefined {
+    return s.agent.transcript ? this.deps.transcripts.find((r) => r.id === s.agent.transcript) : undefined
+  }
+
+  private async replay(s: ManagedSession): Promise<void> {
+    const source = this.deps.history[s.agent.accountsOf ?? s.agent.id]
+    if (!source || !s.view.agentSessionId) return
+    try {
+      const messages = await source.messages(s.view.agentSessionId, s.view.cwd, s.account?.configDir)
+      if (messages.length) this.deps.emitReplay(s.view.id, messages)
+    } catch {
+      // A conversation that cannot be read back still resumes; only the earlier messages are missing.
+    }
+  }
+
+  /** Reads what each session's transcript added since the last poll; the result is a monitor update. */
+  private async pollTranscripts(): Promise<void> {
+    if (this.polling) return
+    this.polling = true
+    try {
+      const config = await this.deps.config.current()
+      const prefixes = ticketPrefixes(config)
+      for (const s of this.sessions.values()) {
+        const reader = this.reader(s)
+        if (!reader || !s.view.agentSessionId) continue
+        const snapshot = await reader
+          .read({ agentSessionId: s.view.agentSessionId, cwd: s.view.cwd, configDir: s.account?.configDir, ticketPrefixes: prefixes })
+          .catch(() => null)
+        const key = snapshot && JSON.stringify(snapshot)
+        if (!snapshot || key === s.lastMonitor) continue
+        s.lastMonitor = key ?? undefined
+        this.deps.emitEvent({ sessionId: s.view.id, type: 'monitor', snapshot })
+      }
+    } finally {
+      this.polling = false
+    }
+  }
+
+  /** Runtime events carry the runtime's session id: the session's own for the app engine, `<id>:<channel>` for terminals. */
   private onEvent(e: AgentEvent): void {
-    if (e.type === 'state') this.update(e.sessionId, { state: e.state, ...(e.error ? { error: e.error } : {}) })
-    if (e.type === 'permissionMode') this.update(e.sessionId, { permissionMode: e.mode, currentModeId: e.currentModeId })
-    this.emitEvent(e)
+    const [id, channel] = e.sessionId.split(':') as [string, 'console' | 'shell' | undefined]
+    const s = this.sessions.get(id)
+    if (s && e.type === 'state') {
+      if (channel === 'shell') {
+        if (e.state === 'stopped' || e.state === 'error') this.update(id, { shellRunning: false, ...(s.view.mode === 'shell' ? { mode: s.engine } : {}) })
+      } else if ((channel === 'console') === (s.engine === 'console') && !s.switching) {
+        this.update(id, { state: e.state, ...(e.error ? { error: e.error } : {}) })
+      }
+    }
+    if (s && !channel) {
+      if (e.type === 'permissionMode') this.update(id, { permissionMode: e.mode, currentModeId: e.currentModeId })
+      if (e.type === 'models') this.update(id, { models: e.models, ...(e.currentModelId ? { currentModelId: e.currentModelId } : {}) })
+    }
+    this.deps.emitEvent(e)
   }
 
   private update(id: string, patch: Partial<SessionView>): void {
@@ -123,13 +354,13 @@ export class SessionManager {
     if (!s) return
     // A finished session keeps its final state even if a late event arrives.
     if ((s.view.state === 'stopped' || s.view.state === 'error') && patch.state && patch.state !== s.view.state) {
-      if (patch.state !== 'stopped' && patch.state !== 'error') return
+      if (patch.state !== 'stopped' && patch.state !== 'error' && patch.state !== 'starting') return
     }
     s.view = { ...s.view, ...patch }
-    this.emitChanged(s.view)
+    this.deps.emitChanged(s.view)
   }
 
-  private require(id: string): { view: SessionView; runtime: AgentRuntime } {
+  private require(id: string): ManagedSession {
     const s = this.sessions.get(id)
     if (!s) throw new Error(`unknown session ${id}`)
     return s

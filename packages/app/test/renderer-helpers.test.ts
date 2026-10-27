@@ -1,0 +1,147 @@
+import { describe, expect, it } from 'vitest'
+import type { ImportPlan } from '@workhub/core'
+import { safeHref } from '../src/renderer/components/molecules/Markdown'
+import { isEmptyPlan, notesFor } from '../src/renderer/components/organisms/Workhub1Import'
+import { recentFolders, usageGroups, type SessionSummary } from '../src/renderer/lib/home'
+import { imageInputFromDataUrl } from '../src/renderer/lib/images'
+import { historyAccounts } from '../src/renderer/screens/HistoryScreen'
+import { formatDuration } from '../src/renderer/screens/sessions/MonitorPanel'
+import { applyEvent, replayItems, type SessionData } from '../src/renderer/store'
+
+const summary = (cwd: string, startedAt: number, extra: Partial<SessionSummary['view']> = {}, planUsage?: SessionSummary['monitor']['planUsage']): SessionSummary => ({
+  view: { id: cwd + startedAt, state: 'ready', cwd, startedAt, ...extra },
+  items: [],
+  monitor: planUsage ? { planUsage } : {}
+})
+
+describe('usage per account', () => {
+  it('groups what sessions report by account and keeps the highest percent per window', () => {
+    const groups = usageGroups(
+      [
+        summary('/a', 1, { accountId: 'work', accountName: 'Work' }, [{ window: '5h', percent: 10 }]),
+        summary('/b', 2, { accountId: 'work', accountName: 'Work' }, [{ window: '5h', percent: 30 }, { window: 'weekly', percent: 4 }]),
+        summary('/c', 3, { accountId: null }, [{ window: '5h', percent: 50 }]),
+        summary('/d', 4, { accountId: 'home' })
+      ],
+      []
+    )
+    expect(groups).toEqual([
+      { key: 'work', name: 'Work', windows: [{ window: '5h', percent: 30 }, { window: 'weekly', percent: 4 }] },
+      { key: '', name: '', windows: [{ window: '5h', percent: 50 }] }
+    ])
+  })
+
+  it('prefers the account read when the option is on, and shows a failed read only without other data', () => {
+    const groups = usageGroups([summary('/a', 1, { accountId: 'work', accountName: 'Work' }, [{ window: '5h', percent: 10 }])], [
+      { accountId: 'work', name: 'Work', windows: [{ window: '5h', percent: 12 }], at: 0 },
+      { accountId: 'home', name: 'Home', windows: [], error: 'HTTP 401', at: 0 }
+    ])
+    expect(groups).toEqual([
+      { key: 'work', name: 'Work', windows: [{ window: '5h', percent: 12 }] },
+      { key: 'home', name: 'Home', windows: [], error: 'HTTP 401' }
+    ])
+  })
+})
+
+describe('folders', () => {
+  it('lists the profile folders first, then session folders newest first, once each', () => {
+    expect(recentFolders([summary('/a', 1), summary('/b', 3), summary('/p', 2)], ['/p', '/q'])).toEqual(['/p', '/q', '/b', '/a'])
+  })
+})
+
+describe('pasted images', () => {
+  it('accepts the image types Claude takes and strips the data URL prefix', () => {
+    expect(imageInputFromDataUrl('data:image/png;base64,iVBORw0KGgo=')).toEqual({ mediaType: 'image/png', data: 'iVBORw0KGgo=' })
+    expect(imageInputFromDataUrl('data:image/svg+xml;base64,PHN2Zz4=')).toBeNull()
+    expect(imageInputFromDataUrl('data:image/png,raw')).toBeNull()
+    expect(imageInputFromDataUrl('https://example.com/a.png')).toBeNull()
+  })
+})
+
+describe('links in agent replies', () => {
+  it('open only web and mail links', () => {
+    expect(safeHref('https://example.com/pr/1')).toBe('https://example.com/pr/1')
+    expect(safeHref('mailto:dev@example.com')).toBe('mailto:dev@example.com')
+    expect(safeHref('javascript:alert(1)')).toBeNull()
+    expect(safeHref('file:///etc/passwd')).toBeNull()
+    expect(safeHref('relative/path')).toBeNull()
+    expect(safeHref(undefined)).toBeNull()
+  })
+})
+
+describe('chat store', () => {
+  const empty = (): SessionData => ({ view: { id: 's' } as SessionData['view'], items: [], monitor: {} })
+  let n = 0
+  const next = () => ++n
+
+  it('adds hook notices as their own items and closes withdrawn permission requests', () => {
+    let s = applyEvent(empty(), { sessionId: 's', type: 'message', role: 'agent', text: 'Hi' }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'notice', noticeId: 'h1', kind: 'hook', title: 'SessionStart hook', text: 'ok' }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'message', role: 'agent', text: ' there' }, next)
+    expect(s.items.map((i) => i.kind)).toEqual(['agent', 'notice', 'agent'])
+    s = applyEvent(s, { sessionId: 's', type: 'permission', requestId: 'r1', title: 'Run ls', options: [] }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'permissionCancelled', requestId: 'r1' }, next)
+    expect(s.items.at(-1)).toMatchObject({ kind: 'permission', answer: '—' })
+  })
+
+  it('updates a tool call in place with its detail', () => {
+    let s = applyEvent(empty(), { sessionId: 's', type: 'tool', toolCallId: 't1', title: 'Read a file', status: 'pending' }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'tool', toolCallId: 't1', status: 'completed', detail: 'src/a.ts' }, next)
+    expect(s.items).toEqual([expect.objectContaining({ kind: 'tool', title: 'Read a file', status: 'completed', detail: 'src/a.ts' })])
+  })
+
+  it('turns a past conversation into chat items', () => {
+    const items = replayItems(
+      [
+        { kind: 'user', text: 'q', images: 2 },
+        { kind: 'agent', text: 'a' },
+        { kind: 'tool', id: 't', title: 'Ran the tests', failed: true }
+      ],
+      next
+    )
+    expect(items).toEqual([
+      expect.objectContaining({ kind: 'user', text: 'q', images: 2 }),
+      expect.objectContaining({ kind: 'agent', text: 'a' }),
+      expect.objectContaining({ kind: 'tool', title: 'Ran the tests', status: 'failed' })
+    ])
+  })
+})
+
+describe('history and monitor helpers', () => {
+  it('lists each account of the history once', () => {
+    const base = { agentId: 'claude', title: '', lastModified: 0 }
+    expect(
+      historyAccounts([
+        { ...base, agentSessionId: '1', accountId: null },
+        { ...base, agentSessionId: '2', accountId: 'work', accountName: 'Work' },
+        { ...base, agentSessionId: '3', accountId: 'work', accountName: 'Work' }
+      ])
+    ).toEqual([
+      { id: '', name: '' },
+      { id: 'work', name: 'Work' }
+    ])
+  })
+
+  it('formats active time', () => {
+    expect(formatDuration(4200)).toBe('4.2 s')
+    expect(formatDuration(75_000)).toBe('1 min 15 s')
+    expect(formatDuration(3_900_000)).toBe('1 h 5 min')
+  })
+})
+
+describe('Workhub 1 import preview', () => {
+  const plan: ImportPlan = {
+    profiles: [],
+    accounts: [],
+    connections: [{ id: 'jira-acme', kind: 'tracker', provider: 'jira', settings: {} }],
+    notes: [
+      { code: 'reenterSecret', path: 'connections.jira-acme' },
+      { code: 'exists', path: 'profiles.work' }
+    ]
+  }
+  it('finds the notes of an item and tells an empty plan', () => {
+    expect(notesFor(plan, 'connections.jira-acme')).toEqual([{ code: 'reenterSecret', path: 'connections.jira-acme' }])
+    expect(isEmptyPlan(plan)).toBe(false)
+    expect(isEmptyPlan({ ...plan, connections: [] })).toBe(true)
+  })
+})
