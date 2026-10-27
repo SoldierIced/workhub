@@ -31,6 +31,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
 import { query, resolveSettings } from "@anthropic-ai/claude-agent-sdk";
+import { agentEnv } from "./env.mjs";
 
 const send = (object) => process.stdout.write(JSON.stringify(object) + "\n");
 
@@ -116,8 +117,9 @@ function slackPluginEnabled(configDir) {
 async function start(config) {
   if (config.configDir) process.env.CLAUDE_CONFIG_DIR = config.configDir;
   // Wait up to 15 s for MCP servers before the first turn: the SDK otherwise starts it with the ones
-  // still connecting missing (Slack among them). A value from the user's env wins.
-  const env = { CLAUDE_CODE_MCP_STARTUP_WAIT_MS: "15000", ...process.env };
+  // still connecting missing (Slack among them). A value from the user's env wins. Electron's own
+  // variables (ELECTRON_RUN_AS_NODE) never reach Claude Code or the commands its tools run.
+  const env = agentEnv(process.env, { CLAUDE_CODE_MCP_STARTUP_WAIT_MS: "15000" });
   const options = {
     cwd: config.cwd,
     pathToClaudeCodeExecutable: config.executable ?? findClaude(),

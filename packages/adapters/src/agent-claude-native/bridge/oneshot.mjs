@@ -1,5 +1,5 @@
 // Workhub headless one-shot query: runs ONE prompt through the Claude Agent SDK with a read-only
-// Copied from Workhub 1 (Bridge/oneshot.mjs) unchanged.
+// Copied from Workhub 1 (Bridge/oneshot.mjs); only the env handed to the SDK changed (env.mjs).
 // allowlist of tools and prints one JSON object on stdout. Used by the Slack watcher, which reads
 // Slack through the Slack connector of the chosen Claude account (no Slack token anywhere).
 //
@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { agentEnv } from "./env.mjs";
 
 const startedAt = Date.now();
 const DEFAULT_TIMEOUT_SECONDS = 300;
@@ -147,7 +148,8 @@ async function run(request) {
     pathToClaudeCodeExecutable: findClaude(),
     // The SDK starts the turn without waiting for MCP servers, so a Slack server still connecting
     // leaves the run with no Slack tools. Wait up to 15 s for them (a value from the user's env wins).
-    env: { CLAUDE_CODE_MCP_STARTUP_WAIT_MS: "15000", ...process.env },
+    // Electron's own variables (ELECTRON_RUN_AS_NODE) never reach Claude Code or its tools.
+    env: agentEnv(process.env, { CLAUDE_CODE_MCP_STARTUP_WAIT_MS: "15000" }),
     abortController,
     // No built-in tools at all (no Bash, Read, Edit, Write); only MCP tools can run.
     tools: [],
