@@ -86,6 +86,24 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     expect(other['effort']).toBeUndefined()
   })
 
+  it('offers the Claude permission modes and switches the running session to one live', async () => {
+    const started = await start('n-mode', { modeId: 'plan' })
+    expect(started.availableModes?.map((m) => m.id)).toEqual(['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions'])
+    expect(started.currentModeId).toBe('plan')
+    expect(started.permissionMode).toMatchObject({ id: 'plan', source: 'workhub' })
+    events.length = 0
+    await rt.setSessionMode('n-mode', 'acceptEdits')
+    expect(events.find((e) => e.type === 'permissionMode')).toMatchObject({ currentModeId: 'acceptEdits', mode: { id: 'acceptEdits', label: 'Accept edits', unattended: false } })
+    await rt.prompt('n-mode', 'echo start')
+    expect((JSON.parse(agentText(events)) as { start: Record<string, unknown> }).start['switchedTo']).toBe('acceptEdits')
+    await expect(rt.setSessionMode('n-mode', 'code-agent')).rejects.toThrow(/no permission mode/)
+  })
+
+  it('a reviewer offers no modes to switch to', async () => {
+    const started = await start('n-review', { readOnly: true })
+    expect(started.availableModes).toBeUndefined()
+  })
+
   it('reports a turn refused by a usage limit', async () => {
     await start('n-limit')
     const result = await rt.prompt('n-limit', 'hit the limit')
@@ -225,6 +243,14 @@ describe('ClaudeBridgeMapper', () => {
     expect(old[1]).toEqual({ sessionId: 's', type: 'usageLimit', resetsAt: 1_760_000_000_000, message: 'Claude AI usage limit reached|1760000000' })
     // An ordinary synthetic message (an API error that is not a limit) is not.
     expect(m.map({ type: 'sdk', message: { type: 'assistant', message: { id: 'm4', model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 500' }] } } }).some((e) => e.type === 'usageLimit')).toBe(false)
+  })
+
+  it('reads no permission mode in the settings as Claude\'s default mode', () => {
+    const m = new ClaudeBridgeMapper('s')
+    const modeOf = (defaults: object | undefined) => m.map({ type: 'options', models: [], ...(defaults ? { defaults } : {}) }).find((e) => e.type === 'permissionMode')
+    expect(modeOf({ permissionMode: null, effort: null })).toMatchObject({ currentModeId: 'default', mode: { id: 'default', label: 'Ask before edits' } })
+    expect(modeOf({ permissionMode: 'acceptEdits' })).toMatchObject({ currentModeId: 'acceptEdits' })
+    expect(modeOf(undefined)).toBeUndefined()
   })
 
   it('drops hooks that said nothing and flags failed ones', () => {

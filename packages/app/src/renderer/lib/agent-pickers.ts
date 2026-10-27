@@ -50,19 +50,22 @@ export function sessionModePicker(v: SessionView): PickerState & { kind: 'agent'
 }
 
 /**
- * What a new session starts with: the last pick for this agent key, else the account's default
- * (Settings → Agent accounts), else the agent's own default (`''`). A remembered pick the agent no
- * longer lists is dropped; with no list known yet it is kept (the agent ignores an unknown one).
+ * What a new session starts with. Model: the last pick for this agent key, else the account's
+ * default. Mode: the defaults set in Settings → Agents win (the account's, then the agent's), so a
+ * default permission mode applies to every new session; with none set, the last pick. Else the
+ * agent's own default (`''`). A candidate the agent no longer lists is dropped; with no list known
+ * yet it is kept (the agent ignores an unknown one).
  */
 export function initialStartChoice(
   kind: 'model' | 'mode',
   options: Pick<AgentOptionsView, 'models' | 'modes'> | null,
   remembered: string | undefined,
-  account: Pick<AgentAccount, 'defaultModel' | 'defaultMode'> | null
+  account: Pick<AgentAccount, 'defaultModel' | 'defaultMode'> | null,
+  agentDefaultMode?: string
 ): string {
   const list = (kind === 'model' ? options?.models : options?.modes) ?? []
-  const fallback = kind === 'model' ? account?.defaultModel : account?.defaultMode
-  for (const candidate of [remembered, fallback]) {
+  const candidates = kind === 'model' ? [remembered, account?.defaultModel] : [account?.defaultMode, agentDefaultMode, remembered]
+  for (const candidate of candidates) {
     if (!candidate) continue
     if (!list.length || list.some((o) => o.id === candidate)) return candidate
   }

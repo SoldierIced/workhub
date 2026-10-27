@@ -21,6 +21,8 @@ export interface AgentOptionsDeps {
   now?: () => number
   /** How long a CLI listing is reused before it is run again (default 10 min). */
   maxAgeMs?: number
+  /** Modes an agent always has, offered before any session reported them (Claude Code's permission modes). */
+  fixedModes?: (agent: AgentDefinition) => readonly SessionModeOption[] | undefined
 }
 
 /** The key options are kept under: the account's when it has one (another build, another login), else the agent's. */
@@ -93,8 +95,10 @@ export class AgentOptionsService {
     const maxAge = this.deps.maxAgeMs ?? 10 * 60_000
     const stale = !stored || stored.source !== 'cli' || this.now() - stored.at > maxAge
     if (refresh || stale) stored = (await this.discover(key, accountAgent(agent, account))) ?? stored
-    if (!stored) return { models: [], modes: [], source: 'none', modeSemantics: agent.modeSemantics }
-    const { models, modes, defaultModelId, defaultModeId, source, at } = stored
+    const fixed = this.deps.fixedModes?.(agent) ?? []
+    if (!stored) return { models: [], modes: [...fixed], source: 'none', modeSemantics: agent.modeSemantics }
+    const { models, defaultModelId, defaultModeId, source, at } = stored
+    const modes = stored.modes.length ? stored.modes : [...fixed]
     return { models, modes, ...(defaultModelId ? { defaultModelId } : {}), ...(defaultModeId ? { defaultModeId } : {}), source, at, modeSemantics: agent.modeSemantics }
   }
 

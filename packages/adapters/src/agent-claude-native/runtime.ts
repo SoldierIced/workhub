@@ -18,15 +18,16 @@ import type {
   ModelOption,
   PromptResult,
   SessionControls,
+  SessionModeControl,
   StartedSession,
   StartSessionRequest,
   Unsubscribe
 } from '@workhub/core'
 import { pathKeyOf } from '../shared/login-path'
-import { ClaudeBridgeMapper, permissionResult, resultStopReason, settleResult } from './mapping'
+import { CLAUDE_PERMISSION_MODES, ClaudeBridgeMapper, claudePermissionMode, permissionResult, resultStopReason, settleResult } from './mapping'
 
 /** The permission modes Claude Code starts in; any other mode id (an ACP agent's) is ignored. */
-const CLAUDE_MODES: ReadonlySet<string> = new Set(['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions', 'dontAsk'])
+const CLAUDE_MODES: ReadonlySet<string> = new Set(CLAUDE_PERMISSION_MODES.map((m) => m.id))
 
 export interface ClaudeNativeRuntimeOptions {
   /** Folder holding `bridge.mjs` and `sessions.mjs`. */
@@ -67,7 +68,7 @@ interface NativeSession {
 
 type Obj = Record<string, unknown>
 
-export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
+export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, SessionModeControl {
   readonly adapter = 'native' as const
   private readonly sessions = new Map<string, NativeSession>()
   private readonly listeners = new Set<AgentEventListener>()
@@ -158,7 +159,25 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls {
       throw new Error(message)
     }
     this.emit({ sessionId: id, type: 'state', state: 'ready' })
-    return { agentSessionId, agentName: 'Claude Code', permissionMode: req.readOnly ? { id: 'plan', label: 'Plan (read-only)', source: 'workhub' } : null }
+    if (req.readOnly) return { agentSessionId, agentName: 'Claude Code', permissionMode: { id: 'plan', label: 'Plan (read-only)', source: 'workhub' } }
+    // The modes it can switch to from the session header. The current one is the mode asked for,
+    // else the settings' default, reported by the bridge once Claude has started.
+    const asked = req.modeId && CLAUDE_MODES.has(req.modeId) ? req.modeId : undefined
+    return {
+      agentSessionId,
+      agentName: 'Claude Code',
+      permissionMode: asked ? claudePermissionMode(asked, 'workhub') : null,
+      ...(asked ? { currentModeId: asked } : {}),
+      availableModes: [...CLAUDE_PERMISSION_MODES]
+    }
+  }
+
+  /** Switches the permission mode of a running session, as Shift+Tab does in the terminal. */
+  async setSessionMode(sessionId: string, modeId: string): Promise<void> {
+    const s = this.require(sessionId)
+    if (!CLAUDE_MODES.has(modeId)) throw new Error(`Claude Code has no permission mode "${modeId}"`)
+    this.send(s, { type: 'set_permission_mode', mode: modeId })
+    this.emit({ sessionId, type: 'permissionMode', mode: claudePermissionMode(modeId, 'workhub'), currentModeId: modeId })
   }
 
   /**

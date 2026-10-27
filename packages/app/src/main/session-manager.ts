@@ -6,6 +6,7 @@ import {
   canSetModel,
   canSetSessionMode,
   consoleCommand,
+  defaultStartMode,
   hasSessionControls,
   isTerminalControl,
   knownAgents,
@@ -244,9 +245,9 @@ export class SessionManager {
     this.deps.emitChanged(view)
 
     // session/new can take 10-15 s: answer now, report progress through `changed` events.
-    // What was picked for this session, else the account's defaults (Settings → Agent accounts).
+    // What was picked for this session, else the account's defaults, else the agent's (Settings → Agents).
     const model = input.model ?? account?.defaultModel
-    const modeId = input.readOnly ? undefined : (input.modeId ?? account?.defaultMode)
+    const modeId = input.readOnly ? undefined : (input.modeId ?? defaultStartMode(config, choice.agent.id, account))
     // A session reopened at launch resumes its conversation only when it exists (one never
     // prompted has none): otherwise the same session id starts fresh, as Workhub 1 does.
     const starting = async () => {
