@@ -6,6 +6,8 @@ export interface DrivableSessions {
   list(): SessionView[]
   start(input: StartSessionInput): Promise<SessionView>
   prompt(id: string, text: string): Promise<string>
+  /** Sends a prompt now, or null (nothing sent) while another prompt of the session is in flight. */
+  tryPrompt(id: string, text: string): Promise<string> | null
   write(channelId: string, data: string): void
   cancel(id: string): Promise<void>
   stop(id: string): Promise<void>
@@ -76,14 +78,22 @@ export class SessionDriver {
 
   /**
    * Types text into the session: a prompt in the chat (the turn runs on; its end shows up as a
-   * finished turn), or the text and Enter in the console. `waiting` while it is not idle.
+   * finished turn), or the text and Enter in the console. `waiting` while it is not idle, or
+   * while another prompt (the user's queue, a review, a wake) is in flight: the caller retries.
    */
   async deliver(sessionId: string, text: string): Promise<'delivered' | 'waiting'> {
     const view = this.sessions.list().find((v) => v.id === sessionId)
     if (!view || view.state !== 'ready') return 'waiting'
     if (this.engineOf(view) === 'app') {
+      let turn: Promise<string> | null
+      try {
+        turn = this.sessions.tryPrompt(sessionId, text)
+      } catch {
+        return 'waiting'
+      }
+      if (!turn) return 'waiting'
       this.onPrompted(sessionId, text)
-      void this.sessions.prompt(sessionId, text).catch(() => undefined)
+      void turn.catch(() => undefined)
       return 'delivered'
     }
     this.lastOutput.set(sessionId, this.now())

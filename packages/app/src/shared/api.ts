@@ -206,10 +206,17 @@ export interface UsageAlert {
   resetsAt: number
 }
 
+/** Marks the error of a prompt dropped before it was sent because its session was interrupted. */
+export const PROMPT_WITHDRAWN = 'workhub:prompt-withdrawn'
+
 export interface SessionsApi {
   list(): Promise<SessionView[]>
   /** Returns at once with the session in `starting`; progress arrives through onChanged. */
   start(input: StartSessionInput): Promise<SessionView>
+  /**
+   * Runs one prompt turn. On agents that take no input mid-turn it waits for the session's prompt
+   * in flight; one still waiting when the session is interrupted fails with `PROMPT_WITHDRAWN`.
+   */
   prompt(id: string, text: string, images?: ImageInput[]): Promise<string>
   cancel(id: string): Promise<void>
   stop(id: string): Promise<void>
