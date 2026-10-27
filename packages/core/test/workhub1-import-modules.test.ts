@@ -169,12 +169,12 @@ describe('Workhub 1 import: modules and options', () => {
   })
 
   it('maps options, prefs and the prompt language, and reports what has no equivalent', () => {
-    expect(plan.options).toEqual({ claudePlanUsage: true, notifyPrEvents: expect.any(Object) })
+    expect(plan.options).toEqual({ claudePlanUsage: true, notifyPrEvents: expect.any(Object), notifySlack: false, notifyHealth: false })
     expect(Object.values(plan.options?.notifyPrEvents ?? {}).every((v) => v === false)).toBe(true)
     expect(plan.prefs).toEqual({ models: { 'claude:claude-personal': 'opus' }, language: 'es' })
     expect(plan.profiles.every((p) => p.aiReview?.language === 'es')).toBe(true)
     const settingsNotes = plan.notes.filter((n) => n.path === 'settings').map((n) => n.detail)
-    expect(settingsNotes.sort()).toEqual(['notifications.slack', 'terminal.fontSize', 'terminal.theme', 'usageChecker', 'usageRefreshMinutes'])
+    expect(settingsNotes.sort()).toEqual(['terminal.fontSize', 'terminal.theme', 'usageChecker', 'usageRefreshMinutes'])
     expect(plan.notes).toContainEqual({ code: 'notSupported', path: 'accounts.claude-work', detail: 'effort' })
   })
 
@@ -240,7 +240,7 @@ describe('Workhub 1 import: modules and options', () => {
 
   it('turns the main notification switch off everywhere it maps', () => {
     const p = planWorkhub1Import({ notifications: { all: false } }, config(), home)
-    expect(p.options).toMatchObject({ notifyReplied: false, notifyNeedsAnswer: false, notifyError: false })
+    expect(p.options).toMatchObject({ notifyReplied: false, notifyNeedsAnswer: false, notifyError: false, notifySlack: false, notifyTickets: false, notifyAutomations: false, notifyHealth: false })
     expect(p.options?.claudePlanUsage).toBeUndefined()
   })
 
