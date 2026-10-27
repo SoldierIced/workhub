@@ -26,21 +26,33 @@ describe('usage per account', () => {
       []
     )
     expect(groups).toEqual([
-      { key: 'work', name: 'Work', windows: [{ window: '5h', percent: 30 }, { window: 'weekly', percent: 4 }] },
-      { key: '', name: '', windows: [{ window: '5h', percent: 50 }] }
+      { key: 'claude:work', agentId: 'claude', name: 'Work', windows: [{ window: '5h', percent: 30 }, { window: 'weekly', percent: 4 }] },
+      { key: 'claude', agentId: 'claude', name: '', windows: [{ window: '5h', percent: 50 }] }
     ])
   })
 
-  it('prefers the account read when the option is on, and shows a failed read only without other data', () => {
+  it('prefers the account read when the option is on, shows a failed read only without other data, and lists every agent', () => {
     const groups = usageGroups([summary('/a', 1, { accountId: 'work', accountName: 'Work' }, [{ window: '5h', percent: 10 }])], [
       { agentId: 'claude', key: 'claude:work', accountId: 'work', name: 'Work', windows: [{ window: '5h', percent: 12 }], at: 0, budget: { action: 'allow' } },
       { agentId: 'claude', key: 'claude:home', accountId: 'home', name: 'Home', windows: [], error: 'HTTP 401', at: 0, budget: { action: 'allow' } },
       { agentId: 'codex', key: 'codex:work', accountId: 'work', name: 'Work', windows: [{ window: '5h', percent: 99 }], at: 0, budget: { action: 'allow' } }
     ])
     expect(groups).toEqual([
-      { key: 'work', name: 'Work', windows: [{ window: '5h', percent: 12 }] },
-      { key: 'home', name: 'Home', windows: [], error: 'HTTP 401' }
+      { key: 'claude:work', agentId: 'claude', name: 'Work', windows: [{ window: '5h', percent: 12 }] },
+      { key: 'claude:home', agentId: 'claude', name: 'Home', windows: [], error: 'HTTP 401' },
+      { key: 'codex:work', agentId: 'codex', name: 'Work', windows: [{ window: '5h', percent: 99 }] }
     ])
+  })
+
+  it('keeps a Claude ACP session with its Claude account, and Codex and Kiro apart', () => {
+    const groups = usageGroups(
+      [
+        summary('/a', 1, { agentId: 'claude-acp', accountId: 'work', accountName: 'Work' }, [{ window: '5h', percent: 20 }]),
+        summary('/b', 2, { agentId: 'codex', accountId: null }, [{ window: '5h', percent: 40 }])
+      ],
+      [{ agentId: 'kiro', key: 'kiro', accountId: null, name: '', windows: [{ window: 'monthly', percent: 30 }], at: 0, budget: { action: 'allow' } }]
+    )
+    expect(groups.map((g) => g.key)).toEqual(['claude:work', 'codex', 'kiro'])
   })
 })
 

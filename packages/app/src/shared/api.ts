@@ -7,6 +7,7 @@ import type {
   BudgetStatus,
   CreditSpend,
   FolderSpendEntry,
+  SessionCeilings,
   AgentDefinition,
   AgentEvent,
   AgentAccount,
@@ -300,6 +301,11 @@ export interface UsageApi {
   ready(): void
   /** A usage notification was clicked. */
   onOpen(cb: () => void): () => void
+  /** Each session's own ceilings (overriding its account's), by session identity. */
+  sessionBudgets(): Promise<Record<string, SessionCeilings>>
+  /** Sets a session's own ceilings; null or an empty map goes back to the account's. */
+  setSessionBudget(identity: string, ceilings: SessionCeilings | null): Promise<void>
+  onSessionBudgetsChanged(cb: (budgets: Record<string, SessionCeilings>) => void): () => void
 }
 
 /** The OS family the app runs on; the renderer uses it for shortcut labels and window chrome. */

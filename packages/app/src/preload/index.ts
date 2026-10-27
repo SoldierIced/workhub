@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { AgentEvent, HistoryMessage } from '@workhub/core'
+import type { AgentEvent, HistoryMessage, SessionCeilings } from '@workhub/core'
 import { toPlatform, type AccountUsage, type UsageAlert, type HubApi, type SessionView } from '../shared/api'
 import type { UpdateStatus } from '../shared/updates-api'
 import type { PrEventBatch } from '../shared/pr-events-api'
@@ -92,7 +92,10 @@ const api: HubApi = {
     onAlerts: (cb) => subscribe<[UsageAlert[]]>('usage:alerts', cb),
     notify: (n) => ipcRenderer.send('usage:notify', n),
     ready: () => ipcRenderer.send('usage:ready'),
-    onOpen: (cb) => subscribe<[]>('usage:open', cb)
+    onOpen: (cb) => subscribe<[]>('usage:open', cb),
+    sessionBudgets: () => ipcRenderer.invoke('usage:sessionBudgets'),
+    setSessionBudget: (identity, ceilings) => ipcRenderer.invoke('usage:setSessionBudget', identity, ceilings),
+    onSessionBudgetsChanged: (cb) => subscribe<[Record<string, SessionCeilings>]>('usage:sessionBudgetsChanged', cb)
   },
   notifications: {
     show: (n) => ipcRenderer.send('notifications:show', n),

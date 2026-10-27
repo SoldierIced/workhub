@@ -7,7 +7,7 @@ export const settingsHelpEn = {
   'help.tab.appearance': 'How Workhub looks on this computer: light or dark, terminal colors, fonts and text sizes.',
   'help.tab.profiles': 'A profile is one context of work, like a company or a side project: the connections, agent accounts, folders and optional screens it uses. Switch profiles at the top of the sidebar.',
   'help.tab.connections': 'The services Workhub reads from: a code host (GitHub, GitLab), a ticket tracker (Jira, Linear), chat and Health (Elasticsearch). Each profile picks at most one of each kind.',
-  'help.tab.accounts': 'One entry per sign-in of an agent. Two Claude accounts, for example a personal one and a work one, keep separate logins, plan limits and history because each uses its own config folder. Each profile chooses which accounts it offers when you start a session.',
+  'help.tab.accounts': 'Every agent Workhub can run, how it runs and how it signs in; the order Workhub picks them in and what happens when an account runs out; and the accounts themselves (one per sign-in), with their default model and mode.',
   'help.tab.usage': 'How much of each plan your agent accounts have used (5-hour and weekly windows), the ceilings Workhub keeps automatic work under, and the alerts.',
 
   'help.appearance.base': 'The app\'s own light or dark look. System follows your operating system.',
@@ -88,5 +88,6 @@ export const settingsHelpEn = {
   'issues.profileConnection': 'The profile {name} uses a {kind} connection that no longer exists.',
   'issues.profileAccount': 'The profile {name} uses an agent account that no longer exists.',
   'issues.profileAgent': 'The profile {name} offers an agent that no longer exists.',
-  'issues.accountAgent': 'The account {name} is for an agent Workhub does not know ({agent}).'
+  'issues.accountAgent': 'The account {name} is for an agent Workhub does not know ({agent}).',
+  'help.accounts.list': 'One entry per sign-in of an agent. Two Claude accounts, for example a personal one and a work one, keep separate logins, plan limits and history because each uses its own config folder. Each profile chooses which accounts it offers when you start a session.'
 } as const
