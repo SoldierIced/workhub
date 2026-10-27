@@ -26,6 +26,9 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { LEVEL_LABEL, LEVEL_TONE } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 import { folderName } from '../../lib/home'
+import { usePlatform } from '../../lib/platform'
+import { shortcutLabel } from '../../lib/shortcuts'
+import { sessionTitle } from '../../lib/windows'
 import { listSessions, memberOf, newGroupId, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
 import { awaitingAnswer, pushItem } from '../../store'
 import { Badge } from '../atoms/Badge'
@@ -54,6 +57,10 @@ export interface SessionListProps {
   onSelect: (id: string) => void
   /** Opens a closed member again (resumes it, or starts it fresh when the agent cannot resume). */
   onReopen: (member: GroupMember) => void
+  /** "Rename…" of an open session. */
+  onRename?: (view: SessionData['view']) => void
+  /** "Open in New Window" of an open session. */
+  onOpenInWindow?: (id: string) => void
 }
 
 type MenuItem = { label: string; hint?: string; onSelect: () => void } | { separator: true } | { label: string; items: MenuItem[] }
@@ -117,8 +124,9 @@ function readMember(e: DragEvent): GroupMember | null {
  * the user arranged them. Groups hold sessions by their stable identity, so a closed session
  * stays listed (dimmed, reopenable) until it is removed.
  */
-export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen }: SessionListProps) {
+export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, onRename, onOpenInWindow }: SessionListProps) {
   const { t, tn } = useI18n()
+  const platform = usePlatform()
   const listed = useMemo(() => listSessions(sessions), [sessions])
   const liveKeys = useMemo(() => listed.map((s) => s.key), [listed])
   const rows = useMemo(() => sidebarRows(groups, listed), [groups, listed])
@@ -141,6 +149,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     const entry = listed.find((l) => l.key === member.key)
     const items: MenuItem[] = []
     if (!entry || entry.data.view.state === 'stopped') items.push({ label: t('groups.reopen'), onSelect: () => onReopen(member) }, { separator: true })
+    if (entry && onRename) items.push({ label: t('session.rename'), onSelect: () => onRename(entry.data.view) })
+    if (entry && onOpenInWindow && entry.data.view.state !== 'stopped') items.push({ label: t('window.openInNew'), hint: shortcutLabel({ key: 'n', shift: true }, platform), onSelect: () => onOpenInWindow(entry.data.view.id) })
     if (entry) items.push({ label: t('sessions.close'), onSelect: () => requestClose(entry.data) }, { separator: true })
     items.push(
       { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveBy(s, member.key, -1)) },
@@ -336,7 +346,7 @@ function SessionItem(props: {
   // A session that was stopped is as good as closed: dimmed, and the row reopens it.
   const stopped = data?.view.state === 'stopped'
   const status = data ? (data.unseen && level ? t(LEVEL_LABEL[level]) : t(`state.${data.view.state}`)) : t('groups.closed')
-  const title = data ? data.view.agentName : member.title
+  const title = data ? sessionTitle(data.view) : member.title
   const cwd = data ? data.view.cwd : member.cwd
   const onKey = (e: KeyboardEvent) => {
     // Delete or Backspace closes the focused session, as the close button does.

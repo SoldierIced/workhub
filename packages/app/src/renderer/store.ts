@@ -48,7 +48,10 @@ let viewing: string | null = null
 let windowFocused = typeof document === 'undefined' ? true : document.hasFocus()
 const attentionListeners = new Set<(id: string, kind: AttentionKind) => void>()
 
-const isOnScreen = (id: string): boolean => viewing === id && windowFocused
+/** The session whose own window is focused (main window only): it is on screen there. */
+let externalViewing: string | null = null
+
+const isOnScreen = (id: string): boolean => (viewing === id && windowFocused) || externalViewing === id
 
 /** Tells the store which session is on screen (null: none, e.g. another screen is open). Viewing clears its flag. */
 export function setViewing(id: string | null): void {
@@ -57,8 +60,33 @@ export function setViewing(id: string | null): void {
 }
 
 function clearViewed(): void {
-  const s = viewing && windowFocused ? sessions[viewing] : undefined
-  if (s?.unseen) set({ ...sessions, [s.view.id]: { ...s, unseen: undefined } })
+  for (const id of [viewing && windowFocused ? viewing : null, externalViewing]) {
+    const s = id ? sessions[id] : undefined
+    if (s?.unseen) set({ ...sessions, [s.view.id]: { ...s, unseen: undefined } })
+  }
+}
+
+/** A session window got (or lost) the focus: its session counts as seen while it has it. */
+export function setExternalViewing(id: string | null): void {
+  externalViewing = id
+  clearViewed()
+}
+
+/** What a session window starts from: this window's chat items and monitor of the session. */
+export function sessionSnapshot(id: string): { items: ChatItem[]; monitor: SessionMonitorSnapshot } | null {
+  const s = sessions[id]
+  return s ? { items: s.items, monitor: s.monitor } : null
+}
+
+/**
+ * A session window takes the main window's chat of its session. It replaces what arrived here
+ * before: main holds the newer messages until this snapshot is in (see session-windows.ts).
+ */
+export function seedSession(id: string, snapshot: { items: unknown[]; monitor: SessionMonitorSnapshot }): void {
+  const s = sessions[id]
+  if (!s) return
+  const items = (snapshot.items as ChatItem[]).map((i) => ({ ...i, id: ++seq }))
+  set({ ...sessions, [id]: { ...s, items, monitor: mergeMonitor(s.monitor, snapshot.monitor) } })
 }
 
 /** Called when a session needs a look while it is off screen (an OS notification, for one). */

@@ -36,7 +36,7 @@ export function listSessions(all: readonly SessionData[]): ListedSession[] {
 
 /** What a group remembers about an open session. */
 export function memberOf(s: ListedSession): GroupMember {
-  return { key: s.key, title: s.data.view.agentName, agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
+  return { key: s.key, title: s.data.view.name || s.data.view.agentName, agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
 }
 
 /** The badge count and top state dot of a set of open sessions. */

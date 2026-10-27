@@ -153,7 +153,7 @@ function ModePicker({ data }: { data: SessionData }) {
   )
 }
 
-function SessionPane({ data, visible, theme }: { data: SessionData; visible: boolean; theme: 'light' | 'dark' }) {
+export function SessionPane({ data, visible, theme }: { data: SessionData; visible: boolean; theme: 'light' | 'dark' }) {
   const { t } = useI18n()
   const v = data.view
   const mode = v.permissionMode

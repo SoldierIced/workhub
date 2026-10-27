@@ -6,14 +6,21 @@ import { parseTicketHash, TicketWindowRoot } from './screens/TicketWindow'
 import { readPrefs } from './lib/prefs'
 import { applyAppearance } from './lib/appearance'
 import { PullRequestWindow } from './screens/PullRequestWindow'
+import { SessionWindowRoot, SubagentWindowRoot } from './screens/SessionWindow'
+import { parseSessionWindowHash, parseSubagentWindowHash } from './lib/windows'
 import './styles.css'
 
 // Set the theme (and the text sizes) before the first paint so a light OS never flashes the dark palette.
 applyAppearance(readPrefs(), matchMedia('(prefers-color-scheme: dark)').matches)
 
 // Secondary windows load the same bundle and are routed by the URL hash:
-// `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…` a ticket.
+// `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…` a ticket, `#session?id=…` a
+// session in its own window and `#subagent?session=…&id=…` a sub-agent's conversation.
 function root(hash: string): ReactElement {
+  const session = parseSessionWindowHash(hash)
+  if (session) return <SessionWindowRoot sessionId={session.sessionId} />
+  const subagent = parseSubagentWindowHash(hash)
+  if (subagent) return <SubagentWindowRoot sessionId={subagent.sessionId} subagentId={subagent.subagentId} />
   const pr = parsePrWindowHash(hash)
   if (pr) return <PullRequestWindow profileId={pr.profileId} url={pr.url} />
   const ticket = parseTicketHash(hash)

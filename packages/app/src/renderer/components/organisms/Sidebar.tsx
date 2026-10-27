@@ -1,4 +1,5 @@
 import { Folder, Plus } from 'lucide-react'
+import { ContextMenu } from 'radix-ui'
 import type { DragEvent, ReactNode } from 'react'
 import type { Profile } from '@workhub/core'
 import type { SessionView } from '@shared/api'
@@ -32,8 +33,13 @@ export interface SidebarProps {
   onDropOnSessions: (e: DragEvent) => void
   folders: string[]
   onNewSessionIn: (folder: string | null) => void
+  /** A folder's "Resume session…" (its earlier sessions). */
+  onResumeIn?: (folder: string) => void
   usage: UsageGroup[]
 }
+
+const FOLDER_MENU = 'z-50 min-w-48 animate-fade-in rounded-md border border-border bg-surface-raised p-1 shadow-lg'
+const FOLDER_MENU_ITEM = 'flex h-8 cursor-default select-none items-center rounded-sm px-2 text-base outline-none data-[highlighted]:bg-accent-soft'
 
 function SectionTitle({ children, action }: { children: string; action?: ReactNode }) {
   return (
@@ -131,16 +137,36 @@ export function Sidebar(props: SidebarProps) {
           <ul className="flex flex-col gap-0.5">
             {props.folders.map((f) => (
               <li key={f}>
-                <button
-                  type="button"
-                  title={f}
-                  onClick={() => props.onNewSessionIn(f)}
-                  aria-label={t('sidebar.newSessionIn', { folder: folderName(f) })}
-                  className="flex h-7 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-base text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
-                >
-                  <Folder className="size-3.5 shrink-0 text-subtle" aria-hidden />
-                  <span className="truncate">{folderName(f)}</span>
-                </button>
+                <ContextMenu.Root>
+                  <ContextMenu.Trigger asChild>
+                    <button
+                      type="button"
+                      title={f}
+                      onClick={() => props.onNewSessionIn(f)}
+                      aria-label={t('sidebar.newSessionIn', { folder: folderName(f) })}
+                      className="flex h-7 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-base text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"
+                    >
+                      <Folder className="size-3.5 shrink-0 text-subtle" aria-hidden />
+                      <span className="truncate">{folderName(f)}</span>
+                    </button>
+                  </ContextMenu.Trigger>
+                  <ContextMenu.Portal>
+                    <ContextMenu.Content className={FOLDER_MENU}>
+                      <ContextMenu.Item className={FOLDER_MENU_ITEM} onSelect={() => props.onNewSessionIn(f)}>
+                        {t('folder.newSession')}
+                      </ContextMenu.Item>
+                      {props.onResumeIn && (
+                        <ContextMenu.Item className={FOLDER_MENU_ITEM} data-testid="folder-resume" onSelect={() => props.onResumeIn?.(f)}>
+                          {t('folder.resume')}
+                        </ContextMenu.Item>
+                      )}
+                      <ContextMenu.Separator className="my-1 h-px bg-border" />
+                      <ContextMenu.Item className={FOLDER_MENU_ITEM} onSelect={() => void window.hub.history.revealFolder(f)}>
+                        {t('folder.reveal')}
+                      </ContextMenu.Item>
+                    </ContextMenu.Content>
+                  </ContextMenu.Portal>
+                </ContextMenu.Root>
               </li>
             ))}
           </ul>

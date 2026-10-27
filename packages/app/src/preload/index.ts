@@ -8,6 +8,7 @@ import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 import type { ContinuityMoved, ContinuityOffer } from '../shared/continuity-api'
 import type { TrayRoute } from '../shared/tray-api'
+import type { MenuCommand } from '../shared/windows-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -64,6 +65,7 @@ const api: HubApi = {
     mcp: (id, action, server) => ipcRenderer.send('sessions:mcp', id, action, server),
     subagent: (id, subagentId) => ipcRenderer.invoke('sessions:subagent', id, subagentId),
     revealFile: (id, path) => ipcRenderer.invoke('sessions:revealFile', id, path),
+    rename: (id, name) => ipcRenderer.invoke('sessions:rename', id, name),
     cancel: (id) => ipcRenderer.invoke('sessions:cancel', id),
     stop: (id) => ipcRenderer.invoke('sessions:stop', id),
     respondPermission: (id, requestId, optionId) => ipcRenderer.send('sessions:permission', id, requestId, optionId),
@@ -75,7 +77,8 @@ const api: HubApi = {
     onReplay: (cb) => subscribe<[string, HistoryMessage[]]>('session:replay', cb)
   },
   history: {
-    list: () => ipcRenderer.invoke('history:list')
+    list: () => ipcRenderer.invoke('history:list'),
+    revealFolder: (path) => ipcRenderer.invoke('history:revealFolder', path)
   },
   agents: {
     availability: () => ipcRenderer.invoke('agents:availability'),
@@ -176,6 +179,21 @@ const api: HubApi = {
     setState: (state) => ipcRenderer.send('tray:state', state),
     onNavigate: (cb) => subscribe<[TrayRoute]>('tray:navigate', cb),
     onNewSession: (cb) => subscribe<[]>('tray:newSession', cb)
+  },
+  windows: {
+    openSession: (id) => ipcRenderer.send('windows:openSession', id),
+    openSubagent: (sessionId, subagentId) => ipcRenderer.send('windows:openSubagent', sessionId, subagentId),
+    dock: (id) => ipcRenderer.send('windows:dock', id),
+    detached: () => ipcRenderer.invoke('windows:detached'),
+    onDetached: (cb) => subscribe<[string[]]>('windows:detached', cb),
+    onShowSession: (cb) => subscribe<[string]>('windows:showSession', cb),
+    onFocusedSession: (cb) => subscribe<[string | null]>('windows:focusedSession', cb),
+    snapshot: (id) => ipcRenderer.invoke('windows:snapshot', id),
+    onSnapshotRequest: (cb) => subscribe<[string, string]>('windows:snapshotRequest', cb),
+    replySnapshot: (requestId, snapshot) => ipcRenderer.send('windows:snapshotReply', requestId, snapshot)
+  },
+  menu: {
+    onCommand: (cb) => subscribe<[MenuCommand]>('menu:command', cb)
   }
 }
 
