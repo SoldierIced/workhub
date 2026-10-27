@@ -42,7 +42,8 @@ describe('findExecutable', () => {
     const bin = await folderWith({ 'wh-agent.cmd': 0o644 })
     expect(await findExecutable('wh-agent', { path: bin, platform: 'win32', pathExt: '.EXE;.CMD' })).toBe(join(bin, 'wh-agent.cmd'))
     expect(await findExecutable('wh-agent.cmd', { path: bin, platform: 'win32', pathExt: '.EXE;.CMD' })).toBe(join(bin, 'wh-agent.cmd'))
-    expect(await findExecutable('WH-AGENT.CMD', { path: bin, platform: 'win32', pathExt: '.exe;.cmd' })).toBe(join(bin, 'WH-AGENT.CMD'))
+    // Upper-case lookup needs a case-insensitive file system (Windows, default macOS), not Linux.
+    if (process.platform !== 'linux') expect(await findExecutable('WH-AGENT.CMD', { path: bin, platform: 'win32', pathExt: '.exe;.cmd' })).toBe(join(bin, 'WH-AGENT.CMD'))
   })
 
   it('does not accept an exact name whose extension is not in PATHEXT on Windows', async () => {
