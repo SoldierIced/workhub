@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, type BrowserWindowConstructorOptions, type Rectangle, type WebContents } from 'electron'
+import { app, BrowserWindow, screen, type BrowserWindowConstructorOptions, type Rectangle, type WebContents } from 'electron'
 import { popoverPlacement, type TrayPopoverView } from '@workhub/core'
 
 export const POPOVER_WIDTH = 360
@@ -31,7 +31,8 @@ export function popoverWindowOptions(platform: NodeJS.Platform, preload: string)
     alwaysOnTop: true,
     hasShadow: true,
     title: 'Workhub',
-    ...(mac ? { type: 'panel', vibrancy: 'popover', visualEffectState: 'active', roundedCorners: true, hiddenInMissionControl: true } : {}),
+    // Not a 'panel': a non-activating panel never becomes key, so it never blurs and stays open.
+    ...(mac ? { vibrancy: 'popover', visualEffectState: 'active', roundedCorners: true, hiddenInMissionControl: true } : {}),
     webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false }
   }
 }
@@ -61,14 +62,16 @@ export class TrayPopover {
   private height = FIRST_HEIGHT
   private hiddenAt = 0
 
-  constructor(private readonly deps: TrayPopoverDeps) {}
+  constructor(private readonly deps: TrayPopoverDeps) {
+    // Switching to another app (or a Space showing one) closes it even if the window missed its blur.
+    if (deps.platform === 'darwin' && !deps.pinned) app.on('did-resign-active', () => this.hide())
+  }
 
   /** Creates the (hidden) window ahead of time, so the first click opens it at once. */
   prepare(): BrowserWindow {
     if (this.win && !this.win.isDestroyed()) return this.win
     const win = new BrowserWindow(popoverWindowOptions(this.deps.platform, this.deps.preload))
     this.win = win
-    if (this.deps.platform === 'darwin') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
     win.setAlwaysOnTop(true, 'pop-up-menu')
     win.on('blur', () => {
       if (!this.deps.pinned) this.hide()
@@ -110,8 +113,13 @@ export class TrayPopover {
     this.anchor = trayBounds
     this.deps.refresh()
     this.place()
+    // Open on the current Space (also over a full-screen app), then pin it there: switching Spaces
+    // leaves it behind and the blur that follows closes it.
+    const mac = this.deps.platform === 'darwin'
+    if (mac) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
     win.show()
     win.focus()
+    if (mac) win.setVisibleOnAllWorkspaces(false, { skipTransformProcessType: true })
     win.webContents.send('trayPopover:shown')
   }
 
