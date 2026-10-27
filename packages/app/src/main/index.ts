@@ -863,7 +863,12 @@ function registerIpc(): void {
     const onStart = () => {
       if (!e.sender.isDestroyed()) e.sender.send('sessions:promptStarted', id, token)
     }
-    return sessions.prompt(id, text, images, { key: `${e.sender.id}:${token}`, onStart })
+    // Sent like the session's events (not with the invoke's answer, which can overtake them), so
+    // the window ends the turn after its last message.
+    const settled = () => {
+      if (!e.sender.isDestroyed()) e.sender.send('sessions:promptSettled', id, token)
+    }
+    return sessions.prompt(id, text, images, { key: `${e.sender.id}:${token}`, onStart }).finally(settled)
   })
   ipc.handle('sessions:withdrawPrompt', (e, id: string, token: unknown) => typeof token === 'number' && sessions.withdrawPrompt(id, `${e.sender.id}:${token}`))
   ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode, options?: { now?: unknown }) => sessions.setMode(id, mode, { now: options?.now === true }))

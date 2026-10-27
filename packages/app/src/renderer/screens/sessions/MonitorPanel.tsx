@@ -334,7 +334,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
                   .map((c) => {
                     const Icon = TOOL_ICON[c.kind ?? ''] ?? Wrench
                     const failed = c.status === 'failed'
-                    const done = c.status === 'completed' || failed
+                    const done = c.status === 'completed' || c.status === 'cancelled' || failed
                     return (
                       <li key={c.id} className="flex items-start gap-2 text-sm">
                         <Icon className={cn('mt-0.5 size-3.5 shrink-0', failed ? 'text-danger' : done ? 'text-subtle' : 'text-info')} aria-hidden />

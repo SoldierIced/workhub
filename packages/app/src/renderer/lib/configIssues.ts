@@ -81,6 +81,26 @@ export function profileFieldErrors(profile: { id: string; name: string }, takenI
   return errors
 }
 
+/** What is wrong with an agent account form, per field, before anything is sent to be saved. */
+export function accountFieldErrors(account: { id: string; name: string }, takenIds: readonly string[] = []): { id?: MessageKey; name?: MessageKey } {
+  const errors: { id?: MessageKey; name?: MessageKey } = {}
+  if (!account.name.trim()) errors.name = 'issues.accountName'
+  if (!account.id) errors.id = 'issues.accountIdMissing'
+  else if (!PROFILE_ID.test(account.id)) errors.id = 'issues.profileId'
+  else if (takenIds.includes(account.id)) errors.id = 'issues.accountIdTaken'
+  return errors
+}
+
+/** Form labels for the fields a validation issue can name, so a message names the field, not its path. */
+const FIELD_LABEL: Record<string, MessageKey> = {
+  id: 'settings.id',
+  name: 'settings.name',
+  configDir: 'settings.configDir',
+  command: 'settings.accountCommand',
+  defaultModel: 'settings.defaultModel',
+  defaultMode: 'settings.defaultMode'
+}
+
 /**
  * A validation issue as one friendly sentence. Shape rules from the schema (they carry a `code`)
  * and unexpected failures never show their raw text; cross-reference messages are already plain.
@@ -91,5 +111,9 @@ export function friendlyIssue(issue: ValidationIssue, t: (key: MessageKey, param
   const [section, , field] = issue.path.split('.')
   if (section === 'profiles' && field === 'name') return t('issues.profileName')
   if (section === 'profiles' && field === 'id') return t(issue.code === 'too_small' ? 'issues.profileIdMissing' : 'issues.profileId')
-  return t('issues.invalidValue', { where: issue.path })
+  if (section === 'accounts' && field === 'name') return t('issues.accountName')
+  if (section === 'accounts' && field === 'id') return t(issue.code === 'too_small' ? 'issues.accountIdMissing' : 'issues.profileId')
+  // Never the config path ("accounts.#2.id"): the field's own label, or its last segment.
+  const last = issue.path.split('.').filter((p) => !p.startsWith('#')).pop() ?? issue.path
+  return t('issues.invalidValue', { where: FIELD_LABEL[last] ? t(FIELD_LABEL[last]!) : last })
 }

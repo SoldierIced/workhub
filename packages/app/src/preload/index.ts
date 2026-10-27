@@ -65,6 +65,7 @@ const api: HubApi = {
     prompt: (id, text, images, token) => ipcRenderer.invoke('sessions:prompt', id, text, images, token),
     withdrawPrompt: (id, token) => ipcRenderer.invoke('sessions:withdrawPrompt', id, token),
     onPromptStarted: (cb) => subscribe<[string, number]>('sessions:promptStarted', cb),
+    onPromptSettled: (cb) => subscribe<[string, number]>('sessions:promptSettled', cb),
     setMode: (id, mode, options) => ipcRenderer.invoke('sessions:setMode', id, mode, options),
     close: (id) => ipcRenderer.invoke('sessions:close', id),
     setModel: (id, model) => ipcRenderer.invoke('sessions:setModel', id, model),

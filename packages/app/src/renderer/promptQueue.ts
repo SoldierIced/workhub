@@ -4,6 +4,7 @@ import { PROMPT_WITHDRAWN } from '@shared/api'
 import { imageInputFromDataUrl } from './lib/images'
 import { PromptQueues, type QueuedPrompt, type SubmitOutcome } from './lib/prompt-queue'
 import { pushItem, pushTurnEnd, pushUser } from './store'
+import { SettleWaits } from './lib/settle-waits'
 
 const listeners = new Set<() => void>()
 
@@ -17,12 +18,19 @@ function recover(sessionId: string, prompts: RecoveredPrompt[]): void {
 
 /** Prompts handed to main that wait to hear they went out, by session and token. */
 const goingOut = new Map<string, () => void>()
+/** Prompts whose answer came back, waiting for the turn's last events (see `SettleWaits`). */
+const settles = new SettleWaits()
 let followingStarts = false
 function followStarts(): void {
   if (followingStarts) return
   followingStarts = true
   window.hub.sessions.onPromptStarted((id, token) => goingOut.get(`${id}:${token}`)?.())
+  window.hub.sessions.onPromptSettled((id, token) => settles.notify(`${id}:${token}`))
 }
+
+/** How long a turn's end waits for main's notice before it shows anyway. */
+const SETTLE_WAIT_MS = 2000
+const afterSettled = (key: string) => settles.wait(key, SETTLE_WAIT_MS)
 
 /**
  * Sends one prompt. It stays in the queued list while main holds it behind another prompt of the
@@ -44,16 +52,20 @@ async function deliver(sessionId: string, prompt: QueuedPrompt, started: () => v
   try {
     const stopReason = await window.hub.sessions.prompt(sessionId, prompt.text, inputs.length ? inputs : undefined, prompt.id)
     show()
+    await afterSettled(key)
     pushTurnEnd(sessionId, stopReason)
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     // Main dropped it before it went out: the user removed it (nothing to do) or interrupted the session.
     if (message.includes(PROMPT_WITHDRAWN)) {
+      void afterSettled(key)
       if (queues.isHeld(sessionId, prompt.id)) recover(sessionId, [{ text: prompt.text, images: prompt.images }])
       return
     }
     show()
     pushItem(sessionId, 'error', message)
+    // Main sends the notice for a failed prompt too: take it, so it is not kept.
+    void afterSettled(key)
   } finally {
     goingOut.delete(key)
   }

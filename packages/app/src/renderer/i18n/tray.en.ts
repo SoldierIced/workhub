@@ -32,6 +32,7 @@ export const trayEn = {
   'tray.usageUnknown': 'no reading yet',
   'tray.window.5h': '5h',
   'tray.window.weekly': 'Weekly',
+  'tray.window.monthly': 'Monthly',
   'tray.section.pullRequests': 'Pull requests',
   'tray.pr.toReview': 'Waiting for my review: {count}',
   'tray.pr.mine': 'Mine: {count}',

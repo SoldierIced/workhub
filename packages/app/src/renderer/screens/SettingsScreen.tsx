@@ -30,7 +30,7 @@ import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
-import { friendlyIssue, humanIssue, profileFieldErrors, type IssueTarget } from '../lib/configIssues'
+import { accountFieldErrors, friendlyIssue, humanIssue, profileFieldErrors, type IssueTarget } from '../lib/configIssues'
 import { showWorkhub1Migration, showWorkhub1Tokens, useWorkhub1Preview } from '../lib/workhub1'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { AiReviewProfileFields } from './AiReviewSettings'
@@ -88,10 +88,8 @@ function Issues({ issues, title }: { issues: ValidationIssue[]; title?: string }
     <div role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
       {title && <p className="mb-1 font-semibold">{title}</p>}
       <ul className="flex flex-col gap-0.5">
-        {issues.map((i) => (
-          <li key={`${i.path}${i.message}`}>
-            {friendlyIssue(i, (k, p) => t(k, p))}
-          </li>
+        {[...new Set(issues.map((i) => friendlyIssue(i, (k, p) => t(k, p))))].map((text) => (
+          <li key={text}>{text}</li>
         ))}
       </ul>
     </div>
@@ -511,10 +509,13 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
   const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
   const [form, setForm] = useState<AgentAccount>(initial ? { ...initial } : emptyAccount(firstAgent))
   const [envText, setEnvText] = useState(toLines(initial?.env))
+  // Field problems, shown only after a save attempt.
+  const [errors, setErrors] = useState<ReturnType<typeof accountFieldErrors> | null>(null)
 
   const formRef = useRef<HTMLDivElement>(null)
   const select = (id: string | null, agentId = firstAgent) => {
     const a = snap.config.accounts.find((x) => x.id === id)
+    setErrors(null)
     setSelected(a ? a.id : null)
     setForm(a ? { ...a } : emptyAccount(agentId))
     setEnvText(toLines(a?.env))
@@ -544,6 +545,10 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
   }, [optionsKey, configurable])
 
   const save = async () => {
+    // Nothing is sent until the id and name are valid, so the form says which field to fix.
+    const found = accountFieldErrors(form, selected ? [] : snap.config.accounts.map((a) => a.id))
+    setErrors(found)
+    if (found.id || found.name) return
     const account: AgentAccount = { ...form, env: fromLines(envText) }
     for (const k of ['command', 'defaultModel', 'defaultMode'] as const) {
       const v = account[k]?.trim()
@@ -575,13 +580,13 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
           formTitle={selected ? form.name || form.id : t('settings.newAccount')}
           form={
             <div className="grid grid-cols-2 gap-4">
-              <Field label={t('settings.id')} help={t('help.id')}>
+              <Field label={t('settings.id')} help={t('help.id')} error={errors?.id && t(errors.id)}>
                 <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="kiro-acme" />
               </Field>
               <Field label={t('settings.agent')} help={t('help.account.agent')}>
                 <Select value={form.agentId} onChange={(v) => setForm({ ...form, agentId: v })} options={snap.agents.map((a) => ({ value: a.id, label: a.name }))} />
               </Field>
-              <Field label={t('settings.name')} help={t('help.account.name')} className="col-span-2">
+              <Field label={t('settings.name')} help={t('help.account.name')} className="col-span-2" error={errors?.name && t(errors.name)}>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme work" />
               </Field>
               <Field

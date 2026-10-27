@@ -15,10 +15,18 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 const AGENT_NAME: Record<string, MessageKey> = { claude: 'agentUsage.agent.claude', codex: 'agentUsage.agent.codex', kiro: 'agentUsage.agent.kiro' }
 
 /** Kiro credits spent today and this week, with the per-day split (and why credits left may be missing) on hover. */
-export function KiroSpent({ spend, remainingKnown }: { spend: CreditSpend; remainingKnown: boolean }) {
+export function KiroSpent({ spend, remainingKnown, compact = false }: { spend: CreditSpend; remainingKnown: boolean; /** Only today's credits, the rest on hover (the sidebar). */ compact?: boolean }) {
   const { t, formatNumber } = useI18n()
   const days = spend.days.map((d) => `${d.day}: ${formatNumber(round2(d.credits))}`).join('\n')
   const hover = `${t('agentUsage.kiroDays')}\n${days}${remainingKnown ? '' : `\n\n${t('agentUsage.kiroNoRemaining')}`}`
+  if (compact) {
+    const summary = t('agentUsage.kiroSpentShort', { today: formatNumber(round2(spend.today)), week: formatNumber(round2(spend.week)) })
+    return (
+      <span className="min-w-0 truncate text-2xs text-subtle tabular-nums" title={`${summary}\n\n${hover}`} data-testid="kiro-spend">
+        {t('usage.spentToday', { today: formatNumber(round2(spend.today)) })}
+      </span>
+    )
+  }
   return (
     <span className="block text-xs text-muted tabular-nums" title={hover} data-testid="kiro-spend">
       {t('agentUsage.kiroSpentShort', { today: formatNumber(round2(spend.today)), week: formatNumber(round2(spend.week)) })}
