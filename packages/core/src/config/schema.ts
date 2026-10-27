@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ENV_NAME } from '../domain/profile'
 import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { CONNECTION_KINDS, type Connection } from '../domain/connection'
 import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
@@ -15,7 +16,7 @@ import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
  * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
  */
-export const CONFIG_VERSION = 6
+export const CONFIG_VERSION = 7
 
 export interface WorkhubConfig {
   version: typeof CONFIG_VERSION
@@ -70,11 +71,25 @@ export interface AppOptions {
   notifyHealth: boolean
   /** Closing the main window keeps the app running in the menu bar / notification area. */
   keepInTray: boolean
+  /** Master switch: off silences every OS notification, whatever the per-kind switches say. */
+  notificationsEnabled: boolean
+  /** Read each finished reply aloud in new sessions (a session's own toggle overrides it). */
+  readAloud: boolean
+  /** The voice that reads replies aloud, by name; empty: the system voice. */
+  speechVoice: string
+  /** Speaking speed in words per minute (`SPEECH_RATE_RANGE`). */
+  speechRate: number
+  /** The first-run welcome window was shown (or the user already had profiles). */
+  welcomeDone: boolean
   /** "Pause notifications": nothing is shown until this moment (epoch ms). Unset when not paused. */
   notificationsPausedUntil?: number
 }
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true }
+/** Words per minute the voice speaks at (Workhub 1's range). */
+export const SPEECH_RATE_RANGE = [120, 300] as const
+export const DEFAULT_SPEECH_RATE = 190
+
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -202,6 +217,8 @@ const aiReview = z.object({
   reviewerModel: z.string().trim().max(200).default(AI_REVIEW.reviewerModel)
 })
 
+const folderOptions = z.object({ onlyGitRepos: z.boolean().optional(), subfoldersAreProjects: z.boolean().optional() })
+
 const profile = z.object({
   id,
   name: z.string().min(1),
@@ -211,6 +228,11 @@ const profile = z.object({
   preferredAgents: z.array(z.string().min(1)).optional(),
   modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
   folders: z.array(z.string().min(1)).optional(),
+  folderOptions: z.record(z.string().min(1), folderOptions).optional(),
+  symbol: z.string().trim().min(1).max(40).optional(),
+  linkBrowser: z.string().trim().min(1).max(200).optional(),
+  ownsOutside: z.boolean().optional(),
+  envNames: z.array(z.string().regex(ENV_NAME)).optional(),
   health: healthSettings.optional(),
   slackArchiveMinutes: z.number().int().min(1).optional(),
   aiReview: aiReview.optional(),
@@ -311,6 +333,11 @@ export const configSchema = z.object({
       notifyTickets: z.boolean().default(true),
       notifyHealth: z.boolean().default(true),
       keepInTray: z.boolean().default(true),
+      notificationsEnabled: z.boolean().default(true),
+      readAloud: z.boolean().default(false),
+      speechVoice: z.string().max(200).default(''),
+      speechRate: z.number().int().min(SPEECH_RATE_RANGE[0]).max(SPEECH_RATE_RANGE[1]).default(DEFAULT_SPEECH_RATE),
+      welcomeDone: z.boolean().default(false),
       notificationsPausedUntil: z.number().int().nonnegative().optional()
     })
     .optional(),

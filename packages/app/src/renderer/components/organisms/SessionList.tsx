@@ -26,6 +26,7 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { LEVEL_LABEL, LEVEL_TONE } from '../../lib/attention'
 import { cn } from '../../lib/cn'
 import { folderName } from '../../lib/home'
+import { isSessionReadAloud, setSessionReadAloud, useReadAloudVersion } from '../../lib/readAloud'
 import { listSessions, memberOf, newGroupId, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
 import { awaitingAnswer, pushItem } from '../../store'
 import { Badge } from '../atoms/Badge'
@@ -135,6 +136,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
   /** Stops the session and drops it from the open sessions; a working one asks first. */
   const requestClose = (data: SessionData) => (isWorking(data) ? setClosing(data) : closeNow(data))
 
+  // The menu reads the per-session read-aloud switches; a change re-renders it.
+  useReadAloudVersion()
   const sessionMenu = (member: GroupMember): MenuItem[] => {
     const inGroup = groupOf(state, member.key)
     const isLive = live.has(member.key)
@@ -142,6 +145,10 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     const items: MenuItem[] = []
     if (!entry || entry.data.view.state === 'stopped') items.push({ label: t('groups.reopen'), onSelect: () => onReopen(member) }, { separator: true })
     if (entry) items.push({ label: t('sessions.close'), onSelect: () => requestClose(entry.data) }, { separator: true })
+    if (entry && entry.data.view.state !== 'stopped') {
+      const reading = isSessionReadAloud(entry.data.view.id)
+      items.push({ label: reading ? t('voice.session.on') : t('voice.session.off'), onSelect: () => setSessionReadAloud(entry.data.view.id, !reading) }, { separator: true })
+    }
     items.push(
       { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveBy(s, member.key, -1)) },
       { label: t('groups.moveDown'), hint: 'Alt+↓', onSelect: () => act((s) => moveBy(s, member.key, 1)) },

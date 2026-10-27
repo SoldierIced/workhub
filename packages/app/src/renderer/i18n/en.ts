@@ -8,6 +8,7 @@ import { automationsEn } from './automations.en'
 import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
+import { setupEn } from './setup.en'
 import { usageEn } from './usage.en'
 import { continuityEn } from './continuity.en'
 import { appearanceEn } from './appearance.en'
@@ -384,6 +385,7 @@ export const en = {
   ...prEn,
   ...ticketsEn,
   ...updatesEn,
+  ...setupEn,
   ...healthEn,
   ...prEventsEn,
   ...linksEn,

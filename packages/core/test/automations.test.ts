@@ -322,8 +322,8 @@ describe('new session each run (Workhub 1 bugs)', () => {
 describe('config version 5 (chat watcher and automations)', () => {
   it('migrates a version 4 document unchanged and fills the defaults', async () => {
     const { migrateConfig, parseConfig, chatWatcherSettings, saveAutomation, setChatWatcher, emptyConfig } = await import('../src')
-    expect(migrateConfig({ version: 4, profiles: [] })).toEqual({ version: 6, profiles: [] })
-    const parsed = parseConfig({ version: 6, chatWatcher: { enabled: true, channels: [{ id: 'C01', name: 'reviews' }] }, automations: [{ id: 'a', name: 'A', agentKey: 'shell' }] })
+    expect(migrateConfig({ version: 4, profiles: [] })).toEqual({ version: 7, profiles: [] })
+    const parsed = parseConfig({ version: 7, chatWatcher: { enabled: true, channels: [{ id: 'C01', name: 'reviews' }] }, automations: [{ id: 'a', name: 'A', agentKey: 'shell' }] })
     expect(chatWatcherSettings(parsed)).toMatchObject({ enabled: true, model: 'haiku', intervalMinutes: 10, channels: [{ id: 'C01', name: 'reviews', purpose: '' }] })
     expect(parsed.automations?.[0]).toMatchObject({ sessionPolicy: 'reuse', receivesChatReplies: true, limits: { maxRuns: 6, perMinutes: 5, maxPerDay: 60 } })
     const base = emptyConfig()
