@@ -162,6 +162,7 @@ const profile = z.object({
   connections: z.partialRecord(z.enum(CONNECTION_KINDS), id).default({}),
   accountIds: z.array(id).default([]),
   agentIds: z.array(id).optional(),
+  preferredAgents: z.array(z.string().min(1)).optional(),
   modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
   folders: z.array(z.string().min(1)).optional(),
   health: healthSettings.optional()

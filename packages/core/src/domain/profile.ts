@@ -24,6 +24,12 @@ export interface Profile {
    * only agents that have a bound account.
    */
   agentIds?: string[]
+  /**
+   * The user's order of preference among the agents this profile offers, as `EffectiveAgent.key`
+   * (`claude` or `claude:<accountId>`). Automatic choices (open a session from a pull request or
+   * ticket, the default of a new session) take the first one that fits. Empty: Claude first.
+   */
+  preferredAgents?: string[]
   modules: ModuleToggles
   /** Folders the profile works in (Workhub 1's profile folders): new sessions and history group by them. */
   folders?: string[]

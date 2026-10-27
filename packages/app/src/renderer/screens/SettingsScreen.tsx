@@ -5,6 +5,8 @@ import {
   CONNECTION_KINDS,
   NO_MODULES,
   OPTIONAL_MODULES,
+  orderAgents,
+  resolveEffectiveAgents,
   type AgentAccount,
   type Connection,
   type ConnectionKind,
@@ -17,7 +19,7 @@ import {
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, Input, Select, Switch, Textarea } from '../components/atoms'
-import { Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
+import { AgentOrderList, Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
 import { Workhub1Import } from '../components/organisms'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
@@ -514,11 +516,14 @@ function ProfilesSection({ snap, run }: SectionProps) {
   }
   const toggle = (list: string[], id: string, on: boolean) => (on ? [...list, id] : list.filter((x) => x !== id))
   const allAgents = form.agentIds === undefined
+  // The agents this profile offers as it is being edited, in the user's order.
+  const orderedAgents = orderAgents(form.preferredAgents, resolveEffectiveAgents({ ...snap.config, profiles: [form] }, form.id || null))
 
   const save = async () => {
     const folders = form.folders?.map((f) => f.trim()).filter(Boolean)
     const profile: Profile = { ...form, folders: folders?.length ? folders : undefined }
     if (!profile.folders) delete profile.folders
+    if (!profile.preferredAgents?.length) delete profile.preferredAgents
     if (await run(() => window.hub.config.saveProfile(profile))) setSelected(form.id)
   }
 
@@ -601,6 +606,10 @@ function ProfilesSection({ snap, run }: SectionProps) {
                   <Switch checked={form.agentIds?.includes(a.id) ?? false} onChange={(on) => setForm({ ...form, agentIds: toggle(form.agentIds ?? [], a.id, on) })} />
                 </SwitchRow>
               ))}
+          </FieldGroup>
+          <FieldGroup legend={t('settings.agentOrder')}>
+            <p className="pt-1 text-sm text-subtle">{t('settings.agentOrderHint')}</p>
+            <AgentOrderList agents={orderedAgents} onChange={(keys) => setForm({ ...form, preferredAgents: keys })} />
           </FieldGroup>
           <FieldGroup legend={t('settings.modules')}>
             {OPTIONAL_MODULES.map((m) => (

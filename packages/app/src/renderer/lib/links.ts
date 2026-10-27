@@ -1,12 +1,14 @@
 import {
   chooseFolderForPullRequest,
   effectiveAgentKey,
+  pickAgent,
   prName,
   sessionsForPullRequest,
   ticketKeysIn,
   type Checkout,
   type EffectiveAgent,
   type LinkableSession,
+  type Profile,
   type TicketKeyProvider
 } from '@workhub/core'
 import type { HistoryItem, StartSessionInput } from '@shared/api'
@@ -41,10 +43,9 @@ export function liveSessionForPullRequest(pr: Pick<PullRequestTarget, 'url' | 't
   return sessionsForPullRequest(pr, linkableSessions(sessions, providers), providers)[0]?.sessionId
 }
 
-/** The agent for a session about a PR or ticket: Claude when the profile has it, else the first agent with an app mode (drafts need the chat). */
-export function agentForDraft(agents: readonly EffectiveAgent[], claudeOnly: boolean): EffectiveAgent | undefined {
-  const claude = agents.find((a) => a.agent.id === 'claude')
-  return claudeOnly ? claude : (claude ?? agents.find((a) => a.agent.capabilities.appMode))
+/** The agent for a session about a PR or ticket: the user's preferred one, else Claude, else the first with an app mode (drafts need the chat). */
+export function agentForDraft(profile: Pick<Profile, 'preferredAgents'> | undefined, agents: readonly EffectiveAgent[], claudeOnly: boolean): EffectiveAgent | undefined {
+  return pickAgent(profile, agents, claudeOnly ? 'claude' : 'appMode')
 }
 
 /** The start request that reopens a past session (the History screen's resume, shared with the PR and ticket windows). */
@@ -62,6 +63,8 @@ export type IntentOutcome =
 export interface IntentDeps {
   locale: Locale
   agents: readonly EffectiveAgent[]
+  /** The active profile, for its preferred agent order. */
+  profile?: Pick<Profile, 'preferredAgents'>
   sessions: readonly SessionData[]
   checkouts: (profileId: string | null) => Promise<Checkout[]>
   providers: (profileId: string | null) => Promise<TicketKeyProvider[]>
@@ -88,7 +91,7 @@ export async function runIntent(deps: IntentDeps, intent: SessionIntent): Promis
       return { kind: 'opened', sessionId: view.id }
     }
     if (intent.kind === 'ticketSession') {
-      const agent = agentForDraft(deps.agents, false)
+      const agent = agentForDraft(deps.profile, deps.agents, false)
       if (!agent) return failure('links.noAgent')
       const cwd = chooseFirstFolder(await deps.checkouts(intent.profileId)) ?? (await deps.defaultCwd())
       return await startDrafted(deps, intent.profileId, agent, cwd, ticketPrompt(deps.locale, intent.ticket))
@@ -99,7 +102,7 @@ export async function runIntent(deps: IntentDeps, intent: SessionIntent): Promis
       if (live) return { kind: 'opened', sessionId: live }
     }
     const review = intent.kind === 'reviewPullRequest'
-    const agent = agentForDraft(deps.agents, review) ?? (review ? undefined : deps.agents[0])
+    const agent = agentForDraft(deps.profile, deps.agents, review) ?? (review ? undefined : deps.agents[0])
     if (!agent) return failure(review ? 'links.noClaude' : 'links.noAgent')
     const cwd = chooseFolderForPullRequest(pr, await deps.checkouts(intent.profileId)).path ?? (await deps.defaultCwd())
     if (review) return await startDrafted(deps, intent.profileId, agent, cwd, reviewPrompt(deps.locale, pr))

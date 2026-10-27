@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { appOptions, EMPTY_SESSION_GROUPS, groupOf, investigateSlowEndpointPrompt, notificationTitle, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember, type SlowTransaction } from '@workhub/core'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, investigateSlowEndpointPrompt, notificationTitle, pickAgent, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember, type SlowTransaction } from '@workhub/core'
 import type { HealthEnvironmentView } from '@shared/health-api'
 import { TooltipProvider } from './components/atoms'
 import { ToastProvider, useToast } from './components/molecules'
@@ -181,7 +181,7 @@ function Shell() {
 
   // Investigate with Claude: a new app-mode session in the service's folder with the summary in the composer, not sent.
   const investigate = async (env: HealthEnvironmentView, tx: SlowTransaction) => {
-    const claude = agents.find((a) => a.agent.id === 'claude')
+    const claude = pickAgent(profile, agents, 'claude')
     if (!claude) return toast(t('health.investigate.noAgent'), 'danger')
     try {
       const cwd = folderForService(profile?.folders ?? [], tx.service) ?? (await window.hub.getDefaultCwd())
@@ -195,8 +195,8 @@ function Shell() {
   }
 
   // A pull request or ticket window (or screen) asked for a session: open it, or start one with a drafted, unsent prompt.
-  const linkDeps = useRef<Pick<IntentDeps, 'agents' | 'sessions' | 'locale'>>({ agents, sessions, locale })
-  linkDeps.current = { agents, sessions, locale }
+  const linkDeps = useRef<Pick<IntentDeps, 'agents' | 'profile' | 'sessions' | 'locale'>>({ agents, profile, sessions, locale })
+  linkDeps.current = { agents, profile, sessions, locale }
   useEffect(
     () =>
       window.hub.links.onIntent((intent: SessionIntent) => {
@@ -295,6 +295,7 @@ function Shell() {
         onOpenChange={(open) => setDialog((d) => ({ ...d, open }))}
         profileId={activeProfileId}
         agents={agents}
+        preferredAgents={profile?.preferredAgents}
         initialCwd={dialog.cwd}
         initialAgentKey={dialog.agentKey}
         onStarted={openSession}

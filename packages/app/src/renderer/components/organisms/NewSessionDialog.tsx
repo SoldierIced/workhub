@@ -1,6 +1,6 @@
 import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { EffectiveAgent } from '@workhub/core'
+import { pickAgent, type EffectiveAgent } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { installHintKey } from '../../lib/agents'
 import { readPrefs } from '../../lib/prefs'
@@ -16,13 +16,15 @@ export interface NewSessionDialogProps {
   onOpenChange: (open: boolean) => void
   profileId: string | null
   agents: EffectiveAgent[]
+  /** The profile's agent order; its first agent is preselected. */
+  preferredAgents?: string[]
   initialAgentKey?: string
   initialCwd?: string
   onStarted: (sessionId: string) => void
 }
 
 /** Starts a session with the active profile: pick the agent and the folder. */
-export function NewSessionDialog({ open, onOpenChange, profileId, agents, initialAgentKey, initialCwd, onStarted }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, onOpenChange, profileId, agents, preferredAgents, initialAgentKey, initialCwd, onStarted }: NewSessionDialogProps) {
   const { t } = useI18n()
   const [agentKey, setAgentKey] = useState('')
   const [cwd, setCwd] = useState('')
@@ -39,11 +41,11 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents, initia
         ? initialAgentKey
         : agents.some((a) => a.key === k)
           ? k
-          : (agents.find((a) => a.agent.id === 'claude')?.key ?? agents[0]?.key ?? '')
+          : (pickAgent({ preferredAgents }, agents, 'any')?.key ?? '')
     )
     if (initialCwd) setCwd(initialCwd)
     else void window.hub.getDefaultCwd().then((d) => setCwd((c) => c || d))
-  }, [open, initialAgentKey, initialCwd, agents])
+  }, [open, initialAgentKey, initialCwd, agents, preferredAgents])
 
   useEffect(() => {
     if (open) void window.hub.agents.availability().then(setInstalled, () => setInstalled({}))

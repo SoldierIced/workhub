@@ -143,8 +143,8 @@ describe('Start session about this ticket', () => {
     expect(drafts).toEqual([['new-1', ticketPrompt('en', ticket)]])
   })
   it('falls back to another app-mode agent without Claude, and reports none at all', async () => {
-    expect(agentForDraft([agent('shell', false), agent('kiro')], false)?.key).toBe('kiro')
-    expect(agentForDraft([agent('kiro')], true)).toBeUndefined()
+    expect(agentForDraft(undefined, [agent('shell', false), agent('kiro')], false)?.key).toBe('kiro')
+    expect(agentForDraft(undefined, [agent('kiro')], true)).toBeUndefined()
     const { deps } = harness({ agents: [agent('shell', false)] })
     expect(await runIntent(deps, { kind: 'ticketSession', profileId: null, ticket: { key: 'A-1', title: 't' } })).toMatchObject({ kind: 'error', message: 'links.noAgent' })
   })
@@ -177,5 +177,25 @@ describe('parseWorktrees', () => {
       { path: '/w/detached', branch: undefined }
     ])
     expect(parseWorktrees('')).toEqual([])
+  })
+})
+
+describe('the user-preferred agent', () => {
+  const claudeOf = (account: string): EffectiveAgent => ({ ...agent('claude'), key: `claude:${account}`, label: `Claude - ${account}` })
+  const two = [claudeOf('work'), claudeOf('personal'), agent('shell', false)]
+  const review = { kind: 'reviewPullRequest', profileId: 'p', pr } as const
+
+  it('opens the preferred Claude, even when it is the second one configured, for review, PR and ticket sessions', async () => {
+    const profile = { preferredAgents: ['claude:personal'] }
+    for (const intent of [review, { kind: 'pullRequestSession', profileId: 'p', pr } as const, { kind: 'ticketSession', profileId: 'p', ticket: { key: 'A-1', title: 't' } } as const]) {
+      const { deps, starts } = harness({ agents: two, profile })
+      await runIntent(deps, intent)
+      expect(starts[0]!.agentKey).toBe('claude:personal')
+    }
+  })
+  it('keeps Claude first when no order is set', async () => {
+    const { deps, starts } = harness({ agents: two, profile: { preferredAgents: [] } })
+    await runIntent(deps, review)
+    expect(starts[0]!.agentKey).toBe('claude:work')
   })
 })
