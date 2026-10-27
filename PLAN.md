@@ -148,7 +148,7 @@ when on. Flows keep the opinionated pipeline with per-step skip and a configurab
 | P2 Sessions | Terminal agent (any command), native Claude adapter with app mode (App/Terminal/Shell views), transcript monitor, history, multiple Claude accounts, usage where available, Workhub 1 settings import | Daily use replaces Workhub 1 sessions screen |
 | P3 Code host | GitHub adapter, PR list/detail/review; GitLab adapter | Same PR screen works on both |
 | P4 Tickets | Jira adapter, Linear adapter, ticket ↔ PR ↔ session links | |
-| P5 More agents | Kiro, OpenCode, Codex over ACP; their transcript readers; Gemini CLI later | Two non-Claude agents usable with monitor data |
+| P5 More agents | Kiro, OpenCode, Codex (`@agentclientprotocol/codex-acp`) and Gemini CLI (`--acp`) over ACP; Kiro/OpenCode/Codex readers and history (listing; resume later) | Two non-Claude agents usable with monitor data |
 | P6 Modules | Chat watcher, Automations, Notifications, Health (Elastic) | Each toggled per profile |
 | P7 Flows | Engine ported from Workhub 1 onto the ports | Flow runs on GitHub+Jira and GitLab+Linear |
 | P8 Release | Signing (Apple notarization, Windows code signing), auto-update, docs site | Signed installers on 3 OSes |

@@ -85,22 +85,24 @@ export function HistoryScreen({ profileId, onOpened }: HistoryScreenProps) {
           <Input aria-label={t('history.search')} placeholder={t('history.search')} value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8!" spellCheck={false} />
         </div>
         {agents.length > 1 && (
-          <Select
-            aria-label={t('history.agent')}
-            value={agent}
-            onChange={setAgent}
-            options={[{ value: ALL, label: t('history.allAgents') }, ...agents.map((a) => ({ value: a.id, label: a.name }))]}
-            className="w-44"
-          />
+          <div className="w-44 shrink-0">
+            <Select
+              aria-label={t('history.agent')}
+              value={agent}
+              onChange={setAgent}
+              options={[{ value: ALL, label: t('history.allAgents') }, ...agents.map((a) => ({ value: a.id, label: a.name }))]}
+            />
+          </div>
         )}
         {accounts.length > 1 && (
-          <Select
-            aria-label={t('history.account')}
-            value={account}
-            onChange={setAccount}
-            options={[{ value: ALL, label: t('history.allAccounts') }, ...accounts.map((a) => ({ value: a.id, label: a.name || t('usage.defaultAccount') }))]}
-            className="w-48"
-          />
+          <div className="w-48 shrink-0">
+            <Select
+              aria-label={t('history.account')}
+              value={account}
+              onChange={setAccount}
+              options={[{ value: ALL, label: t('history.allAccounts') }, ...accounts.map((a) => ({ value: a.id, label: a.name || t('usage.defaultAccount') }))]}
+            />
+          </div>
         )}
         <IconButton label={t('history.refresh')} icon={loading ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />} disabled={loading} onClick={() => void load()} />
       </div>
