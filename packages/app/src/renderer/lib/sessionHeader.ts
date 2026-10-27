@@ -58,16 +58,28 @@ export function activityElapsed(a: Activity, since: number, now: number): string
 }
 
 /**
- * Which secondary controls stay on the header row at a given header width; the rest go to the
- * "More" menu. `full`: everything inline. `compact`: the status chips (permission mode, agent mode)
- * move to the menu. `narrow`: the pickers, the AI review and "Continue" move too.
+ * Which secondary controls stay on the header row; the rest go to the "More" menu. `full`:
+ * everything inline. `compact`: the status chips (permission mode, agent mode) move to the menu.
+ * `tight` (only reached by folding, see `foldDensity`): the review tools, the AI review and
+ * "Continue" move too. `narrow`: the model and mode pickers move as well.
  */
-export type HeaderDensity = 'full' | 'compact' | 'narrow'
+export type HeaderDensity = 'full' | 'compact' | 'tight' | 'narrow'
 
 export function headerDensity(width: number): HeaderDensity {
   if (width >= 1240) return 'full'
   if (width >= 1000) return 'compact'
   return 'narrow'
+}
+
+const DENSITIES: readonly HeaderDensity[] = ['full', 'compact', 'tight', 'narrow']
+
+/**
+ * The density `steps` levels tighter than `base` (never past `narrow`). The header starts from
+ * its width's density and folds one more level each time its row still overflows (long labels,
+ * an account name, many controls), so nothing is ever drawn over something else.
+ */
+export function foldDensity(base: HeaderDensity, steps: number): HeaderDensity {
+  return DENSITIES[Math.min(DENSITIES.length - 1, DENSITIES.indexOf(base) + Math.max(0, Math.floor(steps)))]!
 }
 
 /** Labels the adapters write in English for modes Workhub names itself, by mode id. */

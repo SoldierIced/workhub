@@ -3,7 +3,7 @@ import type { PullRequestItem } from '@workhub/core'
 import { changesTotal, contextView, pullRequestLabel, requestBars, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
 import { paneDragWidth, paneKeyWidth } from '../src/renderer/lib/paneResize'
 import { DEFAULT_PREFS, parsePrefs } from '../src/renderer/lib/prefs'
-import { abbreviateFolder, activityElapsed, activityOf, formatClock, formatSince, headerDensity, permissionModeLabel } from '../src/renderer/lib/sessionHeader'
+import { abbreviateFolder, activityElapsed, activityOf, foldDensity, formatClock, formatSince, headerDensity, permissionModeLabel } from '../src/renderer/lib/sessionHeader'
 
 describe('session header', () => {
   it('abbreviates the folder from the home folder and keeps the last two folders of a long path', () => {
@@ -38,6 +38,17 @@ describe('session header', () => {
     expect(headerDensity(1400)).toBe('full')
     expect(headerDensity(1100)).toBe('compact')
     expect(headerDensity(900)).toBe('narrow')
+  })
+
+  it('folds one more level each time the row still overflows, never past narrow', () => {
+    expect(foldDensity('full', 0)).toBe('full')
+    expect(foldDensity('full', 1)).toBe('compact')
+    expect(foldDensity('full', 2)).toBe('tight')
+    expect(foldDensity('full', 3)).toBe('narrow')
+    expect(foldDensity('compact', 1)).toBe('tight')
+    expect(foldDensity('compact', 5)).toBe('narrow')
+    expect(foldDensity('narrow', 1)).toBe('narrow')
+    expect(foldDensity('compact', -1)).toBe('compact')
   })
 })
 
