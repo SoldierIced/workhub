@@ -32,10 +32,10 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // 6 -> 7: optional fields added since 6: Kiro credits read, app icon badge, mid-turn input per
   // agent, profile colour, session group member profile, profile symbol, folder switches, link
   // browser, "owns outside" and environment variable names (values go to the secret store), the
-  // master notification switch, the read-aloud options, the welcome flag and the Health refresh
-  // floor (`options.healthRefreshFloorMinutes`). All optional and
-  // default, so the document is unchanged; the bump keeps an older Workhub from loading the file
-  // and dropping them on its next save.
+  // master notification switch, the read-aloud options, the welcome flag, the Health refresh floor
+  // (`options.healthRefreshFloorMinutes`) and each automation's `effort` and `permissionMode`. All
+  // optional and default, so the document is unchanged; the bump keeps an older Workhub from
+  // loading the file and dropping them on its next save.
   6: (raw) => raw
 }
 

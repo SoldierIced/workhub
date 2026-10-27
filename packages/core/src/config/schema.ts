@@ -286,6 +286,8 @@ const automation = z.object({
   folder: z.string().default('~'),
   view: z.enum(['app', 'console']).default('app'),
   model: z.string().optional(),
+  effort: z.string().optional(),
+  permissionMode: z.string().optional(),
   triggers: z
     .object({
       chatChannelIds: z.array(z.string()).default([]),

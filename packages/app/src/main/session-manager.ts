@@ -54,6 +54,8 @@ interface ManagedSession {
   pendingTimer?: ReturnType<typeof setTimeout>
   /** Permission requests of the app engine not answered yet: the turn waits on the user. */
   openPermissions: Set<string>
+  /** The reasoning effort the session started with, kept across a view switch. */
+  effort?: string
   /** What the console's terminal UI shows: a spinner while a turn runs, a notification when it asks. */
   console: ConsoleActivity
   /** When the console engine last started, so a tool call cut off by an earlier process never holds a switch. */
@@ -220,6 +222,7 @@ export class SessionManager {
       engine,
       switching: false,
       readOnly: input.readOnly === true,
+      ...(input.effort ? { effort: input.effort } : {}),
       openPermissions: new Set(),
       console: new ConsoleActivity(),
       consoleStartedAt: 0,
@@ -233,7 +236,7 @@ export class SessionManager {
     // What was picked for this session, else the account's defaults (Settings → Agent accounts).
     const model = input.model ?? account?.defaultModel
     const modeId = input.readOnly ? undefined : (input.modeId ?? account?.defaultMode)
-    void (engine === 'app' ? this.startChat(session, { resume, model, modeId, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows)).catch(
+    void (engine === 'app' ? this.startChat(session, { resume, model, effort: input.effort, modeId, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows)).catch(
       (err: unknown) => this.update(view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) })
     )
     return view
@@ -346,7 +349,7 @@ export class SessionManager {
       s.switching = false
     }
     const hasHistory = await this.hasTranscript(s)
-    if (engine === 'app') await this.startChat(s, { resume: hasHistory, model: s.view.currentModelId, modeId: s.readOnly ? undefined : s.view.currentModeId })
+    if (engine === 'app') await this.startChat(s, { resume: hasHistory, model: s.view.currentModelId, effort: s.effort, modeId: s.readOnly ? undefined : s.view.currentModeId })
     else await this.startConsole(s)
   }
 
@@ -463,7 +466,7 @@ export class SessionManager {
     await Promise.all([...runtimes].map((r) => r?.stopAll()))
   }
 
-  private async startApp(s: ManagedSession, opts: { resume: boolean; model?: string; modeId?: string; cols?: number; rows?: number }): Promise<void> {
+  private async startApp(s: ManagedSession, opts: { resume: boolean; model?: string; effort?: string; modeId?: string; cols?: number; rows?: number }): Promise<void> {
     const started = await s.runtime.start({
       sessionId: s.view.id,
       agent: s.agent,
@@ -473,6 +476,7 @@ export class SessionManager {
       agentSessionId: s.view.agentSessionId,
       resume: opts.resume,
       model: opts.model,
+      ...(opts.effort ? { effort: opts.effort } : {}),
       ...(opts.modeId ? { modeId: opts.modeId } : {}),
       cols: opts.cols,
       rows: opts.rows,
@@ -560,7 +564,7 @@ export class SessionManager {
    * before any live event of the new chat, and the chat turns ready only after them: the
    * renderer replaces what it showed with the full conversation, the console's turns included.
    */
-  private async startChat(s: ManagedSession, opts: { resume: boolean; model?: string; modeId?: string; cols?: number; rows?: number }): Promise<void> {
+  private async startChat(s: ManagedSession, opts: { resume: boolean; model?: string; effort?: string; modeId?: string; cols?: number; rows?: number }): Promise<void> {
     const source = this.deps.history[s.agent.accountsOf ?? s.agent.id]
     if (!opts.resume || !source || !s.view.agentSessionId) return this.startApp(s, opts)
     const held: NonNullable<ManagedSession['held']> = { events: [] }

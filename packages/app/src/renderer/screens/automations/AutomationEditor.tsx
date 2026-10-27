@@ -1,10 +1,33 @@
 import { useEffect, useState } from 'react'
-import type { AutomationDefinition, EffectiveAgent, WatchedChannel } from '@workhub/core'
+import { AUTOMATION_EFFORTS, CLAUDE_PERMISSION_MODES, type AutomationDefinition, type EffectiveAgent, type WatchedChannel } from '@workhub/core'
+import type { AgentOptionsView } from '@shared/api'
 import { Button, Input, Select, Switch, Textarea } from '../../components/atoms'
 import { Dialog, Field, SwitchRow } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 
 const DAYS = [1, 2, 3, 4, 5, 6, 0]
+/** Keeps a stored pick visible when the agent's list no longer (or not yet) offers it. */
+function withCurrent(list: { value: string; label: string }[], current: string | undefined) {
+  return current && !list.some((o) => o.value === current) ? [...list, { value: current, label: current }] : list
+}
+
+/** The models and modes the chosen agent offers (its CLI's listing, or what its last session reported). */
+function useAgentOptions(agentKey: string): { options: AgentOptionsView | null } {
+  const [options, setOptions] = useState<AgentOptionsView | null>(null)
+  useEffect(() => {
+    let live = true
+    setOptions(null)
+    void window.hub.agents.options(agentKey).then(
+      (o) => live && setOptions(o),
+      () => undefined
+    )
+    return () => {
+      live = false
+    }
+  }, [agentKey])
+  return { options }
+}
+
 const num = (v: string, fallback: number) => (Number.isFinite(Number(v)) && v.trim() !== '' ? Number(v) : fallback)
 
 export interface AutomationEditorProps {
@@ -19,10 +42,14 @@ export interface AutomationEditorProps {
 export function AutomationEditor({ automation, agents, channels, onClose, onSave }: AutomationEditorProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<AutomationDefinition | null>(automation)
+  const [otherChannel, setOtherChannel] = useState('')
   useEffect(() => setForm(automation), [automation])
   if (!form) return null
   const set = (patch: Partial<AutomationDefinition>) => setForm({ ...form, ...patch })
   const triggers = form.triggers
+  const chosen = agents.find((a) => a.key === form.agentKey)
+  const native = chosen?.agent.adapter === 'native'
+  const { options } = useAgentOptions(form.agentKey)
   const agentOptions = agents.some((a) => a.key === form.agentKey) ? agents : [...agents, { key: form.agentKey, label: form.agentKey } as EffectiveAgent]
 
   return (
@@ -51,11 +78,42 @@ export function AutomationEditor({ automation, agents, channels, onClose, onSave
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={t('automations.field.agent')}>
-            <Select value={form.agentKey} onChange={(agentKey) => set({ agentKey })} options={agentOptions.map((a) => ({ value: a.key, label: a.label }))} />
+            <Select value={form.agentKey} onChange={(agentKey) => set({ agentKey, model: undefined, effort: undefined, permissionMode: undefined })} options={agentOptions.map((a) => ({ value: a.key, label: a.label }))} />
           </Field>
           <Field label={t('automations.field.folder')}>
             <Input value={form.folder} onChange={(e) => set({ folder: e.target.value })} />
           </Field>
+          <Field label={t('automations.field.model')}>
+            <Select
+              value={form.model ?? ''}
+              onChange={(model) => set({ model: model || undefined })}
+              options={[{ value: '', label: t('automations.option.default') }, ...withCurrent(options?.models.map((m) => ({ value: m.id, label: m.name })) ?? [], form.model)]}
+            />
+          </Field>
+          {native && (
+            <Field label={t('automations.field.effort')}>
+              <Select
+                value={form.effort ?? ''}
+                onChange={(effort) => set({ effort: effort || undefined })}
+                options={[{ value: '', label: t('automations.option.default') }, ...AUTOMATION_EFFORTS.map((e) => ({ value: e, label: t(`automations.effort.${e}` as 'automations.effort.low') }))]}
+              />
+            </Field>
+          )}
+          {(native || (options?.modes.length ?? 0) > 0) && (
+            <Field label={t('automations.field.permission')} hint={t('automations.field.permissionHint')}>
+              <Select
+                value={form.permissionMode ?? ''}
+                onChange={(permissionMode) => set({ permissionMode: permissionMode || undefined })}
+                options={[
+                  { value: '', label: t('automations.option.default') },
+                  ...withCurrent(
+                    native ? CLAUDE_PERMISSION_MODES.map((m) => ({ value: m, label: t(`automations.permission.${m}` as 'automations.permission.default') })) : (options?.modes.map((m) => ({ value: m.id, label: m.name })) ?? []),
+                    form.permissionMode
+                  )
+                ]}
+              />
+            </Field>
+          )}
           <Field label={t('automations.field.view')}>
             <Select
               value={form.view}
@@ -89,6 +147,30 @@ export function AutomationEditor({ automation, agents, channels, onClose, onSave
               />
             </SwitchRow>
           ))}
+          {triggers.chatChannelIds
+            .filter((id) => !channels.some((c) => c.id === id))
+            .map((id) => (
+              <div key={id} className="flex items-center gap-2 text-sm text-warning">
+                <span className="min-w-0 flex-1 truncate">{t('automations.channel.unwatched', { id })}</span>
+                <Button size="sm" variant="ghost" onClick={() => set({ triggers: { ...triggers, chatChannelIds: triggers.chatChannelIds.filter((x) => x !== id) } })}>
+                  {t('automations.channel.remove')}
+                </Button>
+              </div>
+            ))}
+          <Field label={t('automations.field.otherChannel')} hint={t('automations.field.otherChannelHint')}>
+            <Input
+              placeholder="C0123456789"
+              value={otherChannel}
+              onChange={(e) => setOtherChannel(e.target.value)}
+              onKeyDown={(e) => {
+                const id = otherChannel.trim().toUpperCase()
+                if (e.key !== 'Enter' || !id) return
+                e.preventDefault()
+                if (!triggers.chatChannelIds.includes(id)) set({ triggers: { ...triggers, chatChannelIds: [...triggers.chatChannelIds, id] } })
+                setOtherChannel('')
+              }}
+            />
+          </Field>
           <Field label={t('automations.field.prOwner')} hint={t('automations.field.prOwnerHint')}>
             <Input value={triggers.prOwner} onChange={(e) => set({ triggers: { ...triggers, prOwner: e.target.value.trim() } })} />
           </Field>
@@ -119,6 +201,25 @@ export function AutomationEditor({ automation, agents, channels, onClose, onSave
             <Input type="number" min={1} value={form.runTimeoutMinutes} onChange={(e) => set({ runTimeoutMinutes: Math.max(1, num(e.target.value, 30)) })} />
           </Field>
         </div>
+
+        {triggers.intervalMinutes !== null && (
+          <div className="flex flex-col gap-2">
+            <SwitchRow label={t('automations.field.gate')} hint={t('automations.field.gateHint')}>
+              <Switch
+                checked={triggers.pendingGate !== undefined}
+                onChange={(on) => {
+                  const { pendingGate: _drop, ...rest } = triggers
+                  set({ triggers: on ? { ...rest, pendingGate: { kind: 'prReviewQueue', stateFile: '' } } : rest })
+                }}
+              />
+            </SwitchRow>
+            {triggers.pendingGate && (
+              <Field label={t('automations.field.stateFile')}>
+                <Input value={triggers.pendingGate.stateFile} placeholder={t('automations.field.stateFileHint')} onChange={(e) => set({ triggers: { ...triggers, pendingGate: { kind: 'prReviewQueue', stateFile: e.target.value } } })} />
+              </Field>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-end gap-3">
           <Field label={t('automations.field.hours')}>
