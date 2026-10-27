@@ -6,6 +6,7 @@ import type { PrEventBatch } from '../shared/pr-events-api'
 import type { SessionIntent } from '../shared/links-api'
 import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
+import type { ContinuityMoved, ContinuityOffer } from '../shared/continuity-api'
 import type { TrayRoute } from '../shared/tray-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
@@ -161,6 +162,13 @@ const api: HubApi = {
     dismissHold: (devIdentity) => ipcRenderer.invoke('aiReview:dismissHold', devIdentity),
     onChanged: (cb) => subscribe<[AiReviewSnapshot]>('aiReview:changed', cb),
     onNotice: (cb) => subscribe<[AiReviewNotice]>('aiReview:notice', cb)
+  },
+  continuity: {
+    options: (sessionId) => ipcRenderer.invoke('continuity:options', sessionId),
+    failover: (sessionId, request) => ipcRenderer.invoke('continuity:failover', sessionId, request),
+    handoff: (sessionId, request) => ipcRenderer.invoke('continuity:handoff', sessionId, request),
+    onOffer: (cb) => subscribe<[ContinuityOffer]>('continuity:offer', cb),
+    onMoved: (cb) => subscribe<[ContinuityMoved]>('continuity:moved', cb)
   },
   tray: {
     setState: (state) => ipcRenderer.send('tray:state', state),

@@ -40,4 +40,6 @@ export interface Profile {
   slackArchiveMinutes?: number
   /** AI review before a pull request (see `aiReviewSettings` for the defaults). */
   aiReview?: AiReviewSettings
+  /** What happens when a Claude account runs out of usage (see `failoverMode`; default `ask`). */
+  accountFailover?: 'ask' | 'automatic' | 'off'
 }

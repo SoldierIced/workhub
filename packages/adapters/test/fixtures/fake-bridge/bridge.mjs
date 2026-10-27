@@ -41,6 +41,11 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         sdk({ type: 'assistant', parent_tool_use_id: null, message: { id: 'msg_tool', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls', description: 'List files' } }] } })
         pendingPermission = 'perm-1'
         send({ type: 'permission_request', id: 'perm-1', toolName: 'Bash', input: { command: 'ls', description: 'List files' }, suggestions: [{ type: 'addRules' }] })
+      } else if (text === 'hit the limit') {
+        // What Claude Code sends when the plan window is spent: a rejected rate limit, a synthetic answer and an error result.
+        sdk({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 1790000000, overageStatus: 'rejected' } })
+        sdk({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { id: 'msg_limit', model: '<synthetic>', content: [{ type: 'text', text: "You've hit your limit · resets 3pm" }] } })
+        sdk({ type: 'result', subtype: 'success', is_error: true, result: "You've hit your limit · resets 3pm" })
       } else if (text === 'wait') {
         // Answered by an interrupt.
       } else if (text === 'ignore close') {

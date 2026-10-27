@@ -9,6 +9,7 @@ import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
 import { usageEn } from './usage.en'
+import { continuityEn } from './continuity.en'
 import { appearanceEn } from './appearance.en'
 import { settingsHelpEn } from './settingsHelp.en'
 import { trayEn } from './tray.en'
@@ -389,6 +390,7 @@ export const en = {
   ...automationsEn,
   ...usageEn,
   ...aiReviewEn,
+  ...continuityEn,
   ...sessionsUxEn,
   ...trayEn,
   ...agentsEn,

@@ -31,6 +31,7 @@ export const settingsHelpEs: Record<keyof typeof settingsHelpEn, string> = {
   'help.profile.agentsOffered': 'Qué agentes (Claude Code, Kiro, Codex…) aparecen en el menú Nueva sesión de este perfil.',
   'help.profile.agentOrder': 'Sube un agente para que sea el predeterminado. Workhub usa el primero cuando elige un agente por su cuenta.',
   'help.profile.modules': 'Pantallas opcionales de este perfil, como Salud, el vigilante de Slack (chat) y Automatizaciones. Desactivadas no aparecen en la barra lateral.',
+  'help.profile.accountFailover': 'Cuando una cuenta de Claude se queda sin uso, su sesión puede continuar en otra cuenta de Claude de este perfil: preguntar antes, cambiar por su cuenta o no hacer nada.',
   'help.profile.aiReview': 'Antes de abrir un pull request, un agente revisor revisa la rama de una sesión de desarrollo inactiva y le envía a esa sesión lo que hay que corregir.',
   'help.profile.slack': 'Cuánto tiempo sin actividad pasa antes de que un hilo se pliegue en "Archivados (n)" en la pantalla de Slack y en el monitor de la sesión.',
 

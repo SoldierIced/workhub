@@ -151,6 +151,17 @@ describe('SessionManager', () => {
     expect(last(view.id)).toMatchObject({ state: 'ready', currentModelId: 'haiku' })
   })
 
+  it('carries where a session came from (main only), and resumes a moved session under its own id', async () => {
+    const { manager, native } = setup()
+    const origin = { kind: 'failover' as const, fromLabel: 'Claude - Personal', fromIdentity: 'abc', reason: 'limit' as const }
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' }, { origin })
+    await flush()
+    expect(view.origin).toEqual(origin)
+    expect(view.identity).toBe('abc')
+    expect(native.started[0]).toMatchObject({ agentSessionId: 'abc', resume: true })
+    expect((await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })).origin).toBeUndefined()
+  })
+
   it('hands the session to the console with --resume once the transcript exists, and back', async () => {
     const { manager, native, terminal, last } = setup(emptyConfig(), true)
     const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
