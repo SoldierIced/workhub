@@ -59,6 +59,7 @@ const api: HubApi = {
   },
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list'),
+    ready: () => ipcRenderer.send('sessions:ready'),
     start: (input) => ipcRenderer.invoke('sessions:start', input),
     reopen: (identity, input) => ipcRenderer.invoke('sessions:reopen', identity, input),
     prompt: (id, text, images, token) => ipcRenderer.invoke('sessions:prompt', id, text, images, token),
@@ -221,6 +222,7 @@ const api: HubApi = {
   },
   files: {
     openWindow: (path, cwd) => ipcRenderer.invoke('files:openWindow', path, cwd),
+    cacheImages: (dataUrls) => ipcRenderer.invoke('files:cacheImages', dataUrls),
     read: (path, known, forceText) => ipcRenderer.invoke('files:read', path, known ?? null, forceText === true),
     copyPath: (path) => ipcRenderer.send('files:copyPath', path),
     reveal: (path) => ipcRenderer.invoke('files:reveal', path),

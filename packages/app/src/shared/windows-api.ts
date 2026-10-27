@@ -15,12 +15,14 @@ export type MenuCommand =
   | { kind: 'showMode'; mode: 'app' | 'console' | 'shell' }
 
 /**
- * What the main window's renderer holds about a session and main does not: the chat items and the
- * monitor. A session window starts from it, then follows the session's live events.
+ * What the main window's renderer holds about a session and main does not: the chat items, the
+ * monitor and the terminals' output. A session window starts from it, then follows the session's live events.
  */
 export interface SessionSnapshot {
   items: unknown[]
   monitor: SessionMonitorSnapshot
+  /** What each terminal channel of the session printed so far (`<session>:console`, `<session>:shell`). */
+  terminals?: Record<string, string>
 }
 
 export interface WindowsApi {

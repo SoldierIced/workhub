@@ -166,7 +166,7 @@ export class SessionManager {
    * `internal` is for the main process only (never the renderer's IPC input): extra environment
    * for the agent process, e.g. the AI review's push block.
    */
-  async start(input: StartSessionInput, internal: { env?: Record<string, string>; origin?: SessionOrigin } = {}): Promise<SessionView> {
+  async start(input: StartSessionInput, internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean } = {}): Promise<SessionView> {
     const config = await this.deps.config.current()
     const choice = resolveChoice(config, input.profileId, input.agentKey)
     if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
@@ -236,15 +236,25 @@ export class SessionManager {
     this.sessions.set(view.id, session)
     this.deps.emitChanged(view)
 
-    const resume = Boolean(input.resumeAgentSessionId)
     // session/new can take 10-15 s: answer now, report progress through `changed` events.
     // What was picked for this session, else the account's defaults (Settings → Agent accounts).
     const model = input.model ?? account?.defaultModel
     const modeId = input.readOnly ? undefined : (input.modeId ?? account?.defaultMode)
-    void (engine === 'app' ? this.startChat(session, { resume, model, effort: input.effort, modeId, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows)).catch(
+    // A session reopened at launch resumes its conversation only when it exists (one never
+    // prompted has none): otherwise the same session id starts fresh, as Workhub 1 does.
+    const starting = async () => {
+      const resume = internal.restored ? await this.hasTranscript(session).catch(() => false) : Boolean(input.resumeAgentSessionId)
+      return engine === 'app' ? this.startChat(session, { resume, model, effort: input.effort, modeId, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows)
+    }
+    void starting().catch(
       (err: unknown) => this.update(view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) })
     )
     return view
+  }
+
+  /** The engine a session runs (its shell shows over the chat or the console); undefined when it is not open. */
+  engineOf(id: string): 'app' | 'console' | undefined {
+    return this.sessions.get(id)?.engine
   }
 
   /** Stops a session (if it still runs) and drops it from the list; its conversation stays in History. */

@@ -12,7 +12,7 @@ import { hasImageFiles, imageFilesOf, MAX_PROMPT_IMAGES, pickImageFiles, readIma
 import { acceptsInput, restoreComposer } from '../../lib/prompt-queue'
 import { isEditable, shouldFocusComposer } from '../../lib/composer-focus'
 import { interruptSession, onRecoveredPrompts, removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
-import { markPermission, pushItem, type ChatItem, type SessionData } from '../../store'
+import { markPermission, openChatImage, pushItem, type ChatItem, type SessionData } from '../../store'
 import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useNow, useSessionCeilings, useUsageSettings } from '../../lib/usage'
@@ -55,7 +55,17 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
           {Array.isArray(item.images) && (
             <div className="flex flex-wrap justify-end gap-1.5">
               {item.images.map((src, i) => (
-                <img key={i} src={src} alt={t('chat.imageAlt', { n: i + 1 })} className="max-h-64 max-w-full rounded-md border border-border object-contain" />
+                <button
+                  key={i}
+                  type="button"
+                  title={t('chat.imageOpen')}
+                  aria-label={t('chat.imageOpenLabel', { n: i + 1 })}
+                  data-testid="chat-pasted-image"
+                  className="max-w-full cursor-zoom-in rounded-md focus-visible:outline-2 focus-visible:outline-accent"
+                  onClick={() => void openChatImage(sessionId, item, i)}
+                >
+                  <img src={src} alt={t('chat.imageAlt', { n: i + 1 })} className="max-h-64 max-w-full rounded-md border border-border object-contain" />
+                </button>
               ))}
             </div>
           )}
