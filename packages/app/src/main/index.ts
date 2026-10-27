@@ -45,6 +45,10 @@ import {
   type Result,
   type Workhub1SecretResult,
   type TicketChange,
+  buildTrayPopover,
+  parseTrayAction,
+  stampSince,
+  type SinceEntry,
   type TrayAction,
   type TrayPrEvent,
   type TrayRoute,
@@ -55,9 +59,10 @@ import {
 import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference, UsageAlert } from '../shared/api'
 import type { PrNotification } from '../shared/pr-events-api'
 import type { SlackSnapshot } from '../shared/chat-api'
-import type { TrayRendererState } from '../shared/tray-api'
+import { TRAY_POPOVER_HASH, type TrayRendererState } from '../shared/tray-api'
 import { Notifier } from './notifier'
 import { TrayService } from './tray'
+import { TrayPopover } from './tray-popover'
 import { isLocale, trayText } from './tray-text'
 import { HealthWatcher, TicketWatcher } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
@@ -138,6 +143,10 @@ const send = (channel: string, ...args: unknown[]) => {
 
 // Menu bar / notification area icon (tray.ts) and what it shows that main does not keep elsewhere.
 let trayService: TrayService | null = null
+/** The window a click on the icon opens (macOS, Windows); Linux keeps the native menu. */
+let trayPopover: TrayPopover | null = null
+/** Since when each session shows its state (the popover's times). */
+let sessionSince = new Map<string, SinceEntry>()
 let trayLocale: Locale = 'en'
 /** The sessions with their unseen flags, as the renderer last reported them. */
 let rendererSessions: TraySession[] | null = null
@@ -574,6 +583,23 @@ function registerIpc(): void {
     if (Array.isArray(state?.sessions)) rendererSessions = state.sessions.slice(0, 500).filter(validTraySession)
     scheduleTray()
   })
+  // The popover's own channels; actions are checked again here, field by field.
+  ipc.handle('trayPopover:get', () => trayPopover?.currentView() ?? null)
+  ipc.on('trayPopover:perform', (_e, raw: unknown) => {
+    const action = parseTrayAction(raw)
+    if (!action) return
+    if (action.kind !== 'pause' && action.kind !== 'resume') trayPopover?.hide()
+    void performTrayAction(action)
+  })
+  ipc.on('trayPopover:resize', (e, height: unknown) => {
+    if (typeof height === 'number' && trayPopover?.owns(e.sender)) trayPopover.resize(height)
+  })
+  ipc.on('trayPopover:hide', (e) => {
+    if (trayPopover?.owns(e.sender)) trayPopover.hide()
+  })
+  ipc.on('trayPopover:menu', (e) => {
+    if (trayPopover?.owns(e.sender)) trayService?.showMenu()
+  })
 }
 
 const SESSION_STATES = new Set(['starting', 'ready', 'busy', 'stopped', 'error'])
@@ -585,7 +611,8 @@ function validTraySession(s: TraySession): boolean {
     typeof s.title === 'string' &&
     SESSION_STATES.has(s.state) &&
     (s.unseen === undefined || ATTENTION_KINDS.has(s.unseen)) &&
-    (s.awaitingAnswer === undefined || typeof s.awaitingAnswer === 'boolean')
+    (s.awaitingAnswer === undefined || typeof s.awaitingAnswer === 'boolean') &&
+    (s.agentId === undefined || (typeof s.agentId === 'string' && s.agentId.length <= 100))
   )
 }
 
@@ -681,7 +708,10 @@ async function trayState(): Promise<TrayState> {
   const options = appOptions(config)
   keepInTray = options.keepInTray
   const profileId = config.activeProfileId ?? null
-  const sessionsNow = rendererSessions ?? sessions.list().filter((v) => !v.readOnly).map((v) => ({ id: v.id, title: v.label, state: v.state }))
+  const listed = rendererSessions ?? sessions.list().filter((v) => !v.readOnly).map((v) => ({ id: v.id, title: v.label, state: v.state, agentId: v.agentId }))
+  const stamped = stampSince(sessionSince, listed, Date.now())
+  sessionSince = stamped.since
+  const sessionsNow = stamped.sessions
   const lists = await codeHost.lists(profileId).catch(() => null)
   const agentNames = new Map(knownAgents(config).map((a) => [a.id, a.name]))
   const slackOn = lastSlack && lastSlack.health !== 'off'
@@ -690,12 +720,12 @@ async function trayState(): Promise<TrayState> {
   return {
     appName: app.getName(),
     sessions: sessionsNow,
-    usage: usage.current().map((a) => ({ name: a.name || agentNames.get(a.agentId) || a.agentId, windows: a.windows, error: Boolean(a.error) })),
+    usage: usage.current().map((a) => ({ name: a.name || agentNames.get(a.agentId) || a.agentId, agentId: a.agentId, windows: a.windows, error: Boolean(a.error) })),
     pullRequests: lists && lists.state !== 'notConnected' ? { toReview: lists.toReview.length, mine: lists.mine.length } : null,
     prEvents: recentPrEvents,
     health: healthWatcher.summary(),
     slack: slackOn && lastSlack ? { health: lastSlack.health, open: openThreads.length, unread: openThreads.filter((th) => hasUnread(th, me)).length, error: lastSlack.lastError } : null,
-    notifications: notifier.recent().map((n) => ({ id: n.id, title: n.title })),
+    notifications: notifier.recent().map((n) => ({ id: n.id, title: n.title, at: n.at })),
     pausedUntil: options.notificationsPausedUntil,
     canCheckForUpdates: app.isPackaged
   }
@@ -841,8 +871,26 @@ function createWindow(): void {
   })
 }
 
+/** The renderer's popover route (main.tsx), in the dev server or the built files. */
+function loadPopover(popover: BrowserWindow): void {
+  if (process.env['ELECTRON_RENDERER_URL']) void popover.loadURL(process.env['ELECTRON_RENDERER_URL'] + TRAY_POPOVER_HASH)
+  else void popover.loadFile(rendererFile, { hash: TRAY_POPOVER_HASH.slice(1) })
+}
+
 /** The menu bar / notification area icon; a dev run is named "Workhub 2 Dev" there too. */
 function startTray(): void {
+  // Linux (AppIndicator) sends no clicks, so it keeps the native menu only.
+  const popover =
+    process.platform === 'darwin' || process.platform === 'win32'
+      ? new TrayPopover({
+          platform: process.platform,
+          preload: join(__dirname, '../preload/index.js'),
+          load: loadPopover,
+          refresh: () => void trayService?.refresh(),
+          pinned: process.env['WORKHUB_TRAY_POPOVER_PIN'] === '1'
+        })
+      : null
+  trayPopover = popover
   trayService = new TrayService({
     appName: app.getName(),
     platform: process.platform,
@@ -851,9 +899,14 @@ function startTray(): void {
     text: () => trayText(trayLocale),
     perform: (action) => void performTrayAction(action),
     activate: showMain,
-    logPath: process.env['WORKHUB_TRAY_LOG']
+    logPath: process.env['WORKHUB_TRAY_LOG'],
+    popover: popover ?? undefined,
+    onState: (state) => popover?.setView(buildTrayPopover(state))
   })
   trayService.start()
+  popover?.prepare()
+  // WORKHUB_TRAY_POPOVER_PIN=1 opens the popover once the page is up and keeps it open (screenshots).
+  if (popover && process.env['WORKHUB_TRAY_POPOVER_PIN'] === '1') setTimeout(() => popover.show(trayService?.bounds() ?? { x: 0, y: 0, width: 0, height: 0 }), 2500)
   // Usage, pull request lists and Health change on their own; the menu catches up once a minute.
   setInterval(scheduleTray, 60_000).unref?.()
 }
@@ -874,6 +927,8 @@ void app.whenReady().then(async () => {
   } catch {
     // No status area (some Linux desktops): closing the window then quits, as without the option.
     trayService = null
+    trayPopover?.destroy()
+    trayPopover = null
   }
   usage.start()
   // Opt-in: nothing contacts GitHub unless the user turned this on (or presses "Check now").
@@ -915,4 +970,12 @@ app.on('before-quit', (event) => {
 // close button is opened again from the icon); otherwise closing the last window quits.
 app.on('window-all-closed', () => {
   if (!(keepInTray && trayService) || allowWindowClose) app.quit()
+})
+// The hidden popover is a window too: once every other window is closed, the rule above applies.
+app.on('browser-window-created', (_event, created) => {
+  created.on('closed', () => {
+    if (trayPopover?.isWindow(created)) return
+    const others = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w !== created && !trayPopover?.isWindow(w))
+    if (others.length === 0 && trayPopover && (!(keepInTray && trayService) || allowWindowClose)) app.quit()
+  })
 })

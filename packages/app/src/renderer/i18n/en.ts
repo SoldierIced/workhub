@@ -13,6 +13,7 @@ import { continuityEn } from './continuity.en'
 import { appearanceEn } from './appearance.en'
 import { settingsHelpEn } from './settingsHelp.en'
 import { trayEn } from './tray.en'
+import { trayPopoverEn } from './trayPopover.en'
 import { agentsEn } from './agents.en'
 import { toolViewEn } from './toolView.en'
 /**
@@ -394,6 +395,7 @@ export const en = {
   ...continuityEn,
   ...sessionsUxEn,
   ...trayEn,
+  ...trayPopoverEn,
   ...agentsEn,
   ...appearanceEn,
   ...settingsHelpEn,

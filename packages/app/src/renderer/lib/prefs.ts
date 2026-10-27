@@ -110,6 +110,15 @@ export function setPrefs(patch: Partial<Prefs>): void {
   for (const l of listeners) l()
 }
 
+// Another window of the app (the menu bar popover, a pull request window) saved: follow it.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== KEY) return
+    prefs = parsePrefs(event.newValue)
+    for (const l of listeners) l()
+  })
+}
+
 export function usePrefs(): Prefs {
   return useSyncExternalStore(
     (l) => {
