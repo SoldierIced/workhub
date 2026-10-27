@@ -1,4 +1,4 @@
-import { healthAlerts, ticketChanges, worstHealth, type HealthAlert, type HealthBaseline, type HealthState, type KnownTickets, type Ticket, type TicketChange } from '@workhub/core'
+import { admitHealthAlerts, healthAlerts, ticketChanges, worstHealth, type HealthAlert, type HealthBaseline, type HealthState, type KnownTickets, type Ticket, type TicketChange } from '@workhub/core'
 import type { HealthView } from '../shared/health-api'
 import type { TicketsResult } from '../shared/tickets-api'
 
@@ -13,6 +13,9 @@ export interface HealthWatcherDeps {
   read: (profileId: string | null) => Promise<HealthView>
   alert: (alert: HealthAlert) => void
   changed: () => void
+  /** When each alert subject last fired, kept across launches so a restart does not repeat it within the hour. */
+  cooldowns?: { load(): Record<string, number>; save(firedAt: Record<string, number>): void }
+  now?: () => number
 }
 
 /** What the menu bar shows about Health: null while Health is off or not set up. */
@@ -29,8 +32,11 @@ export class HealthWatcher {
   private baseline = new Map<string, HealthBaseline>()
   private last: HealthSummary | null = null
   private timer: ReturnType<typeof setInterval> | null = null
+  private firedAt: Record<string, number>
 
-  constructor(private readonly deps: HealthWatcherDeps) {}
+  constructor(private readonly deps: HealthWatcherDeps) {
+    this.firedAt = deps.cooldowns?.load() ?? {}
+  }
 
   start(): void {
     if (this.timer) return
@@ -56,11 +62,19 @@ export class HealthWatcher {
       if (view.state !== 'ready' && view.state !== 'demo') {
         this.last = null
       } else {
-        const readouts = view.environments.filter((e) => !e.snapshot.blindSpots.some((b) => b.code === 'notReadYet')).map((e) => ({ id: e.id, name: e.name, state: e.snapshot.state }))
+        const readouts = view.environments
+          .filter((e) => !e.snapshot.blindSpots.some((b) => b.code === 'notReadYet'))
+          .map((e) => ({ id: e.id, name: e.name, state: e.snapshot.state, snapshot: e.snapshot, minErrorsToFlag: e.thresholds?.minErrorsToFlag, errorWindowHours: e.errorWindowHours }))
         const key = profileId ?? ''
         const { alerts, baseline } = healthAlerts(this.baseline.get(key), readouts)
         this.baseline.set(key, baseline)
-        if (view.state === 'ready') for (const a of alerts) this.deps.alert(a)
+        if (view.state === 'ready' && alerts.length > 0) {
+          // At most one alert per subject per hour.
+          const { admitted, firedAt } = admitHealthAlerts(alerts, this.firedAt, (this.deps.now ?? Date.now)())
+          this.firedAt = firedAt
+          this.deps.cooldowns?.save(firedAt)
+          for (const a of admitted) this.deps.alert(a)
+        }
         this.last = {
           state: worstHealth(readouts.map((r) => r.state)),
           degraded: view.environments.filter((e) => e.snapshot.state === 'degraded' || e.snapshot.state === 'unreachable').map((e) => e.name)

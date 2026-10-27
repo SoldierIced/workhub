@@ -1,6 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
+  appOptions,
+  HEALTH_FLOOR_CHOICES,
   HEALTH_REFRESH_CHOICES,
   HEALTH_THRESHOLD_RANGES,
   DEFAULT_HEALTH_REFRESH_MINUTES,
@@ -205,6 +207,14 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
               value={String(refresh)}
               onChange={(v) => setRefresh(Number(v))}
               options={HEALTH_REFRESH_CHOICES.map((m) => ({ value: String(m), label: t('health.settings.refreshMinutes', { count: m }) }))}
+            />
+          </Field>
+          <Field label={t('health.settings.floor')} hint={t('health.settings.floorHint')} className="max-w-96">
+            <Select
+              value={String(appOptions(snap.config).healthRefreshFloorMinutes)}
+              onChange={(v) => void run(() => window.hub.config.saveOptions({ healthRefreshFloorMinutes: Number(v) }))}
+              disabled={!editable}
+              options={HEALTH_FLOOR_CHOICES.map((m) => ({ value: String(m), label: t('health.settings.refreshMinutes', { count: m }) }))}
             />
           </Field>
           {envs.length === 0 && <EmptyState compact title={t('health.settings.noEnvironments')} />}

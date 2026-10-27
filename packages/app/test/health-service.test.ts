@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { emptyConfig, RETYPE_SECRET_TO_TEST, type Connection, type HealthEnvironment, type Profile, type SecretStore, type WorkhubConfig, DEFAULT_HEALTH_THRESHOLDS } from '@workhub/core'
+import { emptyConfig, RETYPE_SECRET_TO_TEST, type Connection, type HealthEnvironment, type Profile, type SecretStore, type WorkhubConfig, DEFAULT_HEALTH_THRESHOLDS, DEFAULT_HEALTH_FLOOR_MINUTES, DEFAULT_OPTIONS } from '@workhub/core'
 import type { HttpClient, HttpRequest } from '@workhub/adapters/http'
-import { buildHealthProvider, HEALTH_MIN_GAP_MS, HealthService, tlsOf } from '../src/main/health-service'
+import { buildHealthProvider, HEALTH_DETAIL_LIFETIME_MS, HEALTH_MIN_GAP_MS, HealthService, tlsOf } from '../src/main/health-service'
 
 const elastic: Connection = { id: 'es', kind: 'health', provider: 'elastic-apm', endpoint: 'https://es.example.test:9200', secretRef: 'connection/es', settings: {} }
 const env: HealthEnvironment = {
@@ -87,18 +87,75 @@ describe('HealthService', () => {
     expect(c.calls.length).toBeGreaterThan(reads)
   })
 
-  it('never reads more often than every 30 seconds, even when forced', async () => {
+  it('never reads more often than the refresh floor, even when forced', async () => {
     const c = cluster()
     let now = 1_000_000
     const s = service({ secrets: { 'connection/es': 'k' }, http: c.http, now: () => now })
     await s.get('work')
     const reads = c.calls.length
-    now += HEALTH_MIN_GAP_MS - 1
+    now += HEALTH_MIN_GAP_MS + 1
     await s.get('work', true)
     expect(c.calls.length).toBe(reads)
-    now += 2
+    now += DEFAULT_HEALTH_FLOOR_MINUTES * 60_000
     await s.get('work', true)
     expect(c.calls.length).toBeGreaterThan(reads)
+  })
+
+  it('takes the floor from the app options, never under 30 seconds', async () => {
+    const c = cluster()
+    let now = 1_000_000
+    const config: WorkhubConfig = { ...emptyConfig(), connections: [elastic], profiles: [profile()], activeProfileId: 'work', options: { ...DEFAULT_OPTIONS, healthRefreshFloorMinutes: 1 } }
+    const store: SecretStore = { get: async () => 'k', set: async () => {}, delete: async () => {}, has: async () => true }
+    const s = new HealthService({ configuration: { current: async () => config } as never, secrets: store, demo: false, httpFor: () => c.http, now: () => now })
+    await s.get('work')
+    const reads = c.calls.length
+    now += 59_000
+    await s.get('work', true)
+    expect(c.calls.length).toBe(reads)
+    now += 2_000
+    await s.get('work', true)
+    expect(c.calls.length).toBeGreaterThan(reads)
+  })
+
+  it('reads the details of a row once, keeps them 10 minutes and shares one read between callers', async () => {
+    let now = 1_000_000
+    const s = service({ demo: true, connections: [], profile: profile({ connections: {}, health: undefined }), now: () => now })
+    const ask = () => s.details('work', 'production', { kind: 'errors', service: 'checkout-api' })
+    const [a, b] = await Promise.all([ask(), ask()])
+    expect(a).toBe(b)
+    expect(a.ok && 'groups' in a.value && a.value.groups.length).toBeGreaterThan(0)
+    expect(a.ok && 'groups' in a.value && a.value.groups[0]?.kibanaUrl).toContain('/app/apm/services/checkout-api/errors/')
+    now += 60_000
+    expect(await ask()).toBe(a)
+    expect(await s.details('work', 'production', { kind: 'errors', service: 'checkout-api' }, true)).not.toBe(a)
+    now += HEALTH_DETAIL_LIFETIME_MS
+    const pod = await s.details('work', 'develop', { kind: 'pod', pod: 'notifier-worker-7d9f6b5c4-x2k8p' })
+    expect(pod.ok && 'stderr' in pod.value && pod.value.stderr.length).toBeGreaterThan(0)
+    const flow = await s.details('work', 'production', { kind: 'flow', service: 'checkout-api', name: 'POST /orders' })
+    expect(flow.ok && 'spans' in flow.value && flow.value.spans.length).toBeGreaterThan(0)
+    expect(await s.details('work', 'nope', { kind: 'pod', pod: 'x' })).toEqual({ ok: false, error: expect.stringContaining('no longer configured') })
+  })
+
+  it('answers a failed detail read instead of throwing, and tries again next time', async () => {
+    let fail = true
+    const http: HttpClient = async (req) => (fail ? { status: 500, text: JSON.stringify({ error: { reason: 'shard failure' } }) } : cluster().http(req))
+    const s = service({ secrets: { 'connection/es': 'k' }, http })
+    const first = await s.details('work', 'dev', { kind: 'errors', service: 'api' })
+    expect(first).toEqual({ ok: false, error: expect.stringContaining('shard failure') })
+    fail = false
+    await new Promise((r) => setTimeout(r, 0))
+    expect((await s.details('work', 'dev', { kind: 'errors', service: 'api' })).ok).toBe(true)
+  })
+
+  it('adds the infra fields, the errors pages and the pod links to the view', async () => {
+    const view = await service({ demo: true, connections: [], profile: profile({ connections: {}, health: undefined }) }).get('work')
+    const develop = view.environments.find((e) => e.id === 'develop')!
+    expect(develop.podUrls['catalog-service-6c8b7d9f5-m4q2z']).toContain('/app/discover#')
+    expect(develop.errorUrls['notifier-worker']).toContain('/errors?')
+    expect(develop.thresholds.restartWindowMinutes).toBeGreaterThan(0)
+    const staging = view.environments.find((e) => e.id === 'staging')!
+    expect([staging.hasKubeState, staging.k8sIndexSuffix]).toEqual([false, 'staging'])
+    expect(staging.snapshot.containerStderr.length).toBeGreaterThan(0)
   })
 
   it('reads again at once when the connection or the environments change', async () => {

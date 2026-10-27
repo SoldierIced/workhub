@@ -129,6 +129,7 @@ const api: HubApi = {
   },
   health: {
     get: (profileId, force) => ipcRenderer.invoke('health:get', profileId, force),
+    details: (profileId, environmentId, request, force) => ipcRenderer.invoke('health:details', profileId, environmentId, request, force),
     test: (connection, secret, indexToProbe) => ipcRenderer.invoke('health:test', connection, secret, indexToProbe)
   },
   prEvents: {

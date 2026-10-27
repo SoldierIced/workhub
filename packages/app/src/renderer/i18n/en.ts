@@ -3,6 +3,7 @@ import { aiReviewEn } from './aiReview.en'
 import { sessionsUxEn } from './sessionsUx.en'
 import { sessionMonitorEn } from './sessionMonitor.en'
 import { healthEn } from './health.en'
+import { healthPromptsEn } from './healthPrompts.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
 import { automationsEn } from './automations.en'
@@ -410,6 +411,7 @@ export const en = {
   ...updatesEn,
   ...setupEn,
   ...healthEn,
+  ...healthPromptsEn,
   ...prEventsEn,
   ...linksEn,
   ...slackEn,
