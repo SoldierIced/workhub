@@ -10,6 +10,7 @@ import {
 } from '@workhub/core'
 import { refreshConfig } from '../configStore'
 import { awaitingAnswer, type SessionData } from '../store'
+import { folderName } from './home'
 
 /** A session as the sidebar lists it, with the identity groups know it by. */
 export interface ListedSession {
@@ -34,9 +35,24 @@ export function listSessions(all: readonly SessionData[]): ListedSession[] {
   return [...best.entries()].map(([key, data]) => ({ key, data })).sort((a, b) => a.data.view.startedAt - b.data.view.startedAt)
 }
 
+const NAME_MAX = 60
+
+/**
+ * What the sidebar calls a session: the first line of what the user first asked, else its folder.
+ * The agent and the account are shown by the row's icon and second line, not by its name.
+ */
+export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
+  for (const item of s.items) {
+    if (item.kind !== 'user') continue
+    const line = item.text.split('\n').find((l) => l.trim())?.trim().replace(/\s+/g, ' ')
+    if (line) return line.length > NAME_MAX ? `${line.slice(0, NAME_MAX - 1)}…` : line
+  }
+  return folderName(s.view.cwd)
+}
+
 /** What a group remembers about an open session. */
 export function memberOf(s: ListedSession): GroupMember {
-  return { key: s.key, title: s.data.view.agentName, agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
+  return { key: s.key, title: sessionName(s.data), agentKey: effectiveAgentKey(s.data.view.agentId, s.data.view.accountId), cwd: s.data.view.cwd }
 }
 
 /** The badge count and top state dot of a set of open sessions. */

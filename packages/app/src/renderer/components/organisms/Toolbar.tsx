@@ -1,3 +1,4 @@
+import { AgentIcon } from '../atoms/AgentIcon'
 import { ChevronDown, Plus, Settings } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import type { EffectiveAgent } from '@workhub/core'
@@ -52,8 +53,9 @@ export function Toolbar({ title, agents, onNewSession, onOpenSettings }: Toolbar
                   <DropdownMenu.Item
                     key={a.key}
                     onSelect={() => onNewSession(a.key)}
-                    className="flex h-8 cursor-default select-none items-center rounded-sm px-2 text-base outline-none data-[highlighted]:bg-accent-soft"
+                    className="flex h-8 cursor-default select-none items-center gap-2 rounded-sm px-2 text-base outline-none data-[highlighted]:bg-accent-soft"
                   >
+                    <AgentIcon agentId={a.agent.id} adapter={a.agent.adapter} />
                     {a.label}
                   </DropdownMenu.Item>
                 ))}
