@@ -163,7 +163,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
         <div className="flex size-9 items-center justify-center rounded-lg border border-border bg-surface-raised text-accent">
           <SquareTerminal className="size-4.5" aria-hidden />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-32 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-md font-semibold">{v.agentName}</h1>
             {v.accountName && (
