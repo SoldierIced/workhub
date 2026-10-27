@@ -27,6 +27,8 @@ export interface Prefs {
   textSize: number
   /** Width of the session monitor panel in px. */
   monitorWidth: number
+  /** Width of the left sidebar in px. */
+  sidebarWidth: number
   /** Monitor sections the user folded (section ids). */
   monitorCollapsed: string[]
   /** Folders starred in the sidebar (Workhub 1's Favorites), in the order they were added. */
@@ -34,7 +36,7 @@ export interface Prefs {
 }
 
 /** Ranges of the size preferences, as Workhub 1 offered them. */
-export const SIZE_RANGES = { terminalFontSize: [10, 24], chatFontSize: [11, 20], textSize: [11, 20], monitorWidth: [240, 560] } as const
+export const SIZE_RANGES = { terminalFontSize: [10, 24], chatFontSize: [11, 20], textSize: [11, 20], monitorWidth: [240, 560], sidebarWidth: [200, 420] } as const
 /** The app's base text size (styles.css `--text-base`). */
 export const BASE_TEXT_SIZE = 13
 
@@ -51,6 +53,7 @@ export const DEFAULT_PREFS: Prefs = {
   chatFontSize: BASE_TEXT_SIZE,
   textSize: BASE_TEXT_SIZE,
   monitorWidth: 320,
+  sidebarWidth: 256,
   monitorCollapsed: [],
   favoriteFolders: []
 }
@@ -80,6 +83,7 @@ export function parsePrefs(raw: string | null): Prefs {
       chatFontSize: clampSize('chatFontSize', v.chatFontSize),
       textSize: clampSize('textSize', v.textSize),
       monitorWidth: clampSize('monitorWidth', v.monitorWidth),
+      sidebarWidth: clampSize('sidebarWidth', v.sidebarWidth),
       monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
       favoriteFolders: Array.isArray(v.favoriteFolders) ? [...new Set(v.favoriteFolders.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, 100) : []
     }

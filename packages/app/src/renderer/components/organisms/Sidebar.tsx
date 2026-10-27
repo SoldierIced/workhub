@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react'
-import type { DragEvent, ReactNode } from 'react'
+import { useState, type DragEvent, type ReactNode } from 'react'
 import { profileColor, type Profile } from '@workhub/core'
 import type { SessionView, WorkspaceFolder } from '@shared/api'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -7,9 +7,11 @@ import { cn } from '../../lib/cn'
 import type { UsageGroup } from '../../lib/home'
 import type { NavItem, Route } from '../../lib/nav'
 import { usePlatform } from '../../lib/platform'
+import { DEFAULT_PREFS, SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
 import { ROUTE_ICON, ROUTE_LABEL } from '../../lib/routes'
 import { IconButton } from '../atoms/IconButton'
 import { Kbd } from '../atoms/Kbd'
+import { PaneResizeHandle } from '../molecules/PaneResizeHandle'
 import { FolderBrowser } from './FolderBrowser'
 import { ProfileSwitcher } from './ProfileSwitcher'
 import { UsageCard } from './UsageCard'
@@ -88,8 +90,29 @@ export function Sidebar(props: SidebarProps) {
   const { t, tn } = useI18n()
   const platform = usePlatform()
   const running = props.sessions.filter((s) => s.state === 'starting' || s.state === 'busy' || s.state === 'ready').length
+  const prefs = usePrefs()
+  const [dragging, setDragging] = useState<number | null>(null)
+  const width = dragging ?? prefs.sidebarWidth
   return (
-    <aside aria-label={t('sidebar.label')} className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar">
+    <aside aria-label={t('sidebar.label')} className="relative flex shrink-0 flex-col border-r border-border bg-sidebar" style={{ width }} data-testid="sidebar">
+      <PaneResizeHandle
+        edge="right"
+        width={width}
+        min={SIZE_RANGES.sidebarWidth[0]}
+        max={SIZE_RANGES.sidebarWidth[1]}
+        label={t('sidebar.resize')}
+        title={t('pane.resizeHint')}
+        onWidth={(w, done) => {
+          if (done) {
+            setDragging(null)
+            setPrefs({ sidebarWidth: w })
+          } else setDragging(w)
+        }}
+        onReset={() => {
+          setDragging(null)
+          setPrefs({ sidebarWidth: DEFAULT_PREFS.sidebarWidth })
+        }}
+      />
       {/* macOS draws its traffic lights here (hiddenInset); the strip drags the window. */}
       <div className={cn('drag-region shrink-0', platform === 'mac' ? 'h-11' : 'h-3')} />
       <div className="shrink-0 px-3">

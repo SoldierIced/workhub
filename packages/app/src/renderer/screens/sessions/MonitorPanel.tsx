@@ -1,13 +1,14 @@
 import { Brain, ExternalLink, FilePen, FileSearch, FileText, GitBranch, Globe, MoveRight, Power, PowerOff, RefreshCw, RotateCw, SquareTerminal, Ticket, Trash2, Wrench, type LucideIcon } from 'lucide-react'
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
 import { Badge, IconButton, Spinner, StateDot } from '../../components/atoms'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/home'
-import { changesTotal, contextView, dragWidth, requestBars, pullRequestLabel, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens } from '../../lib/monitorView'
-import { SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
+import { changesTotal, contextView, requestBars, pullRequestLabel, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens } from '../../lib/monitorView'
+import { DEFAULT_PREFS, SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
+import { PaneResizeHandle } from '../../components/molecules/PaneResizeHandle'
 import { openSubagent } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
 import { useCachedPullRequestLists } from '../../pullRequestsStore'
@@ -77,41 +78,6 @@ function useLocalChanges(id: string, visible: boolean): { changes: LocalChanges 
   return state
 }
 
-/** The left edge of the panel: drag to resize; the width is kept in the preferences. */
-function ResizeHandle({ width, onWidth }: { width: number; onWidth: (w: number, done: boolean) => void }) {
-  const { t } = useI18n()
-  const [min, max] = SIZE_RANGES.monitorWidth
-  const start = useRef<{ x: number; w: number } | null>(null)
-  const down = (e: ReactPointerEvent<HTMLDivElement>) => {
-    start.current = { x: e.clientX, w: width }
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-  const move = (e: ReactPointerEvent<HTMLDivElement>) => start.current && onWidth(dragWidth(start.current.w, start.current.x, e.clientX, min, max), false)
-  const up = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!start.current) return
-    onWidth(dragWidth(start.current.w, start.current.x, e.clientX, min, max), true)
-    start.current = null
-  }
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={t('monitor.resize')}
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={width}
-      tabIndex={0}
-      onPointerDown={down}
-      onPointerMove={move}
-      onPointerUp={up}
-      onKeyDown={(e) => {
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') onWidth(Math.min(max, Math.max(min, width + (e.key === 'ArrowLeft' ? 16 : -16))), true)
-      }}
-      className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize outline-none hover:bg-accent/30 focus-visible:bg-accent/40"
-    />
-  )
-}
-
 function PullRequestCard({ item, profileId }: { item: PullRequestItem; profileId: string | null }) {
   const { t } = useI18n()
   const pr = item.pr
@@ -175,13 +141,22 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
   return (
     <aside aria-label={t('monitor.label')} className="relative shrink-0 border-l border-border bg-sidebar" style={{ width }} data-monitor-of={v.id}>
-      <ResizeHandle
+      <PaneResizeHandle
+        edge="left"
         width={width}
+        min={SIZE_RANGES.monitorWidth[0]}
+        max={SIZE_RANGES.monitorWidth[1]}
+        label={t('monitor.resize')}
+        title={t('pane.resizeHint')}
         onWidth={(w, done) => {
           if (done) {
             setDragging(null)
             setPrefs({ monitorWidth: w })
           } else setDragging(w)
+        }}
+        onReset={() => {
+          setDragging(null)
+          setPrefs({ monitorWidth: DEFAULT_PREFS.monitorWidth })
         }}
       />
       <div className="flex h-full flex-col gap-4 overflow-y-auto px-3.5 py-3.5">

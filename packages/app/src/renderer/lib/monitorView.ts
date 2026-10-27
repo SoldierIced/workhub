@@ -137,10 +137,6 @@ export function sessionTicketKeys(prs: readonly PullRequestItem[], mentioned: re
   return [...new Set([...prs.flatMap((p) => p.ticketKeys), ...(mentioned ?? [])])]
 }
 
-/** New width of a panel dragged by its left edge from `startX` to `x`, kept within `[min, max]`. */
-export function dragWidth(startWidth: number, startX: number, x: number, min: number, max: number): number {
-  return Math.round(Math.min(max, Math.max(min, startWidth + (startX - x))))
-}
 
 export interface RequestBars {
   bars: { value: number; fraction: number }[]
