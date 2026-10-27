@@ -37,7 +37,9 @@ export default {
   extraResources: [
     { from: '.stage/bridge', to: 'bridge', filter: ['**/*'] },
     // The Slack tracking hook script, copied into the data folder when the user installs it.
-    { from: '../adapters/src/chat-slack/hook', to: 'chat-slack', filter: ['*.mjs'] }
+    { from: '../adapters/src/chat-slack/hook', to: 'chat-slack', filter: ['*.mjs'] },
+    // Menu bar / notification area icons (scripts/make-icons.mjs), read from <resources>/tray.
+    { from: 'build/tray', to: 'tray', filter: ['*.png', '*.ico'] }
   ],
   extraMetadata: { name: BRAND.slug, productName: BRAND.productName, version, main: 'out/main/index.js' },
   afterPack: './scripts/after-pack.mjs',

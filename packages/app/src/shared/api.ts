@@ -1,4 +1,5 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
+import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type {
   AppOptions,
   AgentCapabilities,
@@ -240,6 +241,10 @@ export interface SessionNotification {
   title: string
   body: string
   sessionId: string
+  /** Which switch in Settings governs it; sessions' own kinds when unset. */
+  kind?: NotificationKind
+  /** A click opens this screen instead of a session (Slack, Automations). */
+  route?: TrayRoute
 }
 
 export interface NotificationsApi {
@@ -270,4 +275,5 @@ export interface HubApi {
   slack: SlackApi
   automations: AutomationsApi
   aiReview: AiReviewApi
+  tray: TrayApi
 }

@@ -60,9 +60,21 @@ export interface AppOptions {
   codexUsage: boolean
   /** Ceilings, warning margin and alerts per account (Settings → Usage). */
   usageBudget: UsageBudgetOptions
+  /** OS notification for watched Slack channels, tracked thread replies and watcher failures. */
+  notifySlack: boolean
+  /** OS notification when an automation fails. */
+  notifyAutomations: boolean
+  /** OS notification when an assigned ticket changes status, is assigned or leaves the list. */
+  notifyTickets: boolean
+  /** OS notification when a Health environment degrades, becomes unreachable or recovers. */
+  notifyHealth: boolean
+  /** Closing the main window keeps the app running in the menu bar / notification area. */
+  keepInTray: boolean
+  /** "Pause notifications": nothing is shown until this moment (epoch ms). Unset when not paused. */
+  notificationsPausedUntil?: number
 }
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, keepInTray: true }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -288,7 +300,13 @@ export const configSchema = z.object({
         .object(Object.fromEntries(PR_EVENT_KINDS.map((k) => [k, z.boolean().default(DEFAULT_PR_EVENT_TOGGLES[k])])) as Record<(typeof PR_EVENT_KINDS)[number], z.ZodDefault<z.ZodBoolean>>)
         .default(DEFAULT_PR_EVENT_TOGGLES),
       codexUsage: z.boolean().default(false),
-      usageBudget: usageBudget.default(DEFAULT_USAGE_BUDGET).catch(DEFAULT_USAGE_BUDGET)
+      usageBudget: usageBudget.default(DEFAULT_USAGE_BUDGET).catch(DEFAULT_USAGE_BUDGET),
+      notifySlack: z.boolean().default(true),
+      notifyAutomations: z.boolean().default(true),
+      notifyTickets: z.boolean().default(true),
+      notifyHealth: z.boolean().default(true),
+      keepInTray: z.boolean().default(true),
+      notificationsPausedUntil: z.number().int().nonnegative().optional()
     })
     .optional(),
   sessionGroups: sessionGroups.optional(),
