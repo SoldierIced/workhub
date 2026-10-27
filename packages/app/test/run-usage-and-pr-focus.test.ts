@@ -19,16 +19,16 @@ describe('"Show in Workhub" from a PR window', () => {
   function setup(recognized: boolean) {
     const handlers = new Map<string, (...args: any[]) => unknown>()
     const ipc: IpcRegistrar = { handle: (c, l) => void handlers.set(c, l), on: () => undefined }
-    const shown: string[] = []
+    const shown: [string, string | null][] = []
     const service = { recognizes: async () => recognized } as unknown as CodeHostService
-    registerCodeHostIpc(ipc, { service, openWindow: () => undefined, showInWorkhub: (url) => void shown.push(url), openExternal: async () => undefined })
-    return { call: () => handlers.get('codeHost:showInWorkhub')!({}, null, 'https://github.com/acme/web/pull/7'), shown }
+    registerCodeHostIpc(ipc, { service, openWindow: () => undefined, showInWorkhub: (url, profileId) => void shown.push([url, profileId]), openExternal: async () => undefined })
+    return { call: () => handlers.get('codeHost:showInWorkhub')!({}, 'work', 'https://github.com/acme/web/pull/7'), shown }
   }
 
   it('asks the main window to show a recognized PR', async () => {
     const { call, shown } = setup(true)
     await call()
-    expect(shown).toEqual(['https://github.com/acme/web/pull/7'])
+    expect(shown).toEqual([['https://github.com/acme/web/pull/7', 'work']])
   })
 
   it('ignores a URL no connected host recognizes', async () => {

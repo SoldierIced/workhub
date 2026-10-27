@@ -371,6 +371,7 @@ describe('Workhub 1 settings (read-only import)', () => {
     expect(v1.openSessions?.groups).toHaveLength(1)
     expect(v1.notifications).toEqual({ pullRequests: false, slack: false })
     expect(v1).toMatchObject({ healthAlerts: false, usageChecker: '~/usageChecker', usageRefreshMinutes: 10, promptLanguage: 'spanish', appLanguage: 'es', sidebarProfile: 'acme' })
+    expect(v1.protectedBranches).toBe('main, trunk')
     expect(v1.sessionModels).toEqual({ '.claude': 'opus' })
     expect(v1.sessionEfforts).toEqual({ '.claude-work': 'medium' })
     expect(v1.appearance).toEqual({ 'terminal.fontSize': 17, 'terminal.fontFamily': '' })

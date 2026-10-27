@@ -237,7 +237,7 @@ export interface CodeHostIpcOptions {
   service: CodeHostService
   openWindow: (profileId: string | null, url: string, tab?: PullRequestWindowTab) => void
   /** Brings the main window up on Pull requests with this PR selected. */
-  showInWorkhub: (url: string) => void
+  showInWorkhub: (url: string, profileId: string | null) => void
   openExternal: (url: string, profileId: string | null) => Promise<void>
 }
 
@@ -258,7 +258,7 @@ export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, sh
     if (await service.recognizes(profileId, url)) openWindow(profileId, url, isPullRequestWindowTab(tab) ? tab : undefined)
   })
   ipc.handle('codeHost:showInWorkhub', async (_e, profileId: string | null, url: string) => {
-    if (await service.recognizes(profileId, url)) showInWorkhub(url)
+    if (await service.recognizes(profileId, url)) showInWorkhub(url, profileId)
   })
   ipc.handle('codeHost:openExternal', async (_e, profileId: string | null, url: string) => {
     // Only pull request URLs of the connected host; the renderer never opens arbitrary links.
