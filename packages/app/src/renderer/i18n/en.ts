@@ -8,6 +8,7 @@ import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
 import { usageEn } from './usage.en'
+import { trayEn } from './tray.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -371,5 +372,6 @@ export const en = {
   ...slackEn,
   ...automationsEn,
   ...usageEn,
-  ...aiReviewEn
+  ...aiReviewEn,
+  ...trayEn
 } as const

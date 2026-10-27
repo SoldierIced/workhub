@@ -24,6 +24,7 @@ import { useAccountUsage, useUsageAlerts } from './lib/usage'
 import { usePrEventNotifications } from './lib/usePrEventNotifications'
 import { useAiReviewNotices } from './lib/useAiReviewNotices'
 import { useChatNotices } from './lib/useChatNotices'
+import { useTraySync } from './lib/useTraySync'
 import { AutomationsScreen } from './screens/AutomationsScreen'
 import { SlackScreen } from './screens/SlackScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
@@ -129,7 +130,7 @@ function Shell() {
         // An AI reviewer's turns are reported by the review itself (Review panel and its notices).
         if (!data || data.view.readOnly || !options[NOTIFY_OPTION[kind]]) return
         const group = groupOf(stored, sessionIdentity(data.view))
-        window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id })
+        window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id, kind })
       }),
     []
   )
@@ -159,6 +160,8 @@ function Shell() {
     setRoute(r)
   }, [])
   const newSession = useCallback((cwd?: string | null, agentKey?: string) => setDialog({ open: true, cwd: cwd ?? undefined, agentKey }), [])
+  // The menu bar / notification area icon: it lists the sessions and opens screens and the new session dialog.
+  useTraySync({ sessions, groups, locale, navigate, newSession: () => newSession() })
 
   // CmdOrCtrl shortcuts for every nav item, plus CmdOrCtrl+T for a new session (Workhub 1's keys).
   useEffect(() => {

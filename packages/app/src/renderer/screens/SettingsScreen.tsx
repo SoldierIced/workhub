@@ -30,6 +30,7 @@ import { AiReviewProfileFields } from './AiReviewSettings'
 import { HealthSettings } from './HealthSettings'
 import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
+import { MenuBarRows, OtherNotificationRows } from './NotificationExtraSettings'
 import { TrackerSettings } from './TrackerSettings'
 import { UpdatesSettings } from './UpdatesSettings'
 import { UsageSettings } from './UsageSettings'
@@ -190,6 +191,12 @@ function GeneralSection({ snap, run }: SectionProps) {
             <Switch checked={options[option]} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ [option]: on }))} />
           </SwitchRow>
         ))}
+      </SettingsGroup>
+      <SettingsGroup title={t('settings.otherNotifications')} footnote={t('settings.otherNotificationsNote')}>
+        <OtherNotificationRows config={snap.config} editable={editable} run={run} />
+      </SettingsGroup>
+      <SettingsGroup title={t('settings.menuBar')} footnote={window.hub.platform === 'linux' ? t('settings.keepInTrayLinuxNote') : undefined}>
+        <MenuBarRows config={snap.config} editable={editable} run={run} />
       </SettingsGroup>
       <SettingsGroup title={t('updates.group')} footnote={window.hub.platform === 'mac' ? t('updates.macNote') : undefined}>
         <UpdatesSettings enabled={options.checkForUpdates} editable={editable} run={run} />

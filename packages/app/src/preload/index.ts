@@ -6,6 +6,7 @@ import type { PrEventBatch } from '../shared/pr-events-api'
 import type { SessionIntent } from '../shared/links-api'
 import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
+import type { TrayRoute } from '../shared/tray-api'
 
 function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => void): () => void {
   const listener = (_e: IpcRendererEvent, ...args: unknown[]) => cb(...(args as A))
@@ -155,6 +156,11 @@ const api: HubApi = {
     dismissHold: (devIdentity) => ipcRenderer.invoke('aiReview:dismissHold', devIdentity),
     onChanged: (cb) => subscribe<[AiReviewSnapshot]>('aiReview:changed', cb),
     onNotice: (cb) => subscribe<[AiReviewNotice]>('aiReview:notice', cb)
+  },
+  tray: {
+    setState: (state) => ipcRenderer.send('tray:state', state),
+    onNavigate: (cb) => subscribe<[TrayRoute]>('tray:navigate', cb),
+    onNewSession: (cb) => subscribe<[]>('tray:newSession', cb)
   }
 }
 

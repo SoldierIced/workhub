@@ -1,5 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
-import { appendFileSync, existsSync } from 'node:fs'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, safeStorage, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -22,16 +22,34 @@ import {
   canonicalUrl,
   CONNECTION_PROVIDERS,
   ConfigurationService,
+  hasUnread,
+  isNotificationKind,
   knownAgents,
+  pauseUntil,
   planWorkhub1Import,
+  TRAY_ROUTES,
   resolveEffectiveAgents,
   usageAccountKey,
   validateConfig,
+  type HealthAlert,
   type Result,
+  type TicketChange,
+  type TrayAction,
+  type TrayPrEvent,
+  type TrayRoute,
+  type TraySession,
+  type TrayState,
   type WorkhubConfig
 } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, ThemePreference, UsageAlert } from '../shared/api'
 import type { PrNotification } from '../shared/pr-events-api'
+import type { SlackSnapshot } from '../shared/chat-api'
+import type { TrayRendererState } from '../shared/tray-api'
+import { Notifier } from './notifier'
+import { TrayService } from './tray'
+import { isLocale, trayText } from './tray-text'
+import { HealthWatcher, TicketWatcher } from './watchers'
+import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
 import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
@@ -72,6 +90,13 @@ if (!app.isPackaged) {
   app.setPath('userData', join(dataDir, 'electron'))
 }
 
+// One instance per data folder (Electron keys the lock on userData): launching the app again (a
+// Start menu entry, a desktop launcher) brings the running one up, which matters once closing the
+// window only hides it in the menu bar / notification area.
+const firstInstance = app.requestSingleInstanceLock()
+if (!firstInstance) app.quit()
+else app.on('second-instance', () => showMain())
+
 const configStore = new JsonConfigStore(join(dataDir, 'config.json'))
 const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
 const configuration = new ConfigurationService(configStore, secrets)
@@ -96,6 +121,26 @@ let win: BrowserWindow | null = null
 const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
 }
+
+// Menu bar / notification area icon (tray.ts) and what it shows that main does not keep elsewhere.
+let trayService: TrayService | null = null
+let trayLocale: Locale = 'en'
+/** The sessions with their unseen flags, as the renderer last reported them. */
+let rendererSessions: TraySession[] | null = null
+let lastSlack: SlackSnapshot | null = null
+const recentPrEvents: TrayPrEvent[] = []
+/** Options read synchronously (closing the window); refreshed on every options save and tray refresh. */
+let keepInTray = true
+const scheduleTray = () => trayService?.schedule()
+
+/** Every OS notification goes through here: per-kind switches and "Pause notifications". */
+const notifier = new Notifier({
+  options: async () => appOptions(await configuration.current()),
+  supported: () => Notification.isSupported(),
+  create: (content) => new Notification(content),
+  logPath: process.env['WORKHUB_NOTIFICATION_LOG'],
+  onShown: scheduleTray
+})
 
 // Workhub 1's Agent SDK bridge, run with Electron's own Node. Packaged: staged into the resources
 // folder with its node_modules (scripts/stage-bridge.mjs); dev: straight from the adapters source.
@@ -177,7 +222,10 @@ const usage = new AgentUsageService({
       knownKeys: [...claude, ...codex].map((a) => usageAccountKey(a.agentId, a.accountId))
     }
   },
-  emit: (u: AccountUsage[]) => send('usage:changed', u),
+  emit: (u: AccountUsage[]) => {
+    send('usage:changed', u)
+    scheduleTray()
+  },
   alert: (alerts: UsageAlert[]) => (usageAlertsReady ? send('usage:alerts', alerts) : pendingUsageAlerts.push(...alerts)),
   alertState: new StateFile(join(dataDir, 'usage-alerts.json'), 500)
 })
@@ -211,7 +259,11 @@ const slack = new SlackWatcherService({
     const r = await codeHost.view((await configuration.current()).activeProfileId ?? null, url)
     return r.ok ? r.view.detail.state : undefined
   },
-  emit: (snap) => send('slack:changed', snap),
+  emit: (snap) => {
+    lastSlack = snap
+    send('slack:changed', snap)
+    scheduleTray()
+  },
   notice: (n) => send('slack:notice', n)
 })
 const automations = new AutomationService({
@@ -327,7 +379,10 @@ function registerIpc(): void {
     'config:saveOptions',
     guarded(async (o) => {
       const r = await configuration.saveOptions(o)
-      if (r.ok) void usage.refresh()
+      if (r.ok) {
+        void usage.refresh()
+        void refreshOptionsCache()
+      }
       return r
     })
   )
@@ -372,13 +427,13 @@ function registerIpc(): void {
     if (pendingUsageAlerts.length) send('usage:alerts', pendingUsageAlerts.splice(0))
   })
 
-  registerTicketIpc({
+  openTicketWindow = registerTicketIpc({
     ipcMain: ipc,
     service: ticketService,
     createWindow: createAuxWindow,
     mainWindow: () => win,
     broadcast: (channel, ...args) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send(channel, ...args))
-  })
+  }).openWindow
 
   ipc.handle('sessions:list', () => sessions.list())
   ipc.handle('sessions:start', (_e, input) => sessions.start(input))
@@ -401,68 +456,170 @@ function registerIpc(): void {
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   registerAiReviewIpc(ipc, aiReview)
   ipc.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
+  ipc.on('tray:state', (_e, state: TrayRendererState) => {
+    if (isLocale(state?.locale)) trayLocale = state.locale
+    if (Array.isArray(state?.sessions)) rendererSessions = state.sessions.slice(0, 500).filter(validTraySession)
+    scheduleTray()
+  })
 }
 
-/** Notifications stay referenced until they close, or the OS may drop their click handler. */
-const liveNotifications = new Set<Notification>()
+const SESSION_STATES = new Set(['starting', 'ready', 'busy', 'stopped', 'error'])
+const ATTENTION_KINDS = new Set(['error', 'needsAnswer', 'replied'])
+function validTraySession(s: TraySession): boolean {
+  return (
+    !!s &&
+    typeof s.id === 'string' &&
+    typeof s.title === 'string' &&
+    SESSION_STATES.has(s.state) &&
+    (s.unseen === undefined || ATTENTION_KINDS.has(s.unseen)) &&
+    (s.awaitingAnswer === undefined || typeof s.awaitingAnswer === 'boolean')
+  )
+}
 
-/** An OS notification (Electron's, on macOS, Windows and Linux); a click brings the window up and opens the session. */
+/** Brings the main window up (it may be hidden in the menu bar) and the app to the front. */
+function showMain(): void {
+  if (!win || win.isDestroyed()) createWindow()
+  const w = win!
+  if (w.isMinimized()) w.restore()
+  w.show()
+  w.focus()
+  if (process.platform === 'darwin') app.focus({ steal: true })
+}
+
+function navigate(route: TrayRoute): void {
+  showMain()
+  send('tray:navigate', route)
+}
+
+/** A notification worded by the renderer; a click opens its session, or its screen. */
 function showSessionNotification(n: SessionNotification): void {
-  if (!Notification.isSupported() || typeof n.title !== 'string' || typeof n.sessionId !== 'string') return
-  // Test hook: a run can read back what was shown without reading the OS notification center.
-  const log = process.env['WORKHUB_NOTIFICATION_LOG']
-  if (log) appendFileSync(log, `${JSON.stringify({ title: n.title, body: n.body, sessionId: n.sessionId })}\n`)
-  const notification = new Notification({ title: n.title.slice(0, 200), body: String(n.body ?? '').slice(0, 400) })
-  liveNotifications.add(notification)
-  notification.on('close', () => liveNotifications.delete(notification))
-  notification.on('click', () => {
-    liveNotifications.delete(notification)
-    if (!win || win.isDestroyed()) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
+  if (!n || typeof n.title !== 'string' || typeof n.sessionId !== 'string') return
+  const kind = isNotificationKind(n.kind) ? n.kind : 'replied'
+  const route = n.route && TRAY_ROUTES.includes(n.route) ? n.route : undefined
+  void notifier.show(kind, n, () => {
+    if (route) return navigate(route)
+    showMain()
     send('notifications:open', n.sessionId)
-  })
-  notification.show()
+  }, { sessionId: n.sessionId })
 }
 
 /** A usage alert (worded by the renderer); a click brings the window up on Home. */
 function showUsageNotification(n: { title: string; body: string }): void {
-  if (!Notification.isSupported() || typeof n?.title !== 'string') return
-  const log = process.env['WORKHUB_NOTIFICATION_LOG']
-  if (log) appendFileSync(log, `${JSON.stringify({ title: n.title, body: n.body, kind: 'usage' })}\n`)
-  const notification = new Notification({ title: n.title.slice(0, 200), body: String(n.body ?? '').slice(0, 400) })
-  liveNotifications.add(notification)
-  notification.on('close', () => liveNotifications.delete(notification))
-  notification.on('click', () => {
-    liveNotifications.delete(notification)
-    if (!win || win.isDestroyed()) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
+  void notifier.show('usage', n, () => {
+    showMain()
     send('usage:open')
   })
-  notification.show()
 }
 
-/** An OS notification about a pull request event; a click brings the window up and opens that pull request. */
+/** An OS notification about a pull request event; a click opens that pull request. */
 function showPullRequestNotification(n: PrNotification): void {
-  if (!Notification.isSupported()) return
-  const log = process.env['WORKHUB_NOTIFICATION_LOG']
-  if (log) appendFileSync(log, `${JSON.stringify({ title: n.title, body: n.body, url: n.url, profileId: n.profileId })}\n`)
-  const notification = new Notification({ title: n.title.slice(0, 200), body: String(n.body ?? '').slice(0, 400) })
-  liveNotifications.add(notification)
-  notification.on('close', () => liveNotifications.delete(notification))
-  notification.on('click', () => {
-    liveNotifications.delete(notification)
-    if (win && !win.isDestroyed()) {
-      if (win.isMinimized()) win.restore()
-      win.show()
-      win.focus()
-    }
+  if (typeof n?.title !== 'string') return
+  recentPrEvents.unshift({ profileId: n.profileId, url: n.url, title: n.title })
+  recentPrEvents.splice(10)
+  scheduleTray()
+  void notifier.show('prEvent', n, () => {
+    if (win && !win.isDestroyed()) showMain()
     openPullRequestWindow(n.profileId || null, n.url)
-  })
-  notification.show()
+  }, { url: n.url, profileId: n.profileId })
+}
+
+let openTicketWindow: ((profileId: string, key: string) => void) | null = null
+
+function ticketNotification(profileId: string, change: TicketChange): void {
+  const { t } = trayText(trayLocale)
+  const words =
+    change.kind === 'status'
+      ? { title: t('notify.ticket.status', { key: change.key, from: change.from, to: change.to }), body: t('notify.ticket.statusBody', { title: change.title }) }
+      : change.kind === 'assigned'
+        ? { title: t('notify.ticket.assigned', { key: change.key }), body: t('notify.ticket.assignedBody', { title: change.title, status: change.status }) }
+        : { title: t('notify.ticket.left', { key: change.key }), body: t('notify.ticket.leftBody', { title: change.title }) }
+  void notifier.show('tickets', words, () => openTicketWindow?.(profileId, change.key), { ticket: change.key })
+}
+
+function healthNotification(alert: HealthAlert): void {
+  const { t } = trayText(trayLocale)
+  const words = { title: t(`notify.health.${alert.kind}`, { environment: alert.environmentName }), body: t(`notify.health.${alert.kind}Body`) }
+  void notifier.show('health', words, () => navigate('health'), { environmentId: alert.environmentId })
+}
+
+const healthWatcher = new HealthWatcher({
+  activeProfileId: async () => (await configuration.current()).activeProfileId ?? null,
+  read: (profileId) => health.get(profileId),
+  alert: healthNotification,
+  changed: scheduleTray
+})
+
+const ticketWatcher = new TicketWatcher({
+  activeProfileId: async () => (await configuration.current()).activeProfileId ?? null,
+  enabled: async () => appOptions(await configuration.current()).notifyTickets,
+  list: (profileId) => ticketService.call(profileId, (t, ignored) => t.listAssigned({ ignoredStatuses: ignored })),
+  store: new StateFile(join(dataDir, 'ticket-watch.json'), 500),
+  announce: ticketNotification
+})
+
+async function refreshOptionsCache(): Promise<void> {
+  keepInTray = appOptions(await configuration.current()).keepInTray
+  scheduleTray()
+}
+
+/** Everything the menu bar icon shows, read fresh. */
+async function trayState(): Promise<TrayState> {
+  const config = await configuration.current()
+  const options = appOptions(config)
+  keepInTray = options.keepInTray
+  const profileId = config.activeProfileId ?? null
+  const sessionsNow = rendererSessions ?? sessions.list().filter((v) => !v.readOnly).map((v) => ({ id: v.id, title: v.label, state: v.state }))
+  const lists = await codeHost.lists(profileId).catch(() => null)
+  const agentNames = new Map(knownAgents(config).map((a) => [a.id, a.name]))
+  const slackOn = lastSlack && lastSlack.health !== 'off'
+  const me = lastSlack?.me ?? ''
+  const openThreads = lastSlack?.threads.filter((th) => !th.closed) ?? []
+  return {
+    appName: app.getName(),
+    sessions: sessionsNow,
+    usage: usage.current().map((a) => ({ name: a.name || agentNames.get(a.agentId) || a.agentId, windows: a.windows, error: Boolean(a.error) })),
+    pullRequests: lists && lists.state !== 'notConnected' ? { toReview: lists.toReview.length, mine: lists.mine.length } : null,
+    prEvents: recentPrEvents,
+    health: healthWatcher.summary(),
+    slack: slackOn && lastSlack ? { health: lastSlack.health, open: openThreads.length, unread: openThreads.filter((th) => hasUnread(th, me)).length, error: lastSlack.lastError } : null,
+    notifications: notifier.recent().map((n) => ({ id: n.id, title: n.title })),
+    pausedUntil: options.notificationsPausedUntil,
+    canCheckForUpdates: app.isPackaged
+  }
+}
+
+async function performTrayAction(action: TrayAction): Promise<void> {
+  switch (action.kind) {
+    case 'open':
+      return showMain()
+    case 'openSession':
+      showMain()
+      return send('notifications:open', action.id)
+    case 'navigate':
+      return navigate(action.route)
+    case 'openPullRequest':
+      return openPullRequestWindow(action.profileId || null, action.url)
+    case 'openNotification':
+      notifier.openRecent(action.id)
+      return
+    case 'newSession':
+      showMain()
+      return send('tray:newSession')
+    case 'pause':
+    case 'resume': {
+      if (loadError) return
+      const until = action.kind === 'pause' ? pauseUntil(action.preset, new Date()) : 0
+      const r = await configuration.saveOptions({ notificationsPausedUntil: until })
+      if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+      return scheduleTray()
+    }
+    case 'checkForUpdates':
+      navigate('settings')
+      void updates.check()
+      return
+    case 'quit':
+      return app.quit()
+  }
 }
 
 /** One window per pull request; opening an open one brings it to the front. */
@@ -563,9 +720,33 @@ function createWindow(): void {
   // Navigation and new-window guards for every window: see 'web-contents-created' above.
   if (process.env['ELECTRON_RENDERER_URL']) void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   else void win.loadFile(rendererFile)
+  // "Keep running in the menu bar": closing hides the window; sessions, watchers and notifications go on.
+  win.on('close', (event) => {
+    if (allowWindowClose || !keepInTray || !trayService) return
+    event.preventDefault()
+    win?.hide()
+  })
+}
+
+/** The menu bar / notification area icon; a dev run is named "Workhub 2 Dev" there too. */
+function startTray(): void {
+  trayService = new TrayService({
+    appName: app.getName(),
+    platform: process.platform,
+    iconDir: app.isPackaged ? join(process.resourcesPath, 'tray') : join(appRoot, 'build', 'tray'),
+    state: trayState,
+    text: () => trayText(trayLocale),
+    perform: (action) => void performTrayAction(action),
+    activate: showMain,
+    logPath: process.env['WORKHUB_TRAY_LOG']
+  })
+  trayService.start()
+  // Usage, pull request lists and Health change on their own; the menu catches up once a minute.
+  setInterval(scheduleTray, 60_000).unref?.()
 }
 
 void app.whenReady().then(async () => {
+  if (!firstInstance) return
   try {
     await configuration.load()
   } catch (err) {
@@ -574,6 +755,13 @@ void app.whenReady().then(async () => {
   denyWebPermissions()
   registerIpc()
   createWindow()
+  await refreshOptionsCache()
+  try {
+    startTray()
+  } catch {
+    // No status area (some Linux desktops): closing the window then quits, as without the option.
+    trayService = null
+  }
   usage.start()
   // Opt-in: nothing contacts GitHub unless the user turned this on (or presses "Check now").
   if (app.isPackaged && appOptions(await configuration.current()).checkForUpdates) setTimeout(() => void updates.check(), 10_000)
@@ -581,10 +769,22 @@ void app.whenReady().then(async () => {
   slack.start()
   void automations.start()
   aiReview.start()
+  healthWatcher.start()
+  ticketWatcher.start()
 })
 
+// macOS: clicking the Dock icon brings the hidden window back.
+app.on('activate', () => showMain())
+
 let quitting = false
+/** Set once the app is quitting (or installing an update): closing the window then really closes it. */
+let allowWindowClose = false
+// macOS installs an update by closing every window before 'before-quit'.
+nativeUpdater.on('before-quit-for-update', () => {
+  allowWindowClose = true
+})
 app.on('before-quit', (event) => {
+  allowWindowClose = true
   if (quitting) return
   // Give agent processes a chance to exit before the app does.
   event.preventDefault()
@@ -594,6 +794,12 @@ app.on('before-quit', (event) => {
   slack.stop()
   automations.stop()
   aiReview.stop()
+  healthWatcher.stop()
+  ticketWatcher.stop()
   void sessions.stopAll().finally(() => app.quit())
 })
-app.on('window-all-closed', () => app.quit())
+// Kept in the menu bar, the app outlives its windows (a window closed some other way than its
+// close button is opened again from the icon); otherwise closing the last window quits.
+app.on('window-all-closed', () => {
+  if (!(keepInTray && trayService) || allowWindowClose) app.quit()
+})
