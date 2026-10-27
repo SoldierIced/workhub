@@ -1,9 +1,9 @@
-import { ExternalLink, GitPullRequest, SquareTerminal, UserCheck } from 'lucide-react'
+import { ExternalLink, GitPullRequest, SquareTerminal, Sparkles, UserCheck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { listedPullRequests, pullRequestsForTicket, sessionsForTicket, type PullRequest, type SessionRef, type TicketDetail, type TicketRef, type TicketTransition } from '@workhub/core'
+import { historyForTicket, listedPullRequests, pullRequestsForTicket, sessionsForTicket, type PullRequest, type SessionRef, type TicketDetail, type TicketRef, type TicketTransition } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import { Badge, Button, Select, Spinner, StateDot, STATE_TONE, Textarea, TooltipProvider } from '../components/atoms'
-import { Markdown, ToastProvider, useToast } from '../components/molecules'
+import { Markdown, PastSessions, ToastProvider, useToast } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { usePlatform } from '../lib/platform'
@@ -11,6 +11,7 @@ import { resolveTheme, usePrefs, useSystemDark } from '../lib/prefs'
 import { CATEGORY_TONE, keyProviders, relativeTime, splitLinks } from '../lib/tickets'
 import type { TicketsStatus } from '@shared/tickets-api'
 import { usePullRequestLists } from '../pullRequestsStore'
+import { usePastSessions } from '../lib/usePastSessions'
 
 /** `#/ticket?profile=<id>&key=<KEY>` -> the two ids, or null for any other hash. */
 export function parseTicketHash(hash: string): { profileId: string; key: string } | null {
@@ -89,6 +90,9 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
   const providers = useMemo(() => keyProviders(status), [status])
   const sessionRefs: (SessionRef & { view: SessionView })[] = useMemo(() => sessions.map((s) => ({ id: s.id, title: s.label, cwd: s.cwd, view: s })), [sessions])
   const linkedSessions = sessionsForTicket(ticketKey, sessionRefs, providers)
+  // Sessions from the History that mention the ticket (title, first prompt, folder or branch), minus the open ones above.
+  const past = usePastSessions()
+  const pastItems = useMemo(() => historyForTicket(ticketKey, past.entries, providers, past.open).map((entry) => ({ entry })), [ticketKey, past.entries, past.open, providers])
   // The code host's PRs (mine and to review) that name this ticket in their title or branch.
   const { lists: prLists } = usePullRequestLists(profileId)
   const hostPrs = useMemo(() => {
@@ -269,6 +273,24 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
                 ))}
               </ul>
             )}
+            <Button
+              size="sm"
+              variant="secondary"
+              className="mt-2"
+              icon={<Sparkles className="size-3.5" aria-hidden />}
+              onClick={() => window.hub.links.request({ kind: 'ticketSession', profileId, ticket: { key: ticketKey, title: d.title, url: d.url } })}
+            >
+              {t('links.ticket.start')}
+            </Button>
+          </Side>
+          <Side title={t('links.pastSessions')}>
+            <PastSessions
+              items={pastItems}
+              loading={past.loading}
+              error={past.error}
+              className="flex flex-col divide-y divide-border"
+              onResume={(entry) => window.hub.links.request({ kind: 'resume', profileId, entry, mode: 'app' })}
+            />
           </Side>
         </aside>
       </div>

@@ -1,4 +1,4 @@
-import { ExternalLink, GitPullRequest, SquareTerminal } from 'lucide-react'
+import { ExternalLink, GitPullRequest, Sparkles, SquareTerminal } from 'lucide-react'
 import type { Ticket } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { CATEGORY_TONE } from '../../lib/tickets'
@@ -12,11 +12,13 @@ export interface TicketRowProps {
   sessionCount?: number
   onOpen: () => void
   onOpenExternal?: () => void
+  /** Starts a session about the ticket with a drafted prompt. */
+  onStartSession?: () => void
   className?: string
 }
 
 /** One ticket in a list: key, title, links to PRs and sessions, status. Clicking opens the ticket window. */
-export function TicketRow({ ticket, sessionCount = 0, onOpen, onOpenExternal, className }: TicketRowProps) {
+export function TicketRow({ ticket, sessionCount = 0, onOpen, onOpenExternal, onStartSession, className }: TicketRowProps) {
   const { t, tn } = useI18n()
   const prs = ticket.pullRequestUrls?.length ?? 0
   return (
@@ -38,6 +40,7 @@ export function TicketRow({ ticket, sessionCount = 0, onOpen, onOpenExternal, cl
       <Badge tone={CATEGORY_TONE[ticket.category]} className="max-w-36 truncate">
         {ticket.status}
       </Badge>
+      {onStartSession && <IconButton size="sm" label={t('links.ticket.startShort', { key: ticket.key })} icon={<Sparkles className="size-3.5" />} onClick={onStartSession} />}
       {onOpenExternal && ticket.url ? (
         <IconButton size="sm" label={t('tickets.openInBrowser')} icon={<ExternalLink className="size-3.5" />} onClick={onOpenExternal} />
       ) : (

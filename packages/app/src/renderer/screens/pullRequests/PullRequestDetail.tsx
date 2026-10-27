@@ -1,12 +1,16 @@
-import { AppWindow, Check, ExternalLink, GitBranch, MessageSquare, RefreshCw, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
-import { prName, reviewerStates, reviewRefusal, type PullRequest, type PullRequestDetail as Detail, type ReviewAction } from '@workhub/core'
+import { AppWindow, Check, ExternalLink, GitBranch, MessageSquare, RefreshCw, SquareTerminal, Sparkles, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { historyForPullRequest, prName, reviewerStates, reviewRefusal, type PullRequest, type PullRequestDetail as Detail, type ReviewAction } from '@workhub/core'
 import type { PullRequestViewResult } from '@shared/codehost-api'
 import { Badge, Button, IconButton, Spinner, Textarea } from '../../components/atoms'
-import { EmptyState, Markdown, Tabs, useToast } from '../../components/molecules'
+import { EmptyState, Markdown, PastSessions, Tabs, useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { initials, relativeTime } from '../../lib/pullRequests'
+import { keyProviders } from '../../lib/tickets'
+import { usePastSessions } from '../../lib/usePastSessions'
+import type { PullRequestTarget } from '@shared/links-api'
+import type { TicketsStatus } from '@shared/tickets-api'
 import { refreshPullRequests } from '../../pullRequestsStore'
 import { DiffView } from './DiffView'
 import { PrStateBadges } from './PrBadges'
@@ -173,6 +177,20 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow }: PullRe
   const view = result?.ok ? result.view : null
   const detail = view?.detail
   const head: PullRequest | undefined = detail ?? seed
+
+  // Past sessions that named this PR, ran on its branch or share its ticket (from the History).
+  const past = usePastSessions()
+  const [ticketStatus, setTicketStatus] = useState<TicketsStatus>()
+  useEffect(() => {
+    void window.hub.tickets.status(profileId).then(setTicketStatus, () => setTicketStatus(undefined))
+  }, [profileId])
+  const pastLinks = useMemo(
+    () => (head ? historyForPullRequest(head, past.entries, keyProviders(ticketStatus), past.open) : []),
+    [head, past.entries, past.open, ticketStatus]
+  )
+  const target: PullRequestTarget | null = head
+    ? { provider: head.provider, owner: head.owner, repo: head.repo, number: head.number, url: head.url, title: head.title, branch: head.branch, base: head.base, author: head.author }
+    : null
   const afterWrite = async () => {
     await load()
     void refreshPullRequests(profileId, true)
@@ -249,8 +267,19 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow }: PullRe
           )}
           {head.updatedAt && <span>{t('pr.updated', { time: relativeTime(head.updatedAt, Date.now(), locale) })}</span>}
         </p>
-        {capabilities && open && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {target && (
+            <>
+              <Button variant="secondary" icon={<SquareTerminal className="size-4" aria-hidden />} title={t('links.pr.openSessionHint')} onClick={() => window.hub.links.request({ kind: 'pullRequestSession', profileId, pr: target })}>
+                {t('links.pr.openSession')}
+              </Button>
+              <Button variant="secondary" icon={<Sparkles className="size-4" aria-hidden />} title={t('links.pr.reviewHint')} onClick={() => window.hub.links.request({ kind: 'reviewPullRequest', profileId, pr: target })}>
+                {t('links.pr.review')}
+              </Button>
+            </>
+          )}
+          {capabilities && open && (
+            <>
             {actions
               .filter((a) => capabilities.reviewActions.includes(a.action))
               .map((a) => {
@@ -262,8 +291,9 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow }: PullRe
                   </Button>
                 )
               })}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 px-6 pb-4">
@@ -282,6 +312,20 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow }: PullRe
                   <DiffView files={view.files} threads={detail.threads} canReply={Boolean(capabilities?.replyToThread) && open} onReply={reply} />
                 ) : (
                   <p role="alert" className="text-sm text-danger">{t('pr.files.error', { message: view?.filesError ?? '' })}</p>
+                )
+              },
+              {
+                value: 'sessions',
+                label: `${t('links.pastSessions')}${past.loading ? '' : ` (${pastLinks.length})`}`,
+                content: (
+                  <div className="max-w-3xl">
+                    <PastSessions
+                      items={pastLinks}
+                      loading={past.loading}
+                      error={past.error}
+                      onResume={(entry) => window.hub.links.request({ kind: 'resume', profileId, entry, mode: 'app' })}
+                    />
+                  </div>
                 )
               },
               {
