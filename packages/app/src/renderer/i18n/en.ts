@@ -1,5 +1,6 @@
 import { linksEn } from './links.en'
 import { aiReviewEn } from './aiReview.en'
+import { sessionsUxEn } from './sessionsUx.en'
 import { healthEn } from './health.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
@@ -378,5 +379,6 @@ export const en = {
   ...slackEn,
   ...automationsEn,
   ...usageEn,
-  ...aiReviewEn
+  ...aiReviewEn,
+  ...sessionsUxEn
 } as const

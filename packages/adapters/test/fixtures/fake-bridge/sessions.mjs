@@ -7,6 +7,9 @@ if (command === 'all') {
     { sessionId: 'sess-2', summary: `Account ${account}`, lastModified: 1500 },
     { summary: 'no id, skipped' }
   ]))
+} else if (command === 'messages' && args[1] === '/tmp/moved') {
+  // The transcript is not under this folder: found only when every project is searched.
+  process.stdout.write('[]')
 } else if (command === 'messages') {
   process.stdout.write(JSON.stringify([
     { type: 'user', parent_tool_use_id: null, message: { content: `hello from ${args[0]} in ${args[1]}` } }
