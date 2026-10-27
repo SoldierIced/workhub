@@ -19,6 +19,9 @@ import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage } from './lib/usage'
 import { usePrEventNotifications } from './lib/usePrEventNotifications'
+import { useChatNotices } from './lib/useChatNotices'
+import { AutomationsScreen } from './screens/AutomationsScreen'
+import { SlackScreen } from './screens/SlackScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
 import { HealthScreen } from './screens/HealthScreen'
 import { HomeScreen } from './screens/HomeScreen'
@@ -88,6 +91,9 @@ function Shell() {
   const latest = useRef({ sessions, groups, snap, t, tn, liveKeys })
   latest.current = { sessions, groups, snap, t, tn, liveKeys }
   usePrEventNotifications(() => latest.current)
+  useChatNotices()
+  // An automation moved a session's sidebar place in the stored config.
+  useEffect(() => window.hub.automations.onConfigChanged(() => void refreshConfig()), [])
 
   const openSession = useCallback((id: string) => {
     setSelectedSession(id)
@@ -99,7 +105,12 @@ function Shell() {
   }, [])
 
   // A session counts as seen only while its screen is up (and the window focused: the store tracks that).
-  useEffect(() => setViewing(route === 'sessions' ? selectedSession : null), [route, selectedSession])
+  useEffect(() => {
+    const viewing = route === 'sessions' ? selectedSession : null
+    setViewing(viewing)
+    // A replaced automation session on screen is never closed under the user.
+    window.hub.automations.setViewing(viewing)
+  }, [route, selectedSession])
 
   // Sessions that need a look get an OS notification, named after their group when they have one.
   useEffect(
@@ -114,7 +125,8 @@ function Shell() {
       }),
     []
   )
-  useEffect(() => window.hub.notifications.onOpen(openSession), [openSession])
+  // Slack notices have no session: their click opens the Slack screen.
+  useEffect(() => window.hub.notifications.onOpen((id) => (id ? openSession(id) : setRoute('slack'))), [openSession])
 
   // Members remember their title, agent and folder so they can be listed (and reopened) once closed.
   useEffect(() => {
@@ -253,6 +265,10 @@ function Shell() {
                 <HealthScreen profile={profile} onOpenSettings={openSettings} onInvestigate={(env, tx) => void investigate(env, tx)} />
               ) : route === 'tickets' ? (
                 <TicketsScreen profile={profile} sessions={sessions} onOpenSettings={openSettings} />
+              ) : route === 'slack' ? (
+                <SlackScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} />
+              ) : route === 'automations' ? (
+                <AutomationsScreen profile={profile} agents={agents} onOpenSession={openSession} />
               ) : route === 'settings' ? (
                 <SettingsScreen snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
               ) : (

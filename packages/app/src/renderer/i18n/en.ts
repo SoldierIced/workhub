@@ -1,5 +1,7 @@
 import { healthEn } from './health.en'
 import { prEventsEn } from './prEvents.en'
+import { slackEn } from './slack.en'
+import { automationsEn } from './automations.en'
 import { prEn } from './pullRequests.en'
 import { ticketsEn } from './tickets.en'
 import { updatesEn } from './updates.en'
@@ -344,5 +346,7 @@ export const en = {
   ...ticketsEn,
   ...updatesEn,
   ...healthEn,
-  ...prEventsEn
+  ...prEventsEn,
+  ...slackEn,
+  ...automationsEn
 } as const

@@ -1,6 +1,8 @@
 import type { en } from './en'
 import { healthEs } from './health.es'
 import { prEventsEs } from './prEvents.es'
+import { slackEs } from './slack.es'
+import { automationsEs } from './automations.es'
 import { prEs } from './pullRequests.es'
 import { ticketsEs } from './tickets.es'
 import { updatesEs } from './updates.es'
@@ -343,5 +345,7 @@ export const es: Record<keyof typeof en, string> = {
   ...ticketsEs,
   ...updatesEs,
   ...healthEs,
-  ...prEventsEs
+  ...prEventsEs,
+  ...slackEs,
+  ...automationsEs
 }
