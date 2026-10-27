@@ -8,7 +8,8 @@
 // app -> bridge (stdin):
 //   {"type":"start","cwd","executable"?,"configDir"?,"sessionId"?,"resume"?,
 //    "model"?,"effort"?,"permissionMode"?,"fast"?,"readOnly"?}
-//   {"type":"user","text"} or {"type":"user","content":[text and image blocks]}
+//   {"type":"user","text"} or {"type":"user","content":[text and image blocks]}, each with
+//    "uuid"? and "priority"? ("next" for a message sent while a turn runs)
 //   {"type":"permission","id","result":{behavior,...}}
 //   {"type":"interrupt"}
 //   {"type":"set_model","model"|null} {"type":"set_effort","effort"|null}
@@ -254,6 +255,10 @@ lines.on("line", (line) => {
         message: { role: "user", content: message.content ?? message.text },
         parent_tool_use_id: null,
         origin: { kind: "human" },
+        // The app's id for the prompt (results list the ones they answer) and, for a message sent
+        // while a turn runs, priority "next": Claude folds it into the turn between tool rounds.
+        ...(typeof message.uuid === "string" ? { uuid: message.uuid } : {}),
+        ...(message.priority === "next" || message.priority === "later" ? { priority: message.priority } : {}),
       });
       break;
     case "permission": {

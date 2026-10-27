@@ -217,6 +217,17 @@ describe('SessionManager', () => {
     expect(acp.prompts[0]!.images).toBeUndefined()
   })
 
+  it('follows what an ACP agent says at start about taking images', async () => {
+    const { manager, acp, last } = setup()
+    const start = acp.start.bind(acp)
+    acp.start = async (r) => ({ ...(await start(r)), imageInput: false })
+    const view = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo' })
+    await flush()
+    expect(last(view.id)?.capabilities.imageInput).toBe(false)
+    await manager.prompt(view.id, 'look', [{ mediaType: 'image/png', data: 'AAAA' }])
+    expect(acp.prompts[0]!.images).toBeUndefined()
+  })
+
   it('records the model picked in the session', async () => {
     const { manager, native, last } = setup()
     const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })

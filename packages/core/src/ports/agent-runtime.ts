@@ -58,6 +58,8 @@ export interface StartedSession {
   modelIgnored?: boolean
   /** A mode was asked for but the agent does not offer it (or refused): it runs in its default. */
   modeIgnored?: boolean
+  /** Whether prompts can carry images, when the agent says at start (ACP `promptCapabilities.image`). */
+  imageInput?: boolean
   /** Models the session can switch to, and the current one, when the agent reports them. */
   models?: ModelOption[]
   currentModelId?: string

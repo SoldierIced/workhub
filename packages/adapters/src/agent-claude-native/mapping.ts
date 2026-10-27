@@ -334,3 +334,24 @@ export function resultStopReason(result: Obj, cancelled: boolean): string {
   if (cancelled) return 'cancelled'
   return result['subtype'] === 'success' && result['is_error'] !== true ? 'end_turn' : (str(result['subtype']) ?? 'error')
 }
+
+/**
+ * Which prompts a `result` answers, by the uuids the app stamped on them (oldest first in
+ * `pending`). Claude Code folds a message sent during a turn into that turn between tool rounds,
+ * or runs it as the next turn: `user_message_uuids` lists every prompt the turn consumed and
+ * `queued_turn_count` the sends still waiting. Prompts up to the last consumed one are settled;
+ * the session stays busy while later ones wait for their own turn. A result without uuids (an
+ * older CLI) settles every prompt, as before.
+ */
+export function settleResult(pending: readonly string[], result: Obj): { settled: string[]; stillBusy: boolean } {
+  const uuids = Array.isArray(result['user_message_uuids'])
+    ? result['user_message_uuids'].filter((u): u is string => typeof u === 'string')
+    : typeof result['user_message_uuid'] === 'string'
+      ? [result['user_message_uuid']]
+      : null
+  const queued = typeof result['queued_turn_count'] === 'number' ? result['queued_turn_count'] : 0
+  if (!uuids || queued <= 0) return { settled: [...pending], stillBusy: false }
+  const last = Math.max(-1, ...uuids.map((u) => pending.indexOf(u)))
+  const settled = pending.slice(0, last + 1)
+  return { settled, stillBusy: pending.length > settled.length }
+}

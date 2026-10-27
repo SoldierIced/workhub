@@ -113,7 +113,14 @@ export function pushUser(id: string, text: string, images?: string[]): void {
 }
 
 export function pushTurnEnd(id: string, stopReason: string): void {
-  patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, kind: 'turnEnd', stopReason }] }))
+  patch(id, (s) => withTurnEnd(s, stopReason, () => ++seq))
+}
+
+/** A turn's end divider; one only when several prompts settle together (a message folded into the running turn). */
+export function withTurnEnd(s: SessionData, stopReason: string, next: () => number): SessionData {
+  const last = s.items[s.items.length - 1]
+  if (last?.kind === 'turnEnd' && last.stopReason === stopReason) return s
+  return { ...s, items: [...s.items, { id: next(), kind: 'turnEnd', stopReason }] }
 }
 
 export function markPermission(id: string, requestId: string, answer: string): void {

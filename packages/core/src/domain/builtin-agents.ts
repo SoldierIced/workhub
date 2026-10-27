@@ -37,7 +37,8 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
       mcpControl: true,
       subagents: true,
       permissionRequests: true,
-      imageInput: true
+      imageInput: true,
+      midTurnInput: true
     },
     modeSemantics: 'permission',
     accountConfigEnv: 'CLAUDE_CONFIG_DIR',

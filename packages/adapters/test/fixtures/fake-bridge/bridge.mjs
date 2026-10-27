@@ -7,6 +7,8 @@ const sdk = (message) => send({ type: 'sdk', message })
 let start = null
 let pendingPermission = null
 let ignoreClose = false
+// The uuid of a prompt held open by "hold", so a message sent during that turn can join it.
+let held = null
 let servers = [{ name: 'acme-docs', status: 'connected', toolCount: 2, tools: ['search', 'read'] }]
 
 function reply(id, text) {
@@ -46,6 +48,22 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         sdk({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 1790000000, overageStatus: 'rejected' } })
         sdk({ type: 'assistant', parent_tool_use_id: null, error: 'rate_limit', message: { id: 'msg_limit', model: '<synthetic>', content: [{ type: 'text', text: "You've hit your limit · resets 3pm" }] } })
         sdk({ type: 'result', subtype: 'success', is_error: true, result: "You've hit your limit · resets 3pm" })
+      } else if (text === 'hold') {
+        // A turn that runs until the next message arrives.
+        held = m.uuid
+      } else if (held && text === 'fold') {
+        // Claude Code folds a message sent during a turn into it: one result answers both.
+        reply('msg_fold', `folded ${m.priority ?? 'none'}`)
+        sdk({ type: 'result', subtype: 'success', is_error: false, user_message_uuid: m.uuid, user_message_uuids: [held, m.uuid], queued_turn_count: 0 })
+        held = null
+      } else if (held && text === 'after') {
+        // Sent too late to fold: the turn ends first, then the message runs as its own turn.
+        sdk({ type: 'result', subtype: 'success', is_error: false, user_message_uuid: held, user_message_uuids: [held], queued_turn_count: 1 })
+        held = null
+        setTimeout(() => {
+          reply('msg_after_turn', `next turn ${m.priority ?? 'none'}`)
+          sdk({ type: 'result', subtype: 'success', is_error: false, user_message_uuid: m.uuid, user_message_uuids: [m.uuid], queued_turn_count: 0 })
+        }, 50)
       } else if (text === 'wait') {
         // Answered by an interrupt.
       } else if (text === 'ignore close') {
