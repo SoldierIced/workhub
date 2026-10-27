@@ -185,6 +185,21 @@ const api: HubApi = {
     onOffer: (cb) => subscribe<[ContinuityOffer]>('continuity:offer', cb),
     onMoved: (cb) => subscribe<[ContinuityMoved]>('continuity:moved', cb)
   },
+  setup: {
+    run: () => ipcRenderer.invoke('setup:run'),
+    openWindow: (page) => ipcRenderer.send('setup:openWindow', page),
+    openSettings: (tab) => ipcRenderer.send('setup:openSettings', tab),
+    onOpenSettings: (cb) => subscribe<[string]>('setup:openSettings', cb),
+    completeWelcome: () => ipcRenderer.invoke('setup:completeWelcome')
+  },
+  profileEnv: {
+    stored: (profileId) => ipcRenderer.invoke('profileEnv:stored', profileId),
+    save: (profileId, values, removed) => ipcRenderer.invoke('profileEnv:save', profileId, values, removed)
+  },
+  systemNotifications: {
+    status: () => ipcRenderer.invoke('systemNotifications:status'),
+    openSystemSettings: () => ipcRenderer.send('systemNotifications:openSettings')
+  },
   tray: {
     setState: (state) => ipcRenderer.send('tray:state', state),
     onNavigate: (cb) => subscribe<[TrayRoute, string | undefined]>('tray:navigate', cb),

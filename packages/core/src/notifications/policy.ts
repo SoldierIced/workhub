@@ -1,7 +1,7 @@
 /**
  * Which OS notifications are sent. Every kind has its own switch in Settings → General (a pull
- * request event also has one per event kind, checked where the event is worded), and "Pause
- * notifications" silences every kind until a moment in time. The main process asks `shouldNotify`
+ * request event also has one per event kind, checked where the event is worded), the master switch silences every kind, and "Pause
+ * notifications" does it until a moment in time. The main process asks `shouldNotify`
  * before it shows anything, so no notification path can skip the pause.
  */
 import type { AppOptions } from '../config/schema'
@@ -38,7 +38,7 @@ export function notificationsPaused(options: Pick<AppOptions, 'notificationsPaus
 
 /** Whether a notification of this kind may be shown now. */
 export function shouldNotify(kind: NotificationKind, options: AppOptions, now: number): boolean {
-  if (notificationsPaused(options, now)) return false
+  if (options.notificationsEnabled === false || notificationsPaused(options, now)) return false
   const toggle = NOTIFICATION_TOGGLE[kind]
   return toggle === null || options[toggle] !== false
 }

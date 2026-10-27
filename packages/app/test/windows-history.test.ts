@@ -72,6 +72,15 @@ describe('application menu', () => {
     expect(template.find((m) => m.role === 'editMenu')).toBeDefined()
   })
 
+  it('Help: the setup windows (check, welcome, how it works), then the project page', () => {
+    const opened: string[] = []
+    const { template } = menu({ openSetup: (page) => opened.push(page) })
+    const help = items(template.find((m) => m.role === 'help')!)
+    expect(help.map((i) => i.label ?? i.type)).toEqual(['menu.setupCheck', 'menu.welcome', 'menu.howItWorks(Workhub 2)', 'separator', 'menu.helpPage(Workhub 2)'])
+    for (const i of help) (i.click as (() => void) | undefined)?.()
+    expect(opened).toEqual(['check', 'welcome', 'help'])
+  })
+
   it('File: one new session per agent, open in a new window ⇧⌘N and close session ⇧⌘W', () => {
     const { template, ran } = menu()
     const file = items(byLabel(template, 'menu.file'))

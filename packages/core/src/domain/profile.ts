@@ -34,6 +34,16 @@ export interface Profile {
   modules: ModuleToggles
   /** Folders the profile works in (Workhub 1's profile folders): new sessions and history group by them. */
   folders?: string[]
+  /** Switches per folder path (keys are entries of `folders`). */
+  folderOptions?: Record<string, FolderOptions>
+  /** An icon name for the profile (a Lucide icon id from the picker). */
+  symbol?: string
+  /** The browser that opens this profile's GitHub and Jira links (an app name on macOS, a command elsewhere); unset: the default browser. */
+  linkBrowser?: string
+  /** Also owns every folder outside all profiles' folders (at most one profile at a time). */
+  ownsOutside?: boolean
+  /** Names of the environment variables added to this profile's sessions; the values live in the secret store (`profileEnvRef`). */
+  envNames?: string[]
   /** Health module setup: environments to watch and the refresh interval (the cluster is the profile's `health` connection). */
   health?: HealthSettings
   /** Tracked Slack threads quiet for this many minutes are shown archived (default 15; see `threadArchiveMinutes`). */
@@ -61,3 +71,15 @@ export function profileColor(profiles: readonly Pick<Profile, 'id' | 'color'>[],
   if (index < 0) return undefined
   return profiles[index]!.color ?? automaticProfileColor(index)
 }
+
+/** A valid name for a session environment variable. */
+export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** Per-folder switches of a profile (Workhub 1's "Only git repos" and "Each subfolder is its own project"). */
+export interface FolderOptions {
+  onlyGitRepos?: boolean
+  subfoldersAreProjects?: boolean
+}
+
+/** Where the value of a profile's environment variable is kept (the secret store, never the config file). */
+export const profileEnvRef = (profileId: string, name: string): string => `profile-env:${profileId}:${name}`

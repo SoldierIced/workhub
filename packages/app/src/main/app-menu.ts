@@ -1,5 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron'
 import type { MenuCommand } from '../shared/windows-api'
+import type { SetupPage } from '../shared/setup-api'
 
 /** An agent the File menu offers a new session of (the active profile's effective agents, in order). */
 export interface MenuAgent {
@@ -20,6 +21,8 @@ export interface AppMenuInput {
   run: (command: MenuCommand) => void
   /** Help → the project's page. */
   openHelp: () => void
+  /** Help → the setup windows (setup check, welcome, how Workhub works). */
+  openSetup?: (page: SetupPage) => void
   /** Reload and developer tools in the View menu (dev runs only). */
   developer: boolean
 }
@@ -109,7 +112,17 @@ export function buildAppMenuTemplate(input: AppMenuInput): MenuItemConstructorOp
   const help: MenuItemConstructorOptions = {
     role: 'help',
     label: t('menu.help'),
-    submenu: [{ label: t('menu.helpPage', { app: input.appName }), click: input.openHelp }]
+    submenu: [
+      ...(input.openSetup
+        ? ([
+            { label: t('menu.setupCheck'), click: () => input.openSetup?.('check') },
+            { label: t('menu.welcome'), click: () => input.openSetup?.('welcome') },
+            { label: t('menu.howItWorks', { app: input.appName }), click: () => input.openSetup?.('help') },
+            { type: 'separator' }
+          ] as MenuItemConstructorOptions[])
+        : []),
+      { label: t('menu.helpPage', { app: input.appName }), click: input.openHelp }
+    ]
   }
 
   // Settings sits in the app menu on macOS (⌘,) and in File elsewhere.
