@@ -33,6 +33,11 @@ export interface AgentCapabilities {
   permissionRequests: boolean
   /** Prompts can carry images (pasted screenshots). */
   imageInput: boolean
+  /**
+   * A prompt sent while a turn runs joins that turn (the native Claude adapter: Claude Code folds
+   * it in between tool rounds). Without it, a message sent during a turn waits for the turn's end.
+   */
+  midTurnInput?: boolean
 }
 
 export type AgentCapabilityName = keyof AgentCapabilities

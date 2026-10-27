@@ -228,7 +228,7 @@ function SessionPane({ data, visible, theme }: { data: SessionData; visible: boo
         <div className="flex min-w-0 flex-1 flex-col">
           {hasApp && (
             <div className={cn('flex min-h-0 flex-1', v.mode !== 'app' && 'hidden')}>
-              <ChatPane data={data} />
+              <ChatPane data={data} active={visible && v.mode === 'app'} />
             </div>
           )}
           {hasConsole && (

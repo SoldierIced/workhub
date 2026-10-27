@@ -104,7 +104,8 @@ const capabilities = z.object({
   mcpControl: z.boolean(),
   subagents: z.boolean(),
   permissionRequests: z.boolean(),
-  imageInput: z.boolean().default(false)
+  imageInput: z.boolean().default(false),
+  midTurnInput: z.boolean().optional()
 })
 
 const consoleLaunch = z.object({

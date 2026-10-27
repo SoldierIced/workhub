@@ -1,6 +1,6 @@
-import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
-import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { gatePrompt, setCeiling, type ImageInput, type SubagentSummary } from '@workhub/core'
+import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { gatePrompt, setCeiling, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
 import { Markdown } from '../../components/molecules'
 import { BrandMark, ToolCallCard } from '../../components/organisms'
@@ -8,8 +8,11 @@ import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
 import { onComposerDraft, takeComposerDraft } from '../../lib/drafts'
-import { imageInputFromDataUrl, MAX_PROMPT_IMAGES, readPastedImages } from '../../lib/images'
-import { markPermission, pushItem, pushTurnEnd, pushUser, type ChatItem, type SessionData } from '../../store'
+import { hasImageFiles, imageFilesOf, MAX_PROMPT_IMAGES, pickImageFiles, readImageFiles } from '../../lib/images'
+import { acceptsInput } from '../../lib/prompt-queue'
+import { isEditable, shouldFocusComposer } from '../../lib/composer-focus'
+import { removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
+import { markPermission, pushItem, type ChatItem, type SessionData } from '../../store'
 import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useNow, useUsageSettings } from '../../lib/usage'
@@ -149,13 +152,32 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
   }
 }
 
-/** The structured chat of a session: Markdown replies, tools, permissions, hook notices, pasted images. */
-export function ChatPane({ data }: { data: SessionData }) {
-  const { t } = useI18n()
+/**
+ * The structured chat of a session: Markdown replies, tools, permissions, hook notices, pasted
+ * images. `active`: its chat is the one on screen, so the composer takes the focus.
+ */
+export function ChatPane({ data, active = false }: { data: SessionData; active?: boolean }) {
+  const { t, tn } = useI18n()
   const v = data.view
   const [text, setText] = useState(() => takeComposerDraft(v.id) ?? '')
   const [images, setImages] = useState<string[]>([])
+  const queued = useQueuedPrompts(v.id)
   const bottom = useRef<HTMLDivElement>(null)
+  const composer = useRef<HTMLTextAreaElement>(null)
+  const open = acceptsInput(v.state)
+  const midTurn = v.capabilities.midTurnInput === true
+  // Workhub 1's Console.focus(): picking a session puts the cursor in its composer.
+  const focusState = useRef({ active: false, enabled: false })
+  useEffect(() => {
+    const next = { active, enabled: open }
+    const typingElsewhere = isEditable(document.activeElement) && document.activeElement !== composer.current
+    if (shouldFocusComposer(focusState.current, next, typingElsewhere)) {
+      const frame = requestAnimationFrame(() => composer.current?.focus())
+      focusState.current = next
+      return () => cancelAnimationFrame(frame)
+    }
+    focusState.current = next
+  }, [active, open])
   // A draft written for this session after its chat mounted (Investigate with Claude).
   useEffect(
     () =>
@@ -168,7 +190,7 @@ export function ChatPane({ data }: { data: SessionData }) {
   useEffect(() => {
     // Braces matter: scrollIntoView returns a Promise in recent Chromium, which React would take as a cleanup.
     void bottom.current?.scrollIntoView({ block: 'end' })
-  }, [data.items])
+  }, [data.items, queued])
 
   const acceptsImages = v.capabilities.imageInput
 
@@ -216,7 +238,7 @@ export function ChatPane({ data }: { data: SessionData }) {
 
   const send = async (override = false) => {
     const value = text.trim()
-    if ((!value && images.length === 0) || v.state !== 'ready') return
+    if ((!value && images.length === 0) || !open) return
     // The one-shot escape: "Send anyway" passes this prompt only; nothing stored changes.
     if (gatePrompt(gate.status, 'user', override).kind === 'confirm') {
       // Automatic failover: the held prompt goes to the same conversation in the next account.
@@ -231,16 +253,10 @@ export function ChatPane({ data }: { data: SessionData }) {
       return
     }
     setNeedsConfirm(false)
-    const sent = images
+    // While the agent works the message waits for the turn's end (or joins the turn, on Claude).
+    if (submitPrompt(v.id, v.state, midTurn, value, images) === 'refused') return
     setText('')
     setImages([])
-    pushUser(v.id, value, sent)
-    const inputs = sent.map(imageInputFromDataUrl).filter((i): i is ImageInput => i !== null)
-    try {
-      pushTurnEnd(v.id, await window.hub.sessions.prompt(v.id, value, inputs.length ? inputs : undefined))
-    } catch (e) {
-      pushItem(v.id, 'error', e instanceof Error ? e.message : String(e))
-    }
   }
 
   const answer = (requestId: string, optionId: string | null, label: string) => {
@@ -259,16 +275,32 @@ export function ChatPane({ data }: { data: SessionData }) {
     }
   }
 
+  // Pasted or dropped images: checked before reading (type, size, count), then shown as thumbnails.
+  const attach = (data: DataTransfer): boolean => {
+    if (!hasImageFiles(data) && !imageFilesOf(data).length) return false
+    if (!acceptsImages) {
+      pushItem(v.id, 'error', t('chat.imagesUnsupported'))
+      return true
+    }
+    const { accepted, rejected } = pickImageFiles(imageFilesOf(data), images.length)
+    if (rejected.some((r) => r.reason !== 'count')) pushItem(v.id, 'error', t('chat.imageRejected'))
+    if (rejected.some((r) => r.reason === 'count')) pushItem(v.id, 'error', t('chat.imageTooMany', { n: MAX_PROMPT_IMAGES }))
+    if (accepted.length)
+      readImageFiles(accepted).then(
+        (urls) => setImages((prev) => [...prev, ...urls].slice(0, MAX_PROMPT_IMAGES)),
+        () => pushItem(v.id, 'error', t('chat.imageRejected'))
+      )
+    return true
+  }
+
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
-    if (!acceptsImages) return
-    const hasImage = [...e.clipboardData.items].some((i) => i.kind === 'file' && i.type.startsWith('image/'))
-    if (!hasImage) return
-    e.preventDefault()
-    void readPastedImages(e.clipboardData.items).then((urls) => {
-      const usable = urls.filter((u) => imageInputFromDataUrl(u) !== null)
-      if (usable.length < urls.length) pushItem(v.id, 'error', t('chat.imageRejected'))
-      setImages((prev) => [...prev, ...usable].slice(0, MAX_PROMPT_IMAGES))
-    })
+    if (attach(e.clipboardData)) e.preventDefault()
+  }
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (hasImageFiles(e.dataTransfer)) e.preventDefault()
+  }
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    if (open && attach(e.dataTransfer)) e.preventDefault()
   }
 
   // Where the session came from, right after its replayed history (or on top when there is none).
@@ -283,7 +315,16 @@ export function ChatPane({ data }: { data: SessionData }) {
   const ceilingOffer = blocked && !offer && !ceilingDismissed && continuity && continuity.mode !== 'off' ? continuity : null
 
   const placeholder: MessageKey =
-    v.state === 'starting' ? 'chat.placeholderStarting' : v.state === 'ready' ? 'chat.placeholder' : v.state === 'busy' ? 'chat.placeholderBusy' : 'chat.placeholderClosed'
+    v.state === 'starting'
+      ? 'chat.placeholderStarting'
+      : v.state === 'ready'
+        ? 'chat.placeholder'
+        : v.state === 'busy'
+          ? midTurn
+            ? 'chat.placeholderInject'
+            : 'chat.placeholderQueue'
+          : 'chat.placeholderClosed'
+  const canSend = open && (text.trim().length > 0 || images.length > 0)
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -297,17 +338,42 @@ export function ChatPane({ data }: { data: SessionData }) {
               {n === replayAt && originLine}
             </Fragment>
           ))}
+          {queued.length > 0 && (
+            <ul className="flex flex-col items-end gap-1.5" aria-label={t('chat.queuedList')} data-testid="queued-prompts">
+              {queued.map((q) => (
+                <li key={q.id} className="flex max-w-[80%] flex-col items-end gap-1">
+                  {q.images.length > 0 && (
+                    <div className="flex flex-wrap justify-end gap-1.5 opacity-70">
+                      {q.images.map((src, i) => (
+                        <img key={i} src={src} alt={t('chat.imageAlt', { n: i + 1 })} className="size-12 rounded-md border border-border object-cover" />
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-start gap-1.5">
+                    <div className="rounded-xl rounded-br-sm border border-dashed border-border px-3.5 py-2 whitespace-pre-wrap text-muted">
+                      {q.text || <span className="text-subtle">{tn('chat.images', q.images.length)}</span>}
+                    </div>
+                    <IconButton size="sm" label={t('chat.removeQueued')} icon={<X className="size-3" />} onClick={() => removeQueuedPrompt(v.id, q.id)} className="mt-1" />
+                  </div>
+                  <span className="flex items-center gap-1 text-2xs text-subtle">
+                    <Clock className="size-3" aria-hidden />
+                    {t('chat.queued')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div ref={bottom} />
         </div>
       </div>
       <div className="shrink-0 px-6 pb-5">
-        <div className="mx-auto max-w-3xl rounded-xl border border-border bg-surface shadow-md transition-colors focus-within:border-accent/60">
+        <div className="mx-auto max-w-3xl rounded-xl border border-border bg-surface shadow-md transition-colors focus-within:border-accent/60" onDragOver={onDragOver} onDrop={onDrop}>
           <BudgetNotice
             status={gate.status}
             account={accountLabel(usageSettings.accountsOf(v.agentId), reads.find((r) => r.key === gate.key)?.name ?? v.accountName ?? '')}
             now={now}
             needsConfirm={needsConfirm}
-            canSend={v.state === 'ready' && (text.trim().length > 0 || images.length > 0)}
+            canSend={canSend}
             onSendAnyway={() => void send(true)}
             onClear={() => void clearCeiling()}
           />
@@ -358,10 +424,11 @@ export function ChatPane({ data }: { data: SessionData }) {
             </ul>
           )}
           <textarea
+            ref={composer}
             aria-label={t('chat.prompt')}
             rows={2}
             value={text}
-            disabled={v.state !== 'ready'}
+            disabled={!open}
             placeholder={t(placeholder)}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
@@ -379,7 +446,7 @@ export function ChatPane({ data }: { data: SessionData }) {
               <IconButton
                 label={t('chat.send')}
                 icon={<ArrowUp className="size-4" />}
-                disabled={v.state !== 'ready' || (!text.trim() && images.length === 0)}
+                disabled={!canSend}
                 onClick={() => void send()}
                 className="bg-accent text-accent-fg hover:bg-accent-strong hover:text-accent-fg"
               />
