@@ -26,12 +26,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           currentModeId: 'bypassPermissions',
           availableModes: [
             { id: 'default', name: 'Manual' },
-            { id: 'bypassPermissions', name: 'Bypass permissions' }
+            { id: 'bypassPermissions', name: 'Bypass permissions' },
+            { id: 'plan', name: 'Plan' }
           ]
         },
         models: { currentModelId: 'acme-model-1', availableModels: [] }
       }
     })
+  } else if (msg.method === 'session/set_mode') {
+    process.stderr.write(`set_mode:${msg.params.modeId}\n`)
+    send({ id: msg.id, result: {} })
   } else if (msg.method === 'session/prompt') {
     const text = msg.params.prompt[0].text
     const update = (u) => send({ method: 'session/update', params: { sessionId, update: u } })

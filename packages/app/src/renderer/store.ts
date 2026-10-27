@@ -73,6 +73,17 @@ function raise(id: string, kind: AttentionKind): void {
   if (!onScreen) for (const l of attentionListeners) l(id, kind)
 }
 
+/**
+ * Flags a session for the user without the generic OS notification (the caller sends its own, e.g.
+ * an AI review that paused for the user). Nothing is flagged while the session is on screen.
+ */
+export function flagAttention(id: string, kind: AttentionKind): void {
+  const s = sessions[id]
+  if (!s) return
+  const unseen = raiseAttention(s.unseen, kind, isOnScreen(id))
+  if (unseen !== s.unseen) set({ ...sessions, [id]: { ...s, unseen } })
+}
+
 let seq = 0
 let sessions: Record<string, SessionData> = {}
 const listeners = new Set<() => void>()

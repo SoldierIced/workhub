@@ -231,6 +231,18 @@ buttons. To drive runs without any model, use `packages/app/scripts/demo-agent.m
 agent (`"command": "node", "args": ["<path>/demo-agent.mjs"]`). In demo mode,
 `window.hub.slack.demo(...)` injects messages, replies and "a session sent a message" records.
 
+## AI review before a pull request
+
+On by default per profile (Settings → Profiles → AI review). When a dev session finishes a turn and
+stays idle (60 s) on a branch with commits ahead of its base (`develop` by default), a reviewer agent
+(the first agent with a chat in your order, or the one you pick) reviews the branch on its own
+read-only checkout under the data folder, in one exhaustive pass, and sends the findings to the dev
+session's chat. The next commits get a new round that verifies the earlier findings. The loop stops
+at "Ready for PR" (no blocker or major left) and pauses for you, with a notification, when the
+reviewer flags scope or design, a finding keeps coming back, the dev agent disputes one, or the
+round limit (3) is reached. "Review before PR" in the session header starts a round by hand; the
+Review panel sits in the session monitor. Nothing is fetched: run `git fetch` to refresh the base.
+
 ## Privacy
 
 No telemetry. Agents run with their own configuration (MCP servers, hooks, permission defaults),

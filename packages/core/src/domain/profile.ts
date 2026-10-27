@@ -1,3 +1,4 @@
+import type { AiReviewSettings } from '../ai-review/types'
 import type { HealthSettings } from '../health/types'
 import type { ConnectionKind } from './connection'
 
@@ -37,4 +38,6 @@ export interface Profile {
   health?: HealthSettings
   /** Tracked Slack threads quiet for this many minutes are shown archived (default 15; see `threadArchiveMinutes`). */
   slackArchiveMinutes?: number
+  /** AI review before a pull request (see `aiReviewSettings` for the defaults). */
+  aiReview?: AiReviewSettings
 }

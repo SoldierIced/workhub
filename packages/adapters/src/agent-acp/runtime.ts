@@ -15,6 +15,7 @@ import {
   type RequestPermissionResponse,
   type Stream
 } from '@agentclientprotocol/sdk'
+import { readOnlyModeId } from '@workhub/core'
 import type {
   AgentCapabilities,
   AgentDefinition,
@@ -179,7 +180,16 @@ export class AcpRuntime implements AgentRuntime {
         spawnFailed
       ])
       session.agentSessionId = created.sessionId
-      const { currentModeId, availableModes } = readModes(created)
+      const modes = readModes(created)
+      const { availableModes } = modes
+      let { currentModeId } = modes
+      // A reviewer starts in the agent's most read-only permission mode, when it has one.
+      const readOnlyMode = req.readOnly && req.agent.modeSemantics === 'permission' ? readOnlyModeId(availableModes) : undefined
+      if (readOnlyMode && readOnlyMode !== currentModeId) {
+        const setMode = session.conn.agent.request as unknown as (method: string, params: unknown) => Promise<unknown>
+        await Promise.race([setMode.call(session.conn.agent, 'session/set_mode', { sessionId: created.sessionId, modeId: readOnlyMode }), spawnFailed])
+        currentModeId = readOnlyMode
+      }
       const started: StartedSession = {
         agentSessionId: created.sessionId,
         agentName: init.agentInfo?.title ?? init.agentInfo?.name ?? req.agent.name,

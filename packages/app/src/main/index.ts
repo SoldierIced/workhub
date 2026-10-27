@@ -13,6 +13,7 @@ import { augmentedPath, readLoginShellPath } from '@workhub/adapters/login-path'
 import { ClaudeTranscriptReader } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroSessionHistory, KiroTranscriptReader } from '@workhub/adapters/transcript-kiro'
+import { GitReview } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
@@ -33,7 +34,8 @@ import type { AccountUsage, ConfigSnapshot, SessionMode, SessionNotification, Th
 import type { PrNotification } from '../shared/pr-events-api'
 import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
-import { AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
+import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
+import { AiReviewService, registerAiReviewIpc, reviewBudgetGate } from './ai-review'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
@@ -41,7 +43,7 @@ import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionDriver } from './session-driver'
-import { SessionManager } from './session-manager'
+import { SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
 import { SlackWatcherService } from './slack-watcher'
 import { StateFile } from './state-file'
@@ -142,10 +144,12 @@ const sessions = new SessionManager({
   history: historySources,
   emitEvent: (e) => {
     driver.onEvent(e)
+    aiReview.onEvent(e)
     send('session:event', e)
   },
   emitChanged: (s) => {
     driver.onChanged(s)
+    aiReview.onChanged(s)
     send('session:changed', s)
   },
   emitRemoved: (id) => send('session:removed', id),
@@ -222,6 +226,26 @@ const automations = new AutomationService({
   emit: (snap) => send('automations:changed', snap),
   configChanged: () => send('config:changed'),
   notice: (n) => send('slack:notice', n)
+})
+
+// AI review before a pull request: a reviewer agent on a separate checkout of the dev session's branch.
+const aiReview = new AiReviewService({
+  config: () => configuration.current(),
+  sessions,
+  driver,
+  git: new GitReview(),
+  state: new StateFile(join(dataDir, 'ai-review-state.json'), 500),
+  workDir: join(dataDir, 'ai-review'),
+  emit: (snap) => send('aiReview:changed', snap),
+  notice: (n) => send('aiReview:notice', n),
+  showPrompt: (id, text) => send('automations:prompted', id, text),
+  ticketPrefixes,
+  ticketTitle: async (profileId, key) => {
+    if (!profileId) return undefined
+    const r = await ticketService.call(profileId, (t) => t.getTicket(key))
+    return r.ok ? r.value?.title : undefined
+  },
+  canStartReview: reviewBudgetGate((config, agentKey) => agentKeyBudget(config, agentKey, budgetOf))
 })
 
 async function snapshot(): Promise<ConfigSnapshot> {
@@ -375,6 +399,7 @@ function registerIpc(): void {
   registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification })
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
+  registerAiReviewIpc(ipc, aiReview)
   ipc.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
 }
 
@@ -555,6 +580,7 @@ void app.whenReady().then(async () => {
   prEvents.start()
   slack.start()
   void automations.start()
+  aiReview.start()
 })
 
 let quitting = false
@@ -567,6 +593,7 @@ app.on('before-quit', (event) => {
   prEvents.stop()
   slack.stop()
   automations.stop()
+  aiReview.stop()
   void sessions.stopAll().finally(() => app.quit())
 })
 app.on('window-all-closed', () => app.quit())

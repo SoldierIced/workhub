@@ -139,6 +139,54 @@ chrome, `path` for every path, no macOS-only API without a platform guard.
 Flows, Health, Chat watcher, Automations. Each is enabled per profile and adds its screens only
 when on. Flows keep the opinionated pipeline with per-step skip and a configurable base branch.
 
+### AI review before a pull request
+
+Goal: catch in one pass what a team review would find over many rounds (one pull request took 16).
+When a dev session's work is committed, a reviewer agent reviews the branch before the pull request
+and sends what to fix into the dev session's chat; the user is asked to step in when the loop drags.
+
+- **Where:** pure logic in `core/src/ai-review` (settings, trigger decision, round state machine,
+  escalation rules, reply parser, prompt and message builders, all unit-tested); git in
+  `adapters/src/git-review`; the loop in `app/src/main/ai-review.ts`; the Review panel in the session
+  monitor (`screens/sessions/AiReviewPanel.tsx`), "Review before PR" in the session header, settings
+  per profile (Settings → Profiles → AI review). State: `ai-review-state.json` in the data folder.
+- **Settings** (`profile.aiReview`, optional with zod defaults, no config version bump): on and
+  automatic by default; reviewer agent (default: first agent with an app mode in the user's order);
+  base branch `develop`; 3 rounds; 60 s idle debounce; extra checklist; prompt language (en, es).
+- **Automatic trigger:** a dev session ends a turn and stays idle for the debounce; its folder is a
+  git repo on a named branch that is not the base, main, master or develop; HEAD has commits ahead
+  of the base ref and was not reviewed or attempted yet; no review is paused, running or waiting to
+  deliver; one automatic review at a time. Uncommitted-only changes never trigger; uncommitted files
+  are listed in the prompt and the panel. Never on reviewer sessions or inside review checkouts.
+- **Base ref:** `origin/<base>`, else local `<base>`, else `origin/HEAD`, else main/master. Nothing is
+  fetched: the ref is as fresh as the dev's last fetch (decision to confirm).
+- **Isolation:** each round checks the reviewed HEAD out as a detached worktree under
+  `<data>/ai-review/worktrees` (git hooks disabled, external diff and textconv refused) and removes it
+  after the round; the dev's working tree is never touched. The reviewer starts read-only: Claude
+  native in `plan` mode with Edit/Write/MultiEdit/NotebookEdit disallowed; an ACP agent with
+  permission modes switches to `read-only`/`plan`/`ask` when it has one; every permission request
+  of a reviewer is refused. Persona agents (Kiro) keep their mode; refusals are the guard there.
+- **Rounds:** round 1 reviews the merge-base diff (cut at 150k characters; the reviewer reads the
+  rest from its checkout), commits, ticket (monitor or branch name, title from the tracker) and the
+  checklist, and asks for ONE exhaustive pass with severities and a scope assessment, ending in a
+  fenced JSON block (`findings[]`, `previous[]`, `summary`, `scope`, `escalate`). Round N+1 reviews
+  the delta since the last reviewed HEAD (full diff after a rebase) and verifies every open finding.
+  A fresh reviewer session per round; the user's opinions go into the next prompt.
+- **Delivery:** open findings go to the dev session as one message, blockers and majors first, asking
+  it to fix and commit, or to answer `DISPUTE F<n>: <reason>`. No blocker or major open → "Ready for
+  PR" (unsent minors still go once). Ready stops automatic rounds; the button starts another.
+- **Escalation (pause + OS notification with the reason + attention flag):** the reviewer sets
+  `escalate.needed` or rates the scope as too demanding / scope creep; the round limit is reached
+  with blockers or majors open; a finding stays open after two fix attempts; the dev agent disputes
+  a finding; the reply has no readable JSON (kept raw). The panel offers Continue (sends the
+  findings, grants a round at the limit), per-finding status, dismiss selected, an opinion (sent to
+  the dev now and to the reviewer next round), review again and stop.
+- **Usage budget:** `canStartReview` asks the usage gate for the reviewer's account. Past the
+  ceiling an automatic round is held ("Paused: usage budget", asked again every 5 min) and a manual
+  one needs "Run anyway" (one-shot override).
+- **Open decisions:** fetching the base before a round; whether "Ready for PR" should also stop
+  manual rounds or re-arm automatic ones on later commits; a dedicated reviewer model setting.
+
 ## 5. Stage 2 — Phases (each one shippable)
 
 | Phase | Scope | Exit criteria |

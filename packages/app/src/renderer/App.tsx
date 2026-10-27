@@ -22,6 +22,7 @@ import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage, useUsageAlerts } from './lib/usage'
 import { usePrEventNotifications } from './lib/usePrEventNotifications'
+import { useAiReviewNotices } from './lib/useAiReviewNotices'
 import { useChatNotices } from './lib/useChatNotices'
 import { AutomationsScreen } from './screens/AutomationsScreen'
 import { SlackScreen } from './screens/SlackScreen'
@@ -97,6 +98,7 @@ function Shell() {
   latest.current = { sessions, groups, snap, t, tn, liveKeys }
   usePrEventNotifications(() => latest.current)
   useChatNotices()
+  useAiReviewNotices()
   // An automation moved a session's sidebar place in the stored config.
   useEffect(() => window.hub.automations.onConfigChanged(() => void refreshConfig()), [])
 
@@ -124,7 +126,8 @@ function Shell() {
         const { sessions: all, groups: stored, snap: config, t: tr } = latest.current
         const options = appOptions(config?.config ?? { options: undefined })
         const data = all.find((s) => s.view.id === id)
-        if (!data || !options[NOTIFY_OPTION[kind]]) return
+        // An AI reviewer's turns are reported by the review itself (Review panel and its notices).
+        if (!data || data.view.readOnly || !options[NOTIFY_OPTION[kind]]) return
         const group = groupOf(stored, sessionIdentity(data.view))
         window.hub.notifications.show({ title: notificationTitle(data.view.agentName, group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id })
       }),

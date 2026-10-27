@@ -7,6 +7,8 @@ import { DEFAULT_HEALTH_REFRESH_MINUTES, DEFAULT_HEALTH_THRESHOLDS, HEALTH_THRES
 import { DEFAULT_PR_EVENT_TOGGLES, PR_EVENT_KINDS, type PrEventToggles } from '../pr-events/types'
 import type { ChatWatcherSettings } from '../chat/types'
 import type { AutomationDefinition } from '../automations/types'
+import { DEFAULT_AI_REVIEW_SETTINGS as AI_REVIEW, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS } from '../ai-review/defaults'
+import { REVIEW_LANGUAGES } from '../ai-review/types'
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
 
 /**
@@ -171,6 +173,18 @@ const modules = z.object(
   >
 )
 
+// Optional with defaults on every field, so it needs no config version bump: an older file simply has none.
+const aiReview = z.object({
+  enabled: z.boolean().default(AI_REVIEW.enabled),
+  auto: z.boolean().default(AI_REVIEW.auto),
+  reviewerAgent: z.string().min(1).nullable().default(AI_REVIEW.reviewerAgent),
+  baseBranch: z.string().trim().min(1).default(AI_REVIEW.baseBranch),
+  maxRounds: clamped([MIN_REVIEW_ROUNDS, MAX_REVIEW_ROUNDS], AI_REVIEW.maxRounds),
+  checklist: z.string().max(20_000).default(AI_REVIEW.checklist),
+  idleSeconds: clamped([MIN_REVIEW_IDLE_SECONDS, MAX_REVIEW_IDLE_SECONDS], AI_REVIEW.idleSeconds),
+  language: z.enum(REVIEW_LANGUAGES).default(AI_REVIEW.language)
+})
+
 const profile = z.object({
   id,
   name: z.string().min(1),
@@ -181,7 +195,8 @@ const profile = z.object({
   modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
   folders: z.array(z.string().min(1)).optional(),
   health: healthSettings.optional(),
-  slackArchiveMinutes: z.number().int().min(1).optional()
+  slackArchiveMinutes: z.number().int().min(1).optional(),
+  aiReview: aiReview.optional()
 })
 
 const groupMember = z.object({ key: z.string().min(1), title: z.string(), agentKey: z.string().min(1), cwd: z.string() })

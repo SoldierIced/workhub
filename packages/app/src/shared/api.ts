@@ -24,6 +24,7 @@ import type {
   ValidationIssue,
   WorkhubConfig
 } from '@workhub/core'
+import type { AiReviewApi } from './ai-review-api'
 import type { AutomationsApi, SlackApi } from './chat-api'
 import type { CodeHostApi } from './codehost-api'
 import type { HealthApi } from './health-api'
@@ -98,6 +99,8 @@ export interface SessionView extends Session {
   currentModelId?: string
   /** The runtime offers live controls: model switch and MCP reconnect/toggle. */
   controls: boolean
+  /** An AI reviewer session (read-only, started by the AI review). */
+  readOnly?: boolean
 }
 
 export interface StartSessionInput {
@@ -114,6 +117,8 @@ export interface StartSessionInput {
   identity?: string
   /** Model to start with (remembered per agent and account by the renderer). */
   model?: string
+  /** An AI reviewer: the agent's most read-only mode, chat only (see `StartSessionRequest.readOnly`). */
+  readOnly?: boolean
 }
 
 /** A past session, plus its agent and account names for the history screen. */
@@ -247,4 +252,5 @@ export interface HubApi {
   links: LinksApi
   slack: SlackApi
   automations: AutomationsApi
+  aiReview: AiReviewApi
 }

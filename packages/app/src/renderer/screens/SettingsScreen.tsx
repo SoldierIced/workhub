@@ -26,6 +26,7 @@ import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { accountEnvHintKey } from '../lib/agents'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import { AiReviewProfileFields } from './AiReviewSettings'
 import { HealthSettings } from './HealthSettings'
 import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
@@ -612,6 +613,9 @@ function ProfilesSection({ snap, run }: SectionProps) {
                 <Switch checked={form.modules[m]} onChange={(on) => setForm({ ...form, modules: { ...form.modules, [m]: on } })} />
               </SwitchRow>
             ))}
+          </FieldGroup>
+          <FieldGroup legend={t('aiReview.settings.legend')}>
+            <AiReviewProfileFields form={form} agents={orderedAgents} onChange={(aiReview) => setForm({ ...form, aiReview })} />
           </FieldGroup>
           <FieldGroup legend={t('nav.slack')}>
             <SlackArchiveField value={form.slackArchiveMinutes} onChange={(minutes) => setForm({ ...form, slackArchiveMinutes: minutes })} />
