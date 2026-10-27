@@ -2,17 +2,20 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { appOptions, parseThresholds, setCeiling, type Result, type UsageBudgetOptions, type WorkhubConfig } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot } from '@shared/api'
 import { Button, Input, Switch } from '../components/atoms'
-import { Card, Field, SwitchRow } from '../components/molecules'
+import { Card, Field, HelpTip, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { budgetWindows } from '../lib/agent-usage'
 import { useAccountLabel, useAccountUsage } from '../lib/usage'
 
 type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 
-function Group({ title, footnote, children }: { title: string; footnote?: ReactNode; children: ReactNode }) {
+function Group({ title, help, footnote, children }: { title: string; help?: ReactNode; footnote?: ReactNode; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="px-1 text-md font-semibold">{title}</h2>
+      <h2 className="flex items-center gap-1.5 px-1 text-md font-semibold">
+        {title}
+        {help && <HelpTip text={help} label={title} />}
+      </h2>
       <Card className="divide-y divide-border px-4">{children}</Card>
       {footnote && <p className="px-1 text-xs text-subtle">{footnote}</p>}
     </section>
@@ -95,7 +98,7 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
 
   return (
     <div className="flex flex-col gap-6">
-      <Group title={t('agentUsage.settings.reading')} footnote={<>{t('settings.planUsageNote')} {t('agentUsage.settings.codexNote')}</>}>
+      <Group title={t('agentUsage.settings.reading')} help={t('help.usage.reading')} footnote={<>{t('settings.planUsageNote')} {t('agentUsage.settings.codexNote')}</>}>
         <SwitchRow label={t('agentUsage.settings.claude')} hint={t('settings.planUsageHint')}>
           <Switch checked={options.claudePlanUsage} disabled={!editable} onChange={(on) => toggle('claudePlanUsage', on)} />
         </SwitchRow>
@@ -108,7 +111,7 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
         </div>
       </Group>
 
-      <Group title={t('agentUsage.settings.budgets')} footnote={t('agentUsage.settings.budgetsNote')}>
+      <Group title={t('agentUsage.settings.budgets')} help={t('help.usage.budgets')} footnote={t('agentUsage.settings.budgetsNote')}>
         {reads.length === 0 ? (
           <p className="py-3 text-sm text-subtle">{t('agentUsage.settings.noAccounts')}</p>
         ) : (
@@ -125,7 +128,7 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
         </div>
       </Group>
 
-      <Group title={t('agentUsage.settings.alerts')}>
+      <Group title={t('agentUsage.settings.alerts')} help={t('help.usage.alerts')}>
         <SwitchRow label={t('agentUsage.settings.alertsOn')} hint={t('agentUsage.settings.alertsHint')}>
           <Switch checked={budget.alerts} disabled={!editable} onChange={(on) => saveBudget({ ...budget, alerts: on })} />
         </SwitchRow>
