@@ -1,6 +1,6 @@
 import { ChevronRight, ScanSearch } from 'lucide-react'
 import { useState } from 'react'
-import { REVIEW_SEVERITIES, roundLimit, aiReviewSettings, type FindingStatus, type ReviewFinding, type ReviewSeverity, type ReviewStatus } from '@workhub/core'
+import { REVIEW_SEVERITIES, cycleRound, roundLimit, aiReviewSettings, type FindingStatus, type ReviewFinding, type ReviewSeverity, type ReviewStatus } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import type { AiReviewStartBlocker, AiReviewView } from '@shared/ai-review-api'
 import { Badge, Button, Select, Spinner, Textarea, type Tone } from '../../components/atoms'
@@ -151,7 +151,7 @@ export function AiReviewSection({ view }: { view: SessionView }) {
               <div className="truncate font-mono" title={review.branch}>
                 {t('aiReview.branch', { branch: review.branch, base: review.baseRef })}
               </div>
-              {round && <div>{t('aiReview.round', { n: round.n, max: roundLimit(review, settings) })}</div>}
+              {round && <div>{t('aiReview.round', { n: cycleRound(review, round.n), max: roundLimit(review, settings) })}</div>}
             </div>
             {review.status === 'paused' && review.escalation && (
               <div role="alert" className="rounded-md bg-danger-soft px-2 py-1.5 text-danger" data-testid="ai-review-escalation">
@@ -161,6 +161,8 @@ export function AiReviewSection({ view }: { view: SessionView }) {
             )}
             {round?.error && <p className="text-xs text-danger">{t('aiReview.error', { message: round.error })}</p>}
             {round?.uncommitted && <p className="text-xs text-warning">{t('aiReview.uncommitted')}</p>}
+            {round?.baseNote && <p className="text-xs text-warning" data-testid="ai-review-base-note">{round.baseNote}</p>}
+            {round?.modelNote && <p className="text-xs text-warning" data-testid="ai-review-model-note">{round.modelNote}</p>}
             {round?.summary && (
               <div>
                 <div className="text-xs text-muted">{t('aiReview.summary')}</div>

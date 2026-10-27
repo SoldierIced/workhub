@@ -6,6 +6,7 @@ import {
   attachReviewer,
   buildReviewPrompt,
   completeRound,
+  cycleRound,
   continueReview,
   decideAutoReview,
   EMPTY_AI_REVIEW_STATE,
@@ -16,6 +17,7 @@ import {
   markDelivered,
   parseReviewReply,
   pickReviewer,
+  pushBlockEnv,
   rejectOption,
   resolveEffectiveAgents,
   reviewKey,
@@ -47,7 +49,7 @@ export interface AiReviewDeps {
   config: () => Promise<WorkhubConfig>
   sessions: {
     list(): SessionView[]
-    start(input: StartSessionInput): Promise<SessionView>
+    start(input: StartSessionInput, internal?: { env?: Record<string, string> }): Promise<SessionView>
     prompt(id: string, text: string): Promise<string>
     stop(id: string): Promise<void>
     respondPermission(id: string, requestId: string, optionId: string | null): void
@@ -56,7 +58,7 @@ export interface AiReviewDeps {
     deliver(sessionId: string, text: string): Promise<'delivered' | 'waiting'>
     forget(sessionId: string): Promise<void>
   }
-  git: Pick<GitReview, 'probe' | 'mergeBase' | 'isAncestor' | 'commits' | 'diffStat' | 'diff' | 'checkout' | 'remove'>
+  git: Pick<GitReview, 'probe' | 'refreshBase' | 'resolveBase' | 'remotes' | 'mergeBase' | 'isAncestor' | 'commits' | 'diffStat' | 'diff' | 'checkout' | 'remove'>
   state: StateFile<AiReviewState>
   /** Folder for review worktrees (inside the app's data folder). */
   workDir: string
@@ -319,18 +321,20 @@ export class AiReviewService {
     let error: string | undefined
     try {
       const { git } = this.deps
+      // The base is refreshed before every round; offline or without access, the local ref is used and the round says so.
+      const baseRef = await this.refreshBase(repo.root, review, round.n)
       await git.checkout(repo.root, path, round.sha)
-      const mergeBase = (await git.mergeBase(repo.root, review.baseRef, round.sha)) ?? review.baseRef
+      const mergeBase = (await git.mergeBase(repo.root, baseRef, round.sha)) ?? baseRef
       const fromSha = round.fromSha && (await git.isAncestor(repo.root, round.fromSha, round.sha)) ? round.fromSha : undefined
       const maxChars = this.deps.maxDiffChars ?? 150_000
       const [commits, diffStat, diff] = await Promise.all([git.commits(repo.root, mergeBase, round.sha), git.diffStat(repo.root, mergeBase, round.sha), git.diff(repo.root, fromSha ?? mergeBase, round.sha, maxChars)])
       const prompt = buildReviewPrompt({
         language: settings.language,
-        round: round.n,
+        round: cycleRound(review, round.n),
         maxRounds: roundLimit(review, settings),
         branch: review.branch,
         base: review.base,
-        baseRef: review.baseRef,
+        baseRef,
         headSha: round.sha,
         mergeBase,
         ...(fromSha ? { fromSha } : {}),
@@ -344,11 +348,15 @@ export class AiReviewService {
         previous: findingsToVerify(review),
         userNotes: review.userNotes
       })
-      const started = await this.deps.sessions.start({ profileId: dev.profileId, agentKey: reviewerKey, cwd: path, mode: 'app', readOnly: true, cols: 120, rows: 32 })
+      // The reviewer cannot push: every remote gets an invalid push URL through the session's environment (nothing is written to the repository).
+      const env = pushBlockEnv(await git.remotes(repo.root).catch(() => []), process.env)
+      const model = settings.reviewerModel.trim()
+      const started = await this.deps.sessions.start({ profileId: dev.profileId, agentKey: reviewerKey, cwd: path, mode: 'app', readOnly: true, cols: 120, rows: 32, ...(model ? { model } : {}) }, { env })
       reviewerId = started.id
       this.reviewers.set(started.id, { reviewId: review.id, text: '' })
       this.put(attachReviewer(this.state.reviews[review.id] ?? review, started.id, this.now()), dev.id)
       await this.waitReady(started.id)
+      if (model && this.deps.sessions.list().find((v) => v.id === started.id)?.modelIgnored) this.noteRound(review.id, { modelNote: `reviewer model "${model}" not applied: the agent does not offer it, so it runs with its default model` }, dev.id)
       this.deps.showPrompt(started.id, prompt)
       const stopReason = await withTimeout(this.deps.sessions.prompt(started.id, prompt), this.deps.replyTimeoutMs ?? 30 * 60_000, 'the reviewer did not answer in time')
       raw = this.reviewers.get(started.id)?.text ?? ''
@@ -369,6 +377,31 @@ export class AiReviewService {
     const parsed = error ? null : parseReviewReply(raw)
     this.put(completeRound(current, { raw, parsed, ...(error ? { error } : {}) }, settings, this.now()), dev.id)
     await this.deliverPending()
+  }
+
+  /** Fetches the base; returns the ref to diff against (re-resolved, since the fetch may have created `origin/<base>`). */
+  private async refreshBase(root: string, review: BranchReview, n: number): Promise<string> {
+    const { git } = this.deps
+    const fetched = await git.refreshBase(root, review.base).catch((e: unknown) => ({ ok: false as const, reason: e instanceof Error ? e.message : String(e) }))
+    if (fetched.ok) {
+      const resolved = await git.resolveBase(root, review.base).catch(() => null)
+      if (resolved && resolved.ref !== review.baseRef) {
+        const current = this.state.reviews[review.id] ?? review
+        this.put({ ...current, baseRef: resolved.ref })
+        return resolved.ref
+      }
+      return review.baseRef
+    }
+    this.noteRound(review.id, { baseNote: `base not refreshed: ${fetched.reason}` }, undefined, n)
+    return review.baseRef
+  }
+
+  /** Adds facts to the current round (or round `n`) of a review. */
+  private noteRound(reviewId: string, patch: Partial<BranchReview['rounds'][number]>, devSessionId?: string, n?: number): void {
+    const r = this.state.reviews[reviewId]
+    if (!r || !Object.keys(patch).length) return
+    const rounds = r.rounds.map((x, i) => (n === undefined ? i === r.rounds.length - 1 : x.n === n) ? { ...x, ...patch } : x)
+    this.put({ ...r, rounds, updatedAt: this.now() }, devSessionId)
   }
 
   private async waitReady(id: string): Promise<void> {

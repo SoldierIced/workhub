@@ -97,6 +97,8 @@ export interface SessionView extends Session {
   /** Models the session can switch to (native Claude), and the current one. */
   models?: ModelOption[]
   currentModelId?: string
+  /** The model asked for at start could not be applied: the agent runs with its default. */
+  modelIgnored?: boolean
   /** The runtime offers live controls: model switch and MCP reconnect/toggle. */
   controls: boolean
   /** An AI reviewer session (read-only, started by the AI review). */

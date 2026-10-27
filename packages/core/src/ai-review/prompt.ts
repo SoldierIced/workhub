@@ -184,7 +184,8 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
     title: input.ticket?.title ?? ''
   }
   const parts: string[] = [fill(s.intro, p)]
-  const delta = input.round > 1 && Boolean(input.fromSha)
+  // `round` counts within the cycle, so a delta can come in round 1 of a later cycle.
+  const delta = Boolean(input.fromSha)
   if (delta) parts.push(fill(s.intro2, p))
   parts.push(fill(s.readOnly, p), fill(s.context, p))
   parts.push(input.ticket ? fill(input.ticket.title ? s.ticket : s.ticketNoTitle, p) : s.noTicket)

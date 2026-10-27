@@ -17,5 +17,6 @@ export const DEFAULT_AI_REVIEW_SETTINGS: AiReviewSettings = {
   maxRounds: 3,
   checklist: '',
   idleSeconds: 60,
-  language: 'en'
+  language: 'en',
+  reviewerModel: ''
 }

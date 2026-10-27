@@ -195,6 +195,18 @@ describe('AcpRuntime against a fake ACP agent', () => {
     })
   })
 
+  it('selects the asked model through session/set_model, and ignores one the agent does not offer', async () => {
+    await withRuntime(async (rt, events) => {
+      const started = await rt.start({ sessionId: 's-m1', agent: fakeAgent, account: null, cwd: process.cwd(), env: {}, model: 'acme-model-2' })
+      expect(started.modelIgnored).toBeUndefined()
+      await vi.waitFor(() => expect(events).toContainEqual({ sessionId: 's-m1', type: 'stderr', line: 'set_model:acme-model-2' }))
+      expect(events).toContainEqual({ sessionId: 's-m1', type: 'monitor', snapshot: { model: 'acme-model-2' } })
+      const other = await rt.start({ sessionId: 's-m2', agent: fakeAgent, account: null, cwd: process.cwd(), env: {}, model: 'nope' })
+      expect(other.modelIgnored).toBe(true)
+      expect(events).not.toContainEqual({ sessionId: 's-m2', type: 'stderr', line: 'set_model:nope' })
+    })
+  })
+
   it('relays permission requests and their answer', async () => {
     await withRuntime(async (rt, events) => {
       rt.subscribe((e) => {

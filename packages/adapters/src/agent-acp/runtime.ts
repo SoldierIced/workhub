@@ -190,14 +190,17 @@ export class AcpRuntime implements AgentRuntime {
         await Promise.race([setMode.call(session.conn.agent, 'session/set_mode', { sessionId: created.sessionId, modeId: readOnlyMode }), spawnFailed])
         currentModeId = readOnlyMode
       }
+      // A model asked for: ACP's session model selection, when the agent reports models and takes it.
+      const modelIgnored = req.model ? !(await this.selectModel(session, created, req.model, spawnFailed)) : false
       const started: StartedSession = {
         agentSessionId: created.sessionId,
         agentName: init.agentInfo?.title ?? init.agentInfo?.name ?? req.agent.name,
         permissionMode: permissionMode(req.agent.modeSemantics, currentModeId, availableModes),
         currentModeId,
-        availableModes
+        availableModes,
+        ...(modelIgnored ? { modelIgnored: true } : {})
       }
-      const model = (created as { models?: { currentModelId?: string } }).models?.currentModelId
+      const model = req.model && !modelIgnored ? req.model : (created as { models?: { currentModelId?: string } }).models?.currentModelId
       if (model) this.emit({ sessionId: id, type: 'monitor', snapshot: { model } })
       this.emit({ sessionId: id, type: 'state', state: 'ready' })
       return started
@@ -206,6 +209,22 @@ export class AcpRuntime implements AgentRuntime {
       const message = err instanceof Error ? err.message : JSON.stringify(err)
       this.emit({ sessionId: id, type: 'state', state: 'error', error: message })
       throw new Error(message)
+    }
+  }
+
+  /**
+   * Switches a new session to `modelId` through `session/set_model` (unstable ACP). False when the
+   * agent reports no model list, does not offer that id, or refuses: the session keeps its default.
+   */
+  private async selectModel(session: AcpSession, created: unknown, modelId: string, spawnFailed: Promise<never>): Promise<boolean> {
+    const models = (created as { models?: { availableModels?: { modelId?: string }[] } }).models
+    if (!models?.availableModels?.some((m) => m.modelId === modelId)) return false
+    try {
+      const request = session.conn.agent.request as unknown as (method: string, params: unknown) => Promise<unknown>
+      await Promise.race([request.call(session.conn.agent, 'session/set_model', { sessionId: session.agentSessionId, modelId }), spawnFailed])
+      return true
+    } catch {
+      return false
     }
   }
 

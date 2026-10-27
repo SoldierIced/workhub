@@ -30,11 +30,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
             { id: 'plan', name: 'Plan' }
           ]
         },
-        models: { currentModelId: 'acme-model-1', availableModels: [] }
+        models: { currentModelId: 'acme-model-1', availableModels: [{ modelId: 'acme-model-1', name: 'Acme 1' }, { modelId: 'acme-model-2', name: 'Acme 2' }] }
       }
     })
   } else if (msg.method === 'session/set_mode') {
     process.stderr.write(`set_mode:${msg.params.modeId}\n`)
+    send({ id: msg.id, result: {} })
+  } else if (msg.method === 'session/set_model') {
+    process.stderr.write(`set_model:${msg.params.modelId}\n`)
     send({ id: msg.id, result: {} })
   } else if (msg.method === 'session/prompt') {
     const text = msg.params.prompt[0].text

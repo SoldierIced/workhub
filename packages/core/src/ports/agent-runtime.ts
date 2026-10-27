@@ -48,6 +48,8 @@ export interface StartedSession {
   permissionMode: PermissionModeInfo | null
   currentModeId?: string
   availableModes?: SessionModeOption[]
+  /** A model was asked for but the agent cannot select one (or refused): it runs with its default. */
+  modelIgnored?: boolean
 }
 
 export interface PermissionOption {

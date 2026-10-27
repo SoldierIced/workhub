@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CONFIG_VERSION, NO_CAPABILITIES, type AgentEvent, type AiReviewState, type BudgetStatus, type SessionState, type WorkhubConfig } from '@workhub/core'
+import { aiReviewSettings, CONFIG_VERSION, NO_CAPABILITIES, type AgentEvent, type AiReviewState, type BudgetStatus, type SessionState, type WorkhubConfig } from '@workhub/core'
 import type { RepoProbe } from '@workhub/adapters/git-review'
 import type { SessionView, StartSessionInput } from '../src/shared/api'
 import type { AiReviewNotice } from '../src/shared/ai-review-api'
@@ -40,12 +40,13 @@ function view(id: string, state: SessionState, over: Partial<SessionView> = {}):
 
 const REPLY = (findings: unknown[], extra: Record<string, unknown> = {}) => `Review done.\n\n\`\`\`json\n${JSON.stringify({ summary: 's', scope: { assessment: 'proportionate' }, findings, previous: [], escalate: { needed: false, reason: '' }, ...extra })}\n\`\`\``
 
-function setup(opts: { budget?: BudgetStatus; reply?: string } = {}) {
+function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'workhub-ai-review-'))
   dirs.push(dir)
   let now = 1_000_000
   const views: SessionView[] = [view('dev', 'ready')]
   const started: StartSessionInput[] = []
+  const startedEnv: (Record<string, string> | undefined)[] = []
   const prompts: [string, string][] = []
   const delivered: [string, string][] = []
   const notices: AiReviewNotice[] = []
@@ -66,9 +67,10 @@ function setup(opts: { budget?: BudgetStatus; reply?: string } = {}) {
     config: async () => config,
     sessions: {
       list: () => views,
-      start: async (input) => {
+      start: async (input, internal) => {
         started.push(input)
-        const v = view(`rev${started.length}`, 'starting', { cwd: input.cwd, identity: `rev-ident-${started.length}` })
+        startedEnv.push(internal?.env)
+        const v = view(`rev${started.length}`, 'starting', { cwd: input.cwd, identity: `rev-ident-${started.length}`, ...(opts.modelIgnored ? { modelIgnored: true } : {}) })
         views.push(v)
         setTimeout(() => change(v.id, 'ready'), 1)
         return v
@@ -92,6 +94,9 @@ function setup(opts: { budget?: BudgetStatus; reply?: string } = {}) {
     },
     git: {
       probe: vi.fn(probe),
+      refreshBase: vi.fn(async (): Promise<{ ok: true; remote: string } | { ok: false; reason: string }> => ({ ok: true, remote: 'origin' })),
+      resolveBase: async () => ({ name: 'develop', ref: 'origin/develop' }),
+      remotes: async () => ['origin', 'upstream'],
       mergeBase: async () => 'mb',
       isAncestor: async () => true,
       commits: async () => ['abc feat: x'],
@@ -113,6 +118,8 @@ function setup(opts: { budget?: BudgetStatus; reply?: string } = {}) {
     service,
     views,
     started,
+    startedEnv,
+    config,
     prompts,
     delivered,
     notices,
@@ -226,5 +233,76 @@ describe('AiReviewService', () => {
     ;(t.deps.git.probe as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     expect(await t.service.startManual('dev')).toEqual({ ok: false, reason: 'notRepo' })
     expect(await t.service.startManual('nope')).toEqual({ ok: false, reason: 'unknownSession' })
+  })
+
+  it('fetches the base before every round and carries on with the local ref, saying so, when the fetch fails', async () => {
+    const t = setup()
+    const refresh = t.deps.git.refreshBase as ReturnType<typeof vi.fn>
+    expect(await t.service.startManual('dev')).toMatchObject({ ok: true })
+    await t.settle()
+    expect(refresh).toHaveBeenCalledWith('/work/repo', 'develop')
+    expect(t.service.snapshot().reviews[0]!.rounds[0]!.baseNote).toBeUndefined()
+
+    refresh.mockResolvedValueOnce({ ok: false, reason: 'Could not resolve host: github.com' })
+    t.setHead('sha2')
+    expect(await t.service.startManual('dev')).toMatchObject({ ok: true })
+    await t.settle()
+    const review = t.service.snapshot().reviews[0]!
+    expect(review.rounds[1]).toMatchObject({ baseNote: 'base not refreshed: Could not resolve host: github.com', parsed: true })
+    expect(review.baseRef).toBe('origin/develop')
+  })
+
+  it('starts the reviewer with the profile\'s model and a push-blocking environment', async () => {
+    const t = setup()
+    t.config.profiles[0]!.aiReview = { ...aiReviewSettings(null), reviewerModel: ' claude-sonnet-4-5 ' }
+    expect(await t.service.startManual('dev')).toMatchObject({ ok: true })
+    await t.settle()
+    expect(t.started[0]!.model).toBe('claude-sonnet-4-5')
+    expect(t.startedEnv[0]).toMatchObject({ GIT_CONFIG_KEY_0: 'remote.origin.pushurl', GIT_CONFIG_KEY_1: 'remote.upstream.pushurl' })
+    expect(t.service.snapshot().reviews[0]!.rounds[0]!.modelNote).toBeUndefined()
+  })
+
+  it('sends no model by default, and notes it when the agent could not apply the one asked', async () => {
+    const plain = setup()
+    await plain.service.startManual('dev')
+    await plain.settle()
+    expect(plain.started[0]).not.toHaveProperty('model')
+
+    const t = setup({ modelIgnored: true })
+    t.config.profiles[0]!.aiReview = { ...aiReviewSettings(null), reviewerModel: 'gpt-x' }
+    await t.service.startManual('dev')
+    await t.settle()
+    expect(t.service.snapshot().reviews[0]!.rounds[0]!.modelNote).toContain('"gpt-x" not applied')
+  })
+
+  it('restarts automatic rounds on new commits after Ready, reviewing only the delta, with a fresh round budget', async () => {
+    const t = setup({ reply: REPLY([]) })
+    t.change('dev', 'busy')
+    t.change('dev', 'ready')
+    t.advance(61_000)
+    await t.service.tick()
+    await t.settle()
+    expect(t.service.snapshot().reviews[0]).toMatchObject({ status: 'ready', lastReviewedSha: 'sha1' })
+
+    // Ready holds while the branch does not move.
+    t.change('dev', 'busy')
+    t.change('dev', 'ready')
+    t.advance(61_000)
+    await t.service.tick()
+    expect(t.started).toHaveLength(1)
+
+    // A new commit after Ready starts a new cycle by itself.
+    t.setHead('sha2')
+    t.change('dev', 'busy')
+    t.change('dev', 'ready')
+    t.advance(61_000)
+    await t.service.tick()
+    await vi.waitFor(() => expect(t.started).toHaveLength(2))
+    await t.settle()
+    const review = t.service.snapshot().reviews[0]!
+    expect(review.rounds.map((r) => [r.n, r.sha, r.fromSha])).toEqual([[1, 'sha1', undefined], [2, 'sha2', 'sha1']])
+    expect(review).toMatchObject({ status: 'ready', cycleStart: 1, lastReviewedSha: 'sha2' })
+    expect(t.prompts[1]![1]).toContain('Round 1: the author pushed new commits')
+    expect(t.prompts[1]![1]).toContain('sha1')
   })
 })

@@ -35,6 +35,8 @@ export interface AiReviewSettings {
   idleSeconds: number
   /** Language of the reviewer prompt and of the message sent to the dev session. */
   language: ReviewLanguage
+  /** Model the reviewer starts with; empty: the agent's default. */
+  reviewerModel: string
 }
 
 export interface ReviewFinding {
@@ -85,6 +87,10 @@ export interface ReviewRound {
   endedAt?: number
   reviewerAgentKey: string
   reviewerSessionId?: string
+  /** Set when the base could not be fetched before the round: `base not refreshed: <reason>`. */
+  baseNote?: string
+  /** Set when the reviewer ran without the asked model, with the reason. */
+  modelNote?: string
   /** The dev's working tree had uncommitted changes, which the review cannot see. */
   uncommitted: boolean
   parsed: boolean
@@ -127,6 +133,11 @@ export interface BranchReview {
   baseRef: string
   status: ReviewStatus
   rounds: ReviewRound[]
+  /**
+   * Rounds that came before the current cycle. A cycle ends at `ready`; the next round opens a new
+   * one, and `maxRounds` is counted per cycle. Absent: 0.
+   */
+  cycleStart?: number
   findings: ReviewFinding[]
   /** HEAD of the last round that completed. */
   lastReviewedSha?: string

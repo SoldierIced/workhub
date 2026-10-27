@@ -19,6 +19,8 @@ export interface GitResult {
   ok: boolean
   stdout: string
   stderr: string
+  /** The command was killed for running past its timeout. */
+  timedOut?: boolean
 }
 
 export type GitRunner = (cwd: string, args: string[], opts?: { maxBuffer?: number; timeoutMs?: number }) => Promise<GitResult>
@@ -30,9 +32,12 @@ export const runGit: GitRunner = (cwd, args, opts = {}) =>
       'git',
       [...SAFE, ...args],
       { cwd, windowsHide: true, timeout: opts.timeoutMs ?? 30_000, maxBuffer: opts.maxBuffer ?? 64 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } },
-      (err, stdout, stderr) => resolve({ ok: !err, stdout: String(stdout), stderr: String(stderr) })
+      (err, stdout, stderr) => resolve({ ok: !err, stdout: String(stdout), stderr: String(stderr), ...(err && (err as { killed?: boolean }).killed ? { timedOut: true } : {}) })
     )
   })
+
+/** How long a pre-round fetch of the base may take. */
+export const FETCH_TIMEOUT_MS = 30_000
 
 export interface RepoProbe extends RepoFacts {
   root: string
@@ -64,8 +69,8 @@ export class GitReview {
 
   /**
    * The base ref to diff against: `origin/<base>`, else a local `<base>`, else the remote's
-   * default branch (`origin/HEAD`), else a local main/master. Nothing is fetched: the ref is as
-   * fresh as the dev's last fetch.
+   * default branch (`origin/HEAD`), else a local main/master. Nothing is fetched here (the trigger
+   * probes often); `refreshBase` fetches before a round.
    */
   async resolveBase(root: string, base: string): Promise<{ name: string; ref: string } | null> {
     const exists = async (ref: string) => (await this.out(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`])) !== null
@@ -78,6 +83,28 @@ export class GitReview {
     }
     for (const name of ['main', 'master']) if (await exists(`refs/heads/${name}`)) return { name, ref: name }
     return null
+  }
+
+  /** The repository's remotes (names). */
+  async remotes(root: string): Promise<string[]> {
+    return ((await this.out(root, ['remote'])) ?? '').split('\n').map((r) => r.trim()).filter(Boolean)
+  }
+
+  /**
+   * Fetches the base branch before a round so the diff is against what the team sees. Only the
+   * base is fetched, never prompting (`GIT_TERMINAL_PROMPT=0`) and giving up after `timeoutMs`;
+   * the caller reviews against the local ref when this fails and says so (`reason`). The dev's
+   * checkout is not touched: only the remote-tracking ref moves.
+   */
+  async refreshBase(root: string, base: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<{ ok: true; remote: string } | { ok: false; reason: string }> {
+    const remotes = await this.remotes(root)
+    if (!remotes.length) return { ok: false, reason: 'the repository has no remote' }
+    const remote = remotes.includes('origin') ? 'origin' : remotes[0]!
+    const r = await this.git(root, ['fetch', '--quiet', '--no-tags', '--no-recurse-submodules', remote, base], { timeoutMs })
+    if (r.ok) return { ok: true, remote }
+    if (r.timedOut) return { ok: false, reason: `git fetch timed out after ${Math.round(timeoutMs / 1000)} s` }
+    const line = r.stderr.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => !l.startsWith('hint:')) ?? 'git fetch failed'
+    return { ok: false, reason: line.slice(0, 200) }
   }
 
   /** The repository facts the trigger needs; null when `cwd` is not inside a git work tree with a commit. */

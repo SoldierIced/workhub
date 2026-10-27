@@ -152,20 +152,38 @@ and sends what to fix into the dev session's chat; the user is asked to step in 
   per profile (Settings → Profiles → AI review). State: `ai-review-state.json` in the data folder.
 - **Settings** (`profile.aiReview`, optional with zod defaults, no config version bump): on and
   automatic by default; reviewer agent (default: first agent with an app mode in the user's order);
-  base branch `develop`; 3 rounds; 60 s idle debounce; extra checklist; prompt language (en, es).
+  base branch `develop`; 3 rounds; 60 s idle debounce; extra checklist; prompt language (en, es);
+  optional reviewer model (`reviewerModel`, empty = the agent's default): native Claude takes it at
+  start, ACP agents through `session/set_model` when they list models and offer that id; otherwise
+  it is ignored and the round shows "reviewer model … not applied".
 - **Automatic trigger:** a dev session ends a turn and stays idle for the debounce; its folder is a
   git repo on a named branch that is not the base, main, master or develop; HEAD has commits ahead
   of the base ref and was not reviewed or attempted yet; no review is paused, running or waiting to
   deliver; one automatic review at a time. Uncommitted-only changes never trigger; uncommitted files
   are listed in the prompt and the panel. Never on reviewer sessions or inside review checkouts.
-- **Base ref:** `origin/<base>`, else local `<base>`, else `origin/HEAD`, else main/master. Nothing is
-  fetched: the ref is as fresh as the dev's last fetch (decision to confirm).
+- **Base ref:** `origin/<base>`, else local `<base>`, else `origin/HEAD`, else main/master. The trigger
+  probes never fetch; before every round `git fetch <remote> <base>` runs in the dev's repo (only the
+  base, `GIT_TERMINAL_PROMPT=0`, 30 s timeout, the working tree is not touched). If it fails (offline,
+  no access, no such branch) the round goes on with the local ref and records `base not refreshed:
+  <reason>` (shown in the panel). Decision 2026-10-27.
 - **Isolation:** each round checks the reviewed HEAD out as a detached worktree under
   `<data>/ai-review/worktrees` (git hooks disabled, external diff and textconv refused) and removes it
   after the round; the dev's working tree is never touched. The reviewer starts read-only: Claude
   native in `plan` mode with Edit/Write/MultiEdit/NotebookEdit disallowed; an ACP agent with
   permission modes switches to `read-only`/`plan`/`ask` when it has one; every permission request
-  of a reviewer is refused. Persona agents (Kiro) keep their mode; refusals are the guard there.
+  of a reviewer is refused. Persona agents (Kiro, OpenCode) keep their mode; refusals are the guard
+  there, and Settings warns that an agent set up to trust every tool could still edit the review
+  checkout (prefer Claude or Codex as reviewer).
+- **No push from a review:** the reviewer session gets `GIT_CONFIG_COUNT/KEY_n/VALUE_n` that set an
+  invalid `remote.<name>.pushurl` (`no-push://workhub-review`) for every remote and an empty
+  `url.no-push://workhub-review/.pushInsteadOf`, which rewrites any other push URL (a hand-typed
+  `git push <url>`) to the invalid one. Nothing is written to the repository, so removing the worktree
+  leaves its config byte-identical and the dev's own checkout pushes as before; fetch still works.
+  Checked on git 2.55 with real temp repos. Rejected: `extensions.worktreeConfig` +
+  `git config --worktree remote.<n>.pushurl`: it also blocks push by remote name but leaves a
+  repo-wide setting that older tools (libgit2, IDEs) may refuse to open, must be unset afterwards,
+  and does not stop `git push <url>`. Limit: an agent that clears its environment before running git
+  bypasses it (the read-only mode and the permission refusals are the other guards).
 - **Rounds:** round 1 reviews the merge-base diff (cut at 150k characters; the reviewer reads the
   rest from its checkout), commits, ticket (monitor or branch name, title from the tracker) and the
   checklist, and asks for ONE exhaustive pass with severities and a scope assessment, ending in a
@@ -174,7 +192,11 @@ and sends what to fix into the dev session's chat; the user is asked to step in 
   A fresh reviewer session per round; the user's opinions go into the next prompt.
 - **Delivery:** open findings go to the dev session as one message, blockers and majors first, asking
   it to fix and commit, or to answer `DISPUTE F<n>: <reason>`. No blocker or major open → "Ready for
-  PR" (unsent minors still go once). Ready stops automatic rounds; the button starts another.
+  PR" (unsent minors still go once). Ready ends a review **cycle**: new commits on the branch after
+  Ready start automatic rounds again, reviewing only the delta since the last reviewed SHA (open
+  findings are still verified). `maxRounds` is counted per cycle: round numbers shown to the reviewer,
+  the dev session and the panel restart at 1, the stored round `n` keeps counting (`cycleStart` marks
+  where the cycle began) and rounds granted by Continue reset. The button starts a round too.
 - **Escalation (pause + OS notification with the reason + attention flag):** the reviewer sets
   `escalate.needed` or rates the scope as too demanding / scope creep; the round limit is reached
   with blockers or majors open; a finding stays open after two fix attempts; the dev agent disputes
@@ -184,8 +206,11 @@ and sends what to fix into the dev session's chat; the user is asked to step in 
 - **Usage budget:** `canStartReview` asks the usage gate for the reviewer's account. Past the
   ceiling an automatic round is held ("Paused: usage budget", asked again every 5 min) and a manual
   one needs "Run anyway" (one-shot override).
-- **Open decisions:** fetching the base before a round; whether "Ready for PR" should also stop
-  manual rounds or re-arm automatic ones on later commits; a dedicated reviewer model setting.
+- **Decisions (owner, 2026-10-27):** fetch the base before every round (above); Ready re-arms
+  automatic rounds on later commits (above); disputed and reopened findings keep waiting for the user
+  (no auto-resolution); notifications are always on (no setting); reviewer model is a per-profile
+  setting; Kiro-style agents without a read-only mode get a Settings warning, and no review session
+  can push (above).
 
 ## 5. Stage 2 — Phases (each one shippable)
 

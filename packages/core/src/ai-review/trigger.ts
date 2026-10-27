@@ -1,5 +1,5 @@
 import type { SessionState } from '../domain/session'
-import { roundLimit } from './rounds'
+import { cycleRounds, roundLimit } from './rounds'
 import type { AiReviewSettings, BranchReview } from './types'
 
 /** Branches a review never runs on by itself: integration and release branches. */
@@ -75,7 +75,6 @@ export function decideAutoReview(input: AutoTriggerInput): TriggerDecision {
   if (input.idleMs < settings.idleSeconds * 1000) return skip('debounce')
   if (review?.status === 'reviewing') return skip('running')
   if (review?.status === 'paused') return skip('paused')
-  if (review?.status === 'ready') return skip('ready')
   if (review?.pendingDelivery) return skip('pendingDelivery')
   if (input.anyRunning) return skip('running')
   if (!repo) return skip('notRepo')
@@ -84,8 +83,9 @@ export function decideAutoReview(input: AutoTriggerInput): TriggerDecision {
   if (isProtectedBranch(repo.branch, repo.base, repo.baseRef)) return skip('protectedBranch')
   if (repo.ahead <= 0) return skip('noCommits')
   if (review && review.status !== 'stopped') {
-    if (review.lastAttemptedSha === repo.headSha || review.lastReviewedSha === repo.headSha) return skip('alreadyReviewed')
-    if (review.rounds.length >= roundLimit(review, settings)) return skip('roundLimit')
+    // "Ready for PR" holds until the branch moves: new commits open a new cycle with a fresh round budget.
+    if (review.lastAttemptedSha === repo.headSha || review.lastReviewedSha === repo.headSha) return skip(review.status === 'ready' ? 'ready' : 'alreadyReviewed')
+    if (review.status !== 'ready' && cycleRounds(review) >= roundLimit(review, settings)) return skip('roundLimit')
   } else if (review?.lastReviewedSha === repo.headSha) {
     return skip('alreadyReviewed')
   }

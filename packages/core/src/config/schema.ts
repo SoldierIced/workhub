@@ -182,7 +182,8 @@ const aiReview = z.object({
   maxRounds: clamped([MIN_REVIEW_ROUNDS, MAX_REVIEW_ROUNDS], AI_REVIEW.maxRounds),
   checklist: z.string().max(20_000).default(AI_REVIEW.checklist),
   idleSeconds: clamped([MIN_REVIEW_IDLE_SECONDS, MAX_REVIEW_IDLE_SECONDS], AI_REVIEW.idleSeconds),
-  language: z.enum(REVIEW_LANGUAGES).default(AI_REVIEW.language)
+  language: z.enum(REVIEW_LANGUAGES).default(AI_REVIEW.language),
+  reviewerModel: z.string().trim().max(200).default(AI_REVIEW.reviewerModel)
 })
 
 const profile = z.object({

@@ -16,6 +16,8 @@ import {
   parseDisputes,
   parseReviewReply,
   pickReviewer,
+  pushBlockEnv,
+  readOnlyGuard,
   readOnlyModeId,
   rejectOption,
   resolveEffectiveAgents,
@@ -52,7 +54,7 @@ const start = (prev?: BranchReview, sha = 'sha1', trigger: 'auto' | 'manual' = '
 
 describe('AI review settings', () => {
   it('defaults to on and automatic, and the schema fills missing fields without a version bump', () => {
-    expect(aiReviewSettings(undefined)).toMatchObject({ enabled: true, auto: true, maxRounds: 3, idleSeconds: 60, baseBranch: 'develop', reviewerAgent: null })
+    expect(aiReviewSettings(undefined)).toMatchObject({ enabled: true, auto: true, maxRounds: 3, idleSeconds: 60, baseBranch: 'develop', reviewerAgent: null, reviewerModel: '' })
     const parsedConfig = configSchema.parse({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', aiReview: { maxRounds: 99, idleSeconds: 1 } }] })
     expect(parsedConfig.profiles[0]?.aiReview).toEqual({ ...DEFAULT_AI_REVIEW_SETTINGS, maxRounds: 10, idleSeconds: 10 })
     expect(configSchema.parse({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P' }] }).profiles[0]?.aiReview).toBeUndefined()
@@ -156,8 +158,10 @@ describe('decideAutoReview', () => {
     expect(decideAutoReview(input({ review: failed, repo: { ...repo, headSha: 'sha3' } }))).toEqual({ start: true })
     const paused = { ...failed, status: 'paused' as const }
     expect(decideAutoReview(input({ review: paused, repo: { ...repo, headSha: 'sha3' } }))).toEqual({ start: false, reason: 'paused' })
+    // Ready holds on the reviewed HEAD, and gives way to new commits.
     const ready = { ...failed, status: 'ready' as const }
-    expect(decideAutoReview(input({ review: ready, repo: { ...repo, headSha: 'sha3' } }))).toEqual({ start: false, reason: 'ready' })
+    expect(decideAutoReview(input({ review: ready }))).toEqual({ start: false, reason: 'ready' })
+    expect(decideAutoReview(input({ review: ready, repo: { ...repo, headSha: 'sha3' } }))).toEqual({ start: true })
     expect(decideAutoReview(input({ review: { ...failed, status: 'awaitingFixes', pendingDelivery: 'x' }, repo: { ...repo, headSha: 'sha3' } }))).toEqual({ start: false, reason: 'pendingDelivery' })
     const limited = { ...failed, status: 'awaitingFixes' as const, rounds: [...failed.rounds, ...failed.rounds, ...failed.rounds] }
     expect(decideAutoReview(input({ review: limited, repo: { ...repo, headSha: 'sha3' } }))).toEqual({ start: false, reason: 'roundLimit' })
@@ -371,7 +375,69 @@ describe('prompt and message', () => {
   })
 })
 
+describe('review cycles', () => {
+  const clean = (r: BranchReview, n: number) => completeRound(r, { raw: 'x', parsed: parsed() }, settings, n)
+
+  it('counts maxRounds per cycle: a round after Ready opens a new cycle, reviewing the delta', () => {
+    let r = clean(start(), 2)
+    expect(r.status).toBe('ready')
+    expect(r.cycleStart).toBeUndefined()
+    r = start(r, 'sha2')
+    expect(r).toMatchObject({ status: 'reviewing', cycleStart: 1, extraRounds: 0 })
+    expect(r.rounds[1]).toMatchObject({ n: 2, fromSha: 'sha1' })
+    r = completeRound(r, { raw: 'y', parsed: parsed({ findings: [finding('blocker', 'crash')] }) }, settings, 3)
+    expect(r.status).toBe('awaitingFixes')
+    expect(r.pendingDelivery).toContain('round 1 of 3')
+    // The third round of this cycle (the fourth overall) hits the limit of 3.
+    r = start(r, 'sha3')
+    r = completeRound(r, { raw: 'z', parsed: parsed({ previous: [{ id: 'F1', status: 'open' }] }) }, settings, 4)
+    expect(r.status).toBe('awaitingFixes')
+    r = start(r, 'sha4')
+    r = completeRound(r, { raw: 'z', parsed: parsed({ previous: [{ id: 'F1', status: 'open' }] }) }, settings, 5)
+    expect(r.rounds).toHaveLength(4)
+    expect(r.status).toBe('paused')
+    expect(r.escalation?.reason).toBe('maxRounds')
+  })
+
+  it('hits the round limit within the cycle, not on the whole history', () => {
+    // Three rounds before Ready would already exhaust maxRounds if they counted.
+    let r = start()
+    r = completeRound(r, { raw: 'x', parsed: parsed({ findings: [finding('blocker', 'a')] }) }, settings, 2)
+    r = start(r, 'sha2')
+    r = completeRound(r, { raw: 'x', parsed: parsed({ previous: [{ id: 'F1', status: 'fixed' }] }) }, settings, 3)
+    expect(r.status).toBe('ready')
+    r = start(r, 'sha3')
+    r = completeRound(r, { raw: 'x', parsed: parsed({ findings: [finding('blocker', 'b')] }) }, settings, 4)
+    expect(r.status).toBe('awaitingFixes')
+    expect(r.rounds).toHaveLength(3)
+    expect(decideAutoReview({ settings, isReviewerSession: false, state: 'ready', idleMs: 61_000, repo: { branch: 'feat/x', headSha: 'sha4', base: 'develop', baseRef: 'origin/develop', ahead: 2, dirty: false }, review: r, anyRunning: false })).toEqual({ start: false, reason: 'pendingDelivery' })
+    r = markDelivered(r, 5)
+    const next = decideAutoReview({ settings, isReviewerSession: false, state: 'ready', idleMs: 61_000, repo: { branch: 'feat/x', headSha: 'sha4', base: 'develop', baseRef: 'origin/develop', ahead: 2, dirty: false }, review: r, anyRunning: false })
+    expect(next).toEqual({ start: true })
+  })
+})
+
 describe('read-only helpers', () => {
+  it('tells whether the reviewer has a read-only mode or relies on refusing permission requests', () => {
+    expect(readOnlyGuard({ adapter: 'native', modeSemantics: 'permission' })).toBe('mode')
+    expect(readOnlyGuard({ adapter: 'acp', modeSemantics: 'permission' })).toBe('mode')
+    expect(readOnlyGuard({ adapter: 'acp', modeSemantics: 'persona' })).toBe('refusals')
+    expect(readOnlyGuard({ adapter: 'acp', modeSemantics: 'none' })).toBe('refusals')
+  })
+
+  it('builds the push-blocking git environment', () => {
+    expect(pushBlockEnv(['origin', 'fork'])).toEqual({
+      GIT_CONFIG_COUNT: '3',
+      GIT_CONFIG_KEY_0: 'remote.origin.pushurl',
+      GIT_CONFIG_VALUE_0: 'no-push://workhub-review',
+      GIT_CONFIG_KEY_1: 'remote.fork.pushurl',
+      GIT_CONFIG_VALUE_1: 'no-push://workhub-review',
+      GIT_CONFIG_KEY_2: 'url.no-push://workhub-review/.pushInsteadOf',
+      GIT_CONFIG_VALUE_2: ''
+    })
+    expect(pushBlockEnv([], { GIT_CONFIG_COUNT: 'x' })).toMatchObject({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'url.no-push://workhub-review/.pushInsteadOf' })
+  })
+
   it('picks the most read-only mode and the reject option', () => {
     expect(readOnlyModeId([{ id: 'default', name: 'Default' }, { id: 'plan', name: 'Plan' }])).toBe('plan')
     expect(readOnlyModeId([{ id: 'auto', name: 'a' }, { id: 'read-only', name: 'r' }, { id: 'plan', name: 'p' }])).toBe('read-only')

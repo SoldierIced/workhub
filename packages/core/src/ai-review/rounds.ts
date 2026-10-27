@@ -24,6 +24,19 @@ export function roundLimit(review: Pick<BranchReview, 'extraRounds'>, settings: 
   return settings.maxRounds + review.extraRounds
 }
 
+/**
+ * A review cycle runs from its first round to "Ready for PR"; new commits after Ready open a new
+ * cycle, whose rounds are counted from 1 again against `maxRounds` (the findings carry over).
+ */
+export function cycleRounds(review: Pick<BranchReview, 'rounds' | 'cycleStart'>): number {
+  return review.rounds.length - (review.cycleStart ?? 0)
+}
+
+/** A round's number within its cycle (what the reviewer, the dev session and the panel show). */
+export function cycleRound(review: Pick<BranchReview, 'cycleStart'>, n: number): number {
+  return n - (review.cycleStart ?? 0)
+}
+
 export const isBlocking = (f: ReviewFinding): boolean => f.status === 'open' && BLOCKING_SEVERITIES.includes(f.severity)
 
 export function blockingOpen(review: Pick<BranchReview, 'findings'>): ReviewFinding[] {
@@ -46,7 +59,8 @@ export interface StartRoundInput {
 
 /**
  * Opens the next round. A stopped review starts over; any other one continues its numbering. A
- * manual round past the limit grants itself the extra round (the button is always available).
+ * round started on a `ready` review opens a new cycle (fresh round budget). A manual round past
+ * the limit grants itself the extra round (the button is always available).
  */
 export function startRound(prev: BranchReview | undefined, input: StartRoundInput, settings: Pick<AiReviewSettings, 'maxRounds'>): BranchReview {
   const fresh = !prev || prev.status === 'stopped'
@@ -69,10 +83,13 @@ export function startRound(prev: BranchReview | undefined, input: StartRoundInpu
         updatedAt: input.now
       }
     : { ...prev, repoRoot: input.repoRoot, base: input.base, baseRef: input.baseRef }
-  const n = base.rounds.length + 1
-  const extraRounds = input.trigger === 'manual' && n > roundLimit(base, settings) ? n - settings.maxRounds : base.extraRounds
-  const fromSha = base.lastReviewedSha && base.lastReviewedSha !== input.sha ? base.lastReviewedSha : undefined
-  const { escalation: _cleared, pendingDelivery: _dropped, pendingFindingIds: _carried, ...rest } = base
+  const newCycle = !fresh && prev.status === 'ready'
+  const cycle = newCycle ? { ...base, cycleStart: base.rounds.length, extraRounds: 0 } : base
+  const n = cycle.rounds.length + 1
+  const inCycle = cycleRound(cycle, n)
+  const extraRounds = input.trigger === 'manual' && inCycle > roundLimit(cycle, settings) ? inCycle - settings.maxRounds : cycle.extraRounds
+  const fromSha = cycle.lastReviewedSha && cycle.lastReviewedSha !== input.sha ? cycle.lastReviewedSha : undefined
+  const { escalation: _cleared, pendingDelivery: _dropped, pendingFindingIds: _carried, ...rest } = cycle
   return {
     ...rest,
     status: 'reviewing',
@@ -153,7 +170,7 @@ export function escalationsAfterRound(review: BranchReview, parsed: ParsedReview
   const reopened = review.findings.filter((f) => f.status === 'open' && f.reopenCount >= REOPEN_LIMIT)
   if (reopened.length) out.push({ reason: 'reopened', detail: reopened.map((f) => `${f.id} ${f.title}`).join('; ') })
   const blocking = blockingOpen(review)
-  if (blocking.length && review.rounds.length >= roundLimit(review, settings)) out.push({ reason: 'maxRounds', detail: blocking.map((f) => `${f.id} ${f.title}`).join('; ') })
+  if (blocking.length && cycleRounds(review) >= roundLimit(review, settings)) out.push({ reason: 'maxRounds', detail: blocking.map((f) => `${f.id} ${f.title}`).join('; ') })
   return out
 }
 
@@ -209,7 +226,7 @@ function settle(review: BranchReview, settings: AiReviewSettings, now: number): 
   const ready = !blockingOpen(review).length
   const unsent = review.findings.some((f) => f.status === 'open' && !f.sent)
   if (ready && !unsent) return { ...rest, status: 'ready', updatedAt: now }
-  const round = review.rounds[review.rounds.length - 1]?.n ?? 1
+  const round = cycleRound(review, review.rounds[review.rounds.length - 1]?.n ?? 1)
   const message = formatDevMessage({ language: settings.language, branch: review.branch, base: review.base, round, maxRounds: roundLimit(review, settings), findings: review.findings })
   const carried = review.findings.filter((f) => f.status === 'open').map((f) => f.id)
   return { ...rest, status: ready ? 'ready' : 'awaitingFixes', pendingDelivery: queue(review.pendingDelivery, message), pendingFindingIds: [...new Set([...(review.pendingFindingIds ?? []), ...carried])], updatedAt: now }
@@ -249,7 +266,7 @@ export function continueReview(review: BranchReview, settings: AiReviewSettings,
   const reason = review.escalation?.reason
   const base: BranchReview = {
     ...review,
-    extraRounds: reason === 'maxRounds' || review.rounds.length >= roundLimit(review, settings) ? review.extraRounds + 1 : review.extraRounds,
+    extraRounds: reason === 'maxRounds' || cycleRounds(review) >= roundLimit(review, settings) ? review.extraRounds + 1 : review.extraRounds,
     findings: review.findings.map((f) => (f.reopenCount >= REOPEN_LIMIT ? { ...f, reopenCount: 0 } : f))
   }
   if (reason === 'unparsed') {

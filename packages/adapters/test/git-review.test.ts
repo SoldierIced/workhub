@@ -1,9 +1,10 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { GitReview, parseStatus, truncateDiff } from '../src/git-review'
+import { pushBlockEnv } from '@workhub/core'
+import { GitReview, parseStatus, truncateDiff, type GitRunner } from '../src/git-review'
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim()
 
@@ -87,5 +88,123 @@ describe('git-review helpers', () => {
   it('cuts a diff on a line boundary', () => {
     expect(truncateDiff('aaa\nbbb\nccc', 9)).toEqual({ text: 'aaa\nbbb', truncated: true })
     expect(truncateDiff('short', 9)).toEqual({ text: 'short', truncated: false })
+  })
+})
+
+describe('refreshBase', () => {
+  let dir: string
+  let remote: string
+  let repo: string
+  let other: string
+  const g = new GitReview()
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'workhub-git-fetch-'))
+    remote = join(dir, 'remote.git')
+    repo = join(dir, 'repo')
+    other = join(dir, 'other')
+    git(dir, 'init', '--quiet', '--bare', '-b', 'main', remote)
+    git(dir, 'clone', '--quiet', remote, repo)
+    writeFileSync(join(repo, 'a.txt'), 'one\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '--quiet', '-m', 'init')
+    git(repo, 'push', '--quiet', 'origin', 'HEAD:refs/heads/develop')
+    git(repo, 'fetch', '--quiet', 'origin')
+    git(dir, 'clone', '--quiet', remote, other)
+  })
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('brings the remote base up to date without touching the working tree', async () => {
+    const before = git(repo, 'rev-parse', 'origin/develop')
+    git(other, 'checkout', '--quiet', '-B', 'develop', 'origin/develop')
+    writeFileSync(join(other, 'b.txt'), 'b\n')
+    git(other, 'add', '.')
+    git(other, 'commit', '--quiet', '-m', 'team commit')
+    git(other, 'push', '--quiet', 'origin', 'develop')
+    const head = git(repo, 'rev-parse', 'HEAD')
+    expect(await g.refreshBase(repo, 'develop')).toEqual({ ok: true, remote: 'origin' })
+    const after = git(repo, 'rev-parse', 'origin/develop')
+    expect(after).not.toBe(before)
+    expect(after).toBe(git(other, 'rev-parse', 'HEAD'))
+    expect(git(repo, 'rev-parse', 'HEAD')).toBe(head)
+    expect(git(repo, 'status', '--porcelain')).toBe('')
+  })
+
+  it('reports why the base was not refreshed and leaves the local ref alone', async () => {
+    const ref = git(repo, 'rev-parse', 'origin/develop')
+    const missing = await g.refreshBase(repo, 'no-such-branch')
+    expect(missing.ok).toBe(false)
+    expect(missing).toMatchObject({ reason: expect.stringContaining('no-such-branch') })
+    git(repo, 'remote', 'set-url', 'origin', join(dir, 'gone.git'))
+    const offline = await g.refreshBase(repo, 'develop')
+    expect(offline.ok).toBe(false)
+    git(repo, 'remote', 'set-url', 'origin', remote)
+    expect(git(repo, 'rev-parse', 'origin/develop')).toBe(ref)
+  })
+
+  it('has nothing to fetch from without a remote, and names a timeout', async () => {
+    const lone = join(dir, 'lone')
+    git(dir, 'init', '--quiet', '-b', 'main', lone)
+    expect(await g.refreshBase(lone, 'develop')).toEqual({ ok: false, reason: 'the repository has no remote' })
+    const slow: GitRunner = async (_cwd, args) => (args[0] === 'remote' ? { ok: true, stdout: 'origin\n', stderr: '' } : { ok: false, stdout: '', stderr: '', timedOut: true })
+    expect(await new GitReview(slow).refreshBase(repo, 'develop', 30_000)).toEqual({ ok: false, reason: 'git fetch timed out after 30 s' })
+  })
+})
+
+describe('a review worktree cannot push', () => {
+  let dir: string
+  let remote: string
+  let repo: string
+  const g = new GitReview()
+  const gitIn = (cwd: string, env: NodeJS.ProcessEnv, ...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0' } })
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'workhub-git-push-'))
+    remote = join(dir, 'remote.git')
+    repo = join(dir, 'repo')
+    git(dir, 'init', '--quiet', '--bare', '-b', 'main', remote)
+    git(dir, 'init', '--quiet', '-b', 'main', repo)
+    writeFileSync(join(repo, 'a.txt'), 'one\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '--quiet', '-m', 'init')
+    git(repo, 'remote', 'add', 'origin', remote)
+    git(repo, 'remote', 'add', 'upstream', remote)
+    git(repo, 'push', '--quiet', 'origin', 'main')
+  })
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('fails to push by remote name or by URL with the review environment, while the dev still pushes and the config stays the same', async () => {
+    const configBefore = readFileSync(join(repo, '.git', 'config'), 'utf8')
+    const review = join(dir, 'review')
+    await g.checkout(repo, review, git(repo, 'rev-parse', 'HEAD'))
+    const env = pushBlockEnv(await g.remotes(repo))
+    expect(env['GIT_CONFIG_COUNT']).toBe('3')
+
+    for (const target of ['origin', 'upstream', remote]) {
+      const r = gitIn(review, env, 'push', target, 'HEAD:refs/heads/from-review')
+      expect(r.status, target).not.toBe(0)
+      expect(r.stderr).toContain('no-push')
+    }
+    expect(git(repo, 'ls-remote', '--heads', remote)).not.toContain('from-review')
+
+    // Without the environment (the dev's own shell) nothing changed.
+    const dev = gitIn(repo, {}, 'push', 'origin', 'HEAD:refs/heads/from-dev')
+    expect(dev.status).toBe(0)
+    expect(git(repo, 'ls-remote', '--heads', remote)).toContain('from-dev')
+
+    // Reading from the remote still works in the review environment.
+    expect(gitIn(review, env, 'fetch', 'origin').status).toBe(0)
+
+    await g.remove(repo, review)
+    expect(readFileSync(join(repo, '.git', 'config'), 'utf8')).toBe(configBefore)
+    expect(existsSync(review)).toBe(false)
+  })
+
+  it('keeps the config entries the session already inherits', () => {
+    const env = pushBlockEnv(['origin'], { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'a.b', GIT_CONFIG_VALUE_0: 'c' })
+    expect(env).toMatchObject({ GIT_CONFIG_COUNT: '3', GIT_CONFIG_KEY_1: 'remote.origin.pushurl', GIT_CONFIG_KEY_2: 'url.no-push://workhub-review/.pushInsteadOf', GIT_CONFIG_VALUE_2: '' })
+    expect(env['GIT_CONFIG_KEY_0']).toBeUndefined()
   })
 })

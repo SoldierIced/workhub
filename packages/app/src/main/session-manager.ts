@@ -116,7 +116,11 @@ export class SessionManager {
     return true
   }
 
-  async start(input: StartSessionInput): Promise<SessionView> {
+  /**
+   * `internal` is for the main process only (never the renderer's IPC input): extra environment
+   * for the agent process, e.g. the AI review's push block.
+   */
+  async start(input: StartSessionInput, internal: { env?: Record<string, string> } = {}): Promise<SessionView> {
     const config = await this.deps.config.current()
     const choice = resolveChoice(config, input.profileId, input.agentKey)
     if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
@@ -158,7 +162,7 @@ export class SessionManager {
       controls: hasSessionControls(runtime),
       ...(input.readOnly ? { readOnly: true } : {})
     }
-    const session: ManagedSession = { view, agent, account, env: launchEnvironment(agent, account), runtime, engine, switching: false, readOnly: input.readOnly === true }
+    const session: ManagedSession = { view, agent, account, env: { ...launchEnvironment(agent, account), ...(internal.env ?? {}) }, runtime, engine, switching: false, readOnly: input.readOnly === true }
     this.sessions.set(view.id, session)
     this.deps.emitChanged(view)
 
@@ -294,8 +298,10 @@ export class SessionManager {
     if (started.permissionMode) patch.permissionMode = started.permissionMode
     if (started.currentModeId) patch.currentModeId = started.currentModeId
     if (started.availableModes) patch.availableModes = started.availableModes
-    // The model asked for is the current one until the agent reports otherwise.
-    if (opts.model) patch.currentModelId = opts.model
+    // The model asked for is the current one until the agent reports otherwise; an agent that cannot
+    // pick one says so, and the session keeps its own default.
+    if (started.modelIgnored) patch.modelIgnored = true
+    else if (opts.model) patch.currentModelId = opts.model
     this.update(s.view.id, patch)
   }
 
