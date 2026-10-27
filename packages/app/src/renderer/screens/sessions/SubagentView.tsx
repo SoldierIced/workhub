@@ -113,6 +113,7 @@ function Entry({ entry, sessionId, cwd, onOpenNested }: { entry: ConversationEnt
           result={entry.result}
           cwd={cwd}
           onReveal={(path) => void window.hub.sessions.revealFile(sessionId, path)}
+          onViewFile={(path) => void window.hub.files.openWindow(path, cwd)}
           onOpenAgent={agentId ? () => onOpenNested(agentId) : undefined}
         />
       )
