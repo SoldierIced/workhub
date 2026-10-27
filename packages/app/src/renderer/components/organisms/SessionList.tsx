@@ -556,19 +556,22 @@ function SessionItem(props: {
                 {props.subagents.length}
               </button>
             )}
-            {props.onClose && (
-              <button
-                type="button"
-                data-testid="close-session"
-                aria-label={t('sessions.closeNamed', { name: title })}
-                title={t('sessions.close')}
-                onClick={props.onClose}
-                className={cn(ROW_ACTION, 'mr-0')}
-              >
-                <X className="size-3.5" aria-hidden />
-              </button>
-            )}
-            <OptionsButton label={t('groups.options', { name: title })} menu={props.menu} />
+            {/* Take room only while they can be used, so the name keeps the row's whole width otherwise. */}
+            <span data-testid="row-actions" className={ROW_ACTIONS}>
+              {props.onClose && (
+                <button
+                  type="button"
+                  data-testid="close-session"
+                  aria-label={t('sessions.closeNamed', { name: title })}
+                  title={t('sessions.close')}
+                  onClick={props.onClose}
+                  className={cn(ROW_ACTION, 'mr-0')}
+                >
+                  <X className="size-3.5" aria-hidden />
+                </button>
+              )}
+              <OptionsButton label={t('groups.options', { name: title })} menu={props.menu} />
+            </span>
           </div>
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
@@ -618,6 +621,9 @@ function SubagentRow({ subagent: s, onOpen }: { subagent: SubagentSummary; onOpe
 }
 
 /** A row's hover actions: shown on hover or keyboard focus. */
+/** A session row's hover actions: out of the layout until the row is hovered or focused, or its menu is open. */
+const ROW_ACTIONS = 'hidden shrink-0 items-center group-hover/row:flex group-focus-within/row:flex has-[[data-state=open]]:flex'
+
 const ROW_ACTION =
   'mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 data-[state=open]:opacity-100'
 
