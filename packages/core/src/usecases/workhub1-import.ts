@@ -515,8 +515,8 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
       receivesChatReplies: a.receivesSlackReplies !== false
     }
     if (a.model?.trim()) automation.model = a.model.trim()
-    if (a.effort?.trim()) note('notSupported', `automations.${id}`, 'effort')
-    if (a.permissionMode && a.permissionMode !== 'default') note('notSupported', `automations.${id}`, 'permissionMode')
+    if (a.effort?.trim()) automation.effort = a.effort.trim()
+    if (a.permissionMode && a.permissionMode !== 'default') automation.permissionMode = a.permissionMode
     if (gate && !pendingGate) note('notSupported', `automations.${id}`, 'pendingGate')
     plan.automations!.push(automation)
     turnOn(owner, 'automations')
