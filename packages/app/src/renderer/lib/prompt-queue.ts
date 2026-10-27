@@ -72,6 +72,18 @@ export class PromptQueues {
     return true
   }
 
+  /**
+   * The user interrupted the session: its waiting messages are taken out (never sent after the
+   * interrupted turn) and handed back, oldest first, so the composer can offer them again.
+   */
+  takeAll(sessionId: string): QueuedPrompt[] {
+    const list = [...this.list(sessionId)]
+    if (!list.length) return list
+    this.queues.delete(sessionId)
+    this.changed()
+    return list
+  }
+
   /** The session is gone: its waiting messages go with it. */
   drop(sessionId: string): void {
     this.states.delete(sessionId)
@@ -112,3 +124,17 @@ export class PromptQueues {
 }
 
 const EMPTY: readonly QueuedPrompt[] = []
+
+/**
+ * The composer after an interrupt: the messages that were not sent come back, oldest first, ahead
+ * of what was being typed, joined by blank lines; their images join the attached ones.
+ */
+export function restoreComposer(
+  current: { text: string; images: string[] },
+  recovered: readonly { text: string; images: string[] }[],
+  maxImages: number
+): { text: string; images: string[] } {
+  const text = [...recovered.map((p) => p.text.trim()), current.text.trim()].filter(Boolean).join('\n\n')
+  const images = [...recovered.flatMap((p) => p.images), ...current.images].slice(0, maxImages)
+  return { text, images }
+}

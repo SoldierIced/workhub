@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isEditable, shouldFocusComposer } from '../src/renderer/lib/composer-focus'
 import { MAX_IMAGE_FILE_BYTES, MAX_PROMPT_IMAGES, checkImageFile, pickImageFiles } from '../src/renderer/lib/images'
-import { PromptQueues, acceptsInput, submitMode } from '../src/renderer/lib/prompt-queue'
+import { PromptQueues, acceptsInput, restoreComposer, submitMode } from '../src/renderer/lib/prompt-queue'
 import { withTurnEnd, type SessionData } from '../src/renderer/store'
 
 /** A deliver that records prompts and settles each one when the test says its turn ended. */
@@ -105,6 +105,26 @@ describe('PromptQueues', () => {
     expect(q.list('c')).toEqual([])
   })
 
+  it('takes every waiting message out on an interrupt, so none goes out when the interrupted turn ends', async () => {
+    const { q, sent, endTurn, changes } = harness()
+    q.submit('s', 'ready', false, 'running')
+    q.stateChanged('s', 'busy')
+    q.submit('s', 'busy', false, 'one')
+    q.submit('s', 'busy', false, 'two', ['data:image/png;base64,AAAA'])
+    const before = changes()
+    expect(q.takeAll('s').map((p) => [p.text, p.images.length])).toEqual([
+      ['one', 0],
+      ['two', 1]
+    ])
+    expect(changes()).toBe(before + 1)
+    expect(q.list('s')).toEqual([])
+    // The cancelled turn settles and the session turns ready: nothing follows it.
+    await endTurn()
+    q.stateChanged('s', 'ready')
+    expect(sent).toEqual(['running'])
+    expect(q.takeAll('s')).toEqual([])
+  })
+
   it('keeps going after a prompt fails', async () => {
     const sent: string[] = []
     const q = new PromptQueues(async (_id, p) => {
@@ -117,6 +137,18 @@ describe('PromptQueues', () => {
     q.stateChanged('s', 'ready')
     await new Promise((r) => setTimeout(r, 0))
     expect(sent).toEqual(['one', 'two'])
+  })
+})
+
+describe('restoreComposer', () => {
+  it('puts the messages back ahead of the draft, joined by blank lines, with their images first', () => {
+    const recovered = [
+      { text: 'one ', images: ['a'] },
+      { text: '', images: ['b'] },
+      { text: 'two', images: [] }
+    ]
+    expect(restoreComposer({ text: 'typing', images: ['c'] }, recovered, 10)).toEqual({ text: 'one\n\ntwo\n\ntyping', images: ['a', 'b', 'c'] })
+    expect(restoreComposer({ text: '  ', images: [] }, recovered, 2)).toEqual({ text: 'one\n\ntwo', images: ['a', 'b'] })
   })
 })
 
