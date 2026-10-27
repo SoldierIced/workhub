@@ -37,7 +37,7 @@ export function groupBySprint(tickets: readonly Ticket[], backlogTitle = 'Backlo
     const n = Number(g.id)
     return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER
   }
-  const sorted = [...sprints.values()].sort((a, b) => Number(b.isActive) - Number(a.isActive) || order(a) - order(b) || a.id.localeCompare(b.id))
+  const sorted = [...sprints.values()].sort((a, b) => Number(b.isActive) - Number(a.isActive) || order(a) - order(b) || (a.sprint?.startDate ?? '').localeCompare(b.sprint?.startDate ?? '') || a.id.localeCompare(b.id))
   if (backlog.length > 0) sorted.push({ id: BACKLOG_GROUP, title: backlogTitle, isActive: false, tickets: backlog })
   return sorted
 }
