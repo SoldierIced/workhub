@@ -1,6 +1,7 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
 import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type {
+  LocalChanges,
   AppOptions,
   AgentCapabilities,
   BudgetStatus,
@@ -126,6 +127,8 @@ export interface SessionView extends Session {
   origin?: SessionOrigin
   /** The engine picked while a turn was running: the hand-over waits for the turn to end. */
   pendingMode?: 'app' | 'console'
+  /** Epoch ms when `state` last changed (the header's activity timer). */
+  stateSince?: number
 }
 
 export interface SetModeOptions {
@@ -220,6 +223,11 @@ export interface SessionsApi {
   subagent(id: string, subagentId: string): Promise<SubagentConversation | null>
   /** Shows a file the session's agent touched in the file manager; false when it is outside the session's folder or missing. */
   revealFile(id: string, path: string): Promise<boolean>
+  /**
+   * Uncommitted changes in the session's folder: its repository, or each repository right inside
+   * a folder of repositories. Null when the session is unknown or the folder holds no repository.
+   */
+  localChanges(id: string): Promise<LocalChanges | null>
   onEvent(cb: (e: AgentEvent) => void): () => void
   onChanged(cb: (s: SessionView) => void): () => void
   /** A finished session left the list (an automation replaced it). */

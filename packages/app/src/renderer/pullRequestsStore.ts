@@ -52,3 +52,22 @@ export function usePullRequestLists(profileId: string | null): { lists: CodeHost
   const refresh = useCallback(() => void refreshPullRequests(profileId, true), [profileId])
   return { lists: entry.lists, loading: entry.loading, refresh }
 }
+
+/**
+ * The lists of a profile as last read, without a refresh timer of its own: reads them once when
+ * nothing is loaded yet (the session monitor, mounted once per open session, must not poll the host).
+ */
+export function useCachedPullRequestLists(profileId: string | null): CodeHostLists | null {
+  const key = keyOf(profileId)
+  const entry = useSyncExternalStore(
+    (l) => {
+      listeners.add(l)
+      return () => listeners.delete(l)
+    },
+    () => entries.get(key) ?? EMPTY
+  )
+  useEffect(() => {
+    if (!entries.has(key)) void refreshPullRequests(profileId)
+  }, [key, profileId])
+  return entry.lists
+}

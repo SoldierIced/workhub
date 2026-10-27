@@ -64,6 +64,7 @@ const api: HubApi = {
     mcp: (id, action, server) => ipcRenderer.send('sessions:mcp', id, action, server),
     subagent: (id, subagentId) => ipcRenderer.invoke('sessions:subagent', id, subagentId),
     revealFile: (id, path) => ipcRenderer.invoke('sessions:revealFile', id, path),
+    localChanges: (id) => ipcRenderer.invoke('sessions:localChanges', id),
     cancel: (id) => ipcRenderer.invoke('sessions:cancel', id),
     stop: (id) => ipcRenderer.invoke('sessions:stop', id),
     respondPermission: (id, requestId, optionId) => ipcRenderer.send('sessions:permission', id, requestId, optionId),
