@@ -26,7 +26,9 @@ import type {
   StartSessionRequest,
   Unsubscribe
 } from '@workhub/core'
+import { findExecutable } from './availability'
 import { AcpMonitor, permissionMode, readModes } from './monitor-mapping'
+import { planSpawn } from './spawn-plan'
 
 export type AcpDirection = 'client->agent' | 'agent->client'
 
@@ -72,10 +74,29 @@ export class AcpRuntime implements AgentRuntime {
     this.emit({ sessionId: id, type: 'state', state: 'starting' })
 
     const env = { ...process.env, ...req.env }
-    if (this.options.extraPath?.length) env['PATH'] = [...this.options.extraPath, env['PATH'] ?? ''].join(delimiter)
-    // Windows runs npm-installed agents (npx, gemini, opencode) through .cmd shims, which Node
-    // only starts through a shell. Not verified on Windows yet.
-    const child = spawn(req.agent.command, req.agent.args, { cwd: req.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32' })
+    // Windows names the variable `Path`; a plain copy of process.env is case-sensitive.
+    const pathKey = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
+    if (this.options.extraPath?.length) env[pathKey] = [...this.options.extraPath, env[pathKey] ?? ''].join(delimiter)
+
+    // On Windows there is no ENOENT-on-spawn contract to lean on (and no shell for `.exe`), so the
+    // command is resolved up front and started by its full path. POSIX spawns the name as before.
+    let file = req.agent.command
+    if (process.platform === 'win32') {
+      const found = await findExecutable(file, { path: env[pathKey] ?? '' })
+      if (!found) {
+        const message = `could not start "${req.agent.command}": command not found on PATH`
+        this.emit({ sessionId: id, type: 'state', state: 'error', error: message })
+        throw new Error(message)
+      }
+      file = found
+    }
+    const plan = planSpawn(file, req.agent.args)
+    const child = spawn(plan.command, plan.args, {
+      cwd: req.cwd,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsVerbatimArguments: plan.windowsVerbatimArguments
+    })
 
     const monitor = new AcpMonitor()
     const session: AcpSession = {

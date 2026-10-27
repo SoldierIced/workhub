@@ -3,7 +3,7 @@
  * the way `spawn` would find it. Used for the "not installed" state of the agent pickers.
  */
 import { access, constants, stat } from 'node:fs/promises'
-import { delimiter, isAbsolute, join, win32 } from 'node:path'
+import { delimiter, isAbsolute, join } from 'node:path'
 import type { AgentDefinition } from '@workhub/core'
 
 export interface ExecutableLookup {
@@ -31,7 +31,9 @@ export async function findExecutable(command: string, lookup: ExecutableLookup =
   if (!command) return null
   const windows = (lookup.platform ?? process.platform) === 'win32'
   const extensions = windows ? (lookup.pathExt ?? process.env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : ['']
-  const hasExtension = windows && win32.extname(command) !== ''
+  // Windows runs only files whose extension is in PATHEXT: an exact name qualifies when it already
+  // has one of them (case-insensitive), otherwise each extension is appended.
+  const hasExtension = windows && extensions.some((e) => command.toLowerCase().endsWith(e.toLowerCase()))
   const names = windows && !hasExtension ? extensions.map((e) => command + e.toLowerCase()) : [command]
   const folders = isAbsolute(command) || /[\\/]/.test(command) ? [''] : [...(lookup.extraPath ?? []), ...(lookup.path ?? process.env['PATH'] ?? '').split(delimiter)].filter(Boolean)
   for (const folder of folders) {

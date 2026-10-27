@@ -21,10 +21,13 @@ afterEach(async () => {
 
 describe('findExecutable', () => {
   it('finds a command on PATH and ignores files that are not executable', async () => {
-    const bin = await folderWith({ 'wh-agent': 0o755, 'wh-plain': 0o644 })
-    expect(await findExecutable('wh-agent', { path: bin, platform: 'linux' })).toBe(join(bin, 'wh-agent'))
-    expect(await findExecutable('wh-plain', { path: bin, platform: 'linux' })).toBeNull()
-    expect(await findExecutable('wh-missing', { path: bin, platform: 'linux' })).toBeNull()
+    // Windows decides by extension, not by mode bits: a runnable file needs one from PATHEXT.
+    const win = process.platform === 'win32'
+    const bin = await folderWith(win ? { 'wh-agent.cmd': 0o644, 'wh-plain': 0o644 } : { 'wh-agent': 0o755, 'wh-plain': 0o644 })
+    const found = await findExecutable('wh-agent', { path: bin, pathExt: '.EXE;.CMD' })
+    expect(found?.toLowerCase()).toBe(join(bin, win ? 'wh-agent.cmd' : 'wh-agent').toLowerCase())
+    expect(await findExecutable('wh-plain', { path: bin, pathExt: '.EXE;.CMD' })).toBeNull()
+    expect(await findExecutable('wh-missing', { path: bin, pathExt: '.EXE;.CMD' })).toBeNull()
     expect(await findExecutable('', { path: bin })).toBeNull()
   })
 
@@ -39,6 +42,12 @@ describe('findExecutable', () => {
     const bin = await folderWith({ 'wh-agent.cmd': 0o644 })
     expect(await findExecutable('wh-agent', { path: bin, platform: 'win32', pathExt: '.EXE;.CMD' })).toBe(join(bin, 'wh-agent.cmd'))
     expect(await findExecutable('wh-agent.cmd', { path: bin, platform: 'win32', pathExt: '.EXE;.CMD' })).toBe(join(bin, 'wh-agent.cmd'))
+    expect(await findExecutable('WH-AGENT.CMD', { path: bin, platform: 'win32', pathExt: '.exe;.cmd' })).toBe(join(bin, 'WH-AGENT.CMD'))
+  })
+
+  it('does not accept an exact name whose extension is not in PATHEXT on Windows', async () => {
+    const bin = await folderWith({ 'wh-tool.txt': 0o644 })
+    expect(await findExecutable('wh-tool.txt', { path: bin, platform: 'win32', pathExt: '.EXE;.CMD' })).toBeNull()
   })
 })
 
