@@ -446,7 +446,10 @@ const automations = new AutomationService({
   home: homedir(),
   usage: () => usage.current(),
   budgetOf,
-  emit: (snap) => send('automations:changed', snap),
+  emit: (snap) => {
+    send('automations:changed', snap)
+    scheduleTray()
+  },
   configChanged: () => send('config:changed'),
   notice: (n) => send('slack:notice', n)
 })
@@ -1056,6 +1059,17 @@ async function trayState(): Promise<TrayState> {
     prEvents: recentPrEvents,
     health: healthWatcher.summary(),
     slack: slackOn && lastSlack ? { health: lastSlack.health, open: openThreads.length, unread: openThreads.filter((th) => hasUnread(th, me)).length, error: lastSlack.lastError } : null,
+    automations: automations
+      .snapshot()
+      .automations.filter((a) => a.definition.enabled && a.active)
+      .map((a) => ({
+        id: a.definition.id,
+        name: a.definition.name,
+        health: a.health,
+        startedToday: a.startedToday,
+        ...(a.waitReason ? { waitReason: a.waitReason.split('.')[0]! } : {}),
+        ...(a.lastError ? { lastError: a.lastError } : {})
+      })),
     notifications: notifier.recent().map((n) => ({ id: n.id, title: n.title, at: n.at })),
     pausedUntil: options.notificationsPausedUntil,
     canCheckForUpdates: app.isPackaged
@@ -1075,6 +1089,9 @@ async function performTrayAction(action: TrayAction): Promise<void> {
       return openPullRequestWindow(action.profileId || null, action.url)
     case 'openNotification':
       notifier.openRecent(action.id)
+      return
+    case 'clearNotifications':
+      notifier.clearRecent()
       return
     case 'newSession':
       showMain()

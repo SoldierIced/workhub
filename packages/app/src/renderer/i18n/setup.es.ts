@@ -146,7 +146,6 @@ export const setupEs: Record<keyof typeof setupEn, string> = {
   'voice.shortcutNote': 'Dejar de hablar: {keys}',
   'voice.session.on': 'Dejar de leer las respuestas en voz alta',
   'voice.session.off': 'Leer las respuestas en voz alta',
-  'voice.session.stopNow': 'Dejar de hablar',
   'notify.master': 'Mostrar notificaciones',
   'notify.masterHint': 'El interruptor general: apagado silencia todas las notificaciones de abajo, sin importar su propio interruptor.',
   'notify.osOff': 'Tu sistema operativo no deja que Workhub muestre notificaciones.',

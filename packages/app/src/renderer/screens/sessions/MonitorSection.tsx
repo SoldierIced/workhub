@@ -1,6 +1,5 @@
 import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import type { MonitorSection as SectionId } from '../../lib/monitorView'
 import { setPrefs, usePrefs } from '../../lib/prefs'
@@ -8,14 +7,12 @@ import { setPrefs, usePrefs } from '../../lib/prefs'
 /**
  * One board of the monitor (Workhub 1's InspectorSection): a small caption over a rounded card.
  * The caption folds it; folded sections are remembered across sessions and restarts.
- * `missing`: Workhub 2 has no source for this data yet; the section says so instead of showing numbers.
  */
 export function MonitorSection({
   id,
   title,
   count,
   action,
-  missing,
   bare,
   children
 }: {
@@ -23,12 +20,10 @@ export function MonitorSection({
   title: string
   count?: number
   action?: ReactNode
-  missing?: string
   /** The children bring their own frame (lists of cards). */
   bare?: boolean
   children?: ReactNode
 }) {
-  const { t } = useI18n()
   const collapsed = usePrefs().monitorCollapsed
   const open = !collapsed.includes(id)
   const toggle = () => setPrefs({ monitorCollapsed: open ? [...collapsed, id] : collapsed.filter((c) => c !== id) })
@@ -44,11 +39,10 @@ export function MonitorSection({
           <ChevronRight className={cn('size-3 shrink-0 transition-transform duration-150', open && 'rotate-90')} aria-hidden />
           <span className="truncate">{title}</span>
           {count !== undefined && <span className="ml-auto pl-1 text-2xs font-normal text-subtle tabular-nums">{count}</span>}
-          {missing && <span className="ml-auto pl-1 text-2xs font-normal whitespace-nowrap text-subtle">{t('monitor.notInV2')}</span>}
         </button>
         {action}
       </div>
-      {open && (missing ? <p className="px-1 text-xs text-subtle">{missing}</p> : bare ? children : <div className="rounded-lg border border-border bg-surface p-3">{children}</div>)}
+      {open && (bare ? children : <div className="rounded-lg border border-border bg-surface p-3">{children}</div>)}
     </section>
   )
 }

@@ -1,4 +1,5 @@
 import type { SessionState } from '@workhub/core'
+import type { MessageKey } from '../i18n/translate'
 
 /**
  * The session header's pure parts (Workhub 1's ConsoleStatusBar and ActivityPill): the folder in
@@ -67,4 +68,31 @@ export function headerDensity(width: number): HeaderDensity {
   if (width >= 1240) return 'full'
   if (width >= 1000) return 'compact'
   return 'narrow'
+}
+
+/** Labels the adapters write in English for modes Workhub names itself, by mode id. */
+const WORKHUB_MODE_LABELS: Record<string, string> = {
+  default: 'Ask before edits',
+  acceptEdits: 'Accept edits',
+  plan: 'Plan mode',
+  bypassPermissions: 'Bypass permissions',
+  dontAsk: "Don't ask",
+  auto: 'Auto'
+}
+
+/**
+ * The permission mode's label in the UI language. The adapters word the modes Workhub names
+ * itself in English (unknown, set by the agent, Claude's own modes); those are translated here.
+ * A mode name the agent reports is shown as it came.
+ */
+export function permissionModeLabel(
+  mode: { id: string; label: string },
+  currentModeId: string | undefined,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string
+): string {
+  if (mode.id === 'unknown') return t('session.mode.notReported')
+  if (mode.id === 'agent-managed') return currentModeId ? t('session.mode.setByAgentNamed', { name: currentModeId }) : t('session.mode.setByAgent')
+  if (WORKHUB_MODE_LABELS[mode.id] === mode.label) return t(`session.mode.${mode.id}` as MessageKey)
+  if (mode.label === 'Plan (read-only)') return t('session.mode.planReadOnly')
+  return mode.label
 }

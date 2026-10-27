@@ -9,13 +9,11 @@ export const usageEs: Record<keyof typeof usageEn, string> = {
   'agentUsage.defaultAccount': 'Cuenta por defecto',
   'agentUsage.empty': 'Todavía no hay uso. Activa la lectura por agente en Ajustes → Uso, o inicia una sesión que lo informe.',
   'agentUsage.openSettings': 'Ajustes de uso',
-  'agentUsage.resetsIn': 'se restablece en {time}',
   'agentUsage.asOf': 'de un archivo de sesión, {when}',
   'agentUsage.readFailed': 'No se pudo leer el uso',
   'agentUsage.ceiling': 'techo {ceiling}%',
   'agentUsage.state.warn': 'Cerca del techo',
   'agentUsage.state.block': 'Sobre el techo',
-  'agentUsage.kiro': 'Los créditos y límites restantes no están disponibles: Kiro no los expone localmente.',
   'agentUsage.kiroCredits': 'Las sesiones de esta ejecución usaron {credits} créditos.',
 
   'agentUsage.gate.block': '{account} está en {percent}% de su ventana {window}, por encima de tu techo de {ceiling}%.',

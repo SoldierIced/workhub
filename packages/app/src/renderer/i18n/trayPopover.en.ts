@@ -35,6 +35,8 @@ export const trayPopoverEn = {
   'trayPopover.prMine': 'Mine',
   'trayPopover.status': 'Status',
   'trayPopover.notifications': 'Recent notifications',
+  'trayPopover.clearNotifications': 'Clear all',
+  'trayPopover.automations': 'Automations',
   'trayPopover.noNotifications': 'Nothing yet: replies, pull request changes and ticket updates show up here.',
   'trayPopover.now': 'now',
   'trayPopover.timeAgo': '{time} ago'

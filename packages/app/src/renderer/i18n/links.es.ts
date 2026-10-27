@@ -6,7 +6,6 @@ export const linksEs: Record<keyof typeof linksEn, string> = {
   'links.pr.openSessionHint': 'Abre la sesión vinculada a este pull request, o inicia una en la carpeta que corresponde',
   'links.pr.review': 'Pedirle a Claude que revise',
   'links.pr.reviewHint': 'Inicia una sesión de Claude con un prompt de revisión en el compositor; no se envía nada hasta que pulses Enviar',
-  'links.ticket.start': 'Iniciar sesión sobre este ticket',
   'links.ticket.startShort': 'Iniciar una sesión sobre {key}',
   'links.pastSessions': 'Sesiones anteriores',
   'links.pastSessions.empty': 'Ninguna sesión anterior menciona esto.',

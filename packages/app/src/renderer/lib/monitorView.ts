@@ -5,10 +5,9 @@ import type { ContextUsage, LocalChanges, PullRequestItem, RepoChanges, Subagent
  * and the numbers each board shows, computed from what the session already reports.
  */
 
-/** Section ids in Workhub 1's order: Slack first, then flow, tickets, pull requests, the boards, MCP, local work. */
+/** Section ids in Workhub 1's order: Slack first, then tickets, pull requests, the boards, MCP, local work. */
 export const MONITOR_SECTIONS = [
   'slack',
-  'flow',
   'tickets',
   'pullRequests',
   'sessionTime',
@@ -21,7 +20,6 @@ export const MONITOR_SECTIONS = [
   'touchedPrs',
   'mcp',
   'localChanges',
-  'memory',
   'review'
 ] as const
 export type MonitorSection = (typeof MONITOR_SECTIONS)[number]
@@ -142,4 +140,16 @@ export function sessionTicketKeys(prs: readonly PullRequestItem[], mentioned: re
 /** New width of a panel dragged by its left edge from `startX` to `x`, kept within `[min, max]`. */
 export function dragWidth(startWidth: number, startX: number, x: number, min: number, max: number): number {
   return Math.round(Math.min(max, Math.max(min, startWidth + (startX - x))))
+}
+
+export interface RequestBars {
+  bars: { value: number; fraction: number }[]
+  max: number
+}
+
+/** The "New tokens per request" bars of the turn in progress; null unless the turn had more than one request. */
+export function requestBars(requests: readonly number[] | undefined): RequestBars | null {
+  if (!requests || requests.length < 2) return null
+  const max = Math.max(...requests, 1)
+  return { max, bars: requests.map((value) => ({ value, fraction: Math.max(value / max, 0.07) })) }
 }

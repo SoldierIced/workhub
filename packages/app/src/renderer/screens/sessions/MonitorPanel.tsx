@@ -6,7 +6,7 @@ import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/home'
-import { changesTotal, contextView, dragWidth, pullRequestLabel, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens } from '../../lib/monitorView'
+import { changesTotal, contextView, dragWidth, requestBars, pullRequestLabel, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens } from '../../lib/monitorView'
 import { SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
 import { openSubagent } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
@@ -138,9 +138,9 @@ function PullRequestCard({ item, profileId }: { item: PullRequestItem; profileId
 }
 
 /**
- * The session monitor (Workhub 1's InspectorView): Slack, flow, tickets, pull requests, then the
+ * The session monitor (Workhub 1's InspectorView): Slack, tickets, pull requests, then the
  * boards (time, tokens, context, requests, activity, subagents, PRs touched), MCP and local work.
- * Sections fold; the panel is resizable. Data Workhub 2 does not have is marked, never made up.
+ * Sections fold; the panel is resizable. Data an agent does not report is left out, never made up.
  */
 export function MonitorPanel({ data, visible }: { data: SessionData; visible: boolean }) {
   const { t, tn, formatNumber } = useI18n()
@@ -159,9 +159,10 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const prs = sessionPullRequests([...(lists?.mine ?? []), ...(lists?.toReview ?? [])], m.pullRequests, changes?.repos)
   const tickets = sessionTicketKeys(prs, m.ticketKeys)
   const time = sessionTime(v.startedAt, now, m.activeTimeMs, m.toolCalls)
-  // ACP agents other than Kiro do not report their working time: say so rather than show 0.
+  // Before the first state change nothing is known yet: say so rather than show 0.
   const activeKnown = m.activeTimeMs !== undefined
   const ctx = fields.includes('context') ? contextView(m.context) : null
+  const requests = requestBars(m.turnRequests)
   const ofSubagents = subagentTokens(m.subagents)
   const servers = m.mcpServers ?? []
   const tools = m.toolCalls ?? []
@@ -190,8 +191,6 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
         </div>
 
         <SlackThreadsSection view={v} />
-
-        <MonitorSection id="flow" title={t('monitor.flow')} missing={t('monitor.flowMissing')} />
 
         {tickets.length > 0 && (
           <MonitorSection id="tickets" title={tn('monitor.ticketsCount', tickets.length)}>
@@ -310,7 +309,18 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
         <SessionBudgetSection view={v} />
 
-        {showTokens && <MonitorSection id="requests" title={t('monitor.requests')} missing={t('monitor.requestsMissing')} />}
+        {requests && (
+          <MonitorSection id="requests" title={t('monitor.requests')}>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex h-11 items-end gap-[3px]" role="img" aria-label={t('monitor.requests')}>
+                {requests.bars.map((bar, i) => (
+                  <div key={i} className="min-w-[3px] flex-1 rounded-sm bg-info" style={{ height: `${Math.round(bar.fraction * 100)}%` }} title={t('monitor.requestTip', { value: formatTokens(bar.value) })} />
+                ))}
+              </div>
+              <p className="text-xs text-muted">{t('monitor.requestsSummary', { count: requests.bars.length, max: formatTokens(requests.max) })}</p>
+            </div>
+          </MonitorSection>
+        )}
 
         {v.capabilities.appMode && (
           <MonitorSection id="activity" title={t('monitor.activity')} count={tools.length || undefined}>
@@ -469,8 +479,6 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
             )}
           </MonitorSection>
         )}
-
-        <MonitorSection id="memory" title={t('monitor.memory')} missing={t('monitor.memoryMissing')} />
 
         <AiReviewSection view={v} />
       </div>

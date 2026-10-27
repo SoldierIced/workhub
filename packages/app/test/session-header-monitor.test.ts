@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { PullRequestItem } from '@workhub/core'
-import { changesTotal, contextView, dragWidth, pullRequestLabel, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
+import { changesTotal, contextView, dragWidth, pullRequestLabel, requestBars, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
 import { DEFAULT_PREFS, parsePrefs } from '../src/renderer/lib/prefs'
-import { abbreviateFolder, activityElapsed, activityOf, formatClock, formatSince, headerDensity } from '../src/renderer/lib/sessionHeader'
+import { abbreviateFolder, activityElapsed, activityOf, formatClock, formatSince, headerDensity, permissionModeLabel } from '../src/renderer/lib/sessionHeader'
 
 describe('session header', () => {
   it('abbreviates the folder from the home folder and keeps the last two folders of a long path', () => {
@@ -102,5 +102,26 @@ describe('monitor view model', () => {
     expect(DEFAULT_PREFS.monitorWidth).toBe(320)
     expect(parsePrefs('{"monitorWidth":2000,"monitorCollapsed":["tokens",3]}')).toMatchObject({ monitorWidth: 560, monitorCollapsed: ['tokens'] })
     expect(parsePrefs('{"monitorWidth":"x"}').monitorWidth).toBe(320)
+  })
+})
+
+describe('new tokens per request', () => {
+  it('draws bars only for a turn with more than one request', () => {
+    expect(requestBars(undefined)).toBeNull()
+    expect(requestBars([500])).toBeNull()
+    const bars = requestBars([100, 400, 0])
+    expect(bars?.max).toBe(400)
+    expect(bars?.bars.map((b) => b.fraction)).toEqual([0.25, 1, 0.07])
+  })
+})
+
+describe('permission mode label', () => {
+  const t = (key: string, params?: Record<string, string | number>) => `${key}${params ? JSON.stringify(params) : ''}`
+  it('translates the labels Workhub words itself and keeps the agent\'s own', () => {
+    expect(permissionModeLabel({ id: 'unknown', label: 'Not reported by the agent' }, undefined, t)).toBe('session.mode.notReported')
+    expect(permissionModeLabel({ id: 'agent-managed', label: 'x' }, 'kiro_default', t)).toBe('session.mode.setByAgentNamed{"name":"kiro_default"}')
+    expect(permissionModeLabel({ id: 'plan', label: 'Plan mode' }, undefined, t)).toBe('session.mode.plan')
+    expect(permissionModeLabel({ id: 'plan', label: 'Plan (read-only)' }, undefined, t)).toBe('session.mode.planReadOnly')
+    expect(permissionModeLabel({ id: 'default', label: 'Always Ask' }, undefined, t)).toBe('Always Ask')
   })
 })

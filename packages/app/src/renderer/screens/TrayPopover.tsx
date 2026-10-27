@@ -1,39 +1,48 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Bell, BellOff, Ellipsis, GitPullRequest, Plus, Settings } from 'lucide-react'
-import type { TrayAction, TrayPopoverSession, TrayPopoverUsageAccount, TrayPopoverView, TrayRoute } from '@workhub/core'
+import { automationLine, type TrayAction, type TrayPopoverSession, type TrayPopoverUsageAccount, type TrayPopoverView, type TrayRoute } from '@workhub/core'
 import type { MessageKey } from '../i18n/translate'
 import { Badge } from '../components/atoms'
+import { AgentIcon } from '../components/atoms/AgentIcon'
 import { BrandMark } from '../components/organisms/BrandMark'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { usePlatform } from '../lib/platform'
-import { agentGlyph, BAR_CLASS, DOT_CLASS, elapsed, nextFocus, sessionChip } from '../lib/trayPopover'
+import { BAR_CLASS, DOT_CLASS, elapsed, nextFocus, sessionChip } from '../lib/trayPopover'
 
 const perform = (action: TrayAction) => window.hub.tray.popover.perform(action)
 const go = (route: TrayRoute) => perform({ kind: 'navigate', route })
 
 const ROW = 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none'
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function ClearAll() {
+  const { t } = useI18n()
+  return (
+    <button
+      type="button"
+      data-nav
+      className="rounded px-1.5 py-0.5 text-xs font-normal normal-case tracking-normal text-muted transition-colors hover:bg-surface-hover hover:text-text"
+      onClick={() => perform({ kind: 'clearNotifications' })}
+    >
+      {t('trayPopover.clearNotifications')}
+    </button>
+  )
+}
+
+function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="px-2 pt-2">
-      <h2 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
+      <div className="flex items-center justify-between px-2 pb-1">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
+        {action}
+      </div>
       {children}
     </section>
   )
 }
 
 function AgentMark({ agentId }: { agentId?: string }) {
-  const { letter, hue } = agentGlyph(agentId)
-  return (
-    <span
-      aria-hidden
-      className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-2xs font-semibold"
-      style={{ backgroundColor: `hsl(${hue} 70% 50% / 0.18)`, color: `hsl(${hue} 70% 55%)` }}
-    >
-      {letter}
-    </span>
-  )
+  return agentId ? <AgentIcon agentId={agentId} /> : <span aria-hidden className="size-5 shrink-0" />
 }
 
 function SessionRow({ s, now }: { s: TrayPopoverSession; now: number }) {
@@ -175,6 +184,17 @@ function Content({ view }: { view: TrayPopoverView }) {
           </Section>
         )}
 
+        {view.automations.length > 0 && (
+          <Section title={t('trayPopover.automations')}>
+            {view.automations.map((a) => (
+              <button key={a.id} type="button" data-nav className={cn(ROW, a.health === 'failing' ? 'text-warning' : 'text-muted')} onClick={() => go('automations')}>
+                <span aria-hidden className={cn('size-2 shrink-0 rounded-full', DOT_CLASS[a.tone])} />
+                <span className="min-w-0 flex-1 truncate">{`${a.name}: ${automationLine(a, (key, params) => t(key as MessageKey, params))}`}</span>
+              </button>
+            ))}
+          </Section>
+        )}
+
         {view.pullRequests && (
           <Section title={t('trayPopover.pullRequests')}>
             <button type="button" data-nav className={ROW} onClick={() => go('pullRequests')}>
@@ -195,7 +215,7 @@ function Content({ view }: { view: TrayPopoverView }) {
           </Section>
         )}
 
-        <Section title={t('trayPopover.notifications')}>
+        <Section title={t('trayPopover.notifications')} action={view.notifications.length > 0 ? <ClearAll /> : undefined}>
           {view.notifications.length === 0 && <p className="px-2 py-1 text-sm text-muted">{t('trayPopover.noNotifications')}</p>}
           {view.notifications.map((n) => (
             <button key={n.id} type="button" data-nav className={ROW} onClick={() => perform({ kind: 'openNotification', id: n.id })}>

@@ -37,6 +37,8 @@ export const trayPopoverEs: Record<keyof typeof trayPopoverEn, string> = {
   'trayPopover.prMine': 'Míos',
   'trayPopover.status': 'Estado',
   'trayPopover.notifications': 'Notificaciones recientes',
+  'trayPopover.clearNotifications': 'Borrar todas',
+  'trayPopover.automations': 'Automatizaciones',
   'trayPopover.noNotifications': 'Nada todavía: aquí aparecen las respuestas, los cambios en pull requests y las novedades de tickets.',
   'trayPopover.now': 'ahora',
   'trayPopover.timeAgo': 'hace {time}'
