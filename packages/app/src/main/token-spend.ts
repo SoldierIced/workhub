@@ -1,10 +1,11 @@
-import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { emptySpendCache, TokenSpendScanner, type SpendCache, type SpendSources } from '@workhub/adapters/token-spend'
-import { folderSpend, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
+import { folderSpend, ownsFolder, profileFolderPaths, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
 import type { FolderSpendResult } from '../shared/api'
 import { usageAccounts } from './agent-usage'
+import { profileProjectChildren } from './workspaces'
 
 /** Rescans every 10 minutes; a scan reads only what was appended since the previous one. */
 const INTERVAL_MS = 10 * 60_000
@@ -18,6 +19,8 @@ export interface TokenSpendDeps {
   emit: () => void
   intervalMs?: number
   now?: () => number
+  /** Expands `~` in the profiles' folders (the user's home by default). */
+  home?: string
 }
 
 /**
@@ -75,22 +78,14 @@ export class TokenSpendService {
   async forProfile(profileId: string | null | undefined): Promise<FolderSpendResult> {
     const config = await this.deps.config()
     const profile = config.profiles.find((p) => p.id === (profileId ?? config.activeProfileId)) ?? config.profiles[0]
-    const folders = (profile?.folders ?? []).filter(Boolean)
-    const children: Record<string, string[]> = {}
-    for (const f of folders) children[f] = await childFolders(f)
-    const entries = folderSpend(this.buckets, folders, { sinceDay: spendWindowStart(this.now()), children })
-    return { entries, days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders: folders.length > 0 }
+    if (!profile) return { entries: [], days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders: false }
+    const home = this.deps.home ?? homedir()
+    const folders = profileFolderPaths(profile, home).map((f) => f.path)
+    const children = await profileProjectChildren(profile, home)
+    const owns = (path: string) => ownsFolder(profile.id, path, config.profiles, home)
+    const entries = folderSpend(this.buckets, folders, { sinceDay: spendWindowStart(this.now()), children, owns })
+    return { entries, days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders: folders.length > 0 || profile.ownsOutside === true }
   }
-}
-
-/**
- * The child folders a profile folder is split into: none for a repository (it is one entry), its
- * visible subfolders for a folder that holds repositories (Workhub 1's profile roots).
- */
-export async function childFolders(folder: string): Promise<string[]> {
-  if (existsSync(join(folder, '.git'))) return []
-  const entries = await readdir(folder, { withFileTypes: true }).catch(() => [])
-  return entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name)
 }
 
 /**

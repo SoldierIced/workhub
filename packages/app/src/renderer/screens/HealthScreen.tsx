@@ -25,6 +25,11 @@ const STATUS_COPY: Partial<Record<HealthState, { title: MessageKey; hint: Messag
 
 export interface HealthScreenProps {
   profile: Profile | undefined
+  /**
+   * The profile's folders expanded into the folders inside them (the sidebar's list, which honours
+   * "Only git repos"), so a service finds its repository; the profile's own folders while unknown.
+   */
+  projectFolders?: readonly string[]
   onOpenSettings: (tab?: string) => void
   /** Opens a new Claude session in `folder` (the profile's first one when undefined) with the draft in its composer; it is never sent. */
   onInvestigate: (draft: string, folder: string | undefined) => Promise<void> | void
@@ -47,7 +52,7 @@ function rowTarget(row: HealthRow, folders: string[]): { name: string; folder?: 
 }
 
 /** Health (⌘8): the environments of the active profile, each with its verdict and the signals behind it. */
-export function HealthScreen({ profile, onOpenSettings, onInvestigate }: HealthScreenProps) {
+export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvestigate }: HealthScreenProps) {
   const { t, tn, locale } = useI18n()
   const toast = useToast()
   const enabled = Boolean(profile && moduleScreens(profile.modules).includes('health'))
@@ -81,7 +86,7 @@ export function HealthScreen({ profile, onOpenSettings, onInvestigate }: HealthS
     return () => window.removeEventListener('keydown', onKey)
   }, [selecting])
 
-  const folders = profile?.folders ?? []
+  const folders = projectFolders?.length ? [...projectFolders] : (profile?.folders ?? [])
   const open = async (key: string, prepare: () => Promise<Investigation | null>) => {
     if (busyKey) return
     setBusyKey(key)

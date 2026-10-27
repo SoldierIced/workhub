@@ -6,6 +6,7 @@
  * A bucket is the fresh tokens (input + cache write + output; cache reads are left out, as in
  * Workhub 1) one agent spent on one local day while working in one path.
  */
+import { isThrowawayFolder } from '../usecases/history'
 import { localDayKey, startOfLocalDay } from './credits'
 
 export type SpendAgent = 'claude' | 'codex' | 'kiro'
@@ -108,20 +109,26 @@ export function attributeFolder(
 /**
  * Tokens per folder of a profile over the days from `sinceDay` on, largest first. Work outside
  * the profile's folders is left out, so each profile shows only its own spend.
+ *
+ * `owns` (see `owningProfile`) narrows that to the work the profile owns: a deeper folder of another
+ * profile is left out, and work it owns outside its folders (the profile that "also owns everything
+ * outside") counts under that work's own folder. Throwaway folders never count there.
  */
 export function folderSpend(
   buckets: SpendBuckets,
   folders: readonly string[],
-  options: { sinceDay: string; children?: Readonly<Record<string, readonly string[]>> }
+  options: { sinceDay: string; children?: Readonly<Record<string, readonly string[]>>; owns?: (path: string) => boolean }
 ): FolderSpendEntry[] {
   const byPath = new Map<string, FolderSpendEntry>()
   const placeOf = new Map<string, ReturnType<typeof attributeFolder>>()
+  const { owns } = options
   for (const [key, tokens] of Object.entries(buckets)) {
     const parsed = parseSpendKey(key)
     if (!parsed || parsed.day < options.sinceDay || !(tokens > 0)) continue
     let place = placeOf.get(parsed.path)
     if (place === undefined) {
-      place = attributeFolder(parsed.path, folders, options.children)
+      place = owns && !owns(parsed.path) ? null : attributeFolder(parsed.path, folders, options.children)
+      if (!place && owns && owns(parsed.path) && !isThrowawayFolder(parsed.path)) place = { name: lastSegment(parsed.path), path: norm(parsed.path), root: false }
       placeOf.set(parsed.path, place)
     }
     if (!place) continue

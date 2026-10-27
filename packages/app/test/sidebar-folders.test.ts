@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -64,7 +64,7 @@ describe('the folders of a profile (main)', () => {
   afterEach(() => rmSync(home, { recursive: true, force: true }))
 
   it('lists each folder, then the folders inside it in natural order, hidden ones and missing folders left out', async () => {
-    const list = await profileWorkspaces(['~/work', join(home, 'work'), '~/missing', ''], home)
+    const list = await profileWorkspaces({ folders: ['~/work', join(home, 'work'), '~/missing', ''] }, home)
     expect(list.map((f) => [f.name, f.root])).toEqual([
       ['work', true],
       ['a-repo', false],
@@ -73,6 +73,13 @@ describe('the folders of a profile (main)', () => {
       ['repo10', false]
     ])
     expect(list[1]?.path).toBe(join(home, 'work', 'a-repo'))
+  })
+
+  it('lists only the git repositories of a folder marked "Only git repos"', async () => {
+    mkdirSync(join(home, 'work', 'a-repo', '.git'), { recursive: true })
+    writeFileSync(join(home, 'work', 'repo9', '.git'), 'gitdir: elsewhere')
+    const list = await profileWorkspaces({ folders: ['~/work'], folderOptions: { '~/work': { onlyGitRepos: true } } }, home)
+    expect(list.map((f) => f.name)).toEqual(['work', 'a-repo', 'repo9'])
   })
 })
 

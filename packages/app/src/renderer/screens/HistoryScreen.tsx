@@ -2,7 +2,7 @@ import { CircleAlert, Folder, History, MessagesSquare, RefreshCw, Search, Square
 import { AgentIcon } from '../components/atoms/AgentIcon'
 import { ContextMenu } from 'radix-ui'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { groupHistory, historyId, historyInProfile, isThrowawayFolder, type Profile } from '@workhub/core'
+import { groupHistory, historyId, historyInProfile, isThrowawayFolder, owningProfile, type FolderProfile, type Profile } from '@workhub/core'
 import type { HistoryItem, HistoryResult, SessionView } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Spinner } from '../components/atoms'
 import { EmptyState, useToast } from '../components/molecules'
@@ -25,8 +25,12 @@ export interface HistoryFilter {
   agent: string
   /** An account id (`''`: the default folder), or `*` for every account. */
   account: string
-  /** Only this profile's sessions (its folders and accounts); undefined for every profile. */
-  profile?: Pick<Profile, 'folders' | 'accountIds'>
+  /** Only this profile's sessions (the folders it owns and its accounts); undefined for every profile. */
+  profile?: Partial<FolderProfile> & Pick<Profile, 'accountIds'>
+  /** Every profile, so a folder goes to the profile that owns it (see `owningProfile`). */
+  profiles?: readonly FolderProfile[]
+  /** Expands `~` in the profiles' folders. */
+  home?: string
 }
 
 /** The entries History lists: never throwaway runs in temporary folders, then the agent, account and profile filters. */
@@ -36,7 +40,7 @@ export function visibleHistory(entries: readonly HistoryItem[], filter: HistoryF
       !isThrowawayFolder(e.cwd) &&
       (filter.agent === ALL || e.agentId === filter.agent) &&
       (filter.account === ALL || (e.accountId ?? '') === filter.account) &&
-      (!filter.profile || historyInProfile(e, filter.profile))
+      (!filter.profile || historyInProfile(e, filter.profile, { profiles: filter.profiles, home: filter.home }))
   )
 }
 
@@ -97,8 +101,12 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
     void load()
   }, [load])
 
+  const [home, setHome] = useState<string | undefined>()
+  useEffect(() => {
+    void window.hub.getDefaultCwd().then(setHome, () => setHome(undefined))
+  }, [])
   const filterProfile = profiles.length > 1 ? profiles.find((p) => p.id === profileFilter) : undefined
-  const entries = useMemo(() => visibleHistory(result?.entries ?? [], { agent, account, profile: filterProfile }), [result, agent, account, filterProfile])
+  const entries = useMemo(() => visibleHistory(result?.entries ?? [], { agent, account, profile: filterProfile, profiles, home }), [result, agent, account, filterProfile, profiles, home])
   const groups = useMemo(() => groupHistory(entries, query), [entries, query])
   const accounts = useMemo(() => historyAccounts(result?.entries ?? []), [result])
   const agents = useMemo(() => historyAgents(result?.entries ?? []), [result])
@@ -110,7 +118,9 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
     setError('')
     setOpening(`${e.agentSessionId}:${mode}`)
     try {
-      const view = await window.hub.sessions.start(await resumeInput(profileId, e, mode, (key) => readPrefs().models[key], () => window.hub.getDefaultCwd()))
+      // A past session reopens in the profile that owns its folder, else the active one.
+      const owner = owningProfile(e.cwd, profiles, home)?.id ?? profileId
+      const view = await window.hub.sessions.start(await resumeInput(owner, e, mode, (key) => readPrefs().models[key], () => window.hub.getDefaultCwd()))
       onOpened(view.id)
     } catch (err) {
       setError(errorText(err))

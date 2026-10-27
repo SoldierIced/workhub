@@ -607,7 +607,7 @@ function registerIpc(): void {
   ipc.handle('hub:profileFolders', async (_e, profileId: unknown) => {
     const config = await configuration.current()
     const profile = typeof profileId === 'string' ? config.profiles.find((p) => p.id === profileId) : undefined
-    return profile ? profileWorkspaces(profile.folders ?? [], homedir()) : []
+    return profile ? profileWorkspaces(profile, homedir()) : []
   })
 
   ipc.handle('config:get', () => snapshot())
