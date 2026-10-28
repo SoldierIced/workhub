@@ -1,8 +1,8 @@
-import { CircleAlert, Folder, History, MessagesSquare, Search, SquareTerminal, UserRound } from 'lucide-react'
+import { ChevronRight, CircleAlert, Folder, History, MessagesSquare, Search, Settings, SquareTerminal, UserRound } from 'lucide-react'
 import { AgentIcon } from '../components/atoms/AgentIcon'
 import { ContextMenu } from 'radix-ui'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { groupHistory, historyId, historyInProfile, isThrowawayFolder, owningProfile, type FolderProfile, type Profile } from '@workhub/core'
+import { groupAutomationHistory, groupHistory, historyId, historyInProfile, isThrowawayFolder, owningProfile, type FolderProfile, type Profile } from '@workhub/core'
 import type { HistoryItem, HistoryResult, SessionView } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Spinner } from '../components/atoms'
 import { EmptyState, useToast, RefreshButton } from '../components/molecules'
@@ -72,7 +72,7 @@ const ALL = '*'
 
 /** Every session of every agent that keeps a history, searchable, filterable by agent, grouped by folder. */
 export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScreenProps) {
-  const { t, formatDate } = useI18n()
+  const { t, tn, formatDate } = useI18n()
   const toast = useToast()
   const sessionMap = useSessions()
   const open = useMemo(() => openSessionsByHistory(Object.values(sessionMap).map((s) => s.view)), [sessionMap])
@@ -107,7 +107,18 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
   }, [])
   const filterProfile = profiles.length > 1 ? profiles.find((p) => p.id === profileFilter) : undefined
   const entries = useMemo(() => visibleHistory(result?.entries ?? [], { agent, account, profile: filterProfile, profiles, home }), [result, agent, account, filterProfile, profiles, home])
-  const groups = useMemo(() => groupHistory(entries, query), [entries, query])
+  // An automation's runs collapse into one row per automation; the other sessions group by folder.
+  const [hideAutomations, setHideAutomations] = useState(false)
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+  const byAutomation = useMemo(() => groupAutomationHistory(entries, query), [entries, query])
+  const groups = useMemo(() => groupHistory(byAutomation.rest, query), [byAutomation, query])
+  const automationGroups = hideAutomations ? [] : byAutomation.groups
+  const toggleAutomation = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
   const accounts = useMemo(() => historyAccounts(result?.entries ?? []), [result])
   const agents = useMemo(() => historyAgents(result?.entries ?? []), [result])
 
@@ -139,6 +150,87 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
     } catch (err) {
       toast(errorText(err), 'danger')
     }
+  }
+
+  /** One past session: its row, its resume buttons and its menu. */
+  const renderEntry = (e: HistoryItem) => {
+    const accountName = e.accountName
+    return (
+      <ContextMenu.Root key={`${e.agentId}:${e.agentSessionId}`}>
+        <ContextMenu.Trigger asChild>
+          <li
+            className="flex items-center gap-3 px-3.5 py-2.5 select-none"
+            data-testid="history-entry"
+            onDoubleClick={() => e.resumable && opening === null && void resume(e, 'app')}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-base">{e.title || t('history.untitled')}</span>
+                {open.has(historyId(e)) && (
+                  <Badge tone="success" className="h-4 shrink-0" title={t('history.openHint')} data-testid="history-open">
+                    {t('history.open')}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-subtle">
+                <span>{formatDate(e.lastModified, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                {e.gitBranch && e.gitBranch !== 'HEAD' && <span className="truncate font-mono">{e.gitBranch}</span>}
+                <Badge icon={<AgentIcon agentId={e.agentId} className="size-4 rounded-sm text-[9px]" />} className="h-5" data-testid="history-agent">
+                  {e.agentName}
+                </Badge>
+                {accountName && (
+                  <Badge icon={<UserRound className="size-3" aria-hidden />} className="h-4">
+                    {accountName}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            {e.resumable && (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={opening === `${e.agentSessionId}:app` ? <Spinner className="size-3" /> : <MessagesSquare className="size-3.5" aria-hidden />}
+                  disabled={opening !== null}
+                  onClick={() => void resume(e, 'app')}
+                >
+                  {t('history.resume')}
+                </Button>
+                <IconButton
+                  label={t('history.resumeConsole')}
+                  icon={opening === `${e.agentSessionId}:console` ? <Spinner className="size-3.5" /> : <SquareTerminal className="size-4" />}
+                  disabled={opening !== null}
+                  onClick={() => void resume(e, 'console')}
+                />
+              </>
+            )}
+          </li>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Content className={MENU_CONTENT}>
+            {e.resumable && (
+              <>
+                <ContextMenu.Item className={MENU_ITEM} onSelect={() => void resume(e, 'app')}>
+                  {t('history.resumeApp')}
+                </ContextMenu.Item>
+                <ContextMenu.Item className={MENU_ITEM} onSelect={() => void resume(e, 'console')}>
+                  {t('history.resumeInConsole')}
+                </ContextMenu.Item>
+                <ContextMenu.Separator className="my-1 h-px bg-border" />
+              </>
+            )}
+            {e.cwd && (
+              <ContextMenu.Item className={MENU_ITEM} onSelect={() => void revealFolder(e.cwd!)}>
+                {t('history.revealFolder')}
+              </ContextMenu.Item>
+            )}
+            <ContextMenu.Item className={MENU_ITEM} onSelect={() => void copyId(e.agentSessionId)}>
+              {t('history.copyId')}
+            </ContextMenu.Item>
+          </ContextMenu.Content>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
+    )
   }
 
   return (
@@ -178,6 +270,11 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
             />
           </div>
         )}
+        {(byAutomation.groups.length > 0 || hideAutomations) && (
+          <Button size="md" variant={hideAutomations ? 'primary' : 'secondary'} aria-pressed={hideAutomations} onClick={() => setHideAutomations(!hideAutomations)} data-testid="history-hide-automations">
+            {t('history.hideAutomations')}
+          </Button>
+        )}
         <RefreshButton size="md" iconClassName="size-4" label={t('history.refresh')} loading={loading} onRefresh={load} />
       </div>
       {error && (
@@ -197,10 +294,43 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
           {t('history.loading')}
         </div>
       )}
-      {result && groups.length === 0 && (
+      {result && groups.length === 0 && automationGroups.length === 0 && (
         <div className="py-12">
           <EmptyState icon={<History className="size-6" aria-hidden />} title={query ? t('history.noMatch') : t('history.empty')} description={t('history.emptyDescription')} />
         </div>
+      )}
+      {automationGroups.length > 0 && (
+        <section aria-label={t('history.automations')} className="flex flex-col gap-1.5" data-testid="history-automations">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-muted">
+            <Settings className="size-3.5 text-subtle" aria-hidden />
+            {t('history.automations')}
+          </h2>
+          <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+            {automationGroups.map((g) => {
+              const isOpen = expanded.has(g.automationId)
+              const today = g.entries.filter((e) => e.lastModified >= startOfToday()).length
+              return (
+                <li key={g.automationId} data-testid="history-automation-group">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-accent-soft/40"
+                    aria-expanded={isOpen}
+                    onClick={() => toggleAutomation(g.automationId)}
+                  >
+                    <ChevronRight className={`size-3.5 shrink-0 text-subtle transition-transform ${isOpen ? 'rotate-90' : ''}`} aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-base">{g.name || t('history.untitled')}</div>
+                      <div className="text-xs text-subtle" data-testid="history-automation-summary">
+                        {tn('history.automationRuns', g.entries.length, { today })} · {t('history.automationLast', { time: formatDate(g.lastModified, { dateStyle: 'medium', timeStyle: 'short' }) })}
+                      </div>
+                    </div>
+                  </button>
+                  {isOpen && <ul className="flex flex-col divide-y divide-border border-t border-border bg-surface-raised/40 pl-6">{g.entries.map(renderEntry)}</ul>}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
       )}
       {groups.map((g) => (
         <section key={g.folder} aria-label={g.folder || t('history.noFolder')} className="flex flex-col gap-1.5">
@@ -211,91 +341,20 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
             <span className="ml-auto text-xs font-normal text-subtle tabular-nums">{g.entries.length}</span>
           </h2>
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
-            {g.entries.map((e) => {
-              const accountName = e.accountName
-              return (
-                <ContextMenu.Root key={`${e.agentId}:${e.agentSessionId}`}>
-                  <ContextMenu.Trigger asChild>
-                    <li
-                      className="flex items-center gap-3 px-3.5 py-2.5 select-none"
-                      data-testid="history-entry"
-                      onDoubleClick={() => e.resumable && opening === null && void resume(e, 'app')}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate text-base">{e.title || t('history.untitled')}</span>
-                          {open.has(historyId(e)) && (
-                            <Badge tone="success" className="h-4 shrink-0" title={t('history.openHint')} data-testid="history-open">
-                              {t('history.open')}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-subtle">
-                          <span>{formatDate(e.lastModified, { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                          {e.gitBranch && e.gitBranch !== 'HEAD' && <span className="truncate font-mono">{e.gitBranch}</span>}
-                          <Badge icon={<AgentIcon agentId={e.agentId} className="size-4 rounded-sm text-[9px]" />} className="h-5" data-testid="history-agent">
-                            {e.agentName}
-                          </Badge>
-                          {accountName && (
-                            <Badge icon={<UserRound className="size-3" aria-hidden />} className="h-4">
-                              {accountName}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      {e.resumable && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            icon={opening === `${e.agentSessionId}:app` ? <Spinner className="size-3" /> : <MessagesSquare className="size-3.5" aria-hidden />}
-                            disabled={opening !== null}
-                            onClick={() => void resume(e, 'app')}
-                          >
-                            {t('history.resume')}
-                          </Button>
-                          <IconButton
-                            label={t('history.resumeConsole')}
-                            icon={opening === `${e.agentSessionId}:console` ? <Spinner className="size-3.5" /> : <SquareTerminal className="size-4" />}
-                            disabled={opening !== null}
-                            onClick={() => void resume(e, 'console')}
-                          />
-                        </>
-                      )}
-                    </li>
-                  </ContextMenu.Trigger>
-                  <ContextMenu.Portal>
-                    <ContextMenu.Content className={MENU_CONTENT}>
-                      {e.resumable && (
-                        <>
-                          <ContextMenu.Item className={MENU_ITEM} onSelect={() => void resume(e, 'app')}>
-                            {t('history.resumeApp')}
-                          </ContextMenu.Item>
-                          <ContextMenu.Item className={MENU_ITEM} onSelect={() => void resume(e, 'console')}>
-                            {t('history.resumeInConsole')}
-                          </ContextMenu.Item>
-                          <ContextMenu.Separator className="my-1 h-px bg-border" />
-                        </>
-                      )}
-                      {e.cwd && (
-                        <ContextMenu.Item className={MENU_ITEM} onSelect={() => void revealFolder(e.cwd!)}>
-                          {t('history.revealFolder')}
-                        </ContextMenu.Item>
-                      )}
-                      <ContextMenu.Item className={MENU_ITEM} onSelect={() => void copyId(e.agentSessionId)}>
-                        {t('history.copyId')}
-                      </ContextMenu.Item>
-                    </ContextMenu.Content>
-                  </ContextMenu.Portal>
-                </ContextMenu.Root>
-              )
-            })}
+            {g.entries.map(renderEntry)}
           </ul>
         </section>
       ))}
       {result && groups.length > 0 && <p className="text-xs text-subtle">{t('history.doubleClick')}</p>}
     </div>
   )
+}
+
+/** Epoch ms of today's local midnight, for "N today". */
+function startOfToday(): number {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
 }
 
 const MENU_CONTENT = 'z-50 min-w-48 animate-fade-in rounded-md border border-border bg-surface-raised p-1 shadow-lg'

@@ -174,6 +174,9 @@ export interface HistoryItem extends HistoryEntry {
   agentName: string
   /** Whether Workhub can open the session again; other agents' sessions are listed only. */
   resumable: boolean
+  /** The automation the session ran for, when it is one (History groups its runs). */
+  automationId?: string
+  automationName?: string
 }
 
 export interface HistoryResult {
