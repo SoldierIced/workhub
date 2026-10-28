@@ -187,14 +187,21 @@ it is never notarized. The product name, app id and release repository live in
 
 ### Release process
 
-The version is the root `package.json`'s (`packages/app/package.json` must match). A version with a
-suffix (`2.0.0-alpha.1`) is published as a pre-release.
+Releases are cut by [release-please](https://github.com/googleapis/release-please) from the
+Conventional Commits on `main`; [CHANGELOG.md](CHANGELOG.md) is generated the same way.
 
-1. Set the version in both `package.json` files, commit, push.
-2. Push a tag: `git tag v2.0.0-alpha.1 && git push origin v2.0.0-alpha.1`. The `release` workflow
-   checks the tag against the version, builds the three installers and attaches them, with
-   checksums and `latest*.yml` update metadata, to a **draft** release. Review and publish it.
-3. Or release the macOS build from your machine: `scripts/release.sh --dry-run`, then `--publish`.
+1. Every push to `main` with a `feat`, `fix`, `perf` or `revert` commit opens or updates the
+   release pull request: the next version (`2.0.0-alpha.N` while in alpha) in every `package.json`
+   and `package-lock.json`, and the new changelog entry.
+2. Merging it tags `v<version>`, creates a **draft** pre-release with the changelog as notes, and
+   runs the `release` workflow, which builds the macOS, Windows and Linux installers and attaches
+   them, with checksums and `latest*.yml` update metadata, to the draft.
+3. Review the draft on the Releases page and publish it.
+
+Moving to beta or stable (a `Release-As` commit footer, or `"prerelease": false` in
+`release-please-config.json`) and the manual tag fallback are described in
+[CONTRIBUTING.md](CONTRIBUTING.md#releases). `scripts/release.sh --dry-run`, then `--publish`,
+still releases a macOS build from your machine.
 
 The `ci` workflow runs install, typecheck, tests and build on macOS, Windows and Linux for every
 push to `main` and every pull request. Signing and notarization are a later step.
