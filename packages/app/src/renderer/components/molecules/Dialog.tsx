@@ -12,15 +12,18 @@ export interface DialogProps {
   children: ReactNode
   footer?: ReactNode
   className?: string
+  /** Where focus goes when the dialog closes; the handler may call `preventDefault` and focus something itself. */
+  onCloseAutoFocus?: (event: Event) => void
 }
 
-export function Dialog({ open, onOpenChange, title, description, children, footer, className }: DialogProps) {
+export function Dialog({ open, onOpenChange, title, description, children, footer, className, onCloseAutoFocus }: DialogProps) {
   const { t } = useI18n()
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40 backdrop-blur-[2px]" />
         <RDialog.Content
+          onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-[min(520px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 animate-pop-in',
             'rounded-xl border border-border bg-surface-raised shadow-lg focus-visible:outline-none',

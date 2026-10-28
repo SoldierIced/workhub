@@ -104,11 +104,22 @@ export function SaveBar({ store }: { store: UnsavedChanges }) {
 }
 
 /** "Save your changes?" before a close, tab or item switch would throw a draft away. */
-export function UnsavedPrompt({ open, saving, onAnswer }: { open: boolean; saving?: boolean; onAnswer: (choice: 'save' | 'discard' | 'cancel') => void }) {
+export function UnsavedPrompt({
+  open,
+  saving,
+  onAnswer,
+  onCloseAutoFocus
+}: {
+  open: boolean
+  saving?: boolean
+  onAnswer: (choice: 'save' | 'discard' | 'cancel') => void
+  onCloseAutoFocus?: (event: Event) => void
+}) {
   const { t } = useI18n()
   return (
     <Dialog
       open={open}
+      onCloseAutoFocus={onCloseAutoFocus}
       onOpenChange={(o) => !o && onAnswer('cancel')}
       title={t('unsaved.promptTitle')}
       description={t('unsaved.promptBody')}
@@ -132,9 +143,24 @@ export function UnsavedPrompt({ open, saving, onAnswer }: { open: boolean; savin
 }
 
 /** The prompt of a store, answered through it. */
-export function StoreUnsavedPrompt({ store }: { store: UnsavedChanges }) {
+export function StoreUnsavedPrompt({ store, restoreFocus }: { store: UnsavedChanges; restoreFocus?: () => void }) {
   const s = useUnsavedSnapshot(store)
-  return <UnsavedPrompt open={s.prompting} saving={s.saving} onAnswer={(c) => void store.answer(c)} />
+  return (
+    <UnsavedPrompt
+      open={s.prompting}
+      saving={s.saving}
+      onAnswer={(c) => void store.answer(c)}
+      onCloseAutoFocus={
+        restoreFocus
+          ? (e) => {
+              // Keep focus inside the dialog that asked, so its shortcuts (⌘S) keep working.
+              e.preventDefault()
+              restoreFocus()
+            }
+          : undefined
+      }
+    />
+  )
 }
 
 /** A small danger button for a form header that asks before deleting. */
