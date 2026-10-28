@@ -32,7 +32,7 @@ export function ToastProvider({ children, label }: { children: ReactNode; label:
             <RToast.Title className={cn('text-base')}>{m.text}</RToast.Title>
           </RToast.Root>
         ))}
-        <RToast.Viewport className="fixed right-5 bottom-5 z-50 flex w-80 flex-col gap-2 outline-none" />
+        <RToast.Viewport className="fixed right-5 bottom-5 z-[60] flex w-80 flex-col gap-2 outline-none" />
       </RToast.Provider>
     </ToastContext.Provider>
   )

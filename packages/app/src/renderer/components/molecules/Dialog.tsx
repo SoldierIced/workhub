@@ -21,7 +21,8 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
-        <RDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40 backdrop-blur-[2px]" />
+        {/* On the dialog's own layer: a dialog opened from another (a confirmation over Settings) dims the one below. */}
+        <RDialog.Overlay className="fixed inset-0 z-50 animate-fade-in bg-black/40 backdrop-blur-[2px]" />
         <RDialog.Content
           onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
@@ -43,7 +44,8 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
               <X className="size-4" aria-hidden />
             </RDialog.Close>
           </div>
-          <div className="px-5 py-4">{children}</div>
+          {/* A confirmation says it all in its title and description: no empty body before the buttons. */}
+          {children ? <div className="px-5 py-4">{children}</div> : <div className="h-4" />}
           {footer && <div className="flex justify-end gap-2 border-t border-border px-5 py-3">{footer}</div>}
         </RDialog.Content>
       </RDialog.Portal>
