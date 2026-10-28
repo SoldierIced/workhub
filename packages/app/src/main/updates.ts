@@ -1,4 +1,4 @@
-import { app, shell } from 'electron'
+import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { UpdateStatus } from '../shared/updates-api'
 
@@ -14,7 +14,10 @@ export class UpdateService {
   private current: UpdateStatus
   private wired = false
 
-  constructor(private readonly onChanged: (status: UpdateStatus) => void) {
+  constructor(
+    private readonly onChanged: (status: UpdateStatus) => void,
+    private readonly openUrl: (url: string) => Promise<void>
+  ) {
     this.current = { state: app.isPackaged ? 'idle' : 'unsupported', currentVersion: app.getVersion(), canInstall: this.canInstall() }
     if (!app.isPackaged) this.current.message = 'Updates are only checked in the packaged app.'
   }
@@ -38,7 +41,7 @@ export class UpdateService {
   async install(): Promise<UpdateStatus> {
     if (this.current.state !== 'available') return this.current
     if (!this.current.canInstall) {
-      await shell.openExternal(this.current.releaseUrl ?? RELEASES)
+      await this.openUrl(this.current.releaseUrl ?? RELEASES)
       return this.current
     }
     this.set({ state: 'downloading' })
