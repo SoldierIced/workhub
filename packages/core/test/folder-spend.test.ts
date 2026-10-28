@@ -42,6 +42,16 @@ describe('attributeFolder', () => {
     expect(attributeFolder('/w/wayni/_worktrees/api-fix', ['/w/wayni'], children)?.name).toBe('api')
   })
 
+  it('sends a removed worktree next to its repository to the longest child it extends with a dash', () => {
+    const kids = { '/w/p': ['shop', 'shop-admin', 'workhub', 'workhub2'] }
+    expect(attributeFolder('/w/p/shop-fix-login/src', ['/w/p'], kids)).toEqual({ name: 'shop', path: '/w/p/shop', root: false })
+    expect(attributeFolder('/w/p/shop-admin-tn', ['/w/p'], kids)?.name).toBe('shop-admin')
+    expect(attributeFolder('/w/p/workhub2-health', ['/w/p'], kids)?.name).toBe('workhub2')
+    // A child that exists keeps its own entry; a name that only shares a prefix stays at the root.
+    expect(attributeFolder('/w/p/shop-admin', ['/w/p'], kids)?.name).toBe('shop-admin')
+    expect(attributeFolder('/w/p/shopping', ['/w/p'], kids)?.root).toBe(true)
+  })
+
   it('picks the deepest profile folder and ignores paths outside every folder or sharing a prefix', () => {
     expect(attributeFolder('/w/wayni/web/a', ['/w/wayni', '/w/wayni/web'], children)).toEqual({ name: 'web', path: '/w/wayni/web', root: false })
     expect(attributeFolder('/w/wayni-old/api', ['/w/wayni'], children)).toBeNull()
@@ -81,5 +91,21 @@ describe('folderSpend', () => {
     ])
     expect(aliasPath('/elsewhere/api-fix/src/a', aliases)).toBe('/w/wayni/api/src/a')
     expect(aliasPath('/elsewhere/api-fixed', aliases)).toBe('/elsewhere/api-fixed')
+  })
+
+  it('counts a live worktree next to its repository for the repository, not as a folder of its own', () => {
+    const b: SpendBuckets = {}
+    addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/w/p/workhub2-chat/packages', 70)
+    addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/w/p/workhub2', 30)
+    const out = folderSpend(b, ['/w/p'], { sinceDay: day('2026-10-21T12:00:00'), children: { '/w/p': ['workhub2', 'workhub2-chat'] }, aliases: { '/w/p/workhub2-chat': '/w/p/workhub2' } })
+    expect(out).toEqual([{ name: 'workhub2', path: '/w/p/workhub2', root: false, tokens: 100, byAgent: { claude: 100 } }])
+  })
+
+  it('tells two folders of the same name apart by their parent', () => {
+    const b: SpendBuckets = {}
+    addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/w/p/shop', 50)
+    addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/opt/shop', 10)
+    const out = folderSpend(b, ['/w/p'], { sinceDay: day('2026-10-21T12:00:00'), children: { '/w/p': ['shop'] }, owns: () => true })
+    expect(out.map((e) => e.name)).toEqual(['p/shop', 'opt/shop'])
   })
 })

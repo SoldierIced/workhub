@@ -77,8 +77,10 @@ const lastSegment = (p: string) => norm(p).split('/').filter(Boolean).pop() ?? p
  * The deepest profile folder that holds the path wins. A folder listed in `children` (a container
  * of repositories, like Workhub 1's profile roots) is split by its child folders: work in
  * `<folder>/<child>/…` goes to the child, and `_worktrees/<child>-<branch>` to the longest child
- * name it starts with; anything else in it (hidden folders, files, made-up paths) goes to the
- * folder itself, marked `root`. A folder without children is one entry.
+ * name it starts with. A sibling `<child>-<branch>` that is not a child itself (a worktree next to
+ * its repository, usually removed once merged, so git can no longer say whose it was) goes to the
+ * longest child it extends with a dash. Anything else in it (hidden folders, files, made-up paths)
+ * goes to the folder itself, marked `root`. A folder without children is one entry.
  */
 export function attributeFolder(
   path: string,
@@ -101,6 +103,9 @@ export function attributeFolder(
   if (child === '_worktrees' && rest[1]) {
     const worktree = rest[1]
     child = kids.filter((k) => worktree.startsWith(k)).sort((a, b) => b.length - a.length)[0]
+  } else if (child && !kids.includes(child)) {
+    const sibling = child
+    child = kids.filter((k) => sibling.startsWith(`${k}-`)).sort((a, b) => b.length - a.length)[0] ?? child
   }
   if (child && !child.startsWith('.') && kids.includes(child)) return { name: child, path: `${folder}/${child}`, root: false }
   return { name: lastSegment(folder), path: folder, root: true }
@@ -125,8 +130,11 @@ export function aliasPath(path: string, aliases: Readonly<Record<string, string>
  * Tokens per folder of a profile over the days from `sinceDay` on, largest first. Work outside
  * the profile's folders is left out, so each profile shows only its own spend.
  *
- * `aliases` (see `aliasPath`) first moves work in a git worktree that lives outside the folders to
- * the same place in its main repository, so it counts there.
+ * `aliases` (see `aliasPath`) first moves work in a linked git worktree (outside the folders, or
+ * next to its repository inside them) to the same place in its main repository, so it counts there.
+ *
+ * Two entries with the same folder name (a repository and a copy of it elsewhere) are told apart
+ * by their parent folder: `opt/shop`.
  *
  * `owns` (see `owningProfile`) narrows that to the work the profile owns: a deeper folder of another
  * profile is left out, and work it owns outside its folders (the profile that "also owns everything
@@ -152,8 +160,14 @@ export function folderSpend(
     let place = placeOf.get(parsed.path)
     if (place === undefined) {
       let path = parsed.path
-      if (options.aliases && !attributeFolder(path, folders, options.children)) path = aliasPath(path, options.aliases)
+      if (options.aliases) path = aliasPath(path, options.aliases)
       place = owns && !owns(path) ? null : attributeFolder(path, folders, options.children)
+      // A removed worktree named after a live one (`shop-fix-2` next to the worktree `shop-fix`)
+      // lands on that worktree: follow it to its repository too.
+      if (place && !place.root && options.aliases) {
+        const moved = aliasPath(place.path, options.aliases)
+        if (moved !== place.path) place = attributeFolder(moved, folders, options.children) ?? place
+      }
       if (!place && owns && owns(path) && !isThrowawayFolder(path)) place = { name: lastSegment(path), path: norm(path), root: false }
       placeOf.set(parsed.path, place)
     }
@@ -167,5 +181,28 @@ export function folderSpend(
     entry.tokens += tokens
     entry.byAgent[parsed.agent] = (entry.byAgent[parsed.agent] ?? 0) + tokens
   }
-  return [...byPath.values()].sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name))
+  const entries = [...byPath.values()]
+  distinguishNames(entries)
+  return entries.sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name))
+}
+
+/**
+ * Entries that share a name get as many parent folders as it takes to tell them apart:
+ * `/opt/shop` and `/w/p/shop` become `opt/shop` and `p/shop`.
+ */
+function distinguishNames(entries: FolderSpendEntry[]): void {
+  const groups = new Map<string, FolderSpendEntry[]>()
+  for (const e of entries) groups.set(e.name, [...(groups.get(e.name) ?? []), e])
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    const parts = group.map((e) => norm(e.path).split('/').filter(Boolean))
+    const longest = Math.max(...parts.map((p) => p.length))
+    for (let depth = 2; depth <= longest; depth++) {
+      const names = parts.map((p) => p.slice(-depth).join('/'))
+      if (new Set(names).size === names.length || depth === longest) {
+        group.forEach((e, i) => (e.name = names[i]!))
+        break
+      }
+    }
+  }
 }

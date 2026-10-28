@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { emptySpendCache, TokenSpendScanner, worktreeAliases, type SpendCache, type SpendFileEntry, type SpendSources, type WorktreeLink } from '@workhub/adapters/token-spend'
-import { attributeFolder, folderSpend, ownsFolder, parseSpendKey, profileFolderPaths, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
+import { folderSpend, ownsFolder, parseSpendKey, profileFolderPaths, SPEND_DAYS, spendWindowStart, startOfLocalDay, type SpendBuckets, type WorkhubConfig } from '@workhub/core'
 import type { FolderSpendResult } from '../shared/api'
 import { usageAccounts } from './agent-usage'
 import { profileProjectChildren } from './workspaces'
@@ -93,13 +93,16 @@ export class TokenSpendService {
     const owns = (path: string) => ownsFolder(profile.id, path, config.profiles, home)
     const sinceDay = spendWindowStart(this.now())
     const hasFolders = folders.length > 0 || profile.ownsOutside === true
-    // Worktrees outside the folders count for their repository (and so for the profile owning it).
-    const outside = new Set<string>()
+    // A linked worktree counts for its repository (and so for the profile owning it), wherever it
+    // lives: outside the folders, or next to the repository inside one.
+    const paths = new Set<string>()
     for (const key of Object.keys(this.buckets)) {
       const parsed = parseSpendKey(key)
-      if (parsed && parsed.day >= sinceDay && !outside.has(parsed.path) && !attributeFolder(parsed.path, folders, children)) outside.add(parsed.path)
+      if (parsed && parsed.day >= sinceDay) paths.add(parsed.path)
     }
-    const aliases = hasFolders ? await worktreeAliases(outside, this.worktrees) : {}
+    // The child folders too: a removed worktree may be named after a live one (see `folderSpend`).
+    for (const [folder, kids] of Object.entries(children)) for (const kid of kids) paths.add(join(folder, kid))
+    const aliases = hasFolders ? await worktreeAliases(paths, this.worktrees) : {}
     const entries = folderSpend(this.buckets, folders, { sinceDay, children, owns, aliases })
     return { entries, days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders }
   }
