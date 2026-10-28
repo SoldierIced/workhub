@@ -54,6 +54,8 @@ export interface Profile {
   symbol?: string
   /** The browser that opens this profile's GitHub and Jira links (an app name on macOS, a command elsewhere); unset: the default browser. */
   linkBrowser?: string
+  /** A Chrome profile directory (`Default`, `Profile 1`): links open in a new Chrome (`linkBrowser`, else Google Chrome) on that profile. macOS only. */
+  linkChromeProfile?: string
   /** Also owns every folder outside all profiles' folders (at most one profile at a time). */
   ownsOutside?: boolean
   /** Names of the environment variables added to this profile's sessions; the values live in the secret store (`profileEnvRef`). */
@@ -96,6 +98,9 @@ export function accountColor(accounts: readonly { id: string; agentId: string }[
   if (!account) return undefined
   return automaticProfileColor(accounts.filter((a) => a.agentId === account.agentId).indexOf(account))
 }
+
+/** A Chrome profile directory name (`Default`, `Profile 1`); keeps odd text out of the command line. */
+export const CHROME_PROFILE_DIR = /^\w[\w .-]{0,99}$/
 
 /** A valid name for a session environment variable. */
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/

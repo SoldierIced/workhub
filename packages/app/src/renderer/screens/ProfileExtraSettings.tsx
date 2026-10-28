@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { ENV_NAME, type FolderOptions, type Profile } from '@workhub/core'
+import { ENV_NAME, type ChromeProfile, type FolderOptions, type Profile } from '@workhub/core'
 import { Button, Input, Select, Switch } from '../components/atoms'
 import { Field, HelpTip, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
@@ -261,9 +261,7 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
       </FieldGroup>
       <FieldGroup legend={t('profileExtra.links')}>
         <div className="flex flex-col gap-3 py-2">
-          <Field label={t('profileExtra.linkBrowser')} hint={`${t('profileExtra.linkBrowserHint')} ${window.hub.platform === 'mac' ? t('profileExtra.linkBrowserMac') : t('profileExtra.linkBrowserOther')}`}>
-            <Input value={form.linkBrowser ?? ''} spellCheck={false} placeholder={window.hub.platform === 'mac' ? 'Google Chrome' : 'chromium'} onChange={(e) => onChange({ ...form, linkBrowser: e.target.value || undefined })} />
-          </Field>
+          <LinkBrowserFields form={form} onChange={onChange} />
           <SwitchRow label={t('profileExtra.ownsOutside')} hint={t('profileExtra.ownsOutsideHint')}>
             <Switch checked={form.ownsOutside === true} onChange={(on) => onChange({ ...form, ownsOutside: on })} />
           </SwitchRow>
@@ -272,6 +270,73 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
       <FieldGroup legend={t('profileExtra.env')} help={t('profileExtra.envHelp')}>
         <EnvFields env={env} />
       </FieldGroup>
+    </>
+  )
+}
+
+// --- Open links with ---------------------------------------------------------------------------
+
+type LinkMode = 'default' | 'app' | 'chrome'
+
+/** Which way the profile opens links, as saved: nothing, a browser app, or a Chrome profile. */
+function linkMode(form: Profile): LinkMode {
+  return form.linkChromeProfile !== undefined ? 'chrome' : form.linkBrowser ? 'app' : 'default'
+}
+
+/** "Open links with": the default browser, a browser app, or (macOS) Google Chrome on one of its profiles. */
+function LinkBrowserFields({ form, onChange }: { form: Profile; onChange: (profile: Profile) => void }) {
+  const { t } = useI18n()
+  const mac = window.hub.platform === 'mac'
+  // Kept apart from the saved values: an app field emptied while typing must not flip back to the default.
+  const [mode, setMode] = useState<LinkMode>(() => linkMode(form))
+  const [chromeProfiles, setChromeProfiles] = useState<ChromeProfile[]>([])
+  useEffect(() => {
+    if (mode !== 'chrome') return
+    let alive = true
+    void window.hub.chromeProfiles().then((list) => alive && setChromeProfiles(list), () => alive && setChromeProfiles([]))
+    return () => {
+      alive = false
+    }
+  }, [mode])
+  const choose = (next: string) => {
+    setMode(next as LinkMode)
+    if (next === 'default') onChange({ ...form, linkBrowser: undefined, linkChromeProfile: undefined })
+    else if (next === 'app') onChange({ ...form, linkChromeProfile: undefined })
+    else onChange({ ...form, linkChromeProfile: form.linkChromeProfile ?? chromeProfiles[0]?.dir ?? 'Default' })
+  }
+  const current = form.linkChromeProfile
+  const profileOptions = [
+    ...chromeProfiles.map((p) => ({ value: p.dir, label: `${p.name} (${p.dir})` })),
+    ...(current && !chromeProfiles.some((p) => p.dir === current) ? [{ value: current, label: current }] : [])
+  ]
+  return (
+    <>
+      <Field label={t('profileExtra.linkBrowser')} hint={t('profileExtra.linkBrowserHint')}>
+        <Select
+          value={mode}
+          onChange={choose}
+          options={[
+            { value: 'default', label: t('profileExtra.linkDefault') },
+            { value: 'app', label: t('profileExtra.linkApp') },
+            ...(mac ? [{ value: 'chrome', label: t('profileExtra.linkChrome') }] : [])
+          ]}
+        />
+      </Field>
+      {mode === 'app' && (
+        <Field label={t('profileExtra.linkApp')} hint={mac ? t('profileExtra.linkBrowserMac') : t('profileExtra.linkBrowserOther')}>
+          <Input value={form.linkBrowser ?? ''} spellCheck={false} placeholder={mac ? 'Google Chrome' : 'chromium'} onChange={(e) => onChange({ ...form, linkBrowser: e.target.value || undefined })} />
+        </Field>
+      )}
+      {mode === 'chrome' && (
+        <>
+          <Field label={t('profileExtra.linkChromeProfile')} hint={profileOptions.length === 0 ? t('profileExtra.linkChromeNone') : t('profileExtra.linkChromeProfileHint')}>
+            <Select value={current ?? ''} onChange={(dir) => onChange({ ...form, linkChromeProfile: dir || 'Default' })} options={profileOptions} placeholder="Default" />
+          </Field>
+          <Field label={t('profileExtra.linkChromeApp')} hint={t('profileExtra.linkChromeAppHint')}>
+            <Input value={form.linkBrowser ?? ''} spellCheck={false} placeholder="Google Chrome" onChange={(e) => onChange({ ...form, linkBrowser: e.target.value || undefined })} />
+          </Field>
+        </>
+      )}
     </>
   )
 }

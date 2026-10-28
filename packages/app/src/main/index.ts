@@ -112,7 +112,8 @@ import { SessionNames } from './session-names'
 import { OpenSessions, type SavedOpenSessions } from './open-sessions'
 import { boundsOnScreen, SessionWindows, type SavedSessionWindows, type WindowBounds } from './session-windows'
 import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
-import { linkCommand } from './link-opener'
+import { createLinkService } from './link-service'
+import { listChromeProfiles, systemLinkDeps } from './link-system'
 import { profileSessionEnv, saveProfileEnv, storedProfileEnvNames } from './profile-env'
 import { SetupService } from './setup-service'
 import type { SetupPage } from '../shared/setup-api'
@@ -417,7 +418,7 @@ const usage = new AgentUsageService({
 })
 const budgetOf = (agentId: string, accountId: string | null) => usage.budgetOf(agentId, accountId)
 
-const updates = new UpdateService((s) => send('updates:changed', s))
+const updates = new UpdateService((s) => send('updates:changed', s), (url) => openLink(null, url))
 
 // Slack watcher and automations (P6a). WORKHUB_DEMO_SLACK=1 reads synthetic Slack instead of
 // asking an agent, and never touches a Claude account's settings.
@@ -631,23 +632,9 @@ function syncTitleBarOverlay(): void {
   if (process.platform !== 'darwin' && win && !win.isDestroyed()) win.setTitleBarOverlay({ ...chromeColors(), height: TITLE_BAR_HEIGHT })
 }
 
-/**
- * Opens a web link in the browser the profile chose (Settings → Profiles → "Open links with"),
- * else in the default browser. A browser that cannot be started falls back to the default one.
- */
-async function openLink(profileId: string | null, url: string): Promise<void> {
-  if (!/^https?:\/\//i.test(url)) return
-  const config = await configuration.current()
-  const profile = config.profiles.find((p) => p.id === (profileId ?? config.activeProfileId))
-  const command = linkCommand(process.platform, profile?.linkBrowser, url)
-  if (!command) return void (await shell.openExternal(url))
-  await new Promise<void>((done) =>
-    execFile(command.command, command.args, { windowsHide: true }, (err) => {
-      if (err) void shell.openExternal(url)
-      done()
-    })
-  )
-}
+/** Every external link goes through here (see link-service.ts). */
+const links = createLinkService(systemLinkDeps(() => configuration.current()))
+const openLink = (profileId: string | null, url: string): Promise<void> => links.open(url, profileId)
 
 const setup = new SetupService({
   config: () => configuration.current(),
@@ -777,9 +764,10 @@ function registerIpc(): void {
       return []
     }
   })
-  ipc.on('hub:openExternal', (_e, url: string) => {
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+  ipc.on('hub:openExternal', (_e, url: unknown, profileId: unknown) => {
+    if (typeof url === 'string') void links.open(url, typeof profileId === 'string' ? profileId : null)
   })
+  ipc.handle('links:chromeProfiles', () => listChromeProfiles())
 
   ipc.handle('updates:status', () => updates.status())
   ipc.handle('updates:check', () => updates.check())
@@ -1233,8 +1221,6 @@ const rendererFile = join(__dirname, '../renderer/index.html')
 /** The only pages allowed to talk to the main process. */
 const rendererOrigin = { fileUrl: pathToFileURL(rendererFile).href, devServerUrl: process.env['ELECTRON_RENDERER_URL'] }
 
-const isWebUrl = (url: string) => /^https?:\/\//i.test(url)
-
 /**
  * Every window and webview the app ever creates stays on the app's renderer: navigations and
  * redirects away from it are refused (web links go to the default browser instead), new windows
@@ -1245,7 +1231,7 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, url) => {
     if (url === contents.getURL()) return
     event.preventDefault()
-    if (isWebUrl(url)) void shell.openExternal(url)
+    void openLink(null, url)
   })
   contents.on('will-redirect', (event, url) => {
     if (!isTrustedRendererUrl(url, rendererOrigin)) event.preventDefault()
@@ -1253,7 +1239,7 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (event) => event.preventDefault())
   // Links in agent replies open in the default browser, never inside the app.
   contents.setWindowOpenHandler(({ url }) => {
-    if (isWebUrl(url)) void shell.openExternal(url)
+    void openLink(null, url)
     return { action: 'deny' }
   })
 })
@@ -1337,7 +1323,7 @@ async function refreshMenu(): Promise<void> {
         agents: agents.map((a) => ({ key: a.key, label: a.label, agentId: a.agent.id })),
         t,
         run: runMenuCommand,
-        openHelp: () => void shell.openExternal(HELP_URL),
+        openHelp: () => void openLink(null, HELP_URL),
         openSetup: openSetupWindow,
         developer: !app.isPackaged
       })
