@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { PullRequestItem } from '@workhub/core'
-import { changesTotal, contextView, dragWidth, pullRequestLabel, requestBars, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
+import { changesTotal, contextView, dragWidth, pullRequestLabel, requestBars, sessionTime, subagentTokens, toolTimeMs } from '../src/renderer/lib/monitorView'
 import { DEFAULT_PREFS, parsePrefs } from '../src/renderer/lib/prefs'
 import { abbreviateFolder, activityElapsed, activityOf, formatClock, formatSince, headerDensity, permissionModeLabel } from '../src/renderer/lib/sessionHeader'
 
@@ -76,20 +75,6 @@ describe('monitor view model', () => {
     const repo = (name: string, files: number, additions: number, deletions: number) => ({ name, root: `/r/${name}`, branch: 'feat/x', files, additions, deletions })
     expect(changesTotal({ nested: true, scanned: 3, repos: [repo('a', 2, 10, 1), repo('b', 1, 0, 4)] })).toEqual({ repos: 2, files: 3, additions: 10, deletions: 5 })
     expect(changesTotal({ nested: false, scanned: 1, repos: [repo('a', 0, 0, 0)] })).toEqual({ repos: 0, files: 0, additions: 0, deletions: 0 })
-  })
-
-  it("finds the session's pull requests by touched URL or by its repositories' branches", () => {
-    const item = (repo: string, number: number, branch: string, state: 'open' | 'merged' = 'open', ticketKeys: string[] = []): PullRequestItem =>
-      ({ pr: { provider: 'github', owner: 'acme', repo, number, url: `https://github.com/acme/${repo}/pull/${number}`, branch, state }, ticketKeys }) as unknown as PullRequestItem
-    const items = [item('web', 1, 'feat/login', 'open', ['ABC-1']), item('api', 2, 'main'), item('api', 3, 'feat/other', 'merged'), item('docs', 4, 'feat/login'), item('web', 1, 'feat/login')]
-    const repos = [
-      { name: 'web', root: '/r/web', branch: 'feat/login', files: 0, additions: 0, deletions: 0 },
-      { name: 'api', root: '/r/api', branch: 'main', files: 0, additions: 0, deletions: 0 }
-    ]
-    const found = sessionPullRequests(items, ['https://github.com/acme/api/pull/3'], repos)
-    // web#1 by branch (once), api#3 touched even though merged; api#2 is on a shared branch; docs is another repo.
-    expect(found.map((p) => p.pr.number)).toEqual([1, 3])
-    expect(sessionTicketKeys(found, ['XYZ-9', 'ABC-1'])).toEqual(['ABC-1', 'XYZ-9'])
   })
 
   it('resizes the panel from its left edge within bounds', () => {

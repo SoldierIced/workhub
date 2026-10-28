@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import {
   mergeMonitor,
+  noteWorkPath,
   type Money,
   type SessionMonitorSnapshot,
   type SubagentConversation,
@@ -137,6 +138,10 @@ export class ClaudeTranscriptReader implements TranscriptReader {
     const tokens = sumTokens([snap.tokens ?? {}, ...subagents.map((s) => s.tokens ?? {})])
     const costs = [snap.cost, ...subagents.map((s) => s.cost)].filter((c): c is Money => !!c)
     const patch: SessionMonitorSnapshot = { subagents, tokens }
+    // Work a subagent did (its edits, its `cd`s) is the session's work too.
+    const workPaths = [...(snap.workPaths ?? [])]
+    for (const sub of state.subagents.values()) for (const path of sub.parser.workPaths) noteWorkPath(workPaths, path)
+    if (workPaths.length) patch.workPaths = workPaths
     if (costs.length) patch.cost = { amount: costs.reduce((sum, c) => sum + c.amount, 0), currency: 'USD' }
     return mergeMonitor(snap, patch)
   }

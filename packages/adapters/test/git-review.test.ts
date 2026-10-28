@@ -117,6 +117,30 @@ describe('local changes', () => {
   it('is null for a folder with no repository', async () => {
     expect(await g.localChanges(join(dir, 'notes'))).toBeNull()
   })
+
+  it('lists only the repositories a session in the folder of repos worked in, clean ones too, most recent first', async () => {
+    git(join(dir, 'web'), 'remote', 'add', 'origin', 'git@github.com:acme/web-app.git')
+    // An edit deep inside api (a folder that does not exist yet), then a `cd` into web; docs is never touched.
+    const r = await g.localChanges(dir, [dir, join(dir, 'api', 'src', 'new-folder'), join(dir, 'web'), join(dir, 'notes')])
+    expect(r).toMatchObject({ nested: true, touched: true, scanned: 2 })
+    expect(r?.repos.map((x) => [x.name, x.files, x.branch, x.slug])).toEqual([
+      ['web', 0, 'main', 'acme/web-app'],
+      ['api', 2, 'main', undefined]
+    ])
+  })
+
+  it('says a session in the folder of repos has worked in none yet, rather than listing them all', async () => {
+    expect(await g.localChanges(dir, [dir, join(dir, 'notes')])).toEqual({ nested: true, touched: true, scanned: 0, repos: [] })
+    expect(await g.localChanges(join(dir, 'notes'), [join(dir, 'notes')])).toBeNull()
+  })
+
+  it('keeps the one-repository view for a session that stayed in its repository, and adds the others it worked in', async () => {
+    const api = join(dir, 'api')
+    expect(await g.localChanges(api, [api, join(api, 'src')])).toMatchObject({ nested: false, scanned: 1, repos: [{ name: 'api' }] })
+    const both = await g.localChanges(api, [api, join(dir, 'web')])
+    expect(both).toMatchObject({ nested: true, touched: true })
+    expect(both?.repos.map((x) => x.name)).toEqual(['web', 'api'])
+  })
 })
 
 describe('git-review helpers', () => {

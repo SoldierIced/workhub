@@ -54,5 +54,11 @@ export const sessionMonitorEn = {
   'monitor.files.one': '{count} file',
   'monitor.files.other': '{count} files',
   'monitor.repos.one': '{count} repo',
-  'monitor.repos.other': '{count} repos'
+  'monitor.repos.other': '{count} repos',
+  'monitor.touchedRepos': 'Repos this session worked in',
+  'monitor.noTouchedRepos': 'This session has not worked in any repo here yet',
+  'monitor.noChangesTouched': 'No uncommitted changes in the repos this session worked in',
+  'monitor.clean': 'clean',
+  'monitor.openTicket': 'Open {key}',
+  'monitor.moreTickets': 'Show {count} more'
 } as const

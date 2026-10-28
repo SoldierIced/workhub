@@ -57,4 +57,10 @@ export const sessionMonitorEs: Record<keyof typeof sessionMonitorEn, string> = {
   'monitor.files.other': '{count} archivos',
   'monitor.repos.one': '{count} repo',
   'monitor.repos.other': '{count} repos',
+  'monitor.touchedRepos': 'Repos en los que trabajó esta sesión',
+  'monitor.noTouchedRepos': 'Esta sesión todavía no trabajó en ningún repo de esta carpeta',
+  'monitor.noChangesTouched': 'Sin cambios sin commitear en los repos en los que trabajó esta sesión',
+  'monitor.clean': 'sin cambios',
+  'monitor.openTicket': 'Abrir {key}',
+  'monitor.moreTickets': 'Ver {count} más',
 }

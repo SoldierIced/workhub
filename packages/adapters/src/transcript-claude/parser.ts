@@ -4,7 +4,8 @@
  * small synthetic fixtures. Ported from Workhub 1's `TranscriptReader` and `SubagentParser`.
  * The format is internal to Claude Code: every field is optional and unknown lines are skipped.
  */
-import type { SessionMonitorSnapshot, SubagentSummary, TokenUsage, ToolCallSummary } from '@workhub/core'
+import { homedir } from 'node:os'
+import { noteWorkPath, toolWorkPaths, type SessionMonitorSnapshot, type SubagentSummary, type TokenUsage, type ToolCallSummary } from '@workhub/core'
 import { contextWindow, describeTool, estimateCost, isJiraTool, pullRequestUrls, ticketKeys, toolKind } from '../shared/claude-tools'
 
 type Obj = Record<string, unknown>
@@ -65,6 +66,8 @@ export interface ClaudeTranscriptOptions {
   ticketPrefixes?: readonly string[]
   /** The clock, for entries without a timestamp. */
   now?: () => number
+  /** The home folder `~/` paths of commands resolve from; the user's by default. */
+  home?: string
 }
 
 /** The main conversation of one session. Feed it lines in order; `snapshot()` any time. */
@@ -84,6 +87,10 @@ export class ClaudeTranscriptParser {
   private turnStart: number | undefined
   private turnLast: number | undefined
   private permissionMode: string | undefined
+  /** The folders the session worked in, most recent last (see `toolWorkPaths`). */
+  private readonly workPaths: string[] = []
+  /** The `cwd` of the latest entry: where its commands run. */
+  private cwd: string | undefined
   /** Folder of the session (its first entries' `cwd`). */
   folder: string | undefined
 
@@ -100,7 +107,12 @@ export class ClaudeTranscriptParser {
     const message = obj(entry['message'])
     if (!message) return
     const at = time(entry['timestamp'], this.options.now?.() ?? Date.now())
-    this.folder ??= str(entry['cwd'])
+    const cwd = str(entry['cwd'])
+    this.folder ??= cwd
+    if (cwd && cwd !== this.cwd) {
+      this.cwd = cwd
+      noteWorkPath(this.workPaths, cwd)
+    }
     const branch = str(entry['gitBranch'])
     if (branch) this.noteKeys(branch)
     const content = arr(message['content']).map(obj).filter((b): b is Obj => !!b)
@@ -128,7 +140,11 @@ export class ClaudeTranscriptParser {
         const { title, detail } = describeTool(tool, input)
         const raw = JSON.stringify(input)
         this.notePrs(raw)
-        if (tool === 'Bash') this.noteKeys(str(input['command']) ?? '')
+        if (tool === 'Bash') {
+          this.noteKeys(str(input['command']) ?? '')
+          noteWorkPath(this.workPaths, this.cwd)
+        }
+        for (const path of toolWorkPaths(tool, input, this.cwd, this.options.home ?? homedir())) noteWorkPath(this.workPaths, path)
         if (isJiraTool(tool)) {
           this.jiraCalls.add(callId)
           this.noteKeys(raw)
@@ -203,6 +219,7 @@ export class ClaudeTranscriptParser {
     }
     if (this.prs.length) snap.pullRequests = [...this.prs]
     if (this.keys.length) snap.ticketKeys = [...this.keys]
+    if (this.workPaths.length) snap.workPaths = [...this.workPaths]
     return snap
   }
 
@@ -265,8 +282,14 @@ export class SubagentParser {
   stepCount = 0
   /** The last assistant message ended its turn: the subagent returned its answer. */
   isTerminal = false
+  /** The folders the subagent worked in, most recent last (see `toolWorkPaths`). */
+  readonly workPaths: string[] = []
+  private cwd: string | undefined
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly home: string = homedir()
+  ) {}
 
   ingest(line: string): void {
     const entry = parseLine(line)
@@ -276,6 +299,7 @@ export class SubagentParser {
     const at = time(entry['timestamp'], this.now())
     this.startedAt ??= at
     this.lastActivityAt = at
+    this.cwd = str(entry['cwd']) ?? this.cwd
     if (type === 'user') {
       this.isTerminal = false
       return
@@ -291,8 +315,10 @@ export class SubagentParser {
       const b = obj(raw)
       if (b?.['type'] !== 'tool_use' || !str(b['name'])) continue
       this.stepCount += 1
-      this.lastStep = describeTool(str(b['name'])!, obj(b['input']) ?? {}).title
+      const input = obj(b['input']) ?? {}
+      this.lastStep = describeTool(str(b['name'])!, input).title
       this.isTerminal = false
+      for (const path of toolWorkPaths(str(b['name']), input, this.cwd, this.home)) noteWorkPath(this.workPaths, path)
     }
   }
 
