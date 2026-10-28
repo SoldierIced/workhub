@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { HealthDetailRequest, HealthItemId } from '@workhub/core'
 import type { HealthDetail } from '@shared/health-api'
 import { Button, Spinner } from '../../components/atoms'
+import { RefreshButton } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import type { HealthRow } from '../../lib/healthInvestigate'
@@ -162,9 +163,7 @@ export function DetailFooter({ state, fetchedAt }: { state: DetailState<unknown>
         )}
         {fetchedAt !== undefined && <span>{t('health.details.read', { time: relativeTime(fetchedAt, Date.now(), locale) })}</span>}
         {state.loading && fetchedAt !== undefined && <Spinner />}
-        <button type="button" onClick={state.reload} disabled={state.loading} aria-label={t('health.details.again')} title={t('health.details.againHint')} className="inline-flex size-5 items-center justify-center rounded-sm hover:bg-surface-hover hover:text-text disabled:opacity-45">
-          <RotateCw className="size-3" aria-hidden />
-        </button>
+        <RefreshButton icon={RotateCw} className="size-5 rounded-sm" iconClassName="size-3" label={t('health.details.again')} title={t('health.details.againHint')} loading={state.loading} onRefresh={state.reload} />
       </div>
     </div>
   )

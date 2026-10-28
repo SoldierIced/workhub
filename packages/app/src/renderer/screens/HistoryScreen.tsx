@@ -1,11 +1,11 @@
-import { CircleAlert, Folder, History, MessagesSquare, RefreshCw, Search, SquareTerminal, UserRound } from 'lucide-react'
+import { CircleAlert, Folder, History, MessagesSquare, Search, SquareTerminal, UserRound } from 'lucide-react'
 import { AgentIcon } from '../components/atoms/AgentIcon'
 import { ContextMenu } from 'radix-ui'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { groupHistory, historyId, historyInProfile, isThrowawayFolder, owningProfile, type FolderProfile, type Profile } from '@workhub/core'
 import type { HistoryItem, HistoryResult, SessionView } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Spinner } from '../components/atoms'
-import { EmptyState, useToast } from '../components/molecules'
+import { EmptyState, useToast, RefreshButton } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { useSessions } from '../store'
 import { folderName } from '../lib/home'
@@ -178,7 +178,7 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
             />
           </div>
         )}
-        <IconButton label={t('history.refresh')} icon={loading ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />} disabled={loading} onClick={() => void load()} />
+        <RefreshButton size="md" iconClassName="size-4" label={t('history.refresh')} loading={loading} onRefresh={load} />
       </div>
       {error && (
         <p role="alert" className="flex items-center gap-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">

@@ -1,9 +1,9 @@
-import { Activity, ListChecks, RefreshCw, Sparkles } from 'lucide-react'
+import { Activity, ListChecks, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { folderForEvent, folderForPod, folderName, matchFolder, moduleScreens, pruneSelection, selectableItems, toggleItem, workloadName, type HealthItemId, type Profile } from '@workhub/core'
 import type { HealthEnvironmentView, HealthState } from '@shared/health-api'
 import { Badge, Button, Spinner, StateDot } from '../components/atoms'
-import { EmptyState, useToast } from '../components/molecules'
+import { EmptyState, useToast, RefreshButton } from '../components/molecules'
 import { useHealth } from '../healthStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
@@ -141,9 +141,7 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
         {view?.state === 'demo' && <Badge tone="info">{t('health.demo')}</Badge>}
         {view?.updatedAt !== undefined && <span className="mt-1.5 text-sm text-subtle">{t('health.updated', { time: relativeTime(view.updatedAt, Date.now(), locale) })}</span>}
         {environments.length > 0 && (
-          <Button size="sm" icon={loading ? <Spinner /> : <RefreshCw className="size-3.5" aria-hidden />} disabled={loading} onClick={() => void refresh()}>
-            {t('health.refresh')}
-          </Button>
+          <RefreshButton variant="button" label={t('health.refresh')} loading={loading} onRefresh={refresh} />
         )}
       </header>
 

@@ -1,10 +1,10 @@
-import { AppWindow, ExternalLink, GitPullRequest, GitPullRequestClosed, Link, RefreshCw, Search, TriangleAlert } from 'lucide-react'
+import { AppWindow, ExternalLink, GitPullRequest, GitPullRequestClosed, Link, Search, TriangleAlert } from 'lucide-react'
 import { ContextMenu } from 'radix-ui'
 import { useEffect, useMemo, useState } from 'react'
 import { itemsForFilter, PULL_REQUEST_FILTERS, prName, searchPullRequests, STALE_DAYS, type PullRequest, type PullRequestFilter, type PullRequestItem, type Profile } from '@workhub/core'
 import type { CodeHostLists } from '@shared/codehost-api'
-import { Badge, Button, IconButton, Input, Spinner } from '../components/atoms'
-import { EmptyState, SlackBadge, useToast } from '../components/molecules'
+import { Badge, Button, Input, Spinner } from '../components/atoms'
+import { EmptyState, SlackBadge, useToast, RefreshButton } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { defaultFilter, findItem, initials, installUrl, loginCommand, relativeTime } from '../lib/pullRequests'
@@ -25,14 +25,12 @@ export interface PullRequestsScreenProps {
 }
 
 /** Why there is nothing to list: no connection, a missing CLI, no login, or a failed read. */
-function Unavailable({ lists, onOpenSettings, onRetry }: { lists: CodeHostLists; onOpenSettings: PullRequestsScreenProps['onOpenSettings']; onRetry: () => void }) {
+function Unavailable({ lists, onOpenSettings, onRetry }: { lists: CodeHostLists; onOpenSettings: PullRequestsScreenProps['onOpenSettings']; onRetry: () => unknown }) {
   const { t } = useI18n()
   const cli = lists.cli ?? 'gh'
   const host = lists.provider === 'gitlab' ? t('pr.host.gitlab') : t('pr.host.github')
   const retry = (
-    <Button icon={<RefreshCw className="size-4" aria-hidden />} onClick={onRetry}>
-      {t('pr.retry')}
-    </Button>
+    <RefreshButton variant="button" size="md" iconClassName="size-4" label={t('pr.retry')} onRefresh={onRetry} />
   )
   const icon = <TriangleAlert className="size-6" aria-hidden />
   switch (lists.state) {
@@ -234,8 +232,7 @@ export function PullRequestsScreen({ profile, focusUrl, onOpenSettings }: PullRe
             {lists.demo && <Badge tone="warning">{t('pr.demo')}</Badge>}
             <span className="ml-auto flex items-center gap-2">
               <span className="whitespace-nowrap">{lists.updatedAt ? t('pr.updated', { time: relativeTime(lists.updatedAt, Date.now(), locale) }) : ''}</span>
-              {loading && <Spinner className="size-3" />}
-              <IconButton size="sm" label={t('pr.refresh')} icon={<RefreshCw className="size-3.5" aria-hidden />} onClick={refresh} />
+              <RefreshButton label={t('pr.refresh')} loading={loading} onRefresh={refresh} />
             </span>
           </div>
           <NarrowingBar items={scoped} shown={visible.length} value={narrowing} onChange={setNarrowing} />

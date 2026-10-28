@@ -1,5 +1,5 @@
 import { AgentIcon } from '../atoms/AgentIcon'
-import { FolderOpen, RefreshCw } from 'lucide-react'
+import { FolderOpen } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { pickAgent, type EffectiveAgent, type Profile } from '@workhub/core'
 import { newSessionProfile } from '../../lib/folders'
@@ -14,6 +14,7 @@ import { Input } from '../atoms/Input'
 import { Select } from '../atoms/Select'
 import { Dialog } from '../molecules/Dialog'
 import { Field } from '../molecules/Field'
+import { RefreshButton } from '../molecules/RefreshButton'
 import { errorText } from '../../lib/errorText'
 import { permissionModeLabel } from '../../lib/sessionHeader'
 import { currentConfig } from '../../configStore'
@@ -110,11 +111,11 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
   const loadOptions = (refresh: boolean) => {
     if (!chosen || !configurable) {
       setOptions(null)
-      return
+      return Promise.resolve()
     }
     const key = chosen.key
     setLoadingOptions(true)
-    void window.hub.agents
+    return window.hub.agents
       .options(key, refresh)
       .then(
         (o) => {
@@ -245,7 +246,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
                       ? t('newSession.optionsFromSession')
                       : t('newSession.noOptions')}
               </span>
-              <IconButton size="sm" className="size-6" label={t('newSession.refreshOptions')} icon={<RefreshCw className="size-3" />} disabled={loadingOptions} onClick={() => loadOptions(true)} />
+              <RefreshButton className="size-6" iconClassName="size-3" label={t('newSession.refreshOptions')} loading={loadingOptions} onRefresh={() => loadOptions(true)} />
             </p>
           </div>
         ) : null}

@@ -28,7 +28,7 @@ export function lastReadAt(reads: readonly Pick<AccountUsage, 'at'>[]): number |
  * (a second press within 30 s reuses the previous read, see the main process). The new reads
  * reach every card through `usage:changed`.
  */
-export function useUsageRefresh(): { refreshing: boolean; refresh: () => void; updatedAt: number | null } {
+export function useUsageRefresh(): { refreshing: boolean; refresh: () => Promise<unknown>; updatedAt: number | null } {
   const reads = useAccountUsage()
   const [refreshing, setRefreshing] = useState(false)
   const live = useRef(true)
@@ -40,7 +40,7 @@ export function useUsageRefresh(): { refreshing: boolean; refresh: () => void; u
   }, [])
   const refresh = useCallback(() => {
     setRefreshing(true)
-    void window.hub.usage
+    return window.hub.usage
       .refreshNow()
       .catch(() => undefined)
       .finally(() => live.current && setRefreshing(false))
