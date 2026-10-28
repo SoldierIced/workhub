@@ -204,10 +204,10 @@ export function PullRequestsScreen({ profile, focusUrl, onOpenSettings }: PullRe
   if (!ready) return <div className="h-full overflow-y-auto"><Unavailable lists={lists} onOpenSettings={onOpenSettings} onRetry={refresh} /></div>
 
   return (
-    <div className="grid h-full grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]">
+    <div className="grid h-full grid-cols-[clamp(20rem,40%,26rem)_minmax(0,1fr)]">
       <section aria-label={t('nav.pullRequests')} className="flex min-h-0 flex-col border-r border-border">
         <div className="flex flex-col gap-2.5 border-b border-border p-3">
-          <div role="radiogroup" aria-label={t('pr.filterLabel')} className="grid grid-cols-4 gap-1 rounded-md bg-surface-hover p-0.5">
+          <div role="radiogroup" aria-label={t('pr.filterLabel')} className="flex gap-1 rounded-md bg-surface-hover p-0.5">
             {PULL_REQUEST_FILTERS.map((f) => (
               <button
                 key={f}
@@ -218,7 +218,7 @@ export function PullRequestsScreen({ profile, focusUrl, onOpenSettings }: PullRe
                   setFilter(f)
                   setChosenFilter(true)
                 }}
-                className={cn('h-7 rounded-sm px-1 text-sm transition-colors duration-150', filter === f ? 'bg-surface-raised font-semibold text-text shadow-sm' : 'text-muted hover:text-text')}
+                className={cn('h-7 flex-auto whitespace-nowrap rounded-sm px-1 text-sm transition-colors duration-150', filter === f ? 'bg-surface-raised font-semibold text-text shadow-sm' : 'text-muted hover:text-text')}
               >
                 {t(`pr.filter.${f}`)}
                 <span className="ml-1 text-xs tabular-nums text-subtle">{countOf(f)}</span>
