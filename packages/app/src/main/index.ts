@@ -891,7 +891,7 @@ function registerIpc(): void {
   })
   ipc.handle('sessions:localChanges', async (_e, id: string) => {
     const cwd = sessions.cwdOf(id)
-    return cwd ? localGit.localChanges(cwd) : null
+    return cwd ? localGit.localChanges(cwd, sessions.workPathsOf(id)) : null
   })
   ipc.handle('sessions:rename', (_e, id: string, name: string | null) => {
     if (name !== null && typeof name !== 'string') throw new Error('a name is required')

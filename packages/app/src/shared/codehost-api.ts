@@ -34,6 +34,8 @@ export const isPullRequestWindowTab = (tab: unknown): tab is PullRequestWindowTa
 export interface CodeHostApi {
   lists(profileId: string | null, force?: boolean): Promise<CodeHostLists>
   view(profileId: string | null, url: string): Promise<PullRequestViewResult>
+  /** One pull request by URL, as the lists show it (title, state, size); null when it cannot be read. Kept for a few minutes. */
+  pullRequest(profileId: string | null, url: string): Promise<PullRequestItem | null>
   review(profileId: string | null, url: string, action: ReviewAction, body: string): Promise<CodeHostActionResult>
   comment(profileId: string | null, url: string, body: string): Promise<CodeHostActionResult>
   reply(profileId: string | null, url: string, threadId: string, body: string): Promise<CodeHostActionResult>

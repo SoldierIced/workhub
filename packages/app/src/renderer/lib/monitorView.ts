@@ -1,4 +1,4 @@
-import type { ContextUsage, LocalChanges, PullRequestItem, RepoChanges, SubagentSummary, ToolCallSummary } from '@workhub/core'
+import type { ContextUsage, LocalChanges, SubagentSummary, ToolCallSummary } from '@workhub/core'
 
 /**
  * The session monitor's view model (Workhub 1's InspectorView): its sections in the owner's order,
@@ -107,36 +107,6 @@ export function changesTotal(changes: LocalChanges): ChangesTotal {
     { repos: 0, files: 0, additions: 0, deletions: 0 }
   )
 }
-
-/** Branches every repository uses for releases: a PR from one of them is not this session's work. */
-const SHARED_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk'])
-
-/**
- * The session's pull requests: the ones its tool calls touched, and the open ones of its
- * repositories' current branches (by repository name and branch), from the code host's lists.
- */
-export function sessionPullRequests(items: readonly PullRequestItem[], touched: readonly string[] | undefined, repos: readonly RepoChanges[] | undefined): PullRequestItem[] {
-  const urls = new Set(touched ?? [])
-  const branches = new Set((repos ?? []).filter((r) => r.branch && !SHARED_BRANCHES.has(r.branch)).map((r) => `${r.name.toLowerCase()}@${r.branch}`))
-  const out: PullRequestItem[] = []
-  const seen = new Set<string>()
-  for (const item of items) {
-    const pr = item.pr
-    if (seen.has(pr.url)) continue
-    const repoName = pr.repo.split('/').pop()?.toLowerCase() ?? ''
-    if (urls.has(pr.url) || (pr.state === 'open' && branches.has(`${repoName}@${pr.branch}`))) {
-      seen.add(pr.url)
-      out.push(item)
-    }
-  }
-  return out
-}
-
-/** Tickets of the session's PRs first, then the ones named in the conversation, without repeats. */
-export function sessionTicketKeys(prs: readonly PullRequestItem[], mentioned: readonly string[] | undefined): string[] {
-  return [...new Set([...prs.flatMap((p) => p.ticketKeys), ...(mentioned ?? [])])]
-}
-
 
 export interface RequestBars {
   bars: { value: number; fraction: number }[]

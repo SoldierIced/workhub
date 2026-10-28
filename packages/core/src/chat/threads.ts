@@ -425,3 +425,18 @@ export function slackLinkSummary(links: { messages: readonly ChatMessage[]; thre
 export function threadsOfSession(threads: readonly TrackedThread[], identity: string): TrackedThread[] {
   return threads.filter((t) => t.owner === identity && !t.closed)
 }
+
+/**
+ * The monitor's Slack threads of a session (Workhub 1's `SessionSlackSection`): the ones it owns,
+ * then the open ones about its pull requests (tracked for one, or a reply links one) or its tickets.
+ */
+export function sessionSlackThreads(threads: readonly TrackedThread[], identity: string, prUrls: readonly string[], ticketKeys: readonly string[]): TrackedThread[] {
+  const prs = new Set(prUrls.map(canonicalUrl))
+  const tickets = new Set(ticketKeys.map((k) => k.toUpperCase()))
+  const linked = (t: TrackedThread) =>
+    (t.prUrl !== undefined && prs.has(canonicalUrl(t.prUrl))) ||
+    (t.ticketKey !== undefined && tickets.has(t.ticketKey.toUpperCase())) ||
+    (prs.size > 0 && t.replies.some((r) => pullRequestsIn(r.text).some((u) => prs.has(canonicalUrl(u)))))
+  const own = threads.filter((t) => t.owner === identity)
+  return [...own, ...threads.filter((t) => t.owner !== identity && !t.closed && linked(t))]
+}

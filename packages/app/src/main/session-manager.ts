@@ -54,6 +54,8 @@ interface ManagedSession {
   reportsActiveTime: boolean
   /** The last transcript snapshot sent, to skip polls that found nothing new. */
   lastMonitor?: string
+  /** The folders the transcript says the session worked in, most recent last; unset until one says so. */
+  workPaths?: string[]
   /** An AI reviewer: started in the agent's most read-only mode, chat only. */
   readOnly: boolean
   /** The engine picked while a turn ran: the hand-over waits for the turn to end (Workhub 1's `pendingEngine`). */
@@ -690,6 +692,7 @@ export class SessionManager {
     if (snapshot?.activeTimeMs !== undefined) s.reportsActiveTime = true
     if (!snapshot || key === s.lastMonitor) return
     s.lastMonitor = key ?? undefined
+    if (snapshot.workPaths) s.workPaths = snapshot.workPaths
     for (const t of snapshot.toolCalls ?? []) s.toolStatus.set(t.id, { status: t.status, startedAt: t.startedAt })
     this.deps.emitEvent({ sessionId: s.view.id, type: 'monitor', snapshot })
     this.checkPending(s)
@@ -768,6 +771,11 @@ export class SessionManager {
   /** The session's folder, for reads main does on its behalf (local changes). */
   cwdOf(id: string): string | null {
     return this.sessions.get(id)?.view.cwd ?? null
+  }
+
+  /** The folders a session worked in, most recent last; undefined when its agent does not report them. */
+  workPathsOf(id: string): string[] | undefined {
+    return this.sessions.get(id)?.workPaths
   }
 
   private require(id: string): ManagedSession {
