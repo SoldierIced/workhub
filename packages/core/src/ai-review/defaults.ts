@@ -18,5 +18,6 @@ export const DEFAULT_AI_REVIEW_SETTINGS: AiReviewSettings = {
   checklist: '',
   idleSeconds: 60,
   language: 'en',
-  reviewerModel: ''
+  reviewerModel: '',
+  briefPrompt: ''
 }

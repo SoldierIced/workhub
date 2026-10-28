@@ -37,6 +37,8 @@ export interface AiReviewSettings {
   language: ReviewLanguage
   /** Model the reviewer starts with; empty: the agent's default. */
   reviewerModel: string
+  /** "Review with another agent": what the author is asked to write the brief; empty: `DEFAULT_REVIEW_BRIEF_PROMPT`. */
+  briefPrompt: string
 }
 
 export interface ReviewFinding {

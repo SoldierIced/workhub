@@ -1,5 +1,5 @@
-import { aiReviewSettings, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewLanguage } from '@workhub/core'
-import { Input, Select, Switch, Textarea } from '../components/atoms'
+import { aiReviewSettings, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewLanguage } from '@workhub/core'
+import { Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { Field, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 
@@ -57,6 +57,22 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
       </div>
       <Field label={t('aiReview.settings.checklist')} hint={t('aiReview.settings.checklistHint')}>
         <Textarea rows={4} value={s.checklist} spellCheck={false} onChange={(e) => set({ checklist: e.target.value })} />
+      </Field>
+      <Field
+        label={t('aiReview.settings.briefPrompt')}
+        hint={
+          <span className="flex items-center gap-2">
+            <span className="flex-1">{t('aiReview.settings.briefPromptHint')}</span>
+            {s.briefPrompt && (
+              <Button size="sm" variant="ghost" onClick={() => set({ briefPrompt: '' })}>
+                {t('aiReview.settings.briefPromptReset')}
+              </Button>
+            )}
+          </span>
+        }
+      >
+        {/* Stored empty while it is the default, so a later default reaches every profile that never changed it. */}
+        <Textarea rows={8} value={briefPromptOf(s)} spellCheck={false} data-testid="ai-review-brief-prompt" onChange={(e) => set({ briefPrompt: e.target.value === DEFAULT_REVIEW_BRIEF_PROMPT ? '' : e.target.value })} />
       </Field>
     </div>
   )
