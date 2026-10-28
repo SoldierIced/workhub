@@ -4,6 +4,26 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.2](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.1...v2.0.0-alpha.2) (2026-10-28)
+
+
+### Features
+
+* **agents:** report each agent's slash commands and local command output ([b600c46](https://github.com/SoldierIced/workhub/commit/b600c4649cd7c8d9a5f684c46dca7c96adf924f2))
+* **automations:** keep running in one session while the app runs, with an optional context clear ([475961b](https://github.com/SoldierIced/workhub/commit/475961b2854045d6462a3325f05fe154a28b85b2))
+* **chat:** copy buttons on agent messages and code blocks ([378133a](https://github.com/SoldierIced/workhub/commit/378133a15c61a7cc8b9479b43d06da0f67b53127))
+* **chat:** slash command menu and /rename in every chat ([d1ad4da](https://github.com/SoldierIced/workhub/commit/d1ad4da6e9f3d91a4b08adf140669e4aa9a55806))
+* **history:** group automation runs into one row per automation ([ef7967c](https://github.com/SoldierIced/workhub/commit/ef7967cef5e368cd97f1f7d78f0c0ae87a8f127e))
+* **sessions:** follow the new session id Claude's /clear moves the conversation to ([190df66](https://github.com/SoldierIced/workhub/commit/190df66c59853804c4d5f283e416887343c18db5))
+* **ui:** image attach button, history paging and shared delete dialog ([016196a](https://github.com/SoldierIced/workhub/commit/016196a521e9644b38a358f3442165e79a356d59))
+
+
+### Bug Fixes
+
+* **ai-review:** send the reviewer's last answer to the author when the loop ends ([994592f](https://github.com/SoldierIced/workhub/commit/994592f7b3f652d9e8b892ae9f4f7176801ccc47))
+* **monitor:** list only the tickets and PRs the session is related to ([2e766fc](https://github.com/SoldierIced/workhub/commit/2e766fc2a12ab3329664cf6536ce058adb3d9689))
+* **transcript:** tell a session's own actions from tool output and listings ([560e493](https://github.com/SoldierIced/workhub/commit/560e49376227df2ccd101e98307e7c21c65558df))
+
 ## 2.0.0-alpha.1
 
 The starting point of Workhub 2, the Electron and TypeScript rewrite of Workhub. This version was
