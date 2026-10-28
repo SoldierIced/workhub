@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   EMPTY_CHAT_STATE,
@@ -8,8 +10,10 @@ import {
   type ChatReadRequest,
   type ChatReadResult,
   type ChatWatcherState,
+  type PullRequestItem,
   type WorkhubConfig
 } from '@workhub/core'
+import { ClaudeTranscriptParser } from '@workhub/adapters/transcript-claude'
 import { SlackWatcherService, type SlackWatcherDeps } from '../src/main/slack-watcher'
 import { slackSetupHint } from '../src/renderer/lib/slackLinks'
 import { keyProviders, trackerHint } from '../src/renderer/lib/tickets'
@@ -82,40 +86,66 @@ describe("the monitor's Slack messages of a session", () => {
 describe("the session's ticket keys", () => {
   const jira = keyProviders({ state: 'ready', provider: 'jira', projectKeys: ['PAY', 'TEAM'] })
 
-  it('come from the branches of every repo it worked in, its titles and its prompts, with the tracker key patterns', () => {
+  it('come from the branches it worked on, the name the user gave it and its prompts, with the tracker key patterns', () => {
     const work = sessionWork({
       items: [],
       repos: [
-        { name: '.wt-loan-fix', branch: 'feat/pay-3619-membership-savings' },
-        { name: 'wm-api', branch: 'develop' },
-        { name: 'ms-payments', branch: 'hotfix_TEAM-8571_same-holder' }
+        { name: '.wt-loan-fix', root: '/w/.wt-loan-fix', branch: 'feat/pay-3619-membership-savings' },
+        { name: 'wm-api', root: '/w/wm-api', branch: 'develop' },
+        // Touched, but on a branch the session never committed to or pushed.
+        { name: 'ms-payments', root: '/w/ms-payments', branch: 'hotfix_TEAM-8571_same-holder' }
       ],
+      branches: [{ folder: '/w/.wt-loan-fix', pushed: true }, { folder: '/w/wm-api' }],
       titles: ['PAY-3797: saga stuck in pending reconciliation', undefined, 'OPS-9 not this profile'],
       mentionedTickets: ['PAY-1648', 'UTF-8'],
       providers: jira
     })
-    // The main project's keys come first; WT is the tracker's second project.
-    expect(work.ticketKeys).toEqual(['PAY-3619', 'PAY-3797', 'PAY-1648', 'TEAM-8571'])
+    expect(work.ticketKeys).toEqual(['PAY-3797', 'PAY-1648', 'PAY-3619'])
   })
 
-  it('put the ticket the session created or changed first, then the main project before another team\'s', () => {
+  it('put the ticket the session created or changed first, then the typed ones, the main project before another team\'s', () => {
     // A real case: the session worked on another team's TEAM-8571, created PAY-3806 for it and linked them.
     const work = sessionWork({
       items: [],
-      repos: [{ name: 'ms-payments', branch: 'feat/TEAM-8571-block-same-holder-pix' }],
+      branches: [{ name: 'feat/TEAM-8571-block-same-holder-pix', pushed: true }],
       mentionedTickets: ['PAY-1648', 'TEAM-7828', 'PAY-3806', 'TEAM-8571'],
       linkedTickets: ['PAY-3806', 'TEAM-8571'],
       providers: jira
     })
     expect(work.ticketKeys).toEqual(['PAY-3806', 'TEAM-8571', 'PAY-1648', 'TEAM-7828'])
-    // Without a link, the profile's first project (the tracker's key order) outranks a WT branch.
-    const unlinked = sessionWork({ items: [], repos: [{ name: 'ms-payments', branch: 'feat/TEAM-8571-block-same-holder-pix' }], mentionedTickets: ['PAY-3806'], providers: jira })
+    // Without a link, the profile's first project (the tracker's key order) outranks a WT key typed later.
+    const unlinked = sessionWork({ items: [], mentionedTickets: ['PAY-3806', 'TEAM-8571'], providers: jira })
     expect(unlinked.ticketKeys).toEqual(['PAY-3806', 'TEAM-8571'])
   })
 
   it('fall back to upper-case keys of any project without a tracker', () => {
-    const work = sessionWork({ items: [], repos: [{ name: 'api', branch: 'feature/ABC-12-login' }], titles: ['Fix UTF-8 in DEF-3'], providers: keyProviders(undefined) })
-    expect(work.ticketKeys).toEqual(['ABC-12', 'DEF-3'])
+    const work = sessionWork({ items: [], branches: [{ name: 'feature/ABC-12-login' }], titles: ['Fix UTF-8 in DEF-3'], providers: keyProviders(undefined) })
+    expect(work.ticketKeys).toEqual(['DEF-3', 'ABC-12'])
+  })
+})
+
+describe("the monitor's tickets and PRs of a real-shaped session", () => {
+  // The synthetic transcript of the adapters' tests: 10 listed PRs, 20 searched tickets, one edited,
+  // one branch committed and pushed, one PR created, in a folder whose branch is someone else's.
+  const parser = new ClaudeTranscriptParser({ ticketPrefixes: ['ABC'], home: '/Users/ana' })
+  for (const line of readFileSync(join(import.meta.dirname, '..', '..', 'adapters', 'test', 'fixtures', 'claude-scope', 'session.jsonl'), 'utf8').split('\n')) parser.ingest(line)
+  const m = parser.snapshot()
+  const pr = (repo: string, number: number, branch: string) =>
+    ({ pr: { provider: 'github', owner: 'acme', repo, number, url: `https://github.com/acme/${repo}/pull/${number}`, branch, title: `ABC-${200 + number}`, state: 'open' }, ticketKeys: [], status: 'waiting', stale: false }) as unknown as PullRequestItem
+  // The code host's lists: the 10 open PRs the session listed, the one it created, and one on the touched api's branch.
+  const items = [...Array.from({ length: 10 }, (_, i) => pr('web', i + 1, `feat/ABC-${201 + i}-x`)), pr('web', 11, 'feat/ABC-101-login'), pr('api', 20, 'feat/ABC-900-other-work')]
+  const repos = [
+    { name: 'web', root: '/work/acme/web', branch: 'feat/ABC-101-login', slug: 'acme/web' },
+    { name: 'api', root: '/work/acme/api', branch: 'feat/ABC-900-other-work', slug: 'acme/api' }
+  ]
+  const work = sessionWork({ items, links: m.pullRequestLinks, repos, mentionedTickets: m.ticketKeys, replyTickets: m.replyTicketKeys, linkedTickets: m.linkedTicketKeys, branches: m.branches, providers: keyProviders({ state: 'ready', provider: 'jira', projectKeys: ['ABC'] } as never) })
+
+  it('show only the PR it created, not the 10 a listing printed or the open PR of a touched repository', () => {
+    expect(work.prs.map((i) => i.pr.number)).toEqual([11])
+  })
+
+  it('show only the ticket it edited and the ones it worked on, not the 20 a search printed or a branch it never committed to', () => {
+    expect(work.ticketKeys).toEqual(['ABC-305', 'ABC-101'])
   })
 })
 

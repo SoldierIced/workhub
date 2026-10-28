@@ -3,6 +3,7 @@ import {
   commandWorkPaths,
   noteWorkPath,
   resolveWorkPath,
+  sessionPullRequestUrls,
   sessionSlackThreads,
   sessionWork,
   toolWorkPaths,
@@ -63,36 +64,69 @@ describe("a session's pull requests and tickets", () => {
     item('docs', 4, 'feat/WAL-12-login', 'Docs for the login'),
     item('payments', 5, 'feat/shared-ticket', 'WAL-12 Payments side'),
     item('payments', 6, 'feat/unrelated', 'OPS-1 Something else'),
-    item('web', 1, 'feat/WAL-12-login', 'Login page')
+    item('web', 1, 'feat/WAL-12-login', 'Login page'),
+    item('web', 7, 'feat/WAL-40-someone', 'WAL-40 Someone else')
   ]
   const repos = [
-    { name: 'web', branch: 'feat/WAL-12-login', slug: 'acme/web' },
-    { name: 'api', branch: 'main' },
+    { name: 'web', root: `${BASE}/web`, branch: 'feat/WAL-12-login', slug: 'acme/web' },
+    { name: 'api', root: `${BASE}/api`, branch: 'main' },
     // A worktree: its folder is named after the branch, its remote says which repository it is.
-    { name: 'api-fix', branch: 'feat/other', slug: 'acme/api' }
+    { name: 'api-fix', root: `${BASE}/api-fix`, branch: 'feat/other', slug: 'acme/api' },
+    // Touched (the session read it), on someone else's branch it never worked on.
+    { name: 'payments', root: `${BASE}/payments`, branch: 'feat/WAL-55-theirs', slug: 'acme/payments' }
   ]
 
-  it('takes the open PR of each branch it works on, then the PRs it named, then open PRs of its tickets', () => {
-    const work = sessionWork({ items, mentionedPrs: ['https://github.com/acme/api/pull/3/files', 'https://github.com/owner/repo/pull/1'], repos, mentionedTickets: ['XYZ-9'], providers: [] })
-    // web#1 by branch (once); api#3 named (merged still counts); docs#4 is on the branch but in another repo,
-    // it comes in by its ticket like payments#5; api#2 is on a shared branch; payments#6 is another ticket.
-    expect(work.prs.map((p) => `${p.pr.repo}#${p.pr.number}`)).toEqual(['web#1', 'api#3', 'docs#4', 'payments#5'])
-    expect(work.ticketKeys).toEqual(['WAL-12', 'WAL-30', 'XYZ-9'])
+  it('takes the PRs it acted on and the one of the branch it pushed, then the ones the user named, then its replies', () => {
+    const work = sessionWork({
+      items,
+      repos,
+      links: [
+        { source: 'reply', url: 'https://github.com/acme/web/pull/7' },
+        { source: 'user', url: 'https://github.com/acme/api/pull/3/files' },
+        // A number from a command in the api-fix folder: its remote is acme/api.
+        { source: 'acted', number: 3, folder: `${BASE}/api-fix` },
+        { source: 'user', number: 6, repo: 'payments' },
+        { source: 'acted', url: 'https://github.com/owner/repo/pull/1' }
+      ],
+      // `git commit -q && git push` in web: its current branch.
+      branches: [{ folder: `${BASE}/web/src`, pushed: true }],
+      providers: []
+    })
+    // web#1 is the PR of the pushed branch (docs#4 shares the branch name in another repository);
+    // api#3 acted on beats named; owner/repo#1 is not known; api#2 is on a shared branch; payments#5 only shares a ticket.
+    expect(work.prs.map((p) => `${p.pr.repo}#${p.pr.number}`)).toEqual(['api#3', 'web#1', 'payments#6', 'web#7'])
+    // The pushed branch's key; payments' branch is not the session's.
+    expect(work.ticketKeys).toEqual(['WAL-12'])
   })
 
-  it("keeps only the profile tracker's tickets, matching its keys in branches whatever their case", () => {
+  it("keeps only the profile tracker's tickets, the ones changed first, then typed, then branches and replies", () => {
     const work = sessionWork({
       items: [],
       repos: [{ name: 'api', branch: 'feat/wal-77-fix' }],
+      branches: [{ name: 'feat/wal-78-fix' }],
+      linkedTickets: ['WAL-9'],
       mentionedTickets: ['UTF-8', 'OPS-2', 'WAL-5', 'WAL-6', 'WAL-5'],
+      replyTickets: ['WAL-80', 'WAL-9'],
+      titles: ['WAL-4: the name the user gave it'],
       providers: [{ provider: 'jira', projectKeys: ['WAL'] }]
     })
-    // Newest mention first; OPS and UTF are not the profile's projects.
-    expect(work.ticketKeys).toEqual(['WAL-77', 'WAL-5', 'WAL-6'])
+    // Newest mention first; OPS and UTF are not the profile's projects; the repo's own branch (wal-77) is not the session's.
+    expect(work.ticketKeys).toEqual(['WAL-9', 'WAL-4', 'WAL-5', 'WAL-6', 'WAL-78', 'WAL-80'])
   })
 
-  it('finds nothing for a session that names nothing and works on shared branches', () => {
-    expect(sessionWork({ items, repos: [{ name: 'api', branch: 'main' }] })).toEqual({ prs: [], ticketKeys: [] })
+  it('finds nothing in the branches of the repositories it touched or the open PRs of their repositories', () => {
+    expect(sessionWork({ items, repos })).toEqual({ prs: [], ticketKeys: [] })
+  })
+
+  it('places a PR number of a prompt only when one repository it worked in has it', () => {
+    const urls = (number: number) => sessionPullRequestUrls([{ source: 'user', number }], items, repos)
+    expect(urls(7)).toEqual([{ url: 'https://github.com/acme/web/pull/7', source: 'user' }])
+    // Not in a repository it worked in.
+    expect(urls(4)).toEqual([])
+    const twice = [...items, item('api', 7, 'feat/x')]
+    expect(sessionPullRequestUrls([{ source: 'user', number: 7 }], twice, repos)).toEqual([])
+    // A number from a command, outside the known lists: the folder's repository on GitHub.
+    expect(sessionPullRequestUrls([{ source: 'acted', number: 99, folder: `${BASE}/web` }], items, repos)).toEqual([{ url: 'https://github.com/acme/web/pull/99', source: 'acted' }])
   })
 })
 
