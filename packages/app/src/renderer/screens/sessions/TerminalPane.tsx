@@ -15,6 +15,16 @@ function terminalTheme(): ITheme {
   return { background: v('--wh-bg'), foreground: v('--wh-text'), cursor: v('--wh-accent'), selectionBackground: v('--wh-accent-soft') }
 }
 
+/**
+ * Applies a theme to the terminal and to its host: xterm paints only the cell area, so the padding
+ * around it (and xterm.css's black viewport) would otherwise frame a light terminal in black.
+ */
+function applyTheme(t: Terminal, host: HTMLElement | null): void {
+  const theme = terminalTheme()
+  t.options.theme = theme
+  if (host) host.style.backgroundColor = theme.background ?? ''
+}
+
 function terminalFont(): { fontFamily: string; fontSize: number } {
   const { terminalFontFamily, terminalFontSize } = readPrefs()
   return { fontFamily: terminalFontStack(terminalFontFamily, getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()), fontSize: terminalFontSize }
@@ -33,10 +43,11 @@ export function TerminalPane({ channel, visible, theme, label }: { channel: stri
   const { terminalTheme: themeName, themeApp, terminalFontFamily, terminalFontSize } = usePrefs()
 
   useEffect(() => {
-    const t = new Terminal({ ...terminalFont(), cursorBlink: true, theme: terminalTheme() })
+    const t = new Terminal({ ...terminalFont(), cursorBlink: true })
     const f = new FitAddon()
     t.loadAddon(f)
     t.open(host.current!)
+    applyTheme(t, host.current)
     term.current = t
     const detach = attachOutput(channel, { write: (d) => t.write(d), reset: () => t.reset() })
     t.onData((d) => window.hub.sessions.write(channel, d))
@@ -88,7 +99,7 @@ export function TerminalPane({ channel, visible, theme, label }: { channel: stri
   useEffect(() => {
     // After the app has applied the new tokens to <html> (its effect runs after this one).
     const frame = requestAnimationFrame(() => {
-      if (term.current) term.current.options.theme = terminalTheme()
+      if (term.current) applyTheme(term.current, host.current)
     })
     return () => cancelAnimationFrame(frame)
   }, [theme, themeName, themeApp])

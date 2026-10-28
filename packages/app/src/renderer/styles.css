@@ -278,6 +278,10 @@
   padding: 8px;
   height: 100%;
 }
+/* The host carries the theme's background (TerminalPane): xterm.css paints the viewport black. */
+.xterm-host .xterm-viewport {
+  background-color: transparent !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
