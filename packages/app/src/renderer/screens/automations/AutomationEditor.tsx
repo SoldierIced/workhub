@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AUTOMATION_EFFORTS, CLAUDE_PERMISSION_MODES, fillFromPreset, type AutomationDefinition, type EffectiveAgent, type WatchedChannel } from '@workhub/core'
+import { AUTOMATION_EFFORTS, CLAUDE_PERMISSION_MODES, fillFromPreset, supportsClearContext, type AutomationDefinition, type EffectiveAgent, type WatchedChannel } from '@workhub/core'
 import type { AgentOptionsView } from '@shared/api'
 import { Button, Input, Kbd, Select, Switch, Textarea } from '../../components/atoms'
 import { Dialog, Field, SwitchRow } from '../../components/molecules'
@@ -283,6 +283,11 @@ export function AutomationEditor({ automation, agents, channels, presets = [], o
           </div>
         </div>
 
+        {supportsClearContext(chosen?.agent.adapter, form.view) && (
+          <SwitchRow label={t('automations.field.clearContext')} hint={t('automations.field.clearContextHint')}>
+            <Switch checked={form.clearContext === true} onChange={(clearContext) => set({ clearContext })} />
+          </SwitchRow>
+        )}
         <SwitchRow label={t('automations.field.receivesReplies')} hint={t('automations.field.receivesRepliesHint')}>
           <Switch checked={form.receivesChatReplies} onChange={(receivesChatReplies) => set({ receivesChatReplies })} />
         </SwitchRow>
