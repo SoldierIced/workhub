@@ -89,6 +89,8 @@ export type AgentEvent =
   | { sessionId: string; type: 'permissionCancelled'; requestId: string }
   /** Models the session can switch to, and the current one. */
   | { sessionId: string; type: 'models'; models: ModelOption[]; currentModelId?: string }
+  /** The conversation moved on under a new agent session id (Claude's `/clear` starts a new transcript). */
+  | { sessionId: string; type: 'agentSession'; agentSessionId: string }
   /**
    * Something the agent's harness reports outside the conversation: a hook's output, an
    * informational banner. Shown as its own block, never merged into the agent's reply.

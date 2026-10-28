@@ -351,6 +351,7 @@ const automation = z.object({
     .default({ maxRuns: 6, perMinutes: 5, maxPerDay: 60 }),
   usageThreshold: z.number().min(0).max(100).default(85),
   sessionPolicy: z.enum(['reuse', 'newEachRun']).default('reuse'),
+  clearContext: z.boolean().optional(),
   runTimeoutMinutes: z.number().int().min(1).default(30),
   receivesChatReplies: z.boolean().default(true)
 })

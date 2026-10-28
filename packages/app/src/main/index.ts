@@ -39,6 +39,7 @@ import {
   planWorkhub1Import,
   fillDefaultFolders,
   fillWorkhub1FolderFlags,
+  linkAutomationHistory,
   type Workhub1Settings,
   TRAY_ROUTES,
   resolveEffectiveAgents,
@@ -787,9 +788,11 @@ function registerIpc(): void {
   // Listing the history starts a process per account that reads every transcript's head: calls made
   // meanwhile share it, and the sidebar's lookups (several right after start-up) take one up to 10 s old.
   const namedHistory = new RecentCall(async () => {
-    const result = await diagnostics.activity.run('history list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
-    // A session the user named shows that name in the history too.
-    return { ...result, entries: result.entries.map((e) => ({ ...e, title: sessionNames.get(e.agentSessionId) ?? e.title })) }
+    const config = await configuration.current()
+    const result = await diagnostics.activity.run('history list', async () => listAllHistory(config, homedir(), historySources))
+    // A session the user named shows that name in the history too; an automation's runs say which one they are.
+    const named = result.entries.map((e) => ({ ...e, title: sessionNames.get(e.agentSessionId) ?? e.title }))
+    return { ...result, entries: linkAutomationHistory(named, config.automations ?? [], automations.engine.snapshot().owned, homedir()) }
   })
   ipc.handle('history:list', () => namedHistory.get())
   ipc.handle('history:find', async (_e, keys: unknown) => {

@@ -122,6 +122,14 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     expect(JSON.parse(agentText(events)).start).toMatchObject({ resume: 'bbbbbbbb-2222-4222-8222-222222222222' })
   })
 
+  it('follows the new session id /clear moves the conversation to', async () => {
+    await start('n9', { agentSessionId: 'aaaaaaaa-9999-4999-8999-999999999999' })
+    expect(await rt.prompt('n9', 'ping')).toEqual({ stopReason: 'end_turn' })
+    expect(events.some((e) => e.type === 'agentSession')).toBe(false)
+    expect(await rt.prompt('n9', '/clear')).toEqual({ stopReason: 'end_turn' })
+    expect(events.filter((e) => e.type === 'agentSession')).toEqual([{ sessionId: 'n9', type: 'agentSession', agentSessionId: 'cccccccc-3333-4333-8333-333333333333' }])
+  })
+
   it('streams the reply once (deltas, not the full message again) and sends images as content blocks', async () => {
     await start('n3')
     expect(await rt.prompt('n3', 'Reply with the single word pong.')).toEqual({ stopReason: 'end_turn' })
