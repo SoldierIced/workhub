@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.3](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.2...v2.0.0-alpha.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* **build:** add homepage and repository so the Linux deb build has its metadata ([#3](https://github.com/SoldierIced/workhub/issues/3)) ([aa3b7a7](https://github.com/SoldierIced/workhub/commit/aa3b7a7146bdc2474ce1459f2bd115893852706b))
+
 ## [2.0.0-alpha.2](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.1...v2.0.0-alpha.2) (2026-10-28)
 
 
