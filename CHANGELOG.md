@@ -8,7 +8,7 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 
 The starting point of Workhub 2, the Electron and TypeScript rewrite of Workhub. This version was
 never tagged: it covers the history from 2026-10-27 to 2026-10-28, up to commit
-[cd9e3f6](https://github.com/SoldierIced/workhub/commit/cd9e3f61e3e48cb9a90425e71ea4ac22823523c4).
+[2925680](https://github.com/SoldierIced/workhub/commit/29256808754e9321b7e30f73d50b4642b983f165).
 
 ### Features
 

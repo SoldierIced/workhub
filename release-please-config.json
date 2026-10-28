@@ -3,7 +3,7 @@
   "release-type": "node",
   "include-component-in-tag": false,
   "include-v-in-tag": true,
-  "bootstrap-sha": "cd9e3f61e3e48cb9a90425e71ea4ac22823523c4",
+  "bootstrap-sha": "29256808754e9321b7e30f73d50b4642b983f165",
   "packages": {
     ".": {
       "package-name": "workhub2",
