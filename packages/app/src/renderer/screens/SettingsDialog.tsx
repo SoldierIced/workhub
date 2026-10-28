@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { Dialog as RDialog } from 'radix-ui'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ConfigSnapshot } from '@shared/api'
 import { SaveBar, SAVE_SHORTCUT, StoreUnsavedPrompt, UnsavedChangesProvider } from '../components/organisms/UnsavedChanges'
 import { useI18n } from '../i18n/I18nProvider'
@@ -25,12 +25,14 @@ export interface SettingsDialogProps {
 export function SettingsDialog({ open, onOpenChange, snap, tab, onTabChange }: SettingsDialogProps) {
   const { t } = useI18n()
   const [unsaved] = useState(createUnsavedChanges)
+  const content = useRef<HTMLDivElement>(null)
   return (
     <UnsavedChangesProvider store={unsaved}>
       <RDialog.Root open={open} onOpenChange={(next) => (next ? onOpenChange(true) : unsaved.requestLeave(() => onOpenChange(false)))}>
         <RDialog.Portal>
           <RDialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-black/40 backdrop-blur-[2px]" />
           <RDialog.Content
+            ref={content}
             data-testid="settings-dialog"
             aria-describedby={undefined}
             onKeyDown={(e) => {
@@ -57,7 +59,7 @@ export function SettingsDialog({ open, onOpenChange, snap, tab, onTabChange }: S
               />
             </div>
             <SaveBar store={unsaved} />
-            <StoreUnsavedPrompt store={unsaved} />
+            <StoreUnsavedPrompt store={unsaved} restoreFocus={() => content.current?.focus()} />
           </RDialog.Content>
         </RDialog.Portal>
       </RDialog.Root>
