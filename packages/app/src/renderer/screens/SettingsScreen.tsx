@@ -389,7 +389,8 @@ const emptyConnection = (): Connection => ({ id: '', kind: 'codeHost', provider:
 
 function ConnectionsSection({ snap, run, initialId }: SectionProps & { initialId?: string }) {
   const { t } = useI18n()
-  const initial = snap.config.connections.find((x) => x.id === initialId)
+  // Opens on the asked-for connection, else the first one: a blank "new" form only when there is none.
+  const initial = snap.config.connections.find((x) => x.id === initialId) ?? snap.config.connections[0]
   const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
   const [form, setForm] = useState<Connection>(initial ? { ...initial } : emptyConnection())
   const [settingsText, setSettingsText] = useState(toLines(initial?.settings))
@@ -532,7 +533,8 @@ const emptyAccount = (agentId: string): AgentAccount => ({ id: '', agentId, name
 function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: string }) {
   const { t } = useI18n()
   const firstAgent = snap.agents[0]?.id ?? ''
-  const initial = snap.config.accounts.find((x) => x.id === initialId)
+  // Opens on the asked-for account, else the first one: a blank "new" form only when there is none.
+  const initial = snap.config.accounts.find((x) => x.id === initialId) ?? snap.config.accounts[0]
   const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
   const [form, setForm] = useState<AgentAccount>(initial ? { ...initial } : emptyAccount(firstAgent))
   const [envText, setEnvText] = useState(toLines(initial?.env))
@@ -733,7 +735,8 @@ const emptyProfile = (): Profile => ({ id: '', name: '', connections: {}, accoun
 function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: string }) {
   const { t } = useI18n()
   const toast = useToast()
-  const initial = snap.config.profiles.find((x) => x.id === initialId)
+  // Opens on the asked-for profile, else the active one: a blank "new" form only when there is none.
+  const initial = snap.config.profiles.find((x) => x.id === initialId) ?? snap.config.profiles.find((x) => x.id === snap.config.activeProfileId) ?? snap.config.profiles[0]
   const [selected, setSelected] = useState<string | null>(initial?.id ?? null)
   const [form, setForm] = useState<Profile>(initial ? structuredClone(initial) : emptyProfile())
   // A new profile's id follows its name until the user edits the id themselves.
