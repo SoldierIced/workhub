@@ -79,7 +79,7 @@ describe('AcpRuntime model and mode controls', () => {
 
       await rt.setModel('k1', 'claude-sonnet-5.5')
       await rt.setSessionMode('k1', 'explorer')
-      expect(stderr(events, 'k1')).toEqual(['set_model:claude-sonnet-5.5', 'set_mode:explorer'])
+      await vi.waitFor(() => expect(stderr(events, 'k1')).toEqual(['set_model:claude-sonnet-5.5', 'set_mode:explorer']))
       expect(lastModels(events, 'k1')).toMatchObject({ currentModelId: 'claude-sonnet-5.5' })
       expect(events).toContainEqual({ sessionId: 'k1', type: 'monitor', snapshot: { model: 'claude-sonnet-5.5' } })
       expect(lastMode(events, 'k1')).toMatchObject({ currentModeId: 'explorer', mode: { label: 'Set by agent "explorer"' } })
@@ -125,7 +125,7 @@ describe('AcpRuntime model and mode controls', () => {
 
       await rt.setModel('c1', 'acme-model-2')
       await rt.setSessionMode('c1', 'default')
-      expect(stderr(events, 'c1')).toEqual(['set_config_option:mode=plan', 'set_config_option:model=acme-model-2', 'set_config_option:mode=default'])
+      await vi.waitFor(() => expect(stderr(events, 'c1')).toEqual(['set_config_option:mode=plan', 'set_config_option:model=acme-model-2', 'set_config_option:mode=default']))
       expect(lastModels(events, 'c1')).toMatchObject({ currentModelId: 'acme-model-2' })
       expect(lastMode(events, 'c1')).toMatchObject({ currentModeId: 'default', mode: { id: 'default', label: 'Manual' } })
     })
