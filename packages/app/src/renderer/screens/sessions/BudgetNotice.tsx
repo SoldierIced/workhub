@@ -4,6 +4,7 @@ import { Button } from '../../components/atoms'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { formatCountdown } from '../../lib/agent-usage'
+import { usageWindowName } from '../../lib/usage-window'
 
 /**
  * The composer's usage budget notice. Near the ceiling it only informs; past it, a prompt needs
@@ -30,7 +31,7 @@ export function BudgetNotice({
 }) {
   const { t } = useI18n()
   if (status.action === 'allow' || status.window === undefined || status.percent === undefined || status.ceiling === undefined) return null
-  const params = { account, percent: Math.round(status.percent), window: status.window, ceiling: status.ceiling }
+  const params = { account, percent: Math.round(status.percent), window: usageWindowName(status.window, t), ceiling: status.ceiling }
   const blocked = status.action === 'block'
   return (
     <div

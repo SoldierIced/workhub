@@ -11,6 +11,7 @@ import { DEFAULT_PREFS, SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
 import { PaneResizeHandle } from '../../components/molecules/PaneResizeHandle'
 import { openSubagent } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
+import { usageWindowName } from '../../lib/usage-window'
 import { useCachedPullRequestLists } from '../../pullRequestsStore'
 import type { SessionData } from '../../store'
 import { AiReviewSection } from './AiReviewPanel'
@@ -265,7 +266,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
               {fields.includes('planUsage') && (
                 <div className="flex flex-col gap-1">
                   {m.planUsage!.map((p) => (
-                    <MetricRow key={p.window} label={`${t('monitor.planUsage')} · ${p.window}`} value={`${Math.round(p.percent)}%`} />
+                    <MetricRow key={p.window} label={`${t('monitor.planUsage')} · ${usageWindowName(p.window, t)}`} value={`${Math.round(p.percent)}%`} />
                   ))}
                 </div>
               )}

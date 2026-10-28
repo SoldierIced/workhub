@@ -11,6 +11,7 @@ import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { ESCALATION_TEXT } from '../../lib/useAiReviewNotices'
 import { errorText } from '../../lib/errorText'
+import { usageWindowName } from '../../lib/usage-window'
 
 export const REVIEW_STATUS_TONE: Record<ReviewStatus, Tone> = {
   reviewing: 'info',
@@ -145,7 +146,7 @@ export function AiReviewSection({ view }: { view: SessionView }) {
       <div className="mt-2 flex flex-col gap-2 text-sm">
         {hold && (
           <div role="alert" className="flex flex-col gap-1.5 rounded-md bg-warning-soft px-2 py-1.5 text-warning" data-testid="ai-review-hold">
-            <span>{t('aiReview.held', { percent: Math.round(hold.budget.percent ?? 0), window: hold.budget.window ?? '', ceiling: hold.budget.ceiling ?? '' })}</span>
+            <span>{t('aiReview.held', { percent: Math.round(hold.budget.percent ?? 0), window: hold.budget.window ? usageWindowName(hold.budget.window, t) : '', ceiling: hold.budget.ceiling ?? '' })}</span>
             <div className="flex gap-1.5">
               <Button size="sm" variant="primary" onClick={() => void run(true)}>
                 {t('aiReview.runAnyway')}
