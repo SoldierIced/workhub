@@ -270,6 +270,7 @@ const profile = z.object({
   preferredAgents: z.array(z.string().min(1)).optional(),
   modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
   folders: z.array(z.string().min(1)).optional(),
+  defaultFolder: z.string().trim().min(1).optional(),
   folderOptions: z.record(z.string().min(1), folderOptions).optional(),
   symbol: z.string().trim().min(1).max(40).optional(),
   linkBrowser: z.string().trim().min(1).max(200).optional(),

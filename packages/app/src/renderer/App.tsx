@@ -46,6 +46,8 @@ import { SubagentSheet } from './screens/sessions/SubagentView'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, sessionSnapshot, setExternalViewing, setViewing, startStore, useSessions, type SessionData } from './store'
 import { errorText } from './lib/errorText'
+import { quickSessionPlan } from './lib/quickSession'
+import { abbreviateFolder } from './lib/sessionHeader'
 import { startPromptQueue } from './promptQueue'
 
 /** Applies the appearance preferences to <html> and tells the main process (native chrome). */
@@ -235,9 +237,34 @@ function Shell() {
   )
   // A setup window's fix button asked for a Settings tab.
   useEffect(() => window.hub.setup.onOpenSettings((tab) => openSettings(tab)), [openSettings])
+  // The full dialog: pick the agent, account and folder (the toolbar's arrow, a sidebar folder row).
   const newSession = useCallback((cwd?: string | null, agentKey?: string) => setDialog({ open: true, cwd: cwd ?? undefined, agentKey }), [])
-  // The menu bar / notification area icon: it lists the sessions and opens screens and the new session dialog.
-  useTraySync({ sessions, groups, locale, navigate, newSession: () => newSession() })
+  // "New session" (toolbar button, ⌘T, the menus): the profile's preferred agent in its default
+  // folder, without asking. The dialog opens instead when that cannot start (no agent, not installed, an error).
+  const [home, setHome] = useState<string | undefined>()
+  useEffect(() => void window.hub.getDefaultCwd().then(setHome, () => undefined), [])
+  const quickPlan = quickSessionPlan(profile, agents, home)
+  const quick = useRef({ profile, agents, home, activeProfileId })
+  quick.current = { profile, agents, home, activeProfileId }
+  const quickSession = useCallback(
+    async (agentKey?: string) => {
+      const { profile: p, agents: list, home: h, activeProfileId: profileId } = quick.current
+      const plan = quickSessionPlan(p, list, h, agentKey)
+      const agent = list.find((a) => a.key === plan?.agentKey)
+      const installed = agent ? await window.hub.agents.availability().then((m) => m[agent.agent.id] !== false, () => true) : false
+      if (!plan || !installed) return newSession(null, agentKey)
+      try {
+        const view = await window.hub.sessions.start({ profileId, agentKey: plan.agentKey, cwd: plan.cwd, cols: 100, rows: 30 })
+        openSession(view.id)
+      } catch (e) {
+        toast(errorText(e), 'danger')
+        newSession(plan.cwd, plan.agentKey)
+      }
+    },
+    [newSession, openSession, toast]
+  )
+  // The menu bar / notification area icon: it lists the sessions and opens screens and starts a new session.
+  useTraySync({ sessions, groups, locale, navigate, newSession: () => void quickSession() })
 
   // The application menu (main sends its commands to the window they act on).
   const menuState = useRef({ route, selectedSession, reachable, sessions })
@@ -254,7 +281,7 @@ function Shell() {
             return
           }
           case 'newSession':
-            return newSession(null, command.agentKey)
+            return void quickSession(command.agentKey)
           case 'closeSession':
             if (current) {
               if (isWorking(current)) setClosing(current)
@@ -269,7 +296,7 @@ function Shell() {
             return
         }
       }),
-    [navigate, newSession]
+    [navigate, quickSession]
   )
 
   // CmdOrCtrl shortcuts for every nav item, plus CmdOrCtrl+T for a new session (Workhub 1's keys).
@@ -277,7 +304,7 @@ function Shell() {
     const onKey = (e: KeyboardEvent) => {
       if (matchesShortcut(e, NEW_SESSION_SHORTCUT, platform)) {
         e.preventDefault()
-        newSession()
+        void quickSession()
         return
       }
       const item = reachable.find((i) => matchesShortcut(e, i.shortcut, platform))
@@ -288,7 +315,7 @@ function Shell() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [reachable, platform, navigate, newSession])
+  }, [reachable, platform, navigate, quickSession])
 
   const reopenMember = async (member: GroupMember) => {
     const choice = agents.find((a) => a.key === member.agentKey)
@@ -389,16 +416,23 @@ function Shell() {
         attentionCount={sessions.filter((s) => s.unseen).length}
         onDropOnSessions={(e) => dropOnSessionsTitle(e, liveKeys)}
         workspaces={workspaces}
-        onNewSessionIn={(f) => newSession(f)}
+        onNewSessionIn={(f) => (f ? newSession(f) : void quickSession())}
         onResumeIn={setResumeFolder}
         usage={usageGroups(sessions, accountUsage)}
       />
       <div className="flex min-w-0 flex-1 flex-col bg-bg">
-        <Toolbar nav={<TopNav items={navItems} route={route} onNavigate={navigate} profileId={activeProfileId} />} agents={agents} onNewSession={(key) => newSession(null, key)} onOpenSettings={() => openSettings()} />
+        <Toolbar
+          nav={<TopNav items={navItems} route={route} onNavigate={navigate} profileId={activeProfileId} />}
+          agents={agents}
+          onNewSession={() => void quickSession()}
+          onChooseSession={(key) => newSession(null, key)}
+          newSessionHint={quickPlan ? t('toolbar.newSessionIn', { agent: quickPlan.agentLabel, folder: abbreviateFolder(quickPlan.cwd) }) : undefined}
+          onOpenSettings={() => openSettings()}
+        />
         <main className="relative min-h-0 flex-1">
           {/* Sessions stay mounted so terminals and chats survive a visit to another screen. */}
           <div className={route === 'sessions' ? 'relative h-full' : 'hidden'}>
-            <SessionsScreen sessions={docked} selectedId={selectedSession} visible={route === 'sessions'} theme={theme} onNewSession={() => newSession()} />
+            <SessionsScreen sessions={docked} selectedId={selectedSession} visible={route === 'sessions'} theme={theme} onNewSession={() => void quickSession()} />
             {selectedSession && detached.has(selectedSession) && <DetachedSessionNotice data={sessionMap[selectedSession]} />}
           </div>
           {route !== 'sessions' && (

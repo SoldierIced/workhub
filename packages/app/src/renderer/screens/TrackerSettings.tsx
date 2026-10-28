@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Connection, Result, SecretChange, WorkhubConfig } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
@@ -7,6 +7,8 @@ import { Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow } fro
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { uniqueConnectionId } from '../lib/tickets'
+import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
+import { DeleteButton, useUnsavedForm } from '../components/organisms/UnsavedChanges'
 
 /** The settings keys of a tracker connection; the main process reads the same ones. */
 const EMAIL = 'email'
@@ -60,6 +62,10 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
     return initial ? toForm(initial, activeProfile?.connections.tracker) : emptyForm()
   })
   const [test, setTest] = useState<{ state: 'idle' | 'running' } | { state: 'ok' | 'failed'; text: string }>({ state: 'idle' })
+  // What the form held when it was loaded or last saved: the save bar shows while it differs.
+  const [baseline, setBaseline] = useState<Form>(form)
+  // The field a refused save points at.
+  const [fieldError, setFieldError] = useState<MessageKey | null>(null)
 
   useEffect(() => {
     void window.hub.tickets.status(activeProfile?.id ?? null).then((st) => setDemo(st.state === 'demo'))
@@ -70,12 +76,18 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
   const set = (patch: Partial<Form>) => {
     setForm((f) => ({ ...f, ...patch }))
     setTest({ state: 'idle' })
+    setFieldError(null)
   }
   const select = (id: string | null) => {
     const c = trackers.find((x) => x.id === id)
-    setForm(c ? toForm(c, activeProfile?.connections.tracker) : emptyForm())
+    const next = c ? toForm(c, activeProfile?.connections.tracker) : emptyForm()
+    setForm(next)
+    setBaseline(next)
     setTest({ state: 'idle' })
+    setFieldError(null)
   }
+  // Picking another tracker (or New) asks first when the form has unsaved changes.
+  const pick = (id: string | null) => unsaved.requestLeave(() => select(id))
 
   const connection = (): Connection => {
     const previous = trackers.find((c) => c.id === form.id)
@@ -111,17 +123,27 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
     setTest(r.ok ? { state: 'ok', text: t('trackers.testOk', { account: r.account }) } : { state: 'failed', text: t('trackers.testFailed', { error: r.error }) })
   }
 
-  const save = async () => {
+  const save = async (): Promise<SaveOutcome> => {
+    const gap = missing()
+    if (gap) {
+      setFieldError(gap)
+      return { ok: false, problem: t(gap) }
+    }
     const c = connection()
-    if (!(await run(() => window.hub.config.saveConnection(c, secretChange())))) return
+    if (!(await run(() => window.hub.config.saveConnection(c, secretChange())))) return { ok: false }
     if (activeProfile && form.useInProfile && activeProfile.connections.tracker !== c.id) {
       await run(() => window.hub.config.saveProfile({ ...activeProfile, connections: { ...activeProfile.connections, tracker: c.id } }))
     } else if (activeProfile && !form.useInProfile && activeProfile.connections.tracker === c.id) {
       const { tracker: _removed, ...rest } = activeProfile.connections
       await run(() => window.hub.config.saveProfile({ ...activeProfile, connections: rest }))
     }
-    setForm((f) => ({ ...f, id: c.id, secret: '' }))
+    const saved = { ...form, id: c.id, secret: '' }
+    setForm(saved)
+    setBaseline(saved)
+    return { ok: true }
   }
+  const unsaved = useUnsavedForm({ dirty: isDirty(baseline, form), draft: form, save, discard: () => setForm(baseline) })
+  const errorFor = (key: MessageKey) => (fieldError === key ? t(key) : undefined)
 
   return (
     <div className="flex flex-col gap-4">
@@ -134,7 +156,7 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
             help={t('help.trackers.list')}
             as="h2"
             actions={
-              <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => select(null)}>
+              <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => pick(null)}>
                 {t('common.new')}
               </Button>
             }
@@ -150,7 +172,7 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
                       title={c.name || c.id}
                       selected={form.id === c.id}
                       trailing={activeProfile?.connections.tracker === c.id ? <Badge tone="accent">{activeProfile.name}</Badge> : c.provider}
-                      onClick={() => select(c.id)}
+                      onClick={() => pick(c.id)}
                     />
                   </li>
                 ))}
@@ -160,7 +182,11 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
         </Card>
 
         <Card>
-          <CardHeader title={form.id ? form.name || form.id : t('trackers.new')} as="h2" />
+          <CardHeader
+            title={form.id ? form.name || form.id : t('trackers.new')}
+            as="h2"
+            actions={form.id && <DeleteButton name={form.name || form.id} onDelete={() => void run(() => window.hub.config.deleteConnection(form.id!)).then((ok) => ok && select(null))} />}
+          />
           <CardBody className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-4">
               <Field label={t('trackers.provider')}>
@@ -171,15 +197,15 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
               </Field>
               {isJira && (
                 <>
-                  <Field label={t('trackers.site')} hint={t('trackers.siteHint')}>
+                  <Field label={t('trackers.site')} hint={t('trackers.siteHint')} error={errorFor('trackers.missing.site')}>
                     <Input value={form.site} onChange={(e) => set({ site: e.target.value })} placeholder="your-team.atlassian.net" spellCheck={false} autoComplete="off" />
                   </Field>
-                  <Field label={t('trackers.email')}>
+                  <Field label={t('trackers.email')} error={errorFor('trackers.missing.email')}>
                     <Input type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} placeholder="you@example.com" spellCheck={false} autoComplete="off" />
                   </Field>
                 </>
               )}
-              <Field label={isJira ? t('trackers.token') : t('trackers.apiKey')} hint={isJira ? t('trackers.tokenHintJira') : t('trackers.tokenHintLinear')} className="col-span-2">
+              <Field label={isJira ? t('trackers.token') : t('trackers.apiKey')} hint={isJira ? t('trackers.tokenHintJira') : t('trackers.tokenHintLinear')} className="col-span-2" error={errorFor('trackers.missing.token')}>
                 <Input type="password" autoFocus={Boolean(initialId)} value={form.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={stored ? t('trackers.tokenStored') : t('trackers.tokenNotSet')} autoComplete="off" />
               </Field>
               <Field label={t('trackers.projectKeys')} hint={t('trackers.projectKeysHint')}>
@@ -195,17 +221,9 @@ export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot
               </SwitchRow>
             )}
             <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-              <Button variant="primary" onClick={() => void save()}>
-                {t('trackers.save')}
-              </Button>
               <Button onClick={() => void runTest()} disabled={test.state === 'running'}>
                 {test.state === 'running' ? t('trackers.testing') : t('trackers.test')}
               </Button>
-              {form.id && (
-                <Button variant="danger" icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => void run(() => window.hub.config.deleteConnection(form.id!)).then((ok) => ok && select(null))}>
-                  {t('common.delete')}
-                </Button>
-              )}
               {(test.state === 'ok' || test.state === 'failed') && (
                 <span role="status" className={test.state === 'ok' ? 'text-sm text-success' : 'text-sm text-danger'}>
                   {test.text}

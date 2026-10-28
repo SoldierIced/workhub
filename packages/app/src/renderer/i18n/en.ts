@@ -23,6 +23,7 @@ import { agentsEn } from './agents.en'
 import { toolViewEn } from './toolView.en'
 import { windowsEn } from './windows.en'
 import { localReviewEn } from './localReview.en'
+import { unsavedEn } from './unsaved.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -131,6 +132,8 @@ export const en = {
   'toolbar.newSession': 'New session',
   'toolbar.chooseAgent': 'Choose the agent for a new session',
   'toolbar.newSessionWith': 'New session with',
+  'toolbar.newSessionIn': 'New {agent} session in {folder}',
+  'toolbar.moreOptions': 'Choose agent and folder…',
 
   'newSession.title': 'New session',
   'newSession.description': 'The agent runs in the folder you choose, with the active profile.',
@@ -448,5 +451,6 @@ export const en = {
   ...settingsHelpEn,
   ...toolViewEn,
   ...windowsEn,
-  ...localReviewEn
+  ...localReviewEn,
+  ...unsavedEn
 } as const

@@ -15,7 +15,12 @@ export interface ToolbarProps {
   /** The screens (TopNav), on the left. */
   nav: ReactNode
   agents: EffectiveAgent[]
-  onNewSession: (agentKey?: string) => void
+  /** The button: starts the profile's preferred agent in its default folder without asking. */
+  onNewSession: () => void
+  /** The arrow's items: the new session dialog, with that agent picked (none: the profile's first). */
+  onChooseSession: (agentKey?: string) => void
+  /** What the button starts, e.g. "New Claude session in ~/acme". */
+  newSessionHint?: string
   onOpenSettings: () => void
 }
 
@@ -24,7 +29,7 @@ export interface ToolbarProps {
  * the right. It drags the window; on Windows and Linux the native
  * window controls are drawn over its right end (titleBarOverlay), so it leaves room for them.
  */
-export function Toolbar({ nav, agents, onNewSession, onOpenSettings }: ToolbarProps) {
+export function Toolbar({ nav, agents, onNewSession, onChooseSession, newSessionHint, onOpenSettings }: ToolbarProps) {
   const { t } = useI18n()
   const platform = usePlatform()
   return (
@@ -35,7 +40,8 @@ export function Toolbar({ nav, agents, onNewSession, onOpenSettings }: ToolbarPr
           <button
             type="button"
             onClick={() => onNewSession()}
-            title={shortcutLabel(NEW_SESSION_SHORTCUT, platform)}
+            title={newSessionHint ? `${newSessionHint} (${shortcutLabel(NEW_SESSION_SHORTCUT, platform)})` : shortcutLabel(NEW_SESSION_SHORTCUT, platform)}
+            data-testid="toolbar-new-session"
             className="inline-flex h-8 items-center gap-1.5 rounded-l-md bg-accent pr-3 pl-2.5 text-base font-semibold text-accent-fg transition-colors duration-150 hover:bg-accent-strong"
           >
             <Plus className="size-4" aria-hidden />
@@ -55,13 +61,21 @@ export function Toolbar({ nav, agents, onNewSession, onOpenSettings }: ToolbarPr
                 {agents.map((a) => (
                   <DropdownMenu.Item
                     key={a.key}
-                    onSelect={() => onNewSession(a.key)}
+                    onSelect={() => onChooseSession(a.key)}
                     className="flex h-8 cursor-default select-none items-center gap-2 rounded-sm px-2 text-base outline-none data-[highlighted]:bg-accent-soft"
                   >
                     <AgentIcon agentId={a.agent.id} adapter={a.agent.adapter} />
                     {a.label}
                   </DropdownMenu.Item>
                 ))}
+                <DropdownMenu.Separator className="my-1 h-px bg-border" />
+                <DropdownMenu.Item
+                  onSelect={() => onChooseSession()}
+                  data-testid="toolbar-choose-session"
+                  className="flex h-8 cursor-default select-none items-center gap-2 rounded-sm px-2 text-base outline-none data-[highlighted]:bg-accent-soft"
+                >
+                  {t('toolbar.moreOptions')}
+                </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
