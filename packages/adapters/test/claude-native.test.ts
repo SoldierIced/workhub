@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { BUILTIN_AGENTS, type AgentEvent } from '@workhub/core'
 import {
   accessToken,
+  claudeSlashCommands,
+  CLEARED_TEXT,
   ClaudeBridgeMapper,
+  localCommandText,
   ClaudeNativeRuntime,
   ClaudePlanUsageReader,
   ClaudeSessionHistory,
@@ -128,6 +131,12 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     expect(events.some((e) => e.type === 'agentSession')).toBe(false)
     expect(await rt.prompt('n9', '/clear')).toEqual({ stopReason: 'end_turn' })
     expect(events.filter((e) => e.type === 'agentSession')).toEqual([{ sessionId: 'n9', type: 'agentSession', agentSessionId: 'cccccccc-3333-4333-8333-333333333333' }])
+  })
+
+  it('sends a slash command as typed and shows a local command\'s output as the reply', async () => {
+    await start('n-cmd')
+    expect(await rt.prompt('n-cmd', '/cost --all')).toEqual({ stopReason: 'end_turn' })
+    expect(agentText(events)).toBe('Total cost: $0.00 (/cost --all)')
   })
 
   it('streams the reply once (deltas, not the full message again) and sends images as content blocks', async () => {
@@ -263,6 +272,48 @@ describe('ClaudeBridgeMapper', () => {
     expect(modeOf(undefined)).toBeUndefined()
   })
 
+  it('reports the slash commands: Claude\'s own as the agent\'s, the rest as skills, terminal-only ones left out', () => {
+    const m = new ClaudeBridgeMapper('s')
+    const fromOptions = m.map({
+      type: 'options',
+      models: [],
+      commands: [
+        { name: 'compact', description: 'Compact the conversation', argumentHint: '[instructions]', builtin: true },
+        { name: 'deploy-docs', description: 'Publish the docs', argumentHint: '', builtin: false },
+        { name: 'acme:lint', description: 'Lint with the acme rules', argumentHint: '<path>' }
+      ]
+    })
+    expect(fromOptions.find((e) => e.type === 'commands')).toEqual({
+      sessionId: 's',
+      type: 'commands',
+      commands: [
+        { name: 'compact', description: 'Compact the conversation', argumentHint: '[instructions]', group: 'agent' },
+        { name: 'deploy-docs', description: 'Publish the docs', group: 'skill' },
+        { name: 'acme:lint', description: 'Lint with the acme rules', argumentHint: '<path>', group: 'skill' }
+      ]
+    })
+    // The init message adds names the list lacked, marks skills and drops terminal-bound commands.
+    const init = m.map({ type: 'sdk', message: { type: 'system', subtype: 'init', slash_commands: ['compact', 'review-pr', 'statusline'], skills: ['review-pr'], terminal_slash_commands: ['statusline'] } })
+    const commands = init.find((e) => e.type === 'commands')
+    expect(commands?.type === 'commands' && commands.commands.map((c) => `${c.group}:${c.name}`)).toEqual(['agent:compact', 'skill:deploy-docs', 'skill:acme:lint', 'skill:review-pr'])
+    // A changed list replaces the rows.
+    const changed = m.map({ type: 'sdk', message: { type: 'system', subtype: 'commands_changed', commands: [{ name: 'compact', description: 'Compact', builtin: true }] } })
+    expect(changed[0]?.type === 'commands' && changed[0].commands.map((c) => c.name)).toEqual(['compact', 'review-pr'])
+  })
+
+  it('classifies a CLI\'s unmarked commands by Claude\'s known built-ins', () => {
+    expect(claudeSlashCommands([{ name: 'clear' }, { name: 'ship-it' }], [], new Set(), new Set()).map((c) => `${c.group}:${c.name}`)).toEqual(['agent:clear', 'skill:ship-it'])
+  })
+
+  it('shows a local command\'s output as the agent\'s reply and /clear as a notice', () => {
+    const m = new ClaudeBridgeMapper('s')
+    const output = m.map({ type: 'sdk', message: { type: 'system', subtype: 'local_command_output', content: '<local-command-stdout>\u001b[1mTotal cost:\u001b[22m $0.12</local-command-stdout>' } })
+    expect(output).toEqual([{ sessionId: 's', type: 'message', role: 'agent', text: 'Total cost: $0.12' }])
+    expect(m.map({ type: 'sdk', message: { type: 'system', subtype: 'local_command_output', content: '' } })).toEqual([])
+    expect(localCommandText('  plain  ')).toBe('plain')
+    expect(m.map({ type: 'sdk', message: { type: 'conversation_reset', new_conversation_id: 'c2', trigger: 'clear' } })).toMatchObject([{ type: 'notice', kind: 'info', text: CLEARED_TEXT }])
+  })
+
   it('drops hooks that said nothing and flags failed ones', () => {
     const m = new ClaudeBridgeMapper('s')
     const hook = (extra: object) => m.map({ type: 'sdk', message: { type: 'system', subtype: 'hook_response', hook_event: 'Stop', hook_name: 'Stop', output: '', stdout: '', stderr: '', ...extra } })
@@ -317,6 +368,19 @@ describe('Claude session history', () => {
       { agentId: 'claude', accountId: 'work', agentSessionId: 'sess-2', title: 'Account /tmp/acme-work', lastModified: 1500 }
     ])
     expect(await history.messages('sess-1', '/tmp/acme-web')).toEqual([{ kind: 'user', text: 'hello from sess-1 in /tmp/acme-web' }])
+  })
+
+  it('renames a session the way /rename does, through sessions.mjs', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-rename-'))
+    const log = join(dir, 'rename.json')
+    process.env['FAKE_SESSIONS_LOG'] = log
+    try {
+      await new ClaudeSessionHistory({ bridgeDir: fakeBridge }).rename('sess-1', '/tmp/acme-web', 'Payments refactor', '/tmp/acme-work')
+      expect(JSON.parse(readFileSync(log, 'utf8'))).toEqual({ args: ['sess-1', '/tmp/acme-web', 'Payments refactor'], account: '/tmp/acme-work' })
+    } finally {
+      delete process.env['FAKE_SESSIONS_LOG']
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('looks a conversation up in every project when its folder does not hold it', async () => {

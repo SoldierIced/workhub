@@ -227,6 +227,11 @@ export class ClaudeSessionHistory implements SessionHistorySource {
     return toHistoryMessages(await this.run(['messages', agentSessionId], configDir))
   }
 
+  /** Sets the session's title the way `/rename` does (a custom-title entry in its transcript), so `claude --resume` shows it too. */
+  async rename(agentSessionId: string, cwd: string, title: string, configDir?: string): Promise<void> {
+    await this.run(['rename', agentSessionId, cwd, title], configDir)
+  }
+
   private run(args: string[], configDir: string | undefined): Promise<unknown> {
     const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
     if (configDir) env['CLAUDE_CONFIG_DIR'] = configDir

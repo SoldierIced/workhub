@@ -63,6 +63,8 @@ export type HistoryMessage =
 export interface SessionHistorySource {
   list(account: { agentId: string; accountId: string | null; configDir?: string }): Promise<HistoryEntry[]>
   messages(agentSessionId: string, cwd: string, configDir?: string): Promise<HistoryMessage[]>
+  /** Gives a session the title its agent shows (Claude: `/rename`'s custom title in the transcript). */
+  rename?(agentSessionId: string, cwd: string, title: string, configDir?: string): Promise<void>
 }
 
 /** Plan usage (5 h, weekly windows) of one agent account. */

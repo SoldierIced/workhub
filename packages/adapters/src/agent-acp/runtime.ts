@@ -16,7 +16,7 @@ import {
   type RequestPermissionResponse,
   type Stream
 } from '@agentclientprotocol/sdk'
-import { readOnlyModeId } from '@workhub/core'
+import { readOnlyModeId, readSlashCommand, uniqueSlashCommands } from '@workhub/core'
 import type {
   AgentCapabilities,
   AgentDefinition,
@@ -29,6 +29,7 @@ import type {
   PromptResult,
   SessionModeControl,
   SessionModeOption,
+  SlashCommandInfo,
   StartedSession,
   StartSessionRequest,
   Unsubscribe
@@ -71,6 +72,13 @@ interface AcpSession {
   modes: SessionModeOption[]
   currentModeId?: string
   modeVia?: SelectVia
+  /** Slash commands by where the agent reported them (ACP `available_commands_update`, Kiro's extension). */
+  commands: Map<'acp' | 'kiro', SlashCommandInfo[]>
+}
+
+/** Commands as an agent lists them (ACP `availableCommands`, Kiro's `commands`); entries without a name are skipped. */
+export function acpSlashCommands(raw: unknown): SlashCommandInfo[] {
+  return Array.isArray(raw) ? raw.flatMap((c) => readSlashCommand(c, 'agent') ?? []) : []
 }
 
 type RawRequest = (method: string, params: unknown) => Promise<unknown>
@@ -133,7 +141,8 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       pending: new Map(),
       stopping: false,
       models: [],
-      modes: []
+      modes: [],
+      commands: new Map()
     }
     this.sessions.set(id, session)
 
@@ -178,6 +187,9 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
         throw new Error(`method ${ctx.method} is not supported by ${this.options.clientName}`)
       })
       .onNotification('*', (ctx) => {
+        // Kiro lists its slash commands with its MCP servers.
+        const listed = ctx.method === '_kiro.dev/commands/available' ? (ctx.params as { commands?: unknown } | undefined)?.commands : undefined
+        if (Array.isArray(listed)) this.setCommands(session, 'kiro', acpSlashCommands(listed))
         const patch = monitor.applyExtension(ctx.method, ctx.params)
         if (patch) this.emit({ sessionId: id, type: 'monitor', snapshot: patch })
       })
@@ -415,6 +427,9 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
           result: acpToolResult(u)
         })
         break
+      case 'available_commands_update':
+        this.setCommands(s, 'acp', acpSlashCommands(u['availableCommands']))
+        break
       case 'current_mode_update':
         if (u.currentModeId) {
           s.currentModeId = u.currentModeId
@@ -441,6 +456,11 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
     }
     const patch = s.monitor.applyUpdate(update)
     if (patch) this.emit({ sessionId: s.id, type: 'monitor', snapshot: patch })
+  }
+
+  private setCommands(s: AcpSession, source: 'acp' | 'kiro', commands: SlashCommandInfo[]): void {
+    s.commands.set(source, commands)
+    this.emit({ sessionId: s.id, type: 'commands', commands: uniqueSlashCommands([...s.commands.values()].flat()) })
   }
 
   private require(sessionId: string): AcpSession {

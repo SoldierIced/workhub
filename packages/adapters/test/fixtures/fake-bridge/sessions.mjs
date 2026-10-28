@@ -1,4 +1,6 @@
 // A fake of sessions.mjs: prints canned sessions, tagged with the account's CLAUDE_CONFIG_DIR.
+// `rename` writes its arguments to FAKE_SESSIONS_LOG.
+import { writeFileSync } from 'node:fs'
 const [command, ...args] = process.argv.slice(2)
 const account = process.env.CLAUDE_CONFIG_DIR ?? 'default'
 if (command === 'all') {
@@ -14,6 +16,9 @@ if (command === 'all') {
   process.stdout.write(JSON.stringify([
     { type: 'user', parent_tool_use_id: null, message: { content: `hello from ${args[0]} in ${args[1]}` } }
   ]))
+} else if (command === 'rename' && process.env.FAKE_SESSIONS_LOG) {
+  writeFileSync(process.env.FAKE_SESSIONS_LOG, JSON.stringify({ args, account }))
+  process.stdout.write(JSON.stringify({ ok: true }))
 } else {
   process.stdout.write(JSON.stringify({ error: `Unknown command: ${command}` }))
   process.exitCode = 1

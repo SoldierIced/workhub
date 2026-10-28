@@ -194,6 +194,27 @@ describe('AcpRuntime against a fake ACP agent', () => {
     })
   })
 
+  it('passes a slash command through as typed and reports the commands the agent lists', async () => {
+    await withRuntime(async (rt, events) => {
+      await rt.start({ sessionId: 's-c', agent: fakeAgent, account: null, cwd: process.cwd(), env: {} })
+      await rt.prompt('s-c', '/review main')
+      expect(events).toContainEqual({ sessionId: 's-c', type: 'message', role: 'agent', text: 'echo: /review main' })
+      await rt.prompt('s-c', 'commands')
+      // ACP's list and Kiro's extension list are merged, one entry per name.
+      await vi.waitFor(() =>
+        expect(events.filter((e) => e.type === 'commands').at(-1)).toEqual({
+          sessionId: 's-c',
+          type: 'commands',
+          commands: [
+            { name: 'review', description: 'Review the changes', argumentHint: '<branch>', group: 'agent' },
+            { name: 'compact', description: 'Compact', group: 'agent' },
+            { name: 'agent', description: 'Select an agent', group: 'agent' }
+          ]
+        })
+      )
+    })
+  })
+
   it('starts a read-only session in the agent\'s plan mode', async () => {
     await withRuntime(async (rt, events) => {
       const started = await rt.start({ sessionId: 's-ro', agent: { ...fakeAgent, modeSemantics: 'permission' }, account: null, cwd: process.cwd(), env: {}, readOnly: true })

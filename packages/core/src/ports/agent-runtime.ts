@@ -1,5 +1,6 @@
 import type { AgentAccount, AgentAdapterKind, AgentCapabilities, AgentDefinition } from '../domain/agent'
 import type { SessionMonitorSnapshot } from '../domain/monitor'
+import type { SlashCommandInfo } from '../domain/slash-commands'
 import type { PermissionModeInfo, SessionModeOption, SessionState } from '../domain/session'
 import type { ToolResultView, ToolView } from '../domain/tool-view'
 
@@ -89,6 +90,8 @@ export type AgentEvent =
   | { sessionId: string; type: 'permissionCancelled'; requestId: string }
   /** Models the session can switch to, and the current one. */
   | { sessionId: string; type: 'models'; models: ModelOption[]; currentModelId?: string }
+  /** The slash commands the agent takes (its built-ins, skills and custom commands); each report replaces the last. */
+  | { sessionId: string; type: 'commands'; commands: SlashCommandInfo[] }
   /** The conversation moved on under a new agent session id (Claude's `/clear` starts a new transcript). */
   | { sessionId: string; type: 'agentSession'; agentSessionId: string }
   /**

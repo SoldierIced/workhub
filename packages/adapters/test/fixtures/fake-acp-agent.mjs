@@ -1,7 +1,8 @@
 // A minimal ACP agent over stdio for runtime tests. Replies to initialize, session/new and
 // session/prompt; during a prompt it streams one message chunk, one tool call and a Kiro-style
 // metadata notification. Prompt "ask" sends a permission request first; prompt "agent-switch"
-// makes the agent change its own mode (and model, in config style) before answering.
+// makes the agent change its own mode (and model, in config style) before answering; prompt
+// "commands" reports its slash commands first.
 //
 // FAKE_ACP_STYLE picks how session/new advertises models and modes:
 // - unset: ACP `modes` (permission modes) and `models` (session/set_mode, session/set_model).
@@ -82,7 +83,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       send({ method: '_kiro.dev/metadata', params: { sessionId, contextUsagePercentage: 12.5, meteringUsage: [{ value: 0.25, unit: 'credit' }], turnDurationMs: 900 } })
       send({ id: msg.id, result: { stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } } })
     }
-    if (text === 'agent-switch') {
+    if (text === 'commands') {
+      // The slash commands, the ACP way and Kiro's way (names with their slash).
+      update({ sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'review', description: 'Review the changes', input: { hint: '<branch>' } }, { name: 'compact', description: 'Compact' }] })
+      send({ method: '_kiro.dev/commands/available', params: { sessionId, commands: [{ name: '/agent', description: 'Select an agent' }, { name: '/compact', description: 'Compact' }], mcpServers: [] } })
+      finish('')
+    } else if (text === 'agent-switch') {
       currentMode = modes[modes.length - 1].id
       if (style === 'config') {
         currentModel = models[models.length - 1].modelId

@@ -3,7 +3,9 @@
  * Pure apart from the id counter, so it is tested against recorded-shape fixtures.
  */
 import {
+  CLAUDE_BUILTIN_COMMANDS,
   isUnattendedMode,
+  readSlashCommand,
   isUsageLimitText,
   limitResetFromText,
   type AgentEvent,
@@ -14,7 +16,8 @@ import {
   type PermissionOption,
   type PlanUsageWindow,
   type SessionModeOption,
-  type SessionMonitorSnapshot
+  type SessionMonitorSnapshot,
+  type SlashCommandInfo
 } from '@workhub/core'
 import { claudeToolResult, claudeToolView } from '../shared/claude-tool-view'
 import { describeTool, toolKind } from '../shared/claude-tools'
@@ -132,6 +135,9 @@ export function rejectedLimit(info: unknown): { window?: string; resetsAt?: numb
   return out
 }
 
+/** The notice `/clear` leaves in the chat; the app shows it in the reader's language. */
+export const CLEARED_TEXT = 'The conversation was cleared.'
+
 export const PERMISSION_OPTIONS = {
   allowOnce: { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
   allowAlways: { optionId: 'allow-always', name: 'Always allow', kind: 'allow_always' },
@@ -147,6 +153,40 @@ export function permissionResult(optionId: string | null, input: unknown, sugges
   return { behavior: 'deny', message: optionId ? 'The user denied this.' : 'The request was cancelled.' }
 }
 
+/** What a local command (`/cost`, `/context`) printed, without the terminal's colors and Claude Code's wrapper tags. */
+export function localCommandText(content: string): string {
+  return content
+    .replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '')
+    .replace(/<\/?local-command-(stdout|stderr)>/g, '')
+    .trim()
+}
+
+const CLAUDE_BUILTIN_NAMES = new Set(CLAUDE_BUILTIN_COMMANDS.map((c) => c.name))
+
+/**
+ * The session's slash commands from what Claude Code reported: `rows` are the SDK's `SlashCommand`s
+ * (with descriptions), `names` the init message's `slash_commands`, `skills` its skill names.
+ * Claude's own commands (marked `builtin`, or known built-ins from a CLI that does not mark them) are
+ * the agent's; the rest are skills and custom commands (user, project, plugin, MCP). Commands bound
+ * to the terminal (`terminal_slash_commands`) are left out: the chat cannot run them.
+ */
+export function claudeSlashCommands(rows: readonly unknown[], names: readonly string[], skills: ReadonlySet<string>, terminalOnly: ReadonlySet<string>): SlashCommandInfo[] {
+  const marked = rows.some((r) => typeof obj(r)?.['builtin'] === 'boolean')
+  const isBuiltin = (name: string, row?: Obj) => !skills.has(name) && (marked ? row?.['builtin'] === true : CLAUDE_BUILTIN_NAMES.has(name))
+  const out = new Map<string, SlashCommandInfo>()
+  for (const raw of rows) {
+    const read = readSlashCommand(raw, 'agent')
+    if (!read || terminalOnly.has(read.name) || out.has(read.name)) continue
+    out.set(read.name, { ...read, group: isBuiltin(read.name, obj(raw)) ? 'agent' : 'skill' })
+  }
+  for (const name of names) {
+    if (out.has(name) || terminalOnly.has(name) || !name || /\s/.test(name)) continue
+    const known = CLAUDE_BUILTIN_COMMANDS.find((c) => c.name === name)
+    out.set(name, known && !skills.has(name) ? known : { name, group: isBuiltin(name) ? 'agent' : 'skill' })
+  }
+  return [...out.values()]
+}
+
 /** One session's mapping state: which assistant messages already streamed their text. */
 export class ClaudeBridgeMapper {
   private readonly streamed = new Set<string>()
@@ -157,6 +197,11 @@ export class ClaudeBridgeMapper {
   private readonly permissions = new Map<string, { input: unknown; suggestions: unknown }>()
   /** Last plan windows reported, by window name. */
   private readonly windows = new Map<string, PlanUsageWindow>()
+  /** What Claude Code reported of its slash commands so far (see `claudeSlashCommands`). */
+  private commandRows: unknown[] = []
+  private commandNames: string[] = []
+  private skills = new Set<string>()
+  private terminalOnly = new Set<string>()
 
   constructor(private readonly sessionId: string) {}
 
@@ -183,6 +228,10 @@ export class ClaudeBridgeMapper {
         const defaults = obj(line['defaults'])
         const mode = str(defaults?.['permissionMode']) ?? (defaults ? 'default' : undefined)
         if (mode) events.push({ sessionId, type: 'permissionMode', mode: claudePermissionMode(mode), currentModeId: mode })
+        if (Array.isArray(line['commands'])) {
+          this.commandRows = line['commands']
+          events.push(this.commandsEvent())
+        }
         return events
       }
       case 'mcp_status':
@@ -289,6 +338,9 @@ export class ClaudeBridgeMapper {
       }
       case 'system':
         return this.system(m)
+      case 'conversation_reset':
+        // `/clear` (or leaving plan mode with a fresh context): the runtime follows the new session id.
+        return [this.notice('info', 'Claude Code', CLEARED_TEXT)]
       case 'rate_limit_event': {
         const info = obj(m['rate_limit_info'])
         const w = rateLimitWindow(info)
@@ -317,7 +369,23 @@ export class ClaudeBridgeMapper {
         const model = str(m['model'])
         if (model) snapshot.model = model
         if (Object.keys(snapshot).length) events.push({ sessionId, type: 'monitor', snapshot })
+        if (Array.isArray(m['slash_commands'])) {
+          const names = (v: unknown) => arr(v).filter((n): n is string => typeof n === 'string')
+          this.commandNames = names(m['slash_commands'])
+          this.skills = new Set(names(m['skills']))
+          this.terminalOnly = new Set(names(m['terminal_slash_commands']))
+          events.push(this.commandsEvent())
+        }
         return events
+      }
+      case 'commands_changed':
+        if (!Array.isArray(m['commands'])) return []
+        this.commandRows = m['commands']
+        return [this.commandsEvent()]
+      case 'local_command_output': {
+        // A local command's output (`/cost`, `/context`): Claude Code shows it as its reply.
+        const text = localCommandText(str(m['content']) ?? '')
+        return text ? [{ sessionId, type: 'message', role: 'agent', text }] : []
       }
       case 'hook_response': {
         // A hook's own output (context it adds, a block reason): shown apart from Claude's reply.
@@ -339,6 +407,10 @@ export class ClaudeBridgeMapper {
       default:
         return []
     }
+  }
+
+  private commandsEvent(): AgentEvent {
+    return { sessionId: this.sessionId, type: 'commands', commands: claudeSlashCommands(this.commandRows, this.commandNames, this.skills, this.terminalOnly) }
   }
 
   private usageLimit(text: string): AgentEvent {

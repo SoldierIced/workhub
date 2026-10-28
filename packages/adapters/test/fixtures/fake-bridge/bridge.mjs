@@ -67,6 +67,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       } else if (text === '/clear') {
         // Claude Code's /clear: a local command that moves the conversation to a new session id.
         sdk({ type: 'result', subtype: 'success', is_error: false, result: '', local_command: 'clear', session_id: 'cccccccc-3333-4333-8333-333333333333' })
+      } else if (text.startsWith('/cost')) {
+        // A local command: its output comes as a system message, then a result without a model turn.
+        sdk({ type: 'system', subtype: 'local_command_output', content: `<local-command-stdout>Total cost: $0.00 (${text})</local-command-stdout>` })
+        sdk({ type: 'result', subtype: 'success', is_error: false, result: 'Total cost: $0.00', local_command: 'cost' })
       } else if (text === 'wait') {
         // Answered by an interrupt.
       } else if (text === 'ignore close') {
