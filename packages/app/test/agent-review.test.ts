@@ -124,15 +124,16 @@ describe('AgentReviewService', () => {
     expect(await s.service.start('dev', request)).toMatchObject({ ok: true })
     await until(() => ended(s.loop()))
     expect(s.loop()).toMatchObject({ phase: 'approved', round: 1, reviewerSessionId: 'rev1', reviewerLabel: expect.stringContaining('Kiro') })
-    // The prompt went to the author as typed, then the brief to the reviewer.
-    expect(s.prompts.map(([id]) => id)).toEqual(['dev', 'rev1'])
+    // The prompt went to the author as typed, the brief to the reviewer, then the approval back to the author.
+    expect(s.prompts.map(([id]) => id)).toEqual(['dev', 'rev1', 'dev'])
+    expect(s.prompts[2]![1]).toContain('approved')
     expect(s.prompts[0]![1]).toBe('Write the brief.')
     const first = s.prompts[1]![1]
     expect(first.split('\n')[0]).toBe('Review: Refunds in pay')
     expect(first).toContain('git -C /work/acme/pay diff develop...feat/refunds')
     expect(first).not.toContain('Sure.')
     expect(s.shown).toEqual(s.prompts)
-    expect(s.turnEnds).toEqual([['dev', 'end_turn'], ['rev1', 'end_turn']])
+    expect(s.turnEnds).toEqual([['dev', 'end_turn'], ['rev1', 'end_turn'], ['dev', 'end_turn']])
     expect(s.started[0]?.input).toMatchObject({ agentKey: 'kiro', cwd: '/work/acme', readOnly: true, mode: 'app', profileId: 'p' })
     expect(s.started[0]?.origin).toEqual({ kind: 'review', fromLabel: 'Refunds in pay', fromIdentity: 'ident-dev' })
     // The reviewer cannot push.
@@ -146,7 +147,7 @@ describe('AgentReviewService', () => {
     await s.service.start('dev', request)
     await until(() => ended(s.loop()))
     expect(s.loop()).toMatchObject({ phase: 'approved', round: 2 })
-    expect(s.prompts.map(([id]) => id)).toEqual(['dev', 'rev1', 'dev', 'rev1'])
+    expect(s.prompts.map(([id]) => id)).toEqual(['dev', 'rev1', 'dev', 'rev1', 'dev'])
     expect(s.prompts[2]![1]).toContain('Review round 1 of 3')
     expect(s.prompts[2]![1]).toContain('src/refund.ts:12 refunds twice')
     expect(s.prompts[3]![1]).toContain('Fixed src/refund.ts:12 in abc123.')
@@ -158,8 +159,9 @@ describe('AgentReviewService', () => {
     await s.service.start('dev', { ...request, maxRounds: 2 })
     await until(() => ended(s.loop()))
     expect(s.loop()).toMatchObject({ phase: 'maxRounds', round: 2 })
-    // The last findings stay in the reviewer's chat: nothing more goes to the author.
-    expect(s.prompts.map(([id]) => id)).toEqual(['dev', 'rev1', 'dev', 'rev1'])
+    // The last findings still go to the author, marked as the last round.
+    expect(s.prompts.map(([id]) => id)).toEqual(['dev', 'rev1', 'dev', 'rev1', 'dev'])
+    expect(s.prompts[4]![1]).toContain('that was the last round')
   })
 
   it('stops when the user presses Stop: the turn it waits on is interrupted and nothing more is sent', async () => {

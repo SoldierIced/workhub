@@ -107,6 +107,19 @@ export function buildAuthorFixPrompt(input: { review: string; reviewer: string; 
   ].join('\n\n')
 }
 
+/** The reviewer's last answer as the author gets it when the loop ends: approved, or out of rounds. */
+export function buildAuthorFinalPrompt(input: { review: string; reviewer: string; outcome: 'approved' | 'maxRounds'; round: number; maxRounds: number }): string {
+  const head =
+    input.outcome === 'approved'
+      ? `Review round ${input.round} of ${input.maxRounds} by ${input.reviewer}: approved. The loop is over and nothing more goes back to the reviewer.`
+      : `Review round ${input.round} of ${input.maxRounds} by ${input.reviewer}: changes requested, and that was the last round. The loop is over and nothing more goes back to the reviewer.`
+  const ask =
+    input.outcome === 'approved'
+      ? 'The final review is below. Apply any remaining nits you agree with, then reply with a short summary of the review and of what, if anything, you changed.'
+      : 'The reviewer\'s last findings are below. Fix the ones you agree with, say why for any you disagree with, and reply with a short summary of what you changed and what is still open.'
+  return [head, ask, `<review>\n${input.review.trim()}\n</review>`].join('\n\n')
+}
+
 /** The author's answer as the reviewer gets it: review again, same format, same verdict line. */
 export function buildReReviewPrompt(input: { reply: string; round: number; maxRounds: number }): string {
   const reply = input.reply.trim() || '(the author replied with no text)'

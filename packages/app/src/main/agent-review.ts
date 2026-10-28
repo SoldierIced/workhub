@@ -11,7 +11,7 @@ import {
   afterVerdict,
   aiReviewSettings,
   briefPromptOf,
-  buildAuthorFixPrompt,
+  buildAuthorFinalPrompt, buildAuthorFixPrompt,
   buildLoopReviewerPrompt,
   buildReReviewPrompt,
   defaultReviewer,
@@ -203,7 +203,12 @@ export class AgentReviewService {
         const { round, maxRounds } = run.view
         // A reply without a verdict line counts as changes requested: the author gets it and the round limit still ends the loop.
         const next = afterVerdict(parseReviewVerdict(review), round, maxRounds)
-        if (next !== 'fixing') return this.set(run, { phase: next })
+        if (next !== 'fixing') {
+          // The author always gets the reviewer's last answer, approved or not.
+          this.set(run, { phase: 'fixing' })
+          await this.turn(run, config, author.id, authorKey, buildAuthorFinalPrompt({ review, reviewer: reviewer.label, outcome: next, round, maxRounds }), 'authorClosed')
+          return this.set(run, { phase: next })
+        }
         this.set(run, { phase: 'fixing' })
         const answer = await this.turn(run, config, author.id, authorKey, buildAuthorFixPrompt({ review, reviewer: reviewer.label, round, maxRounds }), 'authorClosed')
         this.set(run, { phase: 'reviewing', round: round + 1 })
