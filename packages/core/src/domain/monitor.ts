@@ -89,6 +89,37 @@ export interface McpServerStatus {
   source?: string
 }
 
+/**
+ * How a session relates to a pull request: it acted on it (created, commented, reviewed, merged,
+ * viewed or edited it), the user named it, or the agent's final reply named it.
+ */
+export type SessionLinkSource = 'acted' | 'user' | 'reply'
+
+/**
+ * A pull request the session is related to: by URL, or by number when the command or prompt gave
+ * none (`gh pr view 12`), with its repository (`owner/repo`, or just `repo` as a prompt writes it)
+ * when said, else the folder the command ran in.
+ */
+export interface SessionPullRequestLink {
+  source: SessionLinkSource
+  url?: string
+  number?: number
+  repo?: string
+  folder?: string
+}
+
+/**
+ * A branch the session created, checked out, committed on or pushed. By name, or, when the command
+ * did not name it (`git commit -q`, `git push`), by the folder whose current branch it is; with the
+ * `owner/repo` its push went to, when the output said.
+ */
+export interface SessionBranch {
+  name?: string
+  folder?: string
+  repo?: string
+  pushed?: boolean
+}
+
 export interface SessionMonitorSnapshot {
   title?: string
   model?: string
@@ -109,15 +140,27 @@ export interface SessionMonitorSnapshot {
   activeTimeMs?: number
   planUsage?: PlanUsageWindow[]
   mcpServers?: McpServerStatus[]
-  /** Pull request URLs the session's tool calls and commands created or touched, oldest first. */
+  /**
+   * Pull request URLs the session is related to (see `pullRequestLinks`), oldest first. Agents
+   * without links report every URL their conversation named.
+   */
   pullRequests?: string[]
-  /** Ticket keys (`ABC-123`) named in the session's prompts, tool calls and commands, oldest first. */
+  /** The pull requests the session acted on or the user named, and the ones the agent's replies named; oldest first. */
+  pullRequestLinks?: SessionPullRequestLink[]
+  /**
+   * Ticket keys (`ABC-123`) the user typed in the session (prompts, slash command arguments, the
+   * title given to it), oldest first. Agents without that split report every key their conversation named.
+   */
   ticketKeys?: string[]
+  /** Ticket keys the agent's final reply of a turn named as its work (a reply that lists many names none), oldest first. */
+  replyTicketKeys?: string[]
   /**
    * Tickets the session itself created or changed through the tracker (edit, transition, comment,
    * link): the ones it is associated with, created first, then most recent first.
    */
   linkedTicketKeys?: string[]
+  /** Branches the session created, checked out, committed on or pushed, most recent last. */
+  branches?: SessionBranch[]
   /**
    * Folders the session worked in (see `toolWorkPaths`): its cwd as it moved, and the folders its
    * edits, writes, `cd` and `git -C` commands touched; most recent last. Unset for an agent that

@@ -1,6 +1,6 @@
 import { Brain, ExternalLink, FilePen, FileSearch, FileText, GitBranch, Globe, MoveRight, Power, PowerOff, RefreshCw, RotateCw, Settings, SquareTerminal, Ticket, Trash2, Wrench, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { sessionWork, visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
+import { sessionPullRequestUrls, sessionWork, visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
 import { Badge, Button, IconButton, Spinner, StateDot } from '../../components/atoms'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -193,10 +193,23 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const providers = useMemo(() => keyProviders(trackerStatus), [trackerStatus])
   const ticketHint = trackerHint(trackerStatus)
   const listed = [...(lists?.mine ?? []), ...(lists?.toReview ?? [])]
-  const named = usePullRequestsByUrl(profileId, m.pullRequests, listed)
   // A folder of repositories lists only the ones with changes: their branches alone would miss clean work.
   const repos = changes && (changes.touched || !changes.nested) ? changes.repos : undefined
-  const { prs, ticketKeys: tickets } = sessionWork({ items: [...listed, ...named], mentionedPrs: m.pullRequests, repos, mentionedTickets: m.ticketKeys, linkedTickets: m.linkedTicketKeys, titles: [m.title, v.label], providers })
+  // An agent without links reports every PR URL its conversation named: the weakest relation.
+  const links = m.pullRequestLinks ?? m.pullRequests?.map((url) => ({ source: 'reply' as const, url }))
+  const linkedUrls = sessionPullRequestUrls(links, listed, repos).map((l) => l.url)
+  const named = usePullRequestsByUrl(profileId, [...linkedUrls].reverse(), listed)
+  const { prs, ticketKeys: tickets } = sessionWork({
+    items: [...listed, ...named],
+    links,
+    repos,
+    mentionedTickets: m.ticketKeys,
+    replyTickets: m.replyTicketKeys,
+    linkedTickets: m.linkedTicketKeys,
+    branches: m.branches,
+    titles: [v.name],
+    providers
+  })
   const time = sessionTime(v.startedAt, now, m.activeTimeMs, m.toolCalls)
   // Before the first state change nothing is known yet: say so rather than show 0.
   const activeKnown = m.activeTimeMs !== undefined

@@ -5,8 +5,9 @@
  * The format is internal to Claude Code: every field is optional and unknown lines are skipped.
  */
 import { homedir } from 'node:os'
-import { noteWorkPath, toolWorkPaths, type SessionMonitorSnapshot, type SubagentSummary, type TokenUsage, type ToolCallSummary } from '@workhub/core'
-import { contextWindow, describeTool, estimateCost, isJiraTool, isJiraWrite, jiraTargetKeys, pullRequestUrls, ticketKeys, toolKind } from '../shared/claude-tools'
+import { noteWorkPath, toolWorkPaths, type SessionMonitorSnapshot, type SessionPullRequestLink, type SubagentSummary, type TokenUsage, type ToolCallSummary } from '@workhub/core'
+import { contextWindow, describeTool, estimateCost, pullRequestNumbers, pullRequestUrls, ticketKeys, toolKind } from '../shared/claude-tools'
+import { noteLink, SessionLinks } from './session-links'
 
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj | undefined => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : undefined)
@@ -60,7 +61,22 @@ function resultText(content: unknown): string {
 
 const STEP_LIMIT = 40
 const KEY_LIMIT = 200
-const LINKED_LIMIT = 20
+/** A final reply that names more tickets or PRs than this lists other work (a search, a backlog), not the session's. */
+const REPLY_NAMES_LIMIT = 3
+
+/**
+ * The part of a prompt the user typed. Claude Code writes other text as user entries too: a
+ * background task's result (`<task-notification>`), reminders, the output of a local command or
+ * of a `!` shell command. Of a slash command, only its arguments are the user's.
+ */
+function typedText(text: string): string {
+  return text
+    .replace(/<(task-notification|system-reminder|local-command-stdout|local-command-stderr|bash-stdout|bash-stderr|command-name|command-message)>[\s\S]*?<\/\1>/g, ' ')
+    .replace(/<\/?command-args>/g, ' ')
+}
+
+/** Workhub's own prompt carrying replies from a tracked Slack thread (`wakeText`): Slack's words, not the user's. */
+const SLACK_WAKE = /^New reply in the tracked Slack thread /
 
 export interface ClaudeTranscriptOptions {
   /** Ticket project keys to look for; any key-like text in commands and prompts when empty. */
@@ -79,14 +95,15 @@ export class ClaudeTranscriptParser {
   private readonly steps: ToolCallSummary[] = []
   private customTitle: string | undefined
   private aiTitle: string | undefined
-  private readonly prs: string[] = []
+  /** The PRs the user named and the ones the agent's final replies named; the ones it acted on are in `links`. */
+  private readonly named: SessionPullRequestLink[] = []
+  /** Ticket keys the user typed, in order of last mention. */
   private readonly keys: string[] = []
-  private readonly jiraCalls = new Set<string>()
-  /** Jira calls that create a ticket: their result names the new key. */
-  private readonly jiraCreates = new Set<string>()
-  /** Tickets the session created, then the ones it changed (edit, transition, comment, link); most recent first. */
-  private readonly created: string[] = []
-  private readonly changed: string[] = []
+  /** Ticket keys the agent's final replies named, in order of last mention. */
+  private readonly replyKeys: string[] = []
+  /** The text the agent wrote since its last tool call in this turn: its final reply so far. */
+  private reply = ''
+  private readonly links: SessionLinks
   private closedTurnsMs = 0
   /** Ids of the assistant messages of the current turn, in order. */
   private turnMessages: string[] = []
@@ -100,13 +117,19 @@ export class ClaudeTranscriptParser {
   /** Folder of the session (its first entries' `cwd`). */
   folder: string | undefined
 
-  constructor(private readonly options: ClaudeTranscriptOptions = {}) {}
+  constructor(private readonly options: ClaudeTranscriptOptions = {}) {
+    this.links = new SessionLinks(options.ticketPrefixes, options.home ?? homedir())
+  }
 
   ingest(line: string): void {
     const entry = parseLine(line)
     if (!entry) return
     const type = entry['type']
-    if (type === 'custom-title') this.customTitle = str(entry['customTitle']) ?? this.customTitle
+    if (type === 'custom-title') {
+      this.customTitle = str(entry['customTitle']) ?? this.customTitle
+      // A title the user gave the session is theirs, like a prompt.
+      this.noteKeys(this.keys, this.customTitle ?? '')
+    }
     if (type === 'ai-title') this.aiTitle = str(entry['aiTitle']) ?? this.aiTitle
     if (type === 'permission-mode') this.permissionMode = str(entry['permissionMode']) ?? this.permissionMode
     if (entry['isSidechain'] === true || (type !== 'assistant' && type !== 'user')) return
@@ -119,8 +142,6 @@ export class ClaudeTranscriptParser {
       this.cwd = cwd
       noteWorkPath(this.workPaths, cwd)
     }
-    const branch = str(entry['gitBranch'])
-    if (branch) this.noteKeys(branch)
     const content = arr(message['content']).map(obj).filter((b): b is Obj => !!b)
 
     if (type === 'assistant') {
@@ -134,29 +155,18 @@ export class ClaudeTranscriptParser {
         if (!this.turnMessages.includes(id)) this.turnMessages.push(id)
         this.contextTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)
       }
-      if (this.options.ticketPrefixes?.length) {
-        for (const b of content) if (b['type'] === 'text') this.noteKeys(str(b['text']) ?? '')
-      }
       for (const b of content) {
+        if (b['type'] === 'text') this.reply += `${str(b['text']) ?? ''}\n`
         if (b['type'] !== 'tool_use') continue
+        this.reply = ''
         const callId = str(b['id'])
         const tool = str(b['name'])
         if (!callId || !tool) continue
         const input = obj(b['input']) ?? {}
         const { title, detail } = describeTool(tool, input)
-        const raw = JSON.stringify(input)
-        this.notePrs(raw)
-        if (tool === 'Bash') {
-          this.noteKeys(str(input['command']) ?? '')
-          noteWorkPath(this.workPaths, this.cwd)
-        }
+        if (tool === 'Bash') noteWorkPath(this.workPaths, this.cwd)
         for (const path of toolWorkPaths(tool, input, this.cwd, this.options.home ?? homedir())) noteWorkPath(this.workPaths, path)
-        if (isJiraTool(tool)) {
-          this.jiraCalls.add(callId)
-          this.noteKeys(raw)
-          if (isJiraWrite(tool) === 'create') this.jiraCreates.add(callId)
-          if (isJiraWrite(tool)) for (const key of ticketKeys(jiraTargetKeys(input), this.options.ticketPrefixes)) noteFirst(this.changed, key)
-        }
+        this.links.call(callId, tool, input, this.cwd)
         this.steps.push({ id: callId, title, detail: detail || undefined, kind: toolKind(tool), status: 'in_progress', startedAt: at })
       }
       if (this.steps.length > STEP_LIMIT) this.steps.splice(0, this.steps.length - STEP_LIMIT)
@@ -176,28 +186,22 @@ export class ClaudeTranscriptParser {
               .filter((b) => b['type'] === 'text')
               .map((b) => str(b['text']) ?? '')
               .join(' ')
-      // Slash commands Claude Code runs locally write user entries but no turn.
-      if (!text.includes('<command-name>') && !text.includes('<local-command') && !text.startsWith('[Request interrupted')) {
+      // Slash commands Claude Code runs locally write user entries but no turn; their arguments are typed by the user.
+      if (text.includes('<command-name>')) this.noteTyped(typedText(text))
+      else if (!text.includes('<local-command') && !text.startsWith('[Request interrupted')) {
         this.closeTurn()
         this.turnMessages = []
         this.turnStart = at
         this.turnLast = at
-        this.noteKeys(text)
+        if (!SLACK_WAKE.test(text)) this.noteTyped(typedText(text))
       }
     }
     for (const b of content) {
       if (b['type'] !== 'tool_result') continue
       const callId = str(b['tool_use_id'])
       if (!callId) continue
-      const text = resultText(b['content'])
-      this.notePrs(text)
-      // A Jira tool's result names the tickets it touched, e.g. a created issue's key.
-      if (this.jiraCalls.delete(callId)) this.noteKeys(text)
-      // The first key of a create's result is the ticket it made (a parent named later is not).
-      if (this.jiraCreates.delete(callId) && b['is_error'] !== true) {
-        const made = ticketKeys(text, this.options.ticketPrefixes)[0]
-        if (made) noteFirst(this.created, made)
-      }
+      // A tool's output is never the session's work by itself (a listing, a file, a search): only what the call acted on.
+      this.links.result(callId, resultText(b['content']), b['is_error'] === true)
       const step = this.steps.findLast((s) => s.id === callId)
       if (step) {
         step.status = b['is_error'] === true ? 'failed' : 'completed'
@@ -230,10 +234,22 @@ export class ClaudeTranscriptParser {
       const size = contextWindow(this.model, this.contextTokens)
       snap.context = { used: this.contextTokens, size, percent: (this.contextTokens / size) * 100 }
     }
-    if (this.prs.length) snap.pullRequests = [...this.prs]
+    const replyKeys = [...this.replyKeys]
+    // The ones it acted on, then the ones only named (a PR acted on and named is listed once, as acted on).
+    const links: SessionPullRequestLink[] = this.links.prs.map((l) => ({ ...l }))
+    for (const l of this.named) noteLink(links, { ...l })
+    // The reply being written counts as it stands; it is kept once the turn ends.
+    this.noteReply(this.reply, replyKeys, links)
+    if (links.length) {
+      snap.pullRequestLinks = links
+      const urls = links.map((l) => l.url).filter((u): u is string => !!u)
+      if (urls.length) snap.pullRequests = urls
+    }
     if (this.keys.length) snap.ticketKeys = [...this.keys]
-    const linked = [...new Set([...this.created, ...this.changed])]
+    if (replyKeys.length) snap.replyTicketKeys = replyKeys
+    const linked = this.links.linkedTickets()
     if (linked.length) snap.linkedTicketKeys = linked
+    if (this.links.branches.length) snap.branches = this.links.branches.map((b) => ({ ...b }))
     if (this.workPaths.length) snap.workPaths = [...this.workPaths]
     return snap
   }
@@ -253,33 +269,46 @@ export class ClaudeTranscriptParser {
   }
 
   private closeTurn(): void {
+    this.noteReply(this.reply, this.replyKeys, this.named)
+    this.reply = ''
     if (this.turnStart !== undefined && this.turnLast !== undefined) this.closedTurnsMs += Math.max(0, this.turnLast - this.turnStart)
     this.turnStart = undefined
     this.turnLast = undefined
   }
 
-  private notePrs(text: string): void {
-    for (const url of pullRequestUrls(text)) if (!this.prs.includes(url)) this.prs.push(url)
+  /** What the user typed: its ticket keys, PR URLs and PRs by number. */
+  private noteTyped(text: string): void {
+    this.noteKeys(this.keys, text)
+    for (const url of pullRequestUrls(text)) noteLink(this.named, { source: 'user', url })
+    for (const pr of pullRequestNumbers(text)) noteLink(this.named, { source: 'user', number: pr.number, ...(pr.repo ? { repo: pr.repo } : {}) })
+  }
+
+  /**
+   * The tickets and PR URLs of an agent's final reply, when it names a few: more is a listing. Keys
+   * of any project are too loose in free text, so replies count only with the tracker's projects.
+   */
+  private noteReply(text: string, keys: string[], links: SessionPullRequestLink[]): void {
+    if (!text.trim()) return
+    const found = this.options.ticketPrefixes?.length ? ticketKeys(text, this.options.ticketPrefixes) : []
+    if (found.length <= REPLY_NAMES_LIMIT) this.noteKeys(keys, found.join(' '))
+    const urls = pullRequestUrls(text)
+    if (urls.length <= REPLY_NAMES_LIMIT) for (const url of urls) noteLink(links, { source: 'reply', url })
   }
 
   /** Keeps the order of last mention; only the most recent keys are kept. */
-  private noteKeys(text: string): void {
-    const found = ticketKeys(text, this.options.ticketPrefixes)
-    for (const key of found) {
-      const i = this.keys.indexOf(key)
-      if (i >= 0) this.keys.splice(i, 1)
-      this.keys.push(key)
+  private noteKeys(list: string[], text: string): void {
+    for (const key of ticketKeys(text, this.options.ticketPrefixes)) {
+      const i = list.indexOf(key)
+      if (i >= 0) list.splice(i, 1)
+      list.push(key)
     }
-    if (this.keys.length > KEY_LIMIT) this.keys.splice(0, this.keys.length - KEY_LIMIT)
+    if (list.length > KEY_LIMIT) list.splice(0, list.length - KEY_LIMIT)
   }
-}
 
-/** Moves the key to the front of a short list (most recent first). */
-function noteFirst(list: string[], key: string): void {
-  const i = list.indexOf(key)
-  if (i >= 0) list.splice(i, 1)
-  list.unshift(key)
-  if (list.length > LINKED_LIMIT) list.length = LINKED_LIMIT
+  /** The PRs, tickets and branches this conversation acted on, to merge its subagents' into. */
+  actions(): SessionLinks {
+    return this.links
+  }
 }
 
 /** `agent-<id>.meta.json` next to a subagent transcript. */
@@ -307,12 +336,17 @@ export class SubagentParser {
   isTerminal = false
   /** The folders the subagent worked in, most recent last (see `toolWorkPaths`). */
   readonly workPaths: string[] = []
+  /** The PRs, tickets and branches the subagent changed: the session's work too (its reads are research). */
+  readonly links: SessionLinks
   private cwd: string | undefined
 
   constructor(
     private readonly now: () => number = Date.now,
-    private readonly home: string = homedir()
-  ) {}
+    private readonly home: string = homedir(),
+    ticketPrefixes?: readonly string[]
+  ) {
+    this.links = new SessionLinks(ticketPrefixes, home, false)
+  }
 
   ingest(line: string): void {
     const entry = parseLine(line)
@@ -325,6 +359,11 @@ export class SubagentParser {
     this.cwd = str(entry['cwd']) ?? this.cwd
     if (type === 'user') {
       this.isTerminal = false
+      for (const raw of arr(message['content'])) {
+        const b = obj(raw)
+        const callId = str(b?.['tool_use_id'])
+        if (b?.['type'] === 'tool_result' && callId) this.links.result(callId, resultText(b['content']), b['is_error'] === true)
+      }
       return
     }
     const model = str(message['model'])
@@ -342,6 +381,8 @@ export class SubagentParser {
       this.lastStep = describeTool(str(b['name'])!, input).title
       this.isTerminal = false
       for (const path of toolWorkPaths(str(b['name']), input, this.cwd, this.home)) noteWorkPath(this.workPaths, path)
+      const callId = str(b['id'])
+      if (callId) this.links.call(callId, str(b['name'])!, input, this.cwd)
     }
   }
 
