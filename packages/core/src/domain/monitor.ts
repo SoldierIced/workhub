@@ -111,6 +111,12 @@ export interface SessionMonitorSnapshot {
   pullRequests?: string[]
   /** Ticket keys (`ABC-123`) named in the session's prompts, tool calls and commands, oldest first. */
   ticketKeys?: string[]
+  /**
+   * Folders the session worked in (see `toolWorkPaths`): its cwd as it moved, and the folders its
+   * edits, writes, `cd` and `git -C` commands touched; most recent last. Unset for an agent that
+   * does not report them, which leaves "Local changes" on the session's folder.
+   */
+  workPaths?: string[]
 }
 
 export type MonitorField =
@@ -134,6 +140,8 @@ export interface RepoChanges {
   name: string
   root: string
   branch: string | null
+  /** `owner/repo` of its `origin` remote, to match it with a code host's pull requests. */
+  slug?: string
   /** Changed paths, untracked ones included. */
   files: number
   /** Lines added and removed in tracked files; untracked files are not counted. */
@@ -142,12 +150,17 @@ export interface RepoChanges {
 }
 
 /**
- * The monitor's "Local changes": the session folder's repository, or, for a folder of
- * repositories, each one right inside it that has changes.
+ * The monitor's "Local changes": the repositories the session worked in (`touched`), else the
+ * session folder's repository, or, for a folder of repositories, each one right inside it that has changes.
  */
 export interface LocalChanges {
-  /** The folder is a folder of repositories, not a repository itself. */
+  /** More than one repository is listed, by name: a folder of repositories, or several touched ones. */
   nested: boolean
+  /**
+   * The repositories are the ones the session worked in (its `workPaths`), every one listed even
+   * when clean, most recent first; empty while it has worked in none yet.
+   */
+  touched?: boolean
   /** Repositories read (for a folder of repositories, all of them, with or without changes). */
   scanned: number
   /** Repositories with changes; for a single repository, it is listed even when clean. */
