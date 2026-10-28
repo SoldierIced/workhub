@@ -211,7 +211,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const total = changes ? changesTotal(changes) : null
 
   return (
-    <aside aria-label={t('monitor.label')} className="relative shrink-0 border-l border-border bg-sidebar" style={{ width }} data-monitor-of={v.id}>
+    <aside aria-label={t('monitor.label')} className="relative max-w-[45%] min-w-60 shrink-0 border-l border-border bg-sidebar" style={{ width }} data-monitor-of={v.id}>
       <PaneResizeHandle
         edge="left"
         width={width}
