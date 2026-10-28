@@ -95,6 +95,7 @@ import { timeIpc } from './ipc-timing'
 import { rendererReporter, startDiagnostics } from './diagnostics'
 import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
+import { RecentCall } from './recent-call'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { SessionDriver } from './session-driver'
 import { OwnerStarts } from './owner-starts'
@@ -801,17 +802,19 @@ function registerIpc(): void {
   ipc.handle('updates:status', () => updates.status())
   ipc.handle('updates:check', () => updates.check())
   ipc.handle('updates:install', () => updates.install())
-  const namedHistory = async () => {
-    const result = await listAllHistory(await configuration.current(), homedir(), historySources)
+  // Listing the history starts a process per account that reads every transcript's head: calls made
+  // meanwhile share it, and the sidebar's lookups (several right after start-up) take one up to 10 s old.
+  const namedHistory = new RecentCall(async () => {
+    const result = await diagnostics.activity.run('history list', async () => listAllHistory(await configuration.current(), homedir(), historySources))
     // A session the user named shows that name in the history too.
     return { ...result, entries: result.entries.map((e) => ({ ...e, title: sessionNames.get(e.agentSessionId) ?? e.title })) }
-  }
-  ipc.handle('history:list', namedHistory)
+  })
+  ipc.handle('history:list', () => namedHistory.get())
   ipc.handle('history:find', async (_e, keys: unknown) => {
     if (!Array.isArray(keys)) return []
     const wanted = new Set(keys.filter((k): k is string => typeof k === 'string'))
     if (!wanted.size) return []
-    return historyOfSessions((await namedHistory()).entries, wanted)
+    return historyOfSessions((await namedHistory.get(10_000)).entries, wanted)
   })
   ipc.handle('history:revealFolder', async (_e, path: string) => {
     if (typeof path !== 'string' || !isAbsolute(path)) return false
