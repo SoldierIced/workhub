@@ -17,6 +17,7 @@ export const windowsEn = {
   'menu.welcome': 'Welcome…',
   'menu.howItWorks': 'How {app} Works',
   'menu.helpPage': '{app} on GitHub',
+  'menu.revealLogs': 'Reveal Logs',
   'window.openInNew': 'Open in New Window',
   'window.moveToMain': 'Move to Main Window',
   'window.moveToMainHint': 'Show this session in the main window again and close this window',

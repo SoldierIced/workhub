@@ -91,6 +91,8 @@ import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { ContinuityService, type ContinuityDeps } from './continuity'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
+import { timeIpc } from './ipc-timing'
+import { rendererReporter, startDiagnostics } from './diagnostics'
 import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
@@ -144,6 +146,15 @@ if (!app.isPackaged) {
 const firstInstance = app.requestSingleInstanceLock()
 if (!firstInstance) app.quit()
 else app.on('second-instance', () => showMain())
+
+// Always on: a rotated log in <dataDir>/logs with errors, event-loop stalls and slow IPC (Help → Reveal Logs).
+const diagnostics = startDiagnostics(dataDir, { version: app.getVersion(), packaged: app.isPackaged })
+
+/** Help → Reveal Logs: the log file selected in the file manager, written up to now. */
+function revealLogs(): void {
+  diagnostics.flush()
+  shell.showItemInFolder(diagnostics.logPath)
+}
 
 const configStore = new JsonConfigStore(join(dataDir, 'config.json'))
 const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
@@ -301,7 +312,9 @@ const tokenSpend = new TokenSpendService({
   config: () => configuration.current(),
   store: new StateFile(join(dataDir, 'token-spend.json'), 2_000),
   sources: async () => spendSources(await configuration.current(), homedir(), kiroDir),
-  emit: () => send('usage:folderSpendChanged')
+  emit: () => send('usage:folderSpendChanged'),
+  begin: (label) => diagnostics.activity.begin(label),
+  onScanned: ({ ms, files, failed }) => diagnostics.log.info(`token spend scan ${failed ? 'failed' : 'done'} in ${ms}ms, ${files} files`)
 })
 // Spend of agents billed by API key, per agent and day (Home's usage and token spend cards).
 const apiSpend = new ApiSpendService({ config: () => configuration.current(), home: homedir(), costs: (include) => tokenSpend.costs(include), ledger: costLedger })
@@ -353,7 +366,7 @@ const openSessions = new OpenSessions({
   folderExists: (path) => stat(path).then((s) => s.isDirectory(), () => false),
   enabled: async () => appOptions(await configuration.current()).reopenSessions,
   groups: async () => (await configuration.current()).sessionGroups,
-  log: (message, err) => console.error(message, err)
+  log: (message, err) => diagnostics.log.error(`${message}: ${err instanceof Error ? `${err.name}: ${err.message}` : 'failed'}`)
 })
 // Alerts found before the renderer listens (the first read runs at start-up) wait for it.
 let usageAlertsReady = false
@@ -683,7 +696,11 @@ function openSetupWindow(page: SetupPage): void {
 
 function registerIpc(): void {
   // Every handler answers only the app's own renderer (see ipc-guard.ts).
-  const ipc = guardIpc(ipcMain, (url) => isTrustedRendererUrl(url, rendererOrigin))
+  // Every handler is timed too: a slow one or one that fails is logged by its channel (see ipc-timing.ts).
+  const ipc = timeIpc(guardIpc(ipcMain, (url) => isTrustedRendererUrl(url, rendererOrigin)), diagnostics)
+  const report = rendererReporter(diagnostics.log)
+  ipc.on('diag:report', (e, r: unknown) => report(e.sender === win?.webContents ? 'main' : 'aux', r))
+  ipc.on('diag:revealLogs', revealLogs)
   ipc.on('hub:setTheme', (_e, theme: ThemePreference) => {
     if (theme === 'system' || theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme
   })
@@ -1339,6 +1356,7 @@ async function refreshMenu(): Promise<void> {
         run: runMenuCommand,
         openHelp: () => void shell.openExternal(HELP_URL),
         openSetup: openSetupWindow,
+        revealLogs,
         developer: !app.isPackaged
       })
     )
@@ -1428,6 +1446,7 @@ void app.whenReady().then(async () => {
   } catch (err) {
     loadError = err instanceof Error ? err.message : String(err)
   }
+  const startup = diagnostics.activity.begin('startup')
   denyWebPermissions()
   registerIpc()
   await refreshMenu()
@@ -1456,6 +1475,8 @@ void app.whenReady().then(async () => {
   // First run: no profile yet and the welcome was not finished.
   const first = await configuration.current()
   if (!loadError && first.profiles.length === 0 && !appOptions(first).welcomeDone) openSetupWindow('welcome')
+  startup()
+  diagnostics.log.info('ready')
 })
 
 // macOS: clicking the Dock icon brings the hidden window back.
@@ -1476,6 +1497,8 @@ app.on('before-quit', (event) => {
   sessionWindows.suspend()
   openSessions.freeze()
   if (quitting) return
+  diagnostics.log.info('quit')
+  diagnostics.flush()
   // Give agent processes a chance to exit before the app does.
   event.preventDefault()
   quitting = true
