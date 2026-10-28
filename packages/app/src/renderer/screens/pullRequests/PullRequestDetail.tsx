@@ -45,6 +45,7 @@ import { usePastSessions } from '../../lib/usePastSessions'
 import { refreshPullRequests } from '../../pullRequestsStore'
 import { ClosePullRequestDialog } from './ClosePullRequestDialog'
 import { DiffView, ThreadBox } from './DiffView'
+import { PrActionsToolbar, type PrToolbarAction } from './PrActionsToolbar'
 import { PrStateBadges } from './PrBadges'
 import { PrSlackTab } from './PrSlackTab'
 import { ReviewDialog } from './ReviewDialog'
@@ -376,26 +377,44 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
   const timelineCount = detail ? conversationTimeline(detail).length : 0
   const count = (label: string, n: number | null) => (n === null ? label : `${label} · ${formatNumber(n)}`)
   const scroll = 'h-full overflow-y-auto px-5 py-4'
+  // Asking for an AI review or a session folds into "More" first, then commenting, then requesting changes; closing always lives there.
+  const toolbarActions: PrToolbarAction[] = [
+    { key: 'session', side: 'start', fold: 2, variant: 'secondary', icon: <SquareTerminal className="size-3.5" aria-hidden />, label: t('links.pr.openSession'), title: t('links.pr.openSessionHint'), onSelect: () => window.hub.links.request({ kind: 'pullRequestSession', profileId, pr: target }) },
+    { key: 'aiReview', side: 'start', fold: 1, variant: 'secondary', icon: <Sparkles className="size-3.5" aria-hidden />, label: t('links.pr.review'), title: t('links.pr.reviewHint'), onSelect: () => window.hub.links.request({ kind: 'reviewPullRequest', profileId, pr: target }) },
+    ...(capabilities && open
+      ? actions
+          .filter((a) => capabilities.reviewActions.includes(a.action))
+          .filter((a) => !isMine || a.action === 'comment')
+          .map((a): PrToolbarAction => {
+            const Icon = a.icon
+            return { key: a.action, side: 'end', fold: a.action === 'comment' ? 3 : a.action === 'requestChanges' ? 4 : undefined, variant: a.variant, icon: <Icon className="size-3.5" aria-hidden />, label: t(a.label), disabled: reviewRefusal(capabilities, a.action, 'x', isMine) !== null, onSelect: () => setAction(a.action) }
+          })
+      : []),
+    ...(result?.ok && closeRefusal(head, isMine) === null
+      ? [{ key: 'close', side: 'end', fold: 'menu', variant: 'danger', icon: <GitPullRequestClosed className="size-3.5" aria-hidden />, label: t('pr.close.open'), title: t('pr.close.openHint'), onSelect: () => setClosing(true) } satisfies PrToolbarAction]
+      : [])
+  ]
 
   return (
     <div className="@container flex h-full min-h-0 flex-col">
       <header className="shrink-0 border-b border-border">
+        {/* The name and the quick links share the first row (the title bar in its own window); the title gets the full width below. */}
         <div className={titleBar}>
-          <span className="shrink-0 font-mono text-sm font-semibold text-accent">{prName(head, head.provider)}</span>
-          <h1 className="line-clamp-2 min-w-0 text-md leading-snug font-semibold tracking-tight break-words select-text" title={head.title}>
-            {head.title}
-          </h1>
+          <span className="min-w-0 truncate font-mono text-sm font-semibold text-accent">{prName(head, head.provider)}</span>
           <SlackBadge summary={slack.summary} onOpen={() => setTab('slack')} />
           <div className="ml-auto flex shrink-0 items-center gap-0.5">
             {loading && <Spinner className="mr-1 size-4" />}
-            <IconButton label={t('pr.detail.copyLink')} icon={<Link className="size-4" aria-hidden />} onClick={copyLink} />
-            <IconButton label={t('pr.detail.openBrowser')} icon={<ExternalLink className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.openExternal(profileId, url)} />
-            {standalone && <IconButton label={t('pr.detail.showInWorkhub')} icon={<PanelLeft className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.showInWorkhub(profileId, url)} />}
-            {onOpenWindow && <IconButton label={t('pr.detail.openWindow')} icon={<AppWindow className="size-4" aria-hidden />} onClick={onOpenWindow} />}
-            <IconButton label={t('pr.refresh')} icon={<RefreshCw className="size-4" aria-hidden />} onClick={() => void afterWrite()} />
+            <IconButton size="sm" label={t('pr.detail.copyLink')} icon={<Link className="size-4" aria-hidden />} onClick={copyLink} />
+            <IconButton size="sm" label={t('pr.detail.openBrowser')} icon={<ExternalLink className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.openExternal(profileId, url)} />
+            {standalone && <IconButton size="sm" label={t('pr.detail.showInWorkhub')} icon={<PanelLeft className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.showInWorkhub(profileId, url)} />}
+            {onOpenWindow && <IconButton size="sm" label={t('pr.detail.openWindow')} icon={<AppWindow className="size-4" aria-hidden />} onClick={onOpenWindow} />}
+            <IconButton size="sm" label={t('pr.refresh')} icon={<RefreshCw className="size-4" aria-hidden />} onClick={() => void afterWrite()} />
           </div>
         </div>
         <div className="flex flex-col gap-2 px-5 pb-3">
+          <h1 className="line-clamp-2 text-md leading-snug font-semibold tracking-tight break-words select-text" title={head.title}>
+            {head.title}
+          </h1>
           {/* Running text, the separators glued to the word before them: a wrapped line never starts with "·". */}
           <p className="text-sm text-muted select-text">
             <span>{t('pr.detail.wantsToMerge', { author: head.author, head: head.branch, base: head.base })}</span>
@@ -447,36 +466,7 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
             )}
           </div>
         </div>
-        <div role="toolbar" aria-label={t('pr.detail.toolbar')} className="flex flex-wrap items-center gap-1.5 border-t border-border bg-surface/50 px-5 py-2">
-          <Button size="sm" variant="secondary" icon={<SquareTerminal className="size-3.5" aria-hidden />} title={t('links.pr.openSessionHint')} onClick={() => window.hub.links.request({ kind: 'pullRequestSession', profileId, pr: target })}>
-            {t('links.pr.openSession')}
-          </Button>
-          <Button size="sm" variant="secondary" icon={<Sparkles className="size-3.5" aria-hidden />} title={t('links.pr.reviewHint')} onClick={() => window.hub.links.request({ kind: 'reviewPullRequest', profileId, pr: target })}>
-            {t('links.pr.review')}
-          </Button>
-          {/* The review actions wrap as one group, kept at the right edge, rather than one button at a time. */}
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-            {capabilities &&
-              open &&
-              actions
-                .filter((a) => capabilities.reviewActions.includes(a.action))
-                .filter((a) => !isMine || a.action === 'comment')
-                .map((a) => {
-                  const refusal = reviewRefusal(capabilities, a.action, 'x', isMine)
-                  const Icon = a.icon
-                  return (
-                    <Button key={a.action} size="sm" variant={a.variant} icon={<Icon className="size-3.5" aria-hidden />} disabled={refusal !== null} onClick={() => setAction(a.action)}>
-                      {t(a.label)}
-                    </Button>
-                  )
-                })}
-            {result?.ok && closeRefusal(head, isMine) === null && (
-              <Button size="sm" variant="danger" icon={<GitPullRequestClosed className="size-3.5" aria-hidden />} title={t('pr.close.openHint')} onClick={() => setClosing(true)}>
-                {t('pr.close.open')}
-              </Button>
-            )}
-          </div>
-        </div>
+        <PrActionsToolbar label={t('pr.detail.toolbar')} actions={toolbarActions} />
       </header>
 
       {result && !result.ok && (

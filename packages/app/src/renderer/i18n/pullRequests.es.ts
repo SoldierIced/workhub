@@ -139,6 +139,7 @@ export const prEs: Record<keyof typeof prEn, string> = {
   'pr.detail.tickets': 'Tickets',
   'pr.detail.reviewersShort': 'Revisores',
   'pr.detail.toolbar': 'Acciones del pull request',
+  'pr.detail.moreActions': 'Más acciones',
   'pr.detail.reviewed': 'revisó',
   'pr.detail.onLine': 'comentó en {path}',
   'pr.slack.empty.title': 'Nada en Slack sobre este pull request',
