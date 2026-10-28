@@ -5,7 +5,7 @@ import { parsePrWindowHash } from './lib/pullRequests'
 import { parseTicketHash, TicketWindowRoot } from './screens/TicketWindow'
 import { TRAY_POPOVER_HASH } from '@shared/tray-api'
 import { readPrefs } from './lib/prefs'
-import { applyAppearance } from './lib/appearance'
+import { applyAppearance, useAppliedAppearance } from './lib/appearance'
 import { PullRequestWindow } from './screens/PullRequestWindow'
 import { TrayPopover } from './screens/TrayPopover'
 import { SessionWindowRoot, SubagentWindowRoot } from './screens/SessionWindow'
@@ -42,4 +42,10 @@ function root(hash: string): ReactElement {
   return <App />
 }
 
-createRoot(document.getElementById('root')!).render(root(location.hash))
+/** Secondary windows follow a theme change made in another window. */
+function Themed({ children }: { children: ReactElement }): ReactElement {
+  useAppliedAppearance()
+  return children
+}
+
+createRoot(document.getElementById('root')!).render(<Themed>{root(location.hash)}</Themed>)
