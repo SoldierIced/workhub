@@ -18,40 +18,50 @@ current status.
 - Run Claude Code (native Agent SDK adapter, or over ACP), Codex, Kiro, OpenCode and Gemini CLI
   (ACP), or any CLI in a PTY. Each session switches between **App** (chat), **Terminal** (the
   agent's own TUI, same conversation) and **Shell** (a shell in the session folder).
-- Composer queue (type while the agent works), pasted images, rename, detach a session into its
-  own window, reopen the sessions that were open at quit, resume from History.
-- Sidebar with folders, groups (drag to reorder), sub-agents, profile colors and attention flags
-  (replied, needs an answer, failed); optional OS notifications and app badge.
+- Composer with the model and permission mode under the input, a queue (type while the agent
+  works), pasted images, a timestamp on every message, rename, detach a session into its own
+  window, reopen the sessions that were open at quit, resume from History.
+- Sidebar with folders, session groups (drag or Alt+Up/Down to reorder), sub-agents, profile colors
+  and attention flags (replied, needs an answer, failed); optional OS notifications and app badge.
 - Read replies aloud with the OS voices, per session.
 
 **Accounts and usage**
 - Several accounts per agent (a Claude account is a config folder), per-profile agent order, and
   failover or hand-off to another account or agent when one runs out.
 - Usage cards for Claude (5 h / weekly windows), Kiro (credits) and Codex (rate limits), usage
-  ceilings and alerts, API-key spend, and a usage budget per session.
+  ceilings and alerts, API-key spend, and a usage limit per session.
 
 **Monitor**
 - Per session: context window, tokens (per request too), active time, activity, MCP servers
   (status, reconnect and toggle for Claude), sub-agents, local changes per touched repo, and the
   pull requests, tickets and Slack threads the session worked on.
-- Home shows what needs you, tickets in progress, plan usage and token spend per profile and folder.
+- Home shows what needs you, tickets in progress, plan usage and token spend per profile and
+  folder (fresh tokens, without cache reads).
 
-**Work around the agent** (the last three are optional modules, off by default, enabled per profile)
+**Review before the PR**
+- **Review before PR**: the session's agent writes a brief of everything it touched, another agent
+  reviews it read-only, and the two loop over the findings until approval or the round limit. The
+  base prompt is editable per profile.
+- An automatic review loop for a branch on a read-only checkout, local diff review (comment on
+  lines and send the comments to the agent), and a file viewer window for files the agent read or
+  edited.
+
+**Work around the agent** (Slack, Automations and Health are optional modules, off by default, enabled per profile)
 - **Pull requests** (GitHub through `gh`, GitLab through `glab`): list, PR window, review state, CI,
-  Slack tab, close with comment.
+  Slack tab, close with comment, notifications.
 - **Tickets**: Jira Cloud and Linear.
 - **Slack** (module): follows channels and threads through a Claude account's Slack connector,
-  read-only; wakes the session that owns a thread. No Slack app and no token.
+  read-only; wakes the session that owns a thread; opens message links in the Slack app (macOS).
+  No Slack app and no token.
 - **Automations** (module): send a prompt to a dedicated session on a Slack event or a schedule.
 - **Health** (module): Elastic APM and Kibana - errors, pods, slow endpoints, alerts - with
   "investigate with an agent".
-- **Local diff review**: review a branch or the uncommitted changes, comment on lines and send the
-  comments to the agent. **AI review**: a reviewer agent checks a branch before the PR. A file
-  viewer window opens files the agent read or edited.
 
 **App**
-- Profiles with folders, a default folder and per-folder options; a settings modal with a save
-  bar; menu bar / tray popover; setup check and welcome windows; Workhub 1 import (macOS).
+- Profiles with folders, a default folder, per-folder options, the browser or Chrome profile (or a
+  custom command) that opens their links, and per-profile session environment; a settings modal
+  with a save bar; menu bar / tray popover; setup check and welcome windows; Workhub 1 import (macOS).
+- A rotated log of errors, stalls and slow calls (Help > Reveal Logs).
 - Light/dark and 485 terminal color schemes; English and Spanish.
 - Flows from Workhub 1 are intentionally not ported.
 
@@ -117,28 +127,23 @@ announces the new version and opens the release page.
 
 ## Using it
 
-- **Navigation**: Home ⌘/Ctrl+1, Pull requests 2, Tickets 3, Slack 4, Automations 5, History 6,
-  Health 8, Sessions 0; New session ⌘/Ctrl+T. Screens tied to a module show only when the active
-  profile enables it.
-- **Sessions**: the sidebar groups sessions by folder and group. A session is flagged when it
-  finishes a turn, asks for a permission or fails while not on screen. The effective permission
-  mode of each session is shown in its header.
-- **Monitor** reads the agent's own transcript every few seconds. History lists the sessions of
-  every configured account and agent, resumable in the app or the terminal (only Claude sessions
-  can be resumed so far).
-- **Plan usage**: Kiro credits are read by default; reading Claude plan usage from Anthropic's
-  undocumented usage endpoint, and Codex usage, are opt-in settings (Settings > Usage).
-- **Slack**: reads the channels set in Settings > Slack on a schedule through your Claude
-  account's Slack connector (queries that post or change anything are refused). The optional
-  tracking hook records the Slack messages a Claude session sends so Workhub follows that thread;
-  it edits the account's `settings.json` only when you click Install (a `.bak` copy is kept), and
-  Remove takes out only its own entry.
-- **Automations** fire at most once per Slack event, even across restarts (ledger in
-  `automations-state.json`).
-- **AI review**: on by default per profile. When a dev session stays idle on a branch with commits
-  ahead of its base, a reviewer agent reviews it on a read-only checkout under the data folder and
-  sends findings to the dev session, for up to 3 rounds; it pauses for you when it needs a
-  decision.
+The [user guide](docs/user-guide/README.md) has one page per area:
+
+| | |
+|---|---|
+| [Getting started](docs/user-guide/getting-started.md) | Install, first run, setup check |
+| [Profiles](docs/user-guide/profiles.md) | Folders, accounts, link opening, environment |
+| [Sessions](docs/user-guide/sessions.md) | App / Terminal / Shell, composer, resume, windows, sidebar |
+| [Monitor](docs/user-guide/monitor.md) | Per-session panel and Home |
+| [Review before PR](docs/user-guide/review-before-pr.md) | Agent-briefs-reviewer loop, review loop, local diff review |
+| [Pull requests](docs/user-guide/pull-requests.md), [Tickets](docs/user-guide/tickets.md) | Code host and tracker |
+| [Slack](docs/user-guide/slack.md), [Health](docs/user-guide/health.md), [Automations](docs/user-guide/automations.md) | Optional modules |
+| [History](docs/user-guide/history.md), [Usage and budgets](docs/user-guide/usage.md) | Past sessions, plan usage and ceilings |
+| [Settings](docs/user-guide/settings.md), [Keyboard shortcuts](docs/user-guide/keyboard-shortcuts.md) | Reference |
+
+Also: [Troubleshooting](docs/troubleshooting.md) (logs, common problems) and
+[Architecture](docs/architecture.md) for contributors. The [docs index](docs/README.md) lists
+everything.
 
 ## Development
 
