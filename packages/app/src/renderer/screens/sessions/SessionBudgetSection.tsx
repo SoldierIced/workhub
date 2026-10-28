@@ -51,7 +51,7 @@ function CeilingInput({
         onKeyDown={(e) => e.key === 'Enter' && commit()}
         data-testid={`session-ceiling-${window}`}
       />
-      {current !== undefined && <span className="text-xs text-subtle tabular-nums">{t('agentUsage.session.now', { percent: Math.round(current) })}</span>}
+      {current !== undefined && <span className="text-xs whitespace-nowrap text-subtle tabular-nums">{t('agentUsage.session.now', { percent: Math.round(current) })}</span>}
     </label>
   )
 }

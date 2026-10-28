@@ -31,7 +31,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         className={cn(
           'inline-flex shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text',
           'disabled:pointer-events-none disabled:opacity-45',
-          size === 'sm' ? 'size-7' : 'size-8',
+          // A caller's own size- class wins: `cn` only joins, so both would apply and the stylesheet's order would pick.
+          !/(^|\s)size-/.test(className ?? '') && (size === 'sm' ? 'size-7' : 'size-8'),
           className
         )}
         {...rest}
