@@ -257,6 +257,16 @@ describe('SessionManager', () => {
     expect(native.models).toEqual([[view.id, 'haiku']])
     expect(last(view.id).currentModelId).toBe('haiku')
   })
+  it('follows the conversation to the new session id /clear gives it, with its sidebar place', async () => {
+    const { manager, native, last, replaceSessionIdentity } = setup()
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    await flush()
+    const before = last(view.id).identity!
+    native.emit({ sessionId: view.id, type: 'agentSession', agentSessionId: 'after-clear' })
+    await flush()
+    expect(last(view.id)).toMatchObject({ agentSessionId: 'after-clear', identity: 'after-clear' })
+    expect(replaceSessionIdentity).toHaveBeenCalledWith(before, 'after-clear')
+  })
 })
 
 describe('derived active time', () => {
