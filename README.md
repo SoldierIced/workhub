@@ -58,7 +58,8 @@ current status.
 ## Requirements
 
 - macOS, Windows or Linux (only macOS is tested so far)
-- To run from source: Node.js 22 and npm 10
+- To run from source: Node.js 22 and npm 10 (Windows needs no build tools; Linux needs python3, make
+  and a C++ compiler; see CONTRIBUTING.md)
 - The agents you want to run, on your PATH (for example `kiro-cli`, `opencode`, `gemini`); Codex
   runs through `npx`. An agent that is not installed shows as such in New session, with how to
   install it. The Claude Agent SDK and its `claude` binary ship inside the app, so Claude sessions
@@ -142,7 +143,7 @@ announces the new version and opens the release page.
 ## Development
 
 ```sh
-npm ci               # postinstall downloads the Electron binary and rebuilds node-pty for it
+npm ci               # postinstall downloads the Electron binary and prepares node-pty for it
 npm run dev          # the app in development mode ("Workhub 2 Dev")
 npm run typecheck    # tsc on every package
 npm test             # Vitest: core, adapters and app

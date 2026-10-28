@@ -14,7 +14,7 @@
     "test": "vitest run",
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev -w @workhub/app",
-    "postinstall": "node node_modules/electron/install.js && electron-rebuild -f -w node-pty -m packages/app",
+    "postinstall": "node scripts/postinstall.mjs",
     "dist": "node scripts/dist.mjs",
     "dist:mac": "node scripts/dist.mjs mac",
     "dist:win": "node scripts/dist.mjs win",
