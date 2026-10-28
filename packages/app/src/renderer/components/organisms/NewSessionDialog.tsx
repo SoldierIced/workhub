@@ -156,9 +156,19 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
     }
   }
 
+  // Focus opens on the first field (the agent), not the close button.
+  const formRef = useRef<HTMLFormElement>(null)
+  const focusFirstField = (e: Event) => {
+    const first = formRef.current?.querySelector<HTMLElement>('button, input, select')
+    if (!first) return
+    e.preventDefault()
+    first.focus()
+  }
+
   return (
     <Dialog
       open={open}
+      onOpenAutoFocus={focusFirstField}
       onOpenChange={onOpenChange}
       title={t('newSession.title')}
       description={t('newSession.description')}
@@ -174,6 +184,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
       }
     >
       <form
+        ref={formRef}
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault()

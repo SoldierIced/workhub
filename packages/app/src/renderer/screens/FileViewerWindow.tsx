@@ -172,8 +172,10 @@ function Viewer({ path }: { path: string }) {
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-md font-semibold">{fileName(path)}</h1>
-          <div className="truncate font-mono text-xs text-subtle" title={path}>
-            {path}
+          {/* The folder gives way first so the file name at the end of the path always shows. */}
+          <div className="flex font-mono text-xs text-subtle" title={path}>
+            <span className="min-w-0 truncate">{path.slice(0, path.length - fileName(path).length)}</span>
+            <span className="shrink-0">{fileName(path)}</span>
           </div>
         </div>
         {content?.kind === 'image' && (
