@@ -3,6 +3,11 @@
   "version": "2.0.0-alpha.2",
   "private": true,
   "description": "Workhub 2 Electron shell: main process, preload bridge and React renderer.",
+  "homepage": "https://github.com/SoldierIced/workhub",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SoldierIced/workhub.git"
+  },
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
