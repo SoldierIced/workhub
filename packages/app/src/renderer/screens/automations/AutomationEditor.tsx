@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { AUTOMATION_EFFORTS, CLAUDE_PERMISSION_MODES, fillFromPreset, type AutomationDefinition, type EffectiveAgent, type WatchedChannel } from '@workhub/core'
 import type { AgentOptionsView } from '@shared/api'
-import { Button, Input, Select, Switch, Textarea } from '../../components/atoms'
+import { Button, Input, Kbd, Select, Switch, Textarea } from '../../components/atoms'
 import { Dialog, Field, SwitchRow } from '../../components/molecules'
+import { UnsavedPrompt, SAVE_SHORTCUT } from '../../components/organisms/UnsavedChanges'
 import { useI18n } from '../../i18n/I18nProvider'
+import { matchesShortcut } from '../../lib/shortcuts'
+import { isDirty } from '../../lib/unsavedChanges'
 
 const DAYS = [1, 2, 3, 4, 5, 6, 0]
 /** Keeps a stored pick visible when the agent's list no longer (or not yet) offers it. */
@@ -46,10 +49,22 @@ export function AutomationEditor({ automation, agents, channels, presets = [], o
   const { t } = useI18n()
   const [form, setForm] = useState<AutomationDefinition | null>(automation)
   const [otherChannel, setOtherChannel] = useState('')
+  // Closing with changes asks first: save, discard or keep editing.
+  const [asking, setAsking] = useState(false)
+  const [saving, setSaving] = useState(false)
   useEffect(() => setForm(automation), [automation])
   // Every hook runs before the early return below: the editor mounts with no automation and gets one later.
   const { options } = useAgentOptions(form?.agentKey)
   if (!form) return null
+  const dirty = isDirty(automation, form) || otherChannel.trim() !== ''
+  const save = async () => {
+    if (saving) return false
+    setSaving(true)
+    const ok = await onSave(form).finally(() => setSaving(false))
+    if (ok) onClose()
+    return ok
+  }
+  const close = () => (dirty ? setAsking(true) : onClose())
   const set = (patch: Partial<AutomationDefinition>) => setForm({ ...form, ...patch })
   const triggers = form.triggers
   const chosen = agents.find((a) => a.key === form.agentKey)
@@ -59,21 +74,34 @@ export function AutomationEditor({ automation, agents, channels, presets = [], o
   return (
     <Dialog
       open
-      onOpenChange={(open) => !open && onClose()}
+      onOpenChange={(open) => !open && close()}
       title={t('automations.editor.title')}
       className="w-[min(720px,calc(100vw-48px))]"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          {dirty && (
+            <span role="status" className="mr-auto self-center text-sm font-medium text-text" data-testid="automation-unsaved">
+              {t('unsaved.changes')}
+            </span>
+          )}
+          <Button variant="ghost" onClick={close}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" onClick={() => void onSave(form).then((ok) => ok && onClose())}>
+          <Button variant="primary" disabled={saving} onClick={() => void save()}>
             {t('automations.editor.save')}
+            <Kbd shortcut={SAVE_SHORTCUT} className="text-accent-fg/75" />
           </Button>
         </>
       }
     >
-      <div className="flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1">
+      <div
+        className="flex max-h-[65vh] flex-col gap-3 overflow-y-auto pr-1"
+        onKeyDown={(e) => {
+          if (!matchesShortcut(e, SAVE_SHORTCUT, window.hub.platform)) return
+          e.preventDefault()
+          void save()
+        }}
+      >
         {presets.length > 0 && (
           <div className="flex items-center justify-end gap-2" data-testid="automation-presets">
             <span className="text-sm text-muted">{t('automations.preset.fill')}</span>
@@ -262,6 +290,15 @@ export function AutomationEditor({ automation, agents, channels, presets = [], o
           <Switch checked={form.enabled} onChange={(enabled) => set({ enabled })} />
         </SwitchRow>
       </div>
+      <UnsavedPrompt
+        open={asking}
+        saving={saving}
+        onAnswer={(choice) => {
+          setAsking(false)
+          if (choice === 'discard') onClose()
+          else if (choice === 'save') void save()
+        }}
+      />
     </Dialog>
   )
 }

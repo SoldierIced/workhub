@@ -1,4 +1,4 @@
-import { Activity, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Trash2, Users, UserCog } from 'lucide-react'
+import { Activity, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Users, UserCog } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   appOptions,
@@ -26,6 +26,7 @@ import type { AgentOptionsView, ConfigSnapshot, Workhub1Preview } from '@shared/
 import { Badge, Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { AgentOrderList, Card, CardBody, CardHeader, EmptyState, Field, HelpTip, ListRow, SwitchRow, Tabs, useToast } from '../components/molecules'
 import { Workhub1Import, Workhub1SecretsImport } from '../components/organisms'
+import { DeleteButton, useUnsavedChanges, useUnsavedForm } from '../components/organisms/UnsavedChanges'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
@@ -33,12 +34,13 @@ import { accountEnvHintKey } from '../lib/agents'
 import { accountFieldErrors, friendlyIssue, humanIssue, profileFieldErrors, type IssueTarget } from '../lib/configIssues'
 import { showWorkhub1Migration, showWorkhub1Tokens, useWorkhub1Preview } from '../lib/workhub1'
 import { setPrefs, usePrefs } from '../lib/prefs'
+import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { AiReviewProfileFields } from './AiReviewSettings'
 import { ProfileColorField } from './ProfileColorField'
 import { HealthSettings } from './HealthSettings'
 import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
-import { ProfileExtraFields, prunedFolderOptions, useProfileEnvDraft } from './ProfileExtraSettings'
+import { DefaultFolderField, ProfileExtraFields, prunedFolderOptions, useProfileEnvDraft } from './ProfileExtraSettings'
 import { SetupEntryGroup } from './SetupEntryGroup'
 import { AppBadgeRows, MenuBarRows, OtherNotificationRows } from './NotificationExtraSettings'
 import { NotificationMasterRows } from './NotificationMasterRow'
@@ -151,14 +153,20 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
   // Workhub 1 on this Mac (read again after every config change): drives the migration UI's visibility.
   const workhub1 = useWorkhub1Preview(snap?.config)
 
+  const unsaved = useUnsavedChanges()
+
   const run: Run = async (op) => {
     const r = await op()
     if (!r.ok) {
       setIssues(r.issues)
+      const first = r.issues[0]
+      unsaved.reportProblem(first ? friendlyIssue(first, (k, p) => t(k, p)) : null)
       return false
     }
     setIssues([])
-    notify(t('settings.saved'))
+    unsaved.reportProblem(null)
+    // A save from the save bar says "Saved" there; a switch that saves at once says it here.
+    if (!unsaved.snapshot().saving) notify(t('settings.saved'))
     await refreshConfig()
     return true
   }
@@ -172,11 +180,12 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
     </div>
   )
   const focusId = (t: IssueTarget['tab']) => (focus?.tab === t ? focus.id : undefined)
-  const fix = (target: IssueTarget) => {
-    setIssues([])
-    setFocus({ ...target })
-    onTabChange(target.tab)
-  }
+  const fix = (target: IssueTarget) =>
+    unsaved.requestLeave(() => {
+      setIssues([])
+      setFocus({ ...target })
+      onTabChange(target.tab)
+    })
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col px-8 pb-7">
       <Tabs
@@ -195,11 +204,13 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
         }
         label={t('nav.settings')}
         value={tab}
-        onChange={(v) => {
-          setIssues([])
-          setFocus(null)
-          onTabChange(v)
-        }}
+        onChange={(v) =>
+          unsaved.requestLeave(() => {
+            setIssues([])
+            setFocus(null)
+            onTabChange(v)
+          })
+        }
         items={[
           { value: 'general', label: t('settings.general'), icon: <Languages className="size-4" aria-hidden />, content: section(<GeneralSection snap={snap} run={run} workhub1={workhub1} />, t('help.tab.general')) },
           { value: 'appearance', label: t('settings.appearance'), icon: <Palette className="size-4" aria-hidden />, content: section(<AppearanceSettings />, t('help.tab.appearance')) },
@@ -322,8 +333,12 @@ function MasterDetail<T extends { id: string }>(props: {
   onSelect: (id: string | null) => void
   formTitle: string
   form: ReactNode
-  actions: ReactNode
+  /** Actions on the selected item (make active, delete), next to its name. Saving is the save bar's. */
+  headerActions?: ReactNode
 }) {
+  // Picking another item (or New) asks first when the form has unsaved changes.
+  const unsaved = useUnsavedChanges()
+  const pick = (id: string | null) => unsaved.requestLeave(() => props.onSelect(id))
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
       <Card>
@@ -331,7 +346,7 @@ function MasterDetail<T extends { id: string }>(props: {
           title={props.title}
           as="h2"
           actions={
-            <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => props.onSelect(null)}>
+            <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => pick(null)}>
               {props.newLabel}
             </Button>
           }
@@ -343,7 +358,7 @@ function MasterDetail<T extends { id: string }>(props: {
             <ul className="flex flex-col gap-0.5">
               {props.items.map((i) => (
                 <li key={i.id}>
-                  <ListRow title={props.label(i)} trailing={props.meta?.(i)} selected={props.selected === i.id} onClick={() => props.onSelect(i.id)} />
+                  <ListRow title={props.label(i)} trailing={props.meta?.(i)} selected={props.selected === i.id} onClick={() => pick(i.id)} />
                 </li>
               ))}
             </ul>
@@ -351,11 +366,8 @@ function MasterDetail<T extends { id: string }>(props: {
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title={props.formTitle} as="h2" />
-        <CardBody className="flex flex-col gap-4">
-          {props.form}
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">{props.actions}</div>
-        </CardBody>
+        <CardHeader title={props.formTitle} as="h2" actions={props.headerActions} />
+        <CardBody className="flex flex-col gap-4">{props.form}</CardBody>
       </Card>
     </div>
   )
@@ -388,30 +400,48 @@ function ConnectionsSection({ snap, run, initialId }: SectionProps & { initialId
   }, [initialId])
   const [secret, setSecret] = useState('')
   const [clearSecret, setClearSecret] = useState(false)
+  const [idError, setIdError] = useState(false)
+  // What the form held when it was loaded or last saved: the save bar shows while it differs.
+  const [baseline, setBaseline] = useState(() => ({ form, settingsText }))
 
   const select = (id: string | null) => {
     const c = snap.config.connections.find((x) => x.id === id)
+    const next = c ? { ...c } : emptyConnection()
     setSelected(c ? c.id : null)
-    setForm(c ? { ...c } : emptyConnection())
+    setForm(next)
     setSettingsText(toLines(c?.settings))
+    setBaseline({ form: next, settingsText: toLines(c?.settings) })
     setSecret('')
     setClearSecret(false)
+    setIdError(false)
   }
 
   const providers = snap.providers.filter((p) => p.kind === form.kind)
   const provider = snap.providers.find((p) => p.id === form.provider)
   const hasSecret = selected !== null && snap.connectionsWithSecret.includes(selected)
 
-  const save = async () => {
+  const save = async (): Promise<SaveOutcome> => {
+    if (!form.id.trim()) {
+      setIdError(true)
+      return { ok: false, problem: t('settings.idRequired') }
+    }
     const change: SecretChange = clearSecret ? { action: 'clear' } : secret ? { action: 'set', value: secret } : { action: 'keep' }
     const connection: Connection = { ...form, settings: fromLines(settingsText) }
     if (!connection.endpoint) delete connection.endpoint
     if (!connection.name) delete connection.name
-    if (await run(() => window.hub.config.saveConnection(connection, change))) {
-      setSelected(connection.id)
-      setSecret('')
-    }
+    if (!(await run(() => window.hub.config.saveConnection(connection, change)))) return { ok: false }
+    setSelected(connection.id)
+    setSecret('')
+    setClearSecret(false)
+    setBaseline({ form, settingsText })
+    return { ok: true }
   }
+  useUnsavedForm({
+    dirty: isDirty(baseline, { form, settingsText }) || secret !== '' || clearSecret,
+    draft: { form, settingsText, secret, clearSecret },
+    save,
+    discard: () => select(selected)
+  })
 
   return (
     <MasterDetail
@@ -426,8 +456,16 @@ function ConnectionsSection({ snap, run, initialId }: SectionProps & { initialId
       formTitle={selected ? (form.name || form.id) : t('settings.newConnection')}
       form={
         <div className="grid grid-cols-2 gap-4">
-          <Field label={t('settings.id')} help={t('help.id')}>
-            <Input value={form.id} disabled={selected !== null} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="acme-github" />
+          <Field label={t('settings.id')} help={t('help.id')} error={idError ? t('settings.idRequired') : undefined}>
+            <Input
+              value={form.id}
+              disabled={selected !== null}
+              onChange={(e) => {
+                setForm({ ...form, id: e.target.value })
+                setIdError(false)
+              }}
+              placeholder="acme-github"
+            />
           </Field>
           <Field label={t('settings.name')}>
             <Input value={form.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme GitHub" />
@@ -484,18 +522,7 @@ function ConnectionsSection({ snap, run, initialId }: SectionProps & { initialId
           </Field>
         </div>
       }
-      actions={
-        <>
-          <Button variant="primary" onClick={() => void save()}>
-            {t('settings.saveConnection')}
-          </Button>
-          {selected && (
-            <Button variant="danger" icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => void run(() => window.hub.config.deleteConnection(selected)).then((ok) => ok && select(null))}>
-              {t('common.delete')}
-            </Button>
-          )}
-        </>
-      }
+      headerActions={selected && <DeleteButton name={form.name || form.id} onDelete={() => void run(() => window.hub.config.deleteConnection(selected)).then((ok) => ok && select(null))} />}
     />
   )
 }
@@ -511,20 +538,26 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
   const [envText, setEnvText] = useState(toLines(initial?.env))
   // Field problems, shown only after a save attempt.
   const [errors, setErrors] = useState<ReturnType<typeof accountFieldErrors> | null>(null)
+  // What the form held when it was loaded or last saved: the save bar shows while it differs.
+  const [baseline, setBaseline] = useState(() => ({ form, envText }))
+  const unsaved = useUnsavedChanges()
 
   const formRef = useRef<HTMLDivElement>(null)
   const select = (id: string | null, agentId = firstAgent) => {
     const a = snap.config.accounts.find((x) => x.id === id)
+    const next = a ? { ...a } : emptyAccount(agentId)
     setErrors(null)
     setSelected(a ? a.id : null)
-    setForm(a ? { ...a } : emptyAccount(agentId))
+    setForm(next)
     setEnvText(toLines(a?.env))
+    setBaseline({ form: next, envText: toLines(a?.env) })
   }
   // From the agent list: open the account (or a new one for that agent) and bring the form into view.
-  const openForm = (id: string | null, agentId?: string) => {
-    select(id, agentId)
-    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
+  const openForm = (id: string | null, agentId?: string) =>
+    unsaved.requestLeave(() => {
+      select(id, agentId)
+      requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    })
   const agent = snap.agents.find((a) => a.id === form.agentId)
   const envHintKey = accountEnvHintKey(form.agentId)
   // Models and modes the agent offers, as suggestions for the defaults (free text stays allowed).
@@ -544,11 +577,12 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
     }
   }, [optionsKey, configurable])
 
-  const save = async () => {
+  const save = async (): Promise<SaveOutcome> => {
     // Nothing is sent until the id and name are valid, so the form says which field to fix.
     const found = accountFieldErrors(form, selected ? [] : snap.config.accounts.map((a) => a.id))
     setErrors(found)
-    if (found.id || found.name) return
+    const problem = found.id ?? found.name
+    if (problem) return { ok: false, problem: t(problem) }
     const account: AgentAccount = { ...form, env: fromLines(envText) }
     for (const k of ['command', 'defaultModel', 'defaultMode'] as const) {
       const v = account[k]?.trim()
@@ -557,8 +591,12 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
     }
     if (!account.configDir) delete account.configDir
     if (!Object.keys(account.env ?? {}).length) delete account.env
-    if (await run(() => window.hub.config.saveAccount(account))) setSelected(account.id)
+    if (!(await run(() => window.hub.config.saveAccount(account)))) return { ok: false }
+    setSelected(account.id)
+    setBaseline({ form, envText })
+    return { ok: true }
   }
+  useUnsavedForm({ dirty: isDirty(baseline, { form, envText }), draft: { form, envText }, save, discard: () => select(selected, form.agentId) })
 
   return (
     <div className="flex flex-col gap-6">
@@ -648,18 +686,7 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
               )}
             </div>
           }
-          actions={
-            <>
-              <Button variant="primary" onClick={() => void save()}>
-                {t('settings.saveAccount')}
-              </Button>
-              {selected && (
-                <Button variant="danger" icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => void run(() => window.hub.config.deleteAccount(selected)).then((ok) => ok && select(null))}>
-                  {t('common.delete')}
-                </Button>
-              )}
-            </>
-          }
+          headerActions={selected && <DeleteButton name={form.name || form.id} onDelete={() => void run(() => window.hub.config.deleteAccount(selected)).then((ok) => ok && select(null))} />}
         />
       </div>
     </div>
@@ -679,29 +706,36 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
   // Field problems, shown only after a save attempt.
   const [errors, setErrors] = useState<ReturnType<typeof profileFieldErrors> | null>(null)
   const env = useProfileEnvDraft(selected ? snap.config.profiles.find((p) => p.id === selected) : undefined)
+  // What the form held when it was loaded or last saved: the save bar shows while it differs.
+  const [baseline, setBaseline] = useState<Profile>(form)
 
   const select = (id: string | null) => {
     const p = snap.config.profiles.find((x) => x.id === id)
+    const next = p ? structuredClone(p) : emptyProfile()
     setSelected(p ? p.id : null)
-    setForm(p ? structuredClone(p) : emptyProfile())
+    setForm(next)
+    setBaseline(next)
     setIdEdited(false)
     setErrors(null)
+    env.reset()
   }
   const toggle = (list: string[], id: string, on: boolean) => (on ? [...list, id] : list.filter((x) => x !== id))
   const allAgents = form.agentIds === undefined
   // The agents this profile offers as it is being edited, in the user's order.
   const orderedAgents = orderAgents(form.preferredAgents, resolveEffectiveAgents({ ...snap.config, profiles: [form] }, form.id || null))
 
-  const save = async () => {
+  const save = async (): Promise<SaveOutcome> => {
     // Nothing is sent until the profile is valid: the id and name are the only required fields.
     const found = profileFieldErrors(form, selected ? [] : snap.config.profiles.map((p) => p.id))
     setErrors(found)
-    if (found.id || found.name) return
+    const problem = found.id ?? found.name
+    if (problem) return { ok: false, problem: t(problem) }
     const folders = form.folders?.map((f) => f.trim()).filter(Boolean)
     const profile: Profile = { ...form, folders: folders?.length ? folders : undefined }
     if (!profile.folders) delete profile.folders
     if (!profile.preferredAgents?.length) delete profile.preferredAgents
     if (!profile.symbol) delete profile.symbol
+    if (!profile.defaultFolder?.trim()) delete profile.defaultFolder
     if (!profile.linkBrowser?.trim()) delete profile.linkBrowser
     else profile.linkBrowser = profile.linkBrowser.trim()
     // Off stays saved as off: a switch the user set is never filled from Workhub 1 again.
@@ -715,14 +749,20 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
     // Only one profile owns everything outside the folders: taking it lets the others go.
     if (profile.ownsOutside) {
       for (const other of snap.config.profiles.filter((p) => p.id !== profile.id && p.ownsOutside)) {
-        if (!(await run(() => window.hub.config.saveProfile({ ...other, ownsOutside: false })))) return
+        if (!(await run(() => window.hub.config.saveProfile({ ...other, ownsOutside: false })))) return { ok: false }
       }
     }
-    if (await run(() => window.hub.config.saveProfile(profile))) {
-      setSelected(form.id)
-      if (!(await env.commit(profile.id))) toast(t('profileExtra.envSaved'), 'danger')
+    if (!(await run(() => window.hub.config.saveProfile(profile)))) return { ok: false }
+    setSelected(form.id)
+    setBaseline(form)
+    if (!(await env.commit(profile.id))) {
+      toast(t('profileExtra.envSaved'), 'danger')
+      return { ok: false, problem: t('profileExtra.envSaved') }
     }
+    return { ok: true }
   }
+  useUnsavedForm({ dirty: isDirty(baseline, form) || env.dirty, draft: { form, rows: env.rows }, save, discard: () => select(selected) })
+  const name = form.name || form.id
 
   return (
     <MasterDetail
@@ -734,7 +774,7 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
       onSelect={select}
       label={(p) => p.name || p.id}
       meta={(p) => (snap.config.activeProfileId === p.id ? <Badge tone="accent">{t('settings.active')}</Badge> : null)}
-      formTitle={selected ? form.name || form.id : t('settings.newProfile')}
+      formTitle={selected ? name : t('settings.newProfile')}
       form={
         <>
           <div className="grid grid-cols-2 gap-4">
@@ -778,6 +818,7 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
               }}
             />
           </Field>
+          <DefaultFolderField form={form} onChange={(folder) => setForm(({ defaultFolder: _old, ...rest }) => (folder ? { ...rest, defaultFolder: folder } : rest))} />
           <ProfileExtraFields form={form} onChange={setForm} env={env} />
           <FieldGroup legend={t('settings.connections')} help={t('help.profile.connections')}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2">
@@ -857,20 +898,19 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
           </FieldGroup>
         </>
       }
-      actions={
-        <>
-          <Button variant="primary" onClick={() => void save()}>
-            {t('settings.saveProfile')}
-          </Button>
-          {selected && snap.config.activeProfileId !== selected && (
-            <Button onClick={() => void run(() => window.hub.config.setActiveProfile(selected))}>{t('settings.makeActive')}</Button>
-          )}
-          {selected && (
-            <Button variant="danger" icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => void run(() => window.hub.config.deleteProfile(selected)).then((ok) => ok && select(null))}>
-              {t('common.delete')}
-            </Button>
-          )}
-        </>
+      headerActions={
+        selected && (
+          <>
+            {snap.config.activeProfileId === selected ? (
+              <Badge tone="accent">{t('settings.active')}</Badge>
+            ) : (
+              <Button size="sm" onClick={() => void run(() => window.hub.config.setActiveProfile(selected))} data-testid="profile-make-active">
+                {t('settings.makeActive')}
+              </Button>
+            )}
+            <DeleteButton name={name} onDelete={() => void run(() => window.hub.config.deleteProfile(selected)).then((ok) => ok && select(null))} />
+          </>
+        )
       }
     />
   )

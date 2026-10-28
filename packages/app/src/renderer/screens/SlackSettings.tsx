@@ -13,6 +13,8 @@ import { Badge, Button, IconButton, Input, Select, Switch } from '../components/
 import { Card, CardBody, CardHeader, Field, HelpTip, SwitchRow, useToast } from '../components/molecules'
 import { reloadSlack, useSlack } from '../chatStore'
 import { useI18n } from '../i18n/I18nProvider'
+import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
+import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
 
 type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 
@@ -44,16 +46,26 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
   const toast = useToast()
   const slack = useSlack()
   const [form, setForm] = useState<ChatWatcherSettings | null>(null)
+  // What the form held when it was loaded or last saved: the save bar shows while it differs.
+  const [baseline, setBaseline] = useState<ChatWatcherSettings | null>(null)
   useEffect(() => {
-    if (slack && !form) setForm(structuredClone(slack.settings))
+    if (slack && !form) {
+      setForm(structuredClone(slack.settings))
+      setBaseline(structuredClone(slack.settings))
+    }
   }, [slack, form])
+  const save = async (): Promise<SaveOutcome> => {
+    if (!form) return { ok: true }
+    const settings = { ...form, channels: form.channels.map((c) => ({ ...c, id: c.id.trim(), name: c.name.trim() || c.id.trim() })) }
+    if (!(await run(() => window.hub.slack.saveSettings(settings)))) return { ok: false }
+    void reloadSlack()
+    setBaseline(form)
+    return { ok: true }
+  }
+  useUnsavedForm({ dirty: form !== null && isDirty(baseline, form), save, discard: () => setForm(baseline) })
   if (!slack || !form) return null
 
   const set = (patch: Partial<ChatWatcherSettings>) => setForm({ ...form, ...patch })
-  const save = async () => {
-    const settings = { ...form, channels: form.channels.map((c) => ({ ...c, id: c.id.trim(), name: c.name.trim() || c.id.trim() })) }
-    if (await run(() => window.hub.slack.saveSettings(settings))) void reloadSlack()
-  }
   const accountName = (name: string) => name || t('slack.settings.defaultAccount')
   const accounts = slack.hooks.map((h) => ({ value: h.accountId ?? '', label: accountName(h.name) }))
   const setHook = async (accountId: string | null, install: boolean) => {
@@ -120,9 +132,6 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
               {t('slack.settings.addChannel')}
             </Button>
           </div>
-          <Button variant="primary" className="self-start" onClick={() => void save()}>
-            {t('slack.settings.save')}
-          </Button>
         </CardBody>
       </Card>
 

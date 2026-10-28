@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   appOptions,
   HEALTH_FLOOR_CHOICES,
@@ -29,6 +29,8 @@ import {
   type EnvironmentForm
 } from '../lib/healthForm'
 import { uniqueConnectionId } from '../lib/tickets'
+import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
+import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
 
 type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 
@@ -45,12 +47,20 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
   const [envs, setEnvs] = useState<EnvironmentForm[]>(() => (profile?.health?.environments ?? []).map(environmentToForm))
   const [test, setTest] = useState<{ state: 'idle' | 'running' } | { state: 'ok' | 'failed'; text: string }>({ state: 'idle' })
   const [formError, setFormError] = useState<MessageKey | null>(null)
+  // What each form held when it was loaded or last saved: the save bar shows while one differs.
+  const [connBaseline, setConnBaseline] = useState<ConnectionForm>(form)
+  const [envBaseline, setEnvBaseline] = useState(() => ({ refresh, envs }))
 
   // The form follows the profile: switching profile (or saving) loads what is stored.
   useEffect(() => {
-    setForm(connectionToForm(connection))
-    setRefresh(profile?.health?.refreshMinutes ?? DEFAULT_HEALTH_REFRESH_MINUTES)
-    setEnvs((profile?.health?.environments ?? []).map(environmentToForm))
+    const nextForm = connectionToForm(connection)
+    const nextRefresh = profile?.health?.refreshMinutes ?? DEFAULT_HEALTH_REFRESH_MINUTES
+    const nextEnvs = (profile?.health?.environments ?? []).map(environmentToForm)
+    setForm(nextForm)
+    setConnBaseline(nextForm)
+    setRefresh(nextRefresh)
+    setEnvs(nextEnvs)
+    setEnvBaseline({ refresh: nextRefresh, envs: nextEnvs })
     setTest({ state: 'idle' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, connection?.id])
@@ -58,6 +68,19 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
   useEffect(() => {
     void window.hub.health.get(profile?.id ?? null).then((v) => setDemo(v.state === 'demo'))
   }, [profile?.id])
+
+  const connectionSave = useRef<() => Promise<SaveOutcome>>(async () => ({ ok: true }))
+  const environmentsSave = useRef<() => Promise<SaveOutcome>>(async () => ({ ok: true }))
+  useUnsavedForm({ dirty: profile !== undefined && isDirty(connBaseline, form), draft: form, save: () => connectionSave.current(), discard: () => setForm(connBaseline) })
+  useUnsavedForm({
+    dirty: profile !== undefined && isDirty(envBaseline, { refresh, envs }),
+    draft: { refresh, envs },
+    save: () => environmentsSave.current(),
+    discard: () => {
+      setRefresh(envBaseline.refresh)
+      setEnvs(envBaseline.envs)
+    }
+  })
 
   if (!profile) return <EmptyState compact title={t('health.settings.noProfile')} />
 
@@ -90,21 +113,33 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
   /** Saves the profile with what changed; the profile is read again because saving the connection may have changed the config. */
   const saveProfile = (patch: (p: Profile) => Profile) => run(() => window.hub.config.saveProfile(patch(profile)))
 
-  const saveConnection = async () => {
+  connectionSave.current = async () => {
     const gap = missing()
-    if (gap) return setFormError(gap)
+    if (gap) {
+      setFormError(gap)
+      return { ok: false, problem: t(gap) }
+    }
     setFormError(null)
     const c = formToConnection(form, connectionId())
-    if (!(await run(() => window.hub.config.saveConnection(c, secretChange())))) return
-    await saveProfile((p) => ({ ...p, connections: { ...p.connections, health: c.id } }))
-    setForm((f) => ({ ...f, id: c.id, secret: '' }))
+    if (!(await run(() => window.hub.config.saveConnection(c, secretChange())))) return { ok: false }
+    if (!(await saveProfile((p) => ({ ...p, connections: { ...p.connections, health: c.id } })))) return { ok: false }
+    const saved = { ...form, id: c.id, secret: '' }
+    setForm(saved)
+    setConnBaseline(saved)
+    return { ok: true }
   }
 
-  const saveEnvironments = async () => {
-    if (envs.some((e) => !e.name.trim())) return setFormError('health.settings.invalidEnvironment')
+  environmentsSave.current = async () => {
+    if (envs.some((e) => !e.name.trim())) {
+      setFormError('health.settings.invalidEnvironment')
+      return { ok: false, problem: t('health.settings.invalidEnvironment') }
+    }
     setFormError(null)
-    await saveProfile((p) => ({ ...p, health: { refreshMinutes: refresh, environments: envs.map(formToEnvironment) } }))
+    if (!(await saveProfile((p) => ({ ...p, health: { refreshMinutes: refresh, environments: envs.map(formToEnvironment) } })))) return { ok: false }
+    setEnvBaseline({ refresh, envs })
+    return { ok: true }
   }
+  const fieldError = (key: MessageKey) => (formError === key ? t(key) : undefined)
 
   const updateEnv = (index: number, patch: Partial<EnvironmentForm>) => setEnvs((all) => all.map((e, i) => (i === index ? { ...e, ...patch } : e)))
   const addEnv = () => setEnvs((all) => [...all, emptyEnvironment(all.map((e) => e.id))])
@@ -135,7 +170,7 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
         <CardHeader title={t('health.settings.connection')} help={t('help.health.connection')} />
         <CardBody className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label={t('health.settings.url')} hint={t('health.settings.urlHint')} className="col-span-2">
+            <Field label={t('health.settings.url')} hint={t('health.settings.urlHint')} className="col-span-2" error={fieldError('health.settings.missing.url')}>
               <Input value={form.url} onChange={(e) => setConn({ url: e.target.value })} placeholder="https://elastic.example.com:9200" spellCheck={false} autoComplete="off" />
             </Field>
             <Field label={t('health.settings.auth')}>
@@ -149,11 +184,11 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
               />
             </Field>
             {form.auth === 'basic' && (
-              <Field label={t('health.settings.username')}>
+              <Field label={t('health.settings.username')} error={fieldError('health.settings.missing.user')}>
                 <Input value={form.username} onChange={(e) => setConn({ username: e.target.value })} spellCheck={false} autoComplete="off" />
               </Field>
             )}
-            <Field label={form.auth === 'basic' ? t('health.settings.secret.basic') : t('health.settings.secret.apiKey')} className={form.auth === 'basic' ? 'col-span-2' : ''}>
+            <Field label={form.auth === 'basic' ? t('health.settings.secret.basic') : t('health.settings.secret.apiKey')} className={form.auth === 'basic' ? 'col-span-2' : ''} error={fieldError('health.settings.missing.secret')}>
               <Input type="password" autoFocus={focusSecret} value={form.secret} onChange={(e) => setConn({ secret: e.target.value })} placeholder={stored ? t('health.settings.secretStored') : ''} autoComplete="off" />
             </Field>
             <Field label={t('health.settings.tls')} help={t('help.health.tls')}>
@@ -168,16 +203,13 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
               />
             </Field>
             {form.tls === 'pinned' && (
-              <Field label={t('health.settings.fingerprint')} hint={t('health.settings.fingerprintHint')}>
+              <Field label={t('health.settings.fingerprint')} hint={t('health.settings.fingerprintHint')} error={fieldError('health.settings.missing.fingerprint')}>
                 <Input value={form.fingerprint} onChange={(e) => setConn({ fingerprint: e.target.value })} spellCheck={false} className="font-mono" />
               </Field>
             )}
           </div>
           {form.tls === 'insecure' && <p className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning">{t('health.settings.insecureWarning')}</p>}
           <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-            <Button variant="primary" disabled={!editable} onClick={() => void saveConnection()}>
-              {t('health.settings.saveConnection')}
-            </Button>
             <Button onClick={() => void runTest()} disabled={test.state === 'running'}>
               {test.state === 'running' ? t('health.settings.testing') : t('health.settings.test')}
             </Button>
@@ -235,7 +267,7 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
                 </button>
               </summary>
               <div className="grid grid-cols-2 gap-4 border-t border-border p-3">
-                <Field label={t('health.settings.envName')}>
+                <Field label={t('health.settings.envName')} error={formError === 'health.settings.invalidEnvironment' && !e.name.trim() ? t('health.settings.invalidEnvironment') : undefined}>
                   <Input value={e.name} onChange={(ev) => updateEnv(i, { name: ev.target.value, id: e.id.startsWith('environment') ? environmentId(ev.target.value, envs.filter((_, j) => j !== i).map((x) => x.id)) : e.id })} />
                 </Field>
                 <Field label={t('health.settings.envValues')} hint={t('health.settings.envValuesHint')}>
@@ -290,11 +322,6 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
               </div>
             </details>
           ))}
-          <div className="border-t border-border pt-4">
-            <Button variant="primary" disabled={!editable} onClick={() => void saveEnvironments()}>
-              {t('health.settings.saveEnvironments')}
-            </Button>
-          </div>
         </CardBody>
       </Card>
     </div>
