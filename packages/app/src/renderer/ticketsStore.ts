@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import type { Ticket } from '@workhub/core'
+import type { ConfigSnapshot } from '@shared/api'
 import type { TicketsStatus } from '@shared/tickets-api'
 import { useConfig } from './configStore'
 import { errorText } from './lib/errorText'
@@ -69,11 +70,23 @@ export function stopTicketsPolling(): void {
 }
 
 /**
- * The tickets of a profile. They load when the profile first appears and again whenever the
- * config changes (a tracker was saved or the profile switched its connection).
+ * What the tickets of a profile depend on in the config: the profile and the connections (and
+ * which of them have a token). Anything else (a sidebar group folded, an option) changes nothing.
+ */
+export function ticketsConfigKey(snap: ConfigSnapshot | null, profileId: string | undefined): string {
+  if (!snap || !profileId) return ''
+  const profile = snap.config.profiles.find((p) => p.id === profileId)
+  return JSON.stringify([profile ?? null, snap.config.connections, snap.connectionsWithSecret])
+}
+
+/**
+ * The tickets of a profile. They load when the profile first appears and again whenever its
+ * tracker settings change (a tracker was saved or the profile switched its connection); not on
+ * every config refresh, each of which would ask the tracker again.
  */
 export function useTickets(profileId: string | undefined): ProfileTickets & { refresh: () => Promise<void> } {
   const snap = useConfig()
+  const configKey = ticketsConfigKey(snap, profileId)
   const current = useSyncExternalStore(
     (l) => {
       listeners.add(l)
@@ -84,6 +97,6 @@ export function useTickets(profileId: string | undefined): ProfileTickets & { re
   useEffect(() => {
     start()
     if (profileId) void loadTickets(profileId)
-  }, [profileId, snap?.config])
+  }, [profileId, configKey])
   return { ...current, refresh: () => (profileId ? loadTickets(profileId) : Promise.resolve()) }
 }

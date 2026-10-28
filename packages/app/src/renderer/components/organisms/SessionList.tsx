@@ -1,6 +1,6 @@
 import { Bot, ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, Settings, X } from 'lucide-react'
 import { ContextMenu, DropdownMenu } from 'radix-ui'
-import { useMemo, useState, type CSSProperties, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
+import { memo, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
 import {
   accountColor,
   createGroup,
@@ -100,6 +100,14 @@ interface MenuKit {
   Sub: ElementType
   SubTrigger: ElementType
   SubContent: ElementType
+}
+
+/**
+ * A menu's items, built when the menu opens: Radix mounts a menu's content only while it is open,
+ * so rows do not build (or rebuild on every render) menus nobody opened.
+ */
+function MenuItems({ kit, build }: { kit: MenuKit; build: () => MenuItem[] }) {
+  return <>{renderMenu(kit, build())}</>
 }
 
 function renderMenu(kit: MenuKit, items: MenuItem[]): ReactNode {
@@ -266,33 +274,54 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     return name ? { name, color: accountColor(accounts, id) } : undefined
   }
 
+  // What a row does, read from this render when it happens: the rows get one object that never
+  // changes, so a row whose own data did not change is not rendered again (see `sameRow`).
+  const entryOf = (key: string) => listed.find((l) => l.key === key)
+  const latest = useRef({ sessionMenu, entryOf, onSelect, onReopen, onOpenSlack, requestClose, act, accept, setOver, onDropOnSession, toggleSubagents })
+  latest.current = { sessionMenu, entryOf, onSelect, onReopen, onOpenSlack, requestClose, act, accept, setOver, onDropOnSession, toggleSubagents }
+  const actions = useMemo<RowActions>(
+    () => ({
+      menu: (member) => latest.current.sessionMenu(member),
+      open: (member) => {
+        const entry = latest.current.entryOf(member.key)
+        if (entry) latest.current.onSelect(entry.data.view.id)
+        else latest.current.onReopen(member)
+      },
+      close: (key) => {
+        const entry = latest.current.entryOf(key)
+        if (entry) latest.current.requestClose(entry.data)
+      },
+      move: (key, step) => latest.current.act((s) => moveBy(s, key, step)),
+      toggleSubagents: (key) => latest.current.toggleSubagents(key),
+      openSubagent: (key, subagentId) => {
+        const entry = latest.current.entryOf(key)
+        if (!entry) return
+        latest.current.onSelect(entry.data.view.id)
+        openSubagent(entry.data.view.id, subagentId)
+      },
+      openSlack: () => latest.current.onOpenSlack?.(),
+      dragOver: (e, key) => latest.current.accept(e, `s:${key}`, [SESSION_DRAG, GROUP_DRAG]),
+      dragLeave: () => latest.current.setOver(null),
+      drop: (e, key) => latest.current.onDropOnSession(e, key)
+    }),
+    []
+  )
+
   const sessionItem = (member: GroupMember, entry: ListedSession | undefined, nested: boolean) => (
     <SessionItem
       key={member.key}
-      onOpenSlack={onOpenSlack}
+      actions={actions}
+      slack={onOpenSlack !== undefined}
       member={member}
       title={rowName(entry, member, pastTitles?.get(member.key))}
       account={accountOf(member, entry)}
       profile={profileOf(member, entry)}
-      subagents={entry ? visibleSubagents(entry.data.monitor.subagents, now) : []}
+      subagents={entry ? visibleSubagents(entry.data.monitor.subagents, now) : NO_SUBAGENTS}
       subagentsOpen={expanded.has(member.key)}
-      onToggleSubagents={() => toggleSubagents(member.key)}
-      onOpenSubagent={(id) => {
-        if (!entry) return
-        onSelect(entry.data.view.id)
-        openSubagent(entry.data.view.id, id)
-      }}
       entry={entry}
       nested={nested}
       selected={active && entry !== undefined && selectedId === entry.data.view.id}
       dropping={over === `s:${member.key}`}
-      menu={sessionMenu(member)}
-      onClose={entry ? () => requestClose(entry.data) : undefined}
-      onOpen={() => (entry ? onSelect(entry.data.view.id) : onReopen(member))}
-      onMove={(step) => act((s) => moveBy(s, member.key, step))}
-      onDragOver={(e) => accept(e, `s:${member.key}`, [SESSION_DRAG, GROUP_DRAG])}
-      onDragLeave={() => setOver(null)}
-      onDrop={(e) => onDropOnSession(e, member.key)}
     />
   )
 
@@ -309,8 +338,9 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
                 group={group}
                 summary={summary}
                 dropping={over === `g:${group.id}`}
-                menu={groupMenu(group)}
-                onToggle={() => act((s) => setGroupCollapsed(s, group.id, !group.collapsed))}
+                menu={() => groupMenu(group)}
+                // Flipped on the stored state, not this render's: quick clicks each count while a save is on its way.
+                onToggle={() => act((s) => setGroupCollapsed(s, group.id, !s.groups.find((g) => g.id === group.id)?.collapsed))}
                 onMove={(step) => act((s) => moveGroupBy(s, group.id, step))}
                 onDragOver={(e) => accept(e, `g:${group.id}`, [SESSION_DRAG, GROUP_DRAG])}
                 onDragLeave={() => setOver(null)}
@@ -383,7 +413,24 @@ export function dropOnSessionsTitle(e: DragEvent, liveKeys: readonly string[]): 
   if (member) void updateGroups((s) => ungroup(s, member.key, 0), liveKeys)
 }
 
-function SessionItem(props: {
+/** What a session row does; one object for every row, stable across renders (see `SessionList`). */
+interface RowActions {
+  menu(member: GroupMember): MenuItem[]
+  /** Shows the open session, or reopens a closed member. */
+  open(member: GroupMember): void
+  close(key: string): void
+  move(key: string, step: -1 | 1): void
+  toggleSubagents(key: string): void
+  openSubagent(key: string, subagentId: string): void
+  openSlack(): void
+  dragOver(e: DragEvent, key: string): void
+  dragLeave(): void
+  drop(e: DragEvent, key: string): void
+}
+
+const NO_SUBAGENTS: SubagentSummary[] = []
+
+interface SessionItemProps {
   member: GroupMember
   entry: ListedSession | undefined
   /** The row's name (see `rowName`). */
@@ -395,23 +442,48 @@ function SessionItem(props: {
   /** Its sub-agents at work or recently ended, listed under the row while `subagentsOpen`. */
   subagents: SubagentSummary[]
   subagentsOpen: boolean
-  onToggleSubagents: () => void
-  onOpenSubagent: (subagentId: string) => void
   nested: boolean
   selected: boolean
   dropping: boolean
-  menu: MenuItem[]
-  /** Closes the open session; undefined for a closed group member. */
-  onClose?: () => void
-  onOpen: () => void
-  onMove: (step: -1 | 1) => void
-  onDragOver: (e: DragEvent) => void
-  onDragLeave: () => void
-  onDrop: (e: DragEvent) => void
-  onOpenSlack?: () => void
-}) {
+  /** Whether the Slack badge opens the Slack screen (the module is on). */
+  slack: boolean
+  actions: RowActions
+}
+
+const sameFields = <T extends object>(a: T | undefined, b: T | undefined): boolean => {
+  if (a === b) return true
+  if (!a || !b) return false
+  const keys = Object.keys(a) as (keyof T)[]
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+}
+
+/**
+ * Whether a row would render the same: its member and session data, by value or reference. The
+ * sidebar is rendered again on every config refresh (a group folded, a session renamed), and with
+ * hundreds of rows, each with its menus and tooltips, rendering them all made each click slow.
+ */
+export function sameRow(a: SessionItemProps, b: SessionItemProps): boolean {
+  return (
+    sameFields(a.member, b.member) &&
+    a.entry?.key === b.entry?.key &&
+    a.entry?.data === b.entry?.data &&
+    a.title === b.title &&
+    sameFields(a.account, b.account) &&
+    sameFields(a.profile, b.profile) &&
+    a.subagents.length === b.subagents.length &&
+    a.subagents.every((s, i) => s === b.subagents[i]) &&
+    a.subagentsOpen === b.subagentsOpen &&
+    a.nested === b.nested &&
+    a.selected === b.selected &&
+    a.dropping === b.dropping &&
+    a.slack === b.slack &&
+    a.actions === b.actions
+  )
+}
+
+const SessionItem = memo(function SessionItem(props: SessionItemProps) {
   const { t, tn } = useI18n()
-  const { member, entry } = props
+  const { member, entry, actions } = props
   // Threads this session owns (member.key is its stable identity), with a dot for unread replies.
   const slack = useSessionSlack(member.key)
   const data = entry?.data
@@ -428,15 +500,16 @@ function SessionItem(props: {
   const agentName = data?.view.agentName ?? member.agentName
   const onKey = (e: KeyboardEvent) => {
     // Delete or Backspace closes the focused session, as the close button does.
-    if (props.onClose && !e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace')) {
+    if (entry && !e.altKey && !e.metaKey && !e.ctrlKey && (e.key === 'Delete' || e.key === 'Backspace')) {
       e.preventDefault()
-      props.onClose()
+      actions.close(member.key)
       return
     }
     if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
     e.preventDefault()
-    props.onMove(e.key === 'ArrowUp' ? -1 : 1)
+    actions.move(member.key, e.key === 'ArrowUp' ? -1 : 1)
   }
+  const menu = () => actions.menu(member)
   return (
     <li>
       <ContextMenu.Root>
@@ -451,9 +524,9 @@ function SessionItem(props: {
               e.dataTransfer.setData(SESSION_DRAG, JSON.stringify(member))
               e.dataTransfer.effectAllowed = 'move'
             }}
-            onDragOver={props.onDragOver}
-            onDragLeave={props.onDragLeave}
-            onDrop={props.onDrop}
+            onDragOver={(e) => actions.dragOver(e, member.key)}
+            onDragLeave={actions.dragLeave}
+            onDrop={(e) => actions.drop(e, member.key)}
             className={cn(
               'group/row relative flex items-center rounded-md transition-colors duration-150',
               props.selected ? 'bg-accent-soft text-text' : 'text-muted hover:bg-surface-hover hover:text-text',
@@ -498,7 +571,7 @@ function SessionItem(props: {
             >
               <button
                 type="button"
-                onClick={props.onOpen}
+                onClick={() => actions.open(member)}
                 onKeyDown={onKey}
                 aria-current={props.selected ? 'true' : undefined}
                 className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1.5 pr-1 text-left', props.nested ? 'pl-2' : 'pl-3')}
@@ -541,7 +614,7 @@ function SessionItem(props: {
                 )}
               </button>
             </Tooltip>
-            {props.onOpenSlack && <SlackBadge summary={slack.summary} onOpen={props.onOpenSlack} />}
+            {props.slack && <SlackBadge summary={slack.summary} onOpen={actions.openSlack} />}
             {props.subagents.length > 0 && (
               <button
                 type="button"
@@ -549,7 +622,7 @@ function SessionItem(props: {
                 aria-expanded={props.subagentsOpen}
                 aria-label={tn(props.subagentsOpen ? 'sidebar.subagents.hide' : 'sidebar.subagents.show', props.subagents.length)}
                 title={tn(props.subagentsOpen ? 'sidebar.subagents.hide' : 'sidebar.subagents.show', props.subagents.length)}
-                onClick={props.onToggleSubagents}
+                onClick={() => actions.toggleSubagents(member.key)}
                 className="mr-0.5 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-sm px-1 text-xs tabular-nums text-subtle hover:bg-surface-hover hover:text-text"
               >
                 <ChevronRight className={cn('size-3 transition-transform duration-150', props.subagentsOpen && 'rotate-90')} aria-hidden />
@@ -558,36 +631,38 @@ function SessionItem(props: {
             )}
             {/* Take room only while they can be used, so the name keeps the row's whole width otherwise. */}
             <span data-testid="row-actions" className={ROW_ACTIONS}>
-              {props.onClose && (
+              {entry && (
                 <button
                   type="button"
                   data-testid="close-session"
                   aria-label={t('sessions.closeNamed', { name: title })}
                   title={t('sessions.close')}
-                  onClick={props.onClose}
+                  onClick={() => actions.close(member.key)}
                   className={cn(ROW_ACTION, 'mr-0')}
                 >
                   <X className="size-3.5" aria-hidden />
                 </button>
               )}
-              <OptionsButton label={t('groups.options', { name: title })} menu={props.menu} />
+              <OptionsButton label={t('groups.options', { name: title })} menu={menu} />
             </span>
           </div>
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
-          <ContextMenu.Content className={MENU_CONTENT}>{renderMenu(ContextMenu as unknown as MenuKit, props.menu)}</ContextMenu.Content>
+          <ContextMenu.Content className={MENU_CONTENT}>
+            <MenuItems kit={ContextMenu as unknown as MenuKit} build={menu} />
+          </ContextMenu.Content>
         </ContextMenu.Portal>
       </ContextMenu.Root>
       {props.subagentsOpen && props.subagents.length > 0 && (
         <ul className="mt-0.5 ml-6 flex flex-col gap-0.5" aria-label={tn('sidebar.subagents.list', props.subagents.length, { name: title })} data-testid="subagent-rows">
           {props.subagents.map((s) => (
-            <SubagentRow key={s.id} subagent={s} onOpen={() => props.onOpenSubagent(s.id)} />
+            <SubagentRow key={s.id} subagent={s} onOpen={() => actions.openSubagent(member.key, s.id)} />
           ))}
         </ul>
       )}
     </li>
   )
-}
+}, sameRow)
 
 /** A sub-agent under its session's row: its state, kind and task; a click opens its conversation. */
 function SubagentRow({ subagent: s, onOpen }: { subagent: SubagentSummary; onOpen: () => void }) {
@@ -627,7 +702,7 @@ const ROW_ACTIONS = 'hidden shrink-0 items-center group-hover/row:flex group-foc
 const ROW_ACTION =
   'mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-subtle opacity-0 transition-opacity hover:bg-surface-hover hover:text-text focus-visible:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 data-[state=open]:opacity-100'
 
-function OptionsButton({ label, menu }: { label: string; menu: MenuItem[] }) {
+function OptionsButton({ label, menu }: { label: string; menu: () => MenuItem[] }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger aria-label={label} className={ROW_ACTION}>
@@ -635,7 +710,7 @@ function OptionsButton({ label, menu }: { label: string; menu: MenuItem[] }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content align="end" sideOffset={4} className={MENU_CONTENT}>
-          {renderMenu(DropdownMenu as unknown as MenuKit, menu)}
+          <MenuItems kit={DropdownMenu as unknown as MenuKit} build={menu} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -646,7 +721,7 @@ function GroupHeader(props: {
   group: SessionGroup
   summary: ReturnType<typeof summarize>
   dropping: boolean
-  menu: MenuItem[]
+  menu: () => MenuItem[]
   onToggle: () => void
   onMove: (step: -1 | 1) => void
   onDragOver: (e: DragEvent) => void
@@ -710,7 +785,9 @@ function GroupHeader(props: {
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className={MENU_CONTENT}>{renderMenu(ContextMenu as unknown as MenuKit, props.menu)}</ContextMenu.Content>
+        <ContextMenu.Content className={MENU_CONTENT}>
+          <MenuItems kit={ContextMenu as unknown as MenuKit} build={props.menu} />
+        </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
   )
