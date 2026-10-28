@@ -47,6 +47,6 @@ function entry(agent: AgentDefinition, account: AgentAccount | null): EffectiveA
     key: effectiveAgentKey(agent.id, account?.id ?? null),
     agent,
     account,
-    label: account ? ` · ` : agent.name
+    label: account ? `${agent.name} · ${account.name}` : agent.name
   }
 }
