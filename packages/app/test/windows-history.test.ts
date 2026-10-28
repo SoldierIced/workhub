@@ -31,7 +31,7 @@ import { es } from '../src/renderer/i18n/es'
 
 const AGENTS: MenuAgent[] = [
   { key: 'claude', label: 'Claude Code', agentId: 'claude' },
-  { key: 'claude:work', label: 'Claude Code - Work', agentId: 'claude' },
+  { key: 'claude:work', label: 'Claude Code · Work', agentId: 'claude' },
   { key: 'codex', label: 'Codex', agentId: 'codex' },
   { key: 'shell', label: 'Shell', agentId: 'shell' }
 ]
@@ -89,7 +89,7 @@ describe('application menu', () => {
     const news = file.filter((i) => String(i.label).startsWith('menu.newAgentSession'))
     expect(news.map((i) => [i.label, i.accelerator])).toEqual([
       ['menu.newAgentSession(Claude Code)', 'CmdOrCtrl+L'],
-      ['menu.newAgentSession(Claude Code - Work)', undefined],
+      ['menu.newAgentSession(Claude Code · Work)', undefined],
       ['menu.newAgentSession(Codex)', undefined],
       ['menu.newAgentSession(Shell)', 'CmdOrCtrl+Y']
     ])

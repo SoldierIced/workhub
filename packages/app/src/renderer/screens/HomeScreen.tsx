@@ -20,7 +20,7 @@ import type { SessionData } from '../store'
 import { usePullRequestLists } from '../pullRequestsStore'
 import { HealthPills } from './health/HealthPills'
 import { PullRequestCard, PullRequestTile } from './pullRequests/HomeCards'
-import { usageWindowName } from '../lib/usage-window'
+import { usageWindowNameInline } from '../lib/usage-window'
 
 const ATTENTION: Record<Attention, { title: MessageKey; empty: MessageKey; tone: Tone; action: MessageKey }> = {
   needsReply: { title: 'home.needsReply', empty: 'home.needsReplyEmpty', tone: 'warning', action: 'home.action.answer' },
@@ -174,7 +174,7 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
           <StatTile
             label={t('home.planUsage')}
             value={usage ? `${Math.round(usage.percent)}%` : null}
-            caption={usage ? t('home.planUsageWindow', { window: usageWindowName(usage.window, t) }) : t('home.planUsageEmpty')}
+            caption={usage ? t('home.planUsageWindow', { window: usageWindowNameInline(usage.window, t) }) : t('home.planUsageEmpty')}
           />
         </div>
 

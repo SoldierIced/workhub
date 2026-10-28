@@ -6,7 +6,7 @@ import type { SetupPage } from '../shared/setup-api'
 export interface MenuAgent {
   /** `EffectiveAgent.key`. */
   key: string
-  /** What the menu shows, e.g. "Claude Code - Work". */
+  /** What the menu shows, e.g. "Claude Code · Work". */
   label: string
   agentId: string
 }

@@ -44,9 +44,9 @@ function requestOpen(id: string): void {
   for (const l of openListeners) l(id)
 }
 
-/** "Personal" out of "Claude Code - Personal": the account part of an agent label. */
+/** "Personal" out of "Claude Code · Personal": the account part of an agent label (stored labels may still use " - "). */
 export function accountOfLabel(label: string): string {
-  const at = label.lastIndexOf(' - ')
+  const at = Math.max(label.lastIndexOf(' · '), label.lastIndexOf(' - '))
   return at < 0 ? label : label.slice(at + 3)
 }
 

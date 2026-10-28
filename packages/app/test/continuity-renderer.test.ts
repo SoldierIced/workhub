@@ -8,13 +8,14 @@ const es = (key: Parameters<typeof translate>[1], params?: Record<string, string
 
 describe('continuity wording', () => {
   it('takes the account out of an agent label', () => {
+    expect(accountOfLabel('Claude Code · Laboral')).toBe('Laboral')
     expect(accountOfLabel('Claude Code - Laboral')).toBe('Laboral')
     expect(accountOfLabel('Codex')).toBe('Codex')
   })
 
   it('words a failover by its reason and window, in English and Spanish', () => {
-    const view = { label: 'Claude Code - Laboral', accountName: 'Laboral' }
-    const from = { kind: 'failover' as const, fromLabel: 'Claude Code - Personal', fromIdentity: 's' }
+    const view = { label: 'Claude Code · Laboral', accountName: 'Laboral' }
+    const from = { kind: 'failover' as const, fromLabel: 'Claude Code · Personal', fromIdentity: 's' }
     expect(originText({ ...from, reason: 'limit', window: '5h' }, view, t)).toBe('Continued in Laboral: Personal reached its 5h limit.')
     expect(originText({ ...from, reason: 'limit' }, view, t)).toBe('Continued in Laboral: Personal reached its usage limit.')
     expect(originText({ ...from, reason: 'ceiling', window: 'weekly' }, view, t)).toBe('Continued in Laboral: Personal is past your weekly ceiling.')
@@ -23,7 +24,7 @@ describe('continuity wording', () => {
   })
 
   it('words a hand-off as a summary, not a transcript', () => {
-    expect(originText({ kind: 'handoff', fromLabel: 'Claude Code - Personal', fromIdentity: 's' }, { label: 'Codex' }, t)).toMatch(/^Handed off from Claude Code - Personal\. .*summary/)
+    expect(originText({ kind: 'handoff', fromLabel: 'Claude Code · Personal', fromIdentity: 's' }, { label: 'Codex' }, t)).toMatch(/^Handed off from Claude Code · Personal\. .*summary/)
   })
 
   it('a usage limit event leaves the chat as it is (the notice comes from main)', () => {
