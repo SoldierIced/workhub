@@ -2,7 +2,7 @@ import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, Histo
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
-import { Markdown } from '../../components/molecules'
+import { CopyButton, Markdown } from '../../components/molecules'
 import { BrandMark, ToolCallCard } from '../../components/organisms'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
@@ -103,7 +103,10 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
           <BrandMark className="mt-0.5 size-5 shrink-0" />
           <div className="min-w-0 flex-1">
             <Markdown text={item.text} className="leading-relaxed" />
-            <SentAt at={item.at} align="left" />
+            <div className="flex items-center gap-1">
+              <SentAt at={item.at} align="left" />
+              <CopyButton text={() => item.text} />
+            </div>
           </div>
         </div>
       )

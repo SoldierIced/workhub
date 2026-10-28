@@ -329,6 +329,8 @@ export const es: Record<keyof typeof en, string> = {
   'chat.images.one': '{count} imagen',
   'chat.images.other': '{count} imágenes',
   'chat.noticeEmpty': 'Sin salida',
+  'chat.copy': 'Copiar',
+  'chat.copied': 'Copiado',
   'chat.noticeCompacted': 'La conversación se compactó.',
   'chat.permissionWithdrawn': 'El agente retiró la solicitud',
   'chat.resumedHere.one': '{count} mensaje anterior · se retoma aquí',
