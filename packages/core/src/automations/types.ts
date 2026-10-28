@@ -32,6 +32,11 @@ export interface AutomationDefinition {
   /** Automatic runs wait while the account's 5 h usage is at or above this percentage. */
   usageThreshold: number
   sessionPolicy: SessionPolicy
+  /**
+   * Clears the session's context before each run that goes into a session already used, so every
+   * run starts fresh in the same chat. Only where `supportsClearContext`; unset: off.
+   */
+  clearContext?: boolean
   runTimeoutMinutes: number
   /** Whether replies to the chat messages its sessions send wake them. Off: those threads are not followed. */
   receivesChatReplies: boolean
@@ -44,10 +49,20 @@ export const AUTOMATION_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as c
 export const CLAUDE_PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'] as const
 
 /**
- * `reuse`: one dedicated session, resumed when it is closed. `newEachRun`: a fresh session per
- * run; the new one takes the previous one's sidebar place and the threads it listens to.
+ * While the app runs, both keep running in the session the automation opened. When there is none
+ * (after a restart, or once it was closed): `reuse` resumes its dedicated session; `newEachRun`
+ * starts a fresh one, which takes the previous one's sidebar place and the threads it listens to.
  */
 export type SessionPolicy = 'reuse' | 'newEachRun'
+
+/**
+ * Whether "Clear context before each run" works for an agent adapter and view: Claude through the
+ * Agent SDK, in the chat, takes `/clear` as a prompt (it starts a new transcript, which the
+ * session follows). A console or another agent has no command Workhub can rely on.
+ */
+export function supportsClearContext(adapter: string | undefined, view: AutomationDefinition['view']): boolean {
+  return adapter === 'native' && view === 'app'
+}
 
 export interface AutomationTriggers {
   /** Fire when the watcher stores a new message with a PR link in one of these channels. */

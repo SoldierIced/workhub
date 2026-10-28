@@ -215,4 +215,4 @@ function RunRow({ run: r, now, locale, removed, onOpen }: { run: AutomationRun; 
   )
 }
 
-const DETAIL_KEYS = new Set(['window.days', 'window.hours', 'limit.window', 'limit.day', 'mergedIntoPending', 'sessionClosed', 'neverIdle', 'stoppedByUser', 'moduleOff', 'paused', 'usage'])
+const DETAIL_KEYS = new Set(['window.days', 'window.hours', 'limit.window', 'limit.day', 'mergedIntoPending', 'sessionClosed', 'neverIdle', 'clearFailed', 'stoppedByUser', 'moduleOff', 'paused', 'usage'])

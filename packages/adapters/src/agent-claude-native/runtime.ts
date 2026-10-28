@@ -275,6 +275,14 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
 
   private onLine(s: NativeSession, line: Obj): void {
     const message = line['type'] === 'sdk' ? (line['message'] as Obj | undefined) : undefined
+    // `/clear` gives the conversation a new session id and transcript: the session follows it, so
+    // its monitor, its resume and its sidebar place keep pointing at the live conversation. Only
+    // main-thread messages (the init and a turn's result) are trusted for it.
+    const moved = message && (message['type'] === 'result' || (message['type'] === 'system' && message['subtype'] === 'init')) ? message['session_id'] : undefined
+    if (typeof moved === 'string' && moved && moved !== s.agentSessionId) {
+      s.agentSessionId = moved
+      this.emit({ sessionId: s.id, type: 'agentSession', agentSessionId: moved })
+    }
     if (message?.['type'] === 'result') {
       // A turn refused by a usage limit ends with an error result carrying Claude Code's message.
       const text = typeof message['result'] === 'string' ? message['result'] : ''

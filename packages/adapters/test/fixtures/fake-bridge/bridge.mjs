@@ -64,6 +64,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
           reply('msg_after_turn', `next turn ${m.priority ?? 'none'}`)
           sdk({ type: 'result', subtype: 'success', is_error: false, user_message_uuid: m.uuid, user_message_uuids: [m.uuid], queued_turn_count: 0 })
         }, 50)
+      } else if (text === '/clear') {
+        // Claude Code's /clear: a local command that moves the conversation to a new session id.
+        sdk({ type: 'result', subtype: 'success', is_error: false, result: '', local_command: 'clear', session_id: 'cccccccc-3333-4333-8333-333333333333' })
       } else if (text === 'wait') {
         // Answered by an interrupt.
       } else if (text === 'ignore close') {

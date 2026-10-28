@@ -66,6 +66,8 @@ export interface AutomationHost {
    * wait, until the window resets when that is known. Absent or null: no budget applies.
    */
   budgetPaused?(automation: AutomationDefinition): { window: string; resetsAt?: number } | null
+  /** Whether the automation's agent and view take `/clear` (see `supportsClearContext`); absent: never. */
+  clearsContext?(automation: AutomationDefinition): boolean
   /** The new session takes the old one's sidebar group and position (core `replaceSessionIdentity`). */
   replaceIdentity(oldKey: string, newKey: string): Promise<void>
   /** Hands the open chat threads owned by `oldKey` to `newKey`; returns how many moved. */
@@ -88,11 +90,14 @@ interface Pending {
 interface Active {
   run: AutomationRun
   sessionId?: string
-  stage: 'opening' | 'delivering' | 'running'
+  /** `clearing`: the session's context is being cleared before the prompt goes in. */
+  stage: 'opening' | 'clearing' | 'delivering' | 'running'
   submittedAt?: number
   turnsAtSubmit: number
   /** The session was started for this run, so it had spent nothing before it. */
   fresh?: boolean
+  /** The context was cleared for this run (`clearContext`): the session starts it with nothing spent. */
+  cleared?: boolean
   /** The session's usage when the prompt went in; absent when it is unknown (then no usage is logged). */
   usageBaseline?: SessionUsage
 }
@@ -124,16 +129,23 @@ export type AutomationHealth = 'off' | 'idle' | 'waiting' | 'paused' | 'failing'
 export const DELIVERY_TIMEOUT_MS = 180_000
 /** A console run is done once its output has been quiet this long. */
 export const CONSOLE_QUIET_MS = 5_000
+/** What a run sends before its prompt when the automation clears the context (Claude Code's own command). */
+export const CLEAR_CONTEXT_PROMPT = '/clear'
 
 /**
  * Turns triggers (a new chat message, an interval, "Run now") into runs of a prompt in a
  * dedicated session, one at a time per automation, inside its window, under its limits and the
  * usage guard. Bursts coalesce into one pending run. The app calls `tick` every couple of seconds.
  *
- * A "new session each run" automation hands everything of the previous session to the new one:
- * its sidebar group and position, and the chat threads it listens to (so a reply reaches exactly
- * one session). The previous session is then retired: stopped once it is idle, off screen and no
- * open thread wakes it, never before.
+ * While the app runs, every run of an automation goes into the session it opened: one chat that
+ * gets each run's prompt. A run waits while that session is busy instead of opening a second one.
+ * A new session starts only when there is none (after a restart, or once it was closed or failed);
+ * a "reuse" automation then resumes its dedicated session instead.
+ *
+ * A new session that replaces another takes everything of the previous one: its sidebar group and
+ * position, and the chat threads it listens to (so a reply reaches exactly one session). The
+ * previous session is then retired: stopped once it is idle, off screen and no open thread wakes
+ * it, never before.
  */
 export class AutomationEngine {
   private state: AutomationsState
@@ -141,6 +153,8 @@ export class AutomationEngine {
   private ticking = false
   /** Finished runs whose usage may still grow as the monitor catches up with the transcript. */
   private readonly settling = new Map<string, { automationId: string; sessionId: string; baseline: SessionUsage; until: number }>()
+  /** Per automation: the session (its id in the session list) it runs in while the app runs. Not kept across launches. */
+  private readonly owner = new Map<string, string>()
 
   constructor(
     private readonly host: AutomationHost,
@@ -229,6 +243,7 @@ export class AutomationEngine {
   /** Forgets a removed automation's schedule (its log rows and sessions stay). */
   removed(id: string): void {
     this.runtime.delete(id)
+    this.owner.delete(id)
     const starts = { ...this.state.starts }
     delete starts[id]
     this.save({ ...this.state, starts })
@@ -237,8 +252,9 @@ export class AutomationEngine {
   /** A session got its real identity late (an ACP agent reports its id after starting): the records follow it. */
   identityChanged(oldKey: string, newKey: string): void {
     if (oldKey === newKey || !(oldKey in this.state.owned)) return
+    // The old key stays too: a session that cleared its context left its earlier transcript under
+    // it, and History still groups that one with the automation.
     const owned = { ...this.state.owned, [newKey]: this.state.owned[oldKey]! }
-    delete owned[oldKey]
     const sessions = Object.fromEntries(Object.entries(this.state.sessions).map(([id, key]) => [id, key === oldKey ? newKey : key]))
     const retiring = this.state.retiring.map((key) => (key === oldKey ? newKey : key))
     const runs = this.state.runs.map((r) => (r.session === oldKey ? { ...r, session: newKey } : r))
@@ -340,6 +356,10 @@ export class AutomationEngine {
       const limit = limitWait(this.state.starts[a.id] ?? [], a.limits, now)
       if (limit) return this.setWait(a.id, `limit.${limit.reason}`, limit.until)
     }
+    // One session per automation: while it is busy (a turn, a permission prompt, a reply it woke
+    // for) the run stays pending, and further triggers merge into it, instead of opening another.
+    const open = this.current(a)
+    if (open && open.state !== 'ready') return this.setWait(a.id, 'sessionBusy')
     await this.begin(a, pending)
   }
 
@@ -399,22 +419,27 @@ export class AutomationEngine {
   }
 
   /**
-   * The dedicated session: the current one when it is open (reuse), the current one resumed, or
-   * a new one. A new session that replaces another takes its sidebar place and its chat threads,
-   * and the replaced one is retired (see `retire`).
+   * The session a run goes into: the open one (see `current`), else the dedicated one resumed
+   * (reuse), else a new one. A new session that replaces another takes its sidebar place and its
+   * chat threads, and the replaced one is retired (see `retire`).
    */
   private async resolveSession(a: AutomationDefinition): Promise<{ session: DrivenSession; fresh: boolean }> {
+    const open = this.current(a)
+    if (open) {
+      this.owner.set(a.id, open.id)
+      return { session: open, fresh: false }
+    }
     const previous = this.state.sessions[a.id]
     const sessions = this.host.sessions
     if (a.sessionPolicy === 'reuse' && previous) {
-      const open = this.live(previous)
-      if (open) return { session: open, fresh: false }
       const continued = await sessions.start(a, previous)
+      this.owner.set(a.id, continued.id)
       this.adopt(a, continued.identity)
       if (continued.identity !== previous) await this.handOver(a, previous, continued.identity)
       return { session: continued, fresh: false }
     }
     const started = await sessions.start(a)
+    this.owner.set(a.id, started.id)
     this.adopt(a, started.identity)
     if (previous && previous !== started.identity) await this.handOver(a, previous, started.identity)
     return { session: started, fresh: true }
@@ -461,6 +486,19 @@ export class AutomationEngine {
     return this.host.sessions.list().find((s) => s.identity === identity && s.state !== 'stopped' && s.state !== 'error')
   }
 
+  /**
+   * The open session the automation runs in: the one it opened while the app runs, else, for a
+   * "reuse" automation, its dedicated one when it is open (say, reopened by a chat reply).
+   * Undefined once it was closed or failed.
+   */
+  private current(a: AutomationDefinition): DrivenSession | undefined {
+    const id = this.owner.get(a.id)
+    const mine = id ? this.host.sessions.list().find((s) => s.id === id && s.state !== 'stopped' && s.state !== 'error') : undefined
+    if (mine) return mine
+    const previous = this.state.sessions[a.id]
+    return a.sessionPolicy === 'reuse' && previous ? this.live(previous) : undefined
+  }
+
   // Watching a run
 
   private async monitor(a: AutomationDefinition): Promise<void> {
@@ -473,11 +511,24 @@ export class AutomationEngine {
       const text = session.error ?? 'sessionFailed'
       return looksRateLimited(text) ? this.finish(a, 'rateLimited', text, resetTimeIn(text) ?? undefined) : this.finish(a, 'error', text)
     }
+    if (active.stage === 'clearing') {
+      // `/clear` runs as a turn of its own: the prompt goes in once it ended.
+      if (session.turnsEnded > active.turnsAtSubmit && session.state === 'ready') this.patchActive(a.id, { stage: 'delivering', cleared: true })
+      else if (now - (active.run.startedAt ?? now) > DELIVERY_TIMEOUT_MS) this.finish(a, 'error', 'clearFailed')
+      return
+    }
     if (active.stage === 'delivering') {
       if (session.state === 'ready') {
-        const delivered = await this.host.sessions.deliver(session.id, a.prompt).catch(() => 'waiting' as const)
+        // A session that already ran something starts the run with an empty context when asked to.
+        const clear = a.clearContext === true && !active.fresh && !active.cleared && this.host.clearsContext?.(a) === true
+        const delivered = await this.host.sessions.deliver(session.id, clear ? CLEAR_CONTEXT_PROMPT : a.prompt).catch(() => 'waiting' as const)
+        if (delivered === 'delivered' && clear) {
+          this.patchActive(a.id, { stage: 'clearing', turnsAtSubmit: session.turnsEnded })
+          return
+        }
         if (delivered === 'delivered') {
-          const baseline = session.usage ?? (active.fresh ? {} : undefined)
+          // A cleared session starts a new transcript, so its usage starts again from nothing.
+          const baseline = active.cleared ? {} : (session.usage ?? (active.fresh ? {} : undefined))
           this.patchActive(a.id, { stage: 'running', submittedAt: this.host.now(), turnsAtSubmit: session.turnsEnded, ...(baseline ? { usageBaseline: baseline } : {}) })
           return
         }
