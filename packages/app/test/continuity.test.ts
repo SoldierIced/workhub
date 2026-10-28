@@ -27,7 +27,7 @@ function view(over: Partial<SessionView> = {}): SessionView {
     agentSessionId: 'sess-1',
     permissionMode: null,
     startedAt: 1,
-    label: 'Claude Code - Personal',
+    label: 'Claude Code · Personal',
     agentName: 'Claude Code',
     adapter: 'native',
     capabilities: { ...NO_CAPABILITIES, appMode: true },
@@ -112,7 +112,7 @@ describe('ContinuityService: account failover', () => {
     const { service } = setup()
     const o = await service.options('w1')
     expect(o.mode).toBe('ask')
-    expect(o.failover).toEqual([{ key: 'claude:laboral', label: 'Claude Code - Laboral', budget: { action: 'allow' } }])
+    expect(o.failover).toEqual([{ key: 'claude:laboral', label: 'Claude Code · Laboral', budget: { action: 'allow' } }])
     expect(o.handoff[0]?.key).toBe('codex')
     expect(o.handoff.some((t) => t.key.startsWith('claude'))).toBe(false)
     expect(o.canSummarize).toBe(true)
@@ -126,7 +126,7 @@ describe('ContinuityService: account failover', () => {
     expect(sessions.stopped).toEqual(['w1'])
     expect(sessions.started[0]).toMatchObject({
       input: { agentKey: 'claude:laboral', resumeAgentSessionId: 'sess-1', cwd: '/work/pay', mode: 'app', profileId: 'p' },
-      origin: { kind: 'failover', fromLabel: 'Claude Code - Personal', fromIdentity: 'sess-1', reason: 'manual' }
+      origin: { kind: 'failover', fromLabel: 'Claude Code · Personal', fromIdentity: 'sess-1', reason: 'manual' }
     })
     // Same identity: the sidebar group and position stay.
     expect(next.identity).toBe('sess-1')
@@ -188,7 +188,7 @@ describe('ContinuityService: account failover', () => {
         accountLabel: 'Personal',
         window: '5h',
         resetsAt: 9_999_999_999_999,
-        target: { key: 'claude:laboral', label: 'Claude Code - Laboral', budget: { action: 'allow' } },
+        target: { key: 'claude:laboral', label: 'Claude Code · Laboral', budget: { action: 'allow' } },
         handoff: { key: 'codex', label: 'Codex' }
       }
     ])
@@ -247,8 +247,8 @@ describe('ContinuityService: hand-off', () => {
   it('opens the target in the same folder with the deterministic brief, linked and placed next to the source', async () => {
     const { service, sessions, placeBeside } = setup()
     const r = await service.handoff('w1', { targetKey: 'codex' })
-    expect(sessions.started[0]).toMatchObject({ input: { agentKey: 'codex', cwd: '/work/pay', mode: 'app' }, origin: { kind: 'handoff', fromLabel: 'Claude Code - Personal', fromIdentity: 'sess-1' } })
-    expect(r.brief).toContain('# Hand-off from Claude Code - Personal')
+    expect(sessions.started[0]).toMatchObject({ input: { agentKey: 'codex', cwd: '/work/pay', mode: 'app' }, origin: { kind: 'handoff', fromLabel: 'Claude Code · Personal', fromIdentity: 'sess-1' } })
+    expect(r.brief).toContain('# Hand-off from Claude Code · Personal')
     expect(r.brief).toContain('- Branch: `feat/retry`')
     expect(r.brief).toContain('- `src/a.ts`')
     expect(sessions.prompts).toEqual([])
@@ -267,7 +267,7 @@ describe('ContinuityService: hand-off', () => {
     const r = await service.handoff('w1', { targetKey: 'codex', summarize: true })
     expect(sessions.prompts[0]?.[0]).toBe('w1')
     expect(shown[0]?.[1]).toMatch(/^Another coding agent is taking over/)
-    expect(r.brief).toContain('## Summary by Claude Code - Personal\n## Goal\nRetry the payments client.')
+    expect(r.brief).toContain('## Summary by Claude Code · Personal\n## Goal\nRetry the payments client.')
     expect(r.summaryFailed).toBeUndefined()
   })
 

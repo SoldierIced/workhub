@@ -39,7 +39,7 @@ describe('resolveEffectiveAgents', () => {
 
   it('labels account entries with the account name', () => {
     const c = config({ accounts: [claudeA], profiles: [profile({ accountIds: ['claude-a'], agentIds: [] })] })
-    expect(resolveEffectiveAgents(c, 'acme').map((e) => e.label)).toEqual(['Claude Code - Account A'])
+    expect(resolveEffectiveAgents(c, 'acme').map((e) => e.label)).toEqual(['Claude Code · Account A'])
   })
 })
 

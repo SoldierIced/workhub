@@ -132,7 +132,7 @@ export function resolveChoice(config: WorkhubConfig, profileId: string | null, a
   if (!agent) return null
   const account = accountId ? config.accounts.find((a) => a.id === accountId) : undefined
   if (accountId && !account) return null
-  return { key: agentKey, agent, account: account ?? null, label: account ? `${agent.name} - ${account.name}` : agent.name }
+  return { key: agentKey, agent, account: account ?? null, label: account ? ` · ` : agent.name }
 }
 
 /**

@@ -356,7 +356,7 @@ describe('session helpers', () => {
       profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false } }],
       activeProfileId: 'p'
     }
-    expect(resolveChoice(profiled, 'p', 'claude:work')).toMatchObject({ account: { id: 'work' }, label: 'Claude Code - Work' })
+    expect(resolveChoice(profiled, 'p', 'claude:work')).toMatchObject({ account: { id: 'work' }, label: 'Claude Code · Work' })
     expect(resolveChoice(profiled, 'p', 'claude:missing')).toBeNull()
   })
 

@@ -46,7 +46,7 @@ export async function listAllHistory(config: WorkhubConfig, home: string, source
           result.entries.push(...entries.map((e): HistoryItem => ({ ...e, agentName: agent.name, resumable, accountName: a.name || undefined })))
         } catch (err) {
           // Claude names its accounts in the message; the other agents say which agent failed.
-          const label = agent.id === 'claude' ? a.name : [agent.name, a.name].filter(Boolean).join(' - ')
+          const label = agent.id === 'claude' ? a.name : [agent.name, a.name].filter(Boolean).join(' · ')
           result.errors.push({ account: label, message: err instanceof Error ? err.message : String(err) })
         }
       })

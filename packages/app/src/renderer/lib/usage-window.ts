@@ -11,6 +11,14 @@ export function usageWindowName(window: string, t: (key: MessageKey, params?: Pa
   return key ? t(key) : window.replace(/^weekly /, '')
 }
 
+const INLINE: Record<string, MessageKey> = { '5h': 'tray.windowInline.5h', weekly: 'tray.windowInline.weekly', monthly: 'tray.windowInline.monthly' }
+
+/** Like usageWindowName, for the middle of a sentence: plan windows follow the language's casing, model names stay as they are. */
+export function usageWindowNameInline(window: string, t: (key: MessageKey, params?: Params) => string): string {
+  const key = INLINE[window]
+  return key ? t(key) : usageWindowName(window, t)
+}
+
 const CEILING: Record<string, MessageKey> = {
   '5h': 'agentUsage.settings.ceiling.5h',
   weekly: 'agentUsage.settings.ceiling.weekly',

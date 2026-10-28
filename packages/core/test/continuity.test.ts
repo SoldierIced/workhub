@@ -99,12 +99,12 @@ describe('failoverTargets', () => {
     const { p, candidates } = setup([personal, laboral])
     const warn: BudgetStatus = { action: 'warn', window: 'weekly', percent: 88, ceiling: 90 }
     const targets = failoverTargets({ profile: p, candidates, source, configDirOf, budgetOf: () => warn, now: 0 })
-    expect(targets).toEqual([{ key: 'claude:laboral', label: 'Claude Code - Laboral', accountId: 'laboral', budget: warn }])
+    expect(targets).toEqual([{ key: 'claude:laboral', label: 'Claude Code · Laboral', accountId: 'laboral', budget: warn }])
   })
 })
 
 describe('planFailover', () => {
-  const target = { key: 'claude:laboral', label: 'Claude Code - Laboral', accountId: 'laboral', budget: allow }
+  const target = { key: 'claude:laboral', label: 'Claude Code · Laboral', accountId: 'laboral', budget: allow }
   it('switches by itself only in automatic mode with a target', () => {
     expect(planFailover('automatic', 'limit', [target])).toEqual({ kind: 'switch', target })
     expect(planFailover('automatic', 'ceiling', [])).toEqual({ kind: 'ask' })
