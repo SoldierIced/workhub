@@ -147,8 +147,9 @@ export function planFailover(mode: FailoverMode, reason: FailoverReason, targets
 
 /** Where a session came from, shown in its chat ("Continued in …", "Handed off from …"). */
 export interface SessionOrigin {
-  kind: 'failover' | 'handoff'
-  /** The session it continues: its label ("Claude - Personal") and identity. */
+  /** `review`: a reviewer started from that session ("Review with another agent"). */
+  kind: 'failover' | 'handoff' | 'review'
+  /** The session it continues (or reviews): its label ("Claude - Personal") and identity. */
   fromLabel: string
   fromIdentity: string
   /** Failover: why it moved, and the window that ran out when known. */
