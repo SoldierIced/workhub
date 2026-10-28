@@ -43,7 +43,9 @@ export default {
   ],
   extraMetadata: { name: BRAND.slug, productName: BRAND.productName, version, main: 'out/main/index.js' },
   afterPack: './scripts/after-pack.mjs',
-  npmRebuild: true,
+  // node-pty is N-API: on Windows its prebuilt binaries are used as is (rebuilding needs Spectre-mitigated
+  // libraries, see scripts/postinstall.mjs); macOS and Linux rebuild it.
+  npmRebuild: process.platform !== 'win32',
   // Electron fuses, flipped in the packaged binary so it cannot be repurposed by its environment.
   electronFuses: {
     // Kept on: the Claude bridge (packages/adapters/src/agent-claude-native/runtime.ts and

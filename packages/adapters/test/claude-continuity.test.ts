@@ -112,10 +112,16 @@ describe('copyClaudeSession', () => {
     expect(r.copied).toContain(transcript)
   })
 
-  it('never follows a symbolic link out of the session folders', async () => {
+  it('never follows a symbolic link out of the session folders', async (ctx) => {
     const secret = join(root, 'secret.txt')
     await writeFile(secret, 'do not copy')
-    await symlink(secret, join(source, 'tasks', SESSION, 'link.json'))
+    try {
+      await symlink(secret, join(source, 'tasks', SESSION, 'link.json'))
+    } catch (err) {
+      // Windows without administrator rights or Developer Mode cannot create symlinks: nothing to test.
+      if (process.platform === 'win32' && (err as NodeJS.ErrnoException).code === 'EPERM') ctx.skip()
+      throw err
+    }
     const r = await copyClaudeSession(input())
     expect(r.copied).not.toContain(join('tasks', SESSION, 'link.json'))
     expect(await exists(join(target, 'tasks', SESSION, 'link.json'))).toBe(false)

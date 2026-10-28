@@ -6,10 +6,18 @@ Thanks for helping. This guide covers setup, checks and what a pull request shou
 
 Requirements: Node.js 22, npm 10, and `gh` signed in if you work on pull request features.
 
+Windows: nothing else to install. `npm ci` uses the prebuilt node-pty binaries, so the Visual Studio
+Build Tools are not needed (node-pty's own source build requires the Spectre-mitigated libraries
+component, which is why it is skipped; see `scripts/postinstall.mjs`). Running the tests without
+administrator rights or Developer Mode skips the symbolic-link test. Known issue: quitting with a live
+Shell session can print `Error: AttachConsole failed` from node-pty's `conpty_console_list_agent.js`;
+it is a harmless race in node-pty's Windows kill path (the shell is already gone) and does not affect the app.
+Linux needs `python3`, `make` and a C++ compiler for the node-pty build.
+
 ```sh
 git clone https://github.com/SoldierIced/workhub.git
 cd workhub
-npm ci          # downloads Electron and rebuilds node-pty for it
+npm ci          # downloads Electron and prepares node-pty for it
 npm run dev     # development app ("Workhub 2 Dev")
 ```
 
