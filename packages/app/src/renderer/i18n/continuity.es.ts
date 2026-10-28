@@ -27,6 +27,7 @@ export const continuityEs: Record<keyof typeof continuityEn, string> = {
   'continuity.origin.failoverCeilingNoWindow': 'Continúa en {account}: {from} superó tu techo.',
   'continuity.origin.failoverManual': 'Continúa en {account} (movida desde {from}).',
   'continuity.origin.handoff': 'Recibida de {from}. El texto de abajo es un resumen de esa sesión, no su conversación.',
+  'continuity.origin.review': 'Revisor de {from}: una sesión de solo lectura que revisa el cambio de abajo y no edita nada.',
 
   'continuity.toast.moved': 'Continúa en {account}.',
   'continuity.toast.handedOff': 'Traspaso a {agent} redactado. Revisa el resumen y luego envíalo.',

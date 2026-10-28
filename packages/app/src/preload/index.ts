@@ -189,6 +189,8 @@ const api: HubApi = {
     opinion: (reviewId, text) => ipcRenderer.invoke('aiReview:opinion', reviewId, text),
     stop: (reviewId) => ipcRenderer.invoke('aiReview:stop', reviewId),
     dismissHold: (devIdentity) => ipcRenderer.invoke('aiReview:dismissHold', devIdentity),
+    targetOptions: (sessionId) => ipcRenderer.invoke('agentReview:options', sessionId),
+    startAgentReview: (sessionId, request) => ipcRenderer.invoke('agentReview:start', sessionId, request),
     onChanged: (cb) => subscribe<[AiReviewSnapshot]>('aiReview:changed', cb),
     onNotice: (cb) => subscribe<[AiReviewNotice]>('aiReview:notice', cb)
   },
