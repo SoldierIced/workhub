@@ -3,7 +3,7 @@ import { sessionIdentity, setSessionCeiling, usageAccountKey, USAGE_AGENTS, type
 import type { SessionView } from '@shared/api'
 import { Button, Input } from '../../components/atoms'
 import { HelpTip } from '../../components/molecules'
-import { usageWindowName } from '../../lib/usage-window'
+import { usageCeilingLabel, usageWindowName } from '../../lib/usage-window'
 import { useI18n } from '../../i18n/I18nProvider'
 import { budgetWindows } from '../../lib/agent-usage'
 import { useAccountUsage, useSessionCeilings, useUsageSettings } from '../../lib/usage'
@@ -43,7 +43,7 @@ function CeilingInput({
         max={100}
         inputMode="numeric"
         className="h-7 w-20"
-        aria-label={t('agentUsage.settings.ceiling', { window: usageWindowName(window, t) })}
+        aria-label={usageCeilingLabel(window, t)}
         value={text}
         placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}

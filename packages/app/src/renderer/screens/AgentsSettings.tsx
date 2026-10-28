@@ -19,6 +19,7 @@ import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { agentDirectory, defaultSignInFolder, installHintKey, type AgentDirectoryEntry, type AgentEngine, type LoginState, type SignInEntry } from '../lib/agents'
 import { formatCountdown } from '../lib/agent-usage'
+import { permissionModeLabel } from '../lib/sessionHeader'
 import { useNow } from '../lib/usage'
 import { useWindowLabel } from '../components/molecules/UsageWindowRow'
 import { useAccountUsage } from '../lib/usage'
@@ -98,15 +99,17 @@ function ModeSelect({
   const { t } = useI18n()
   const modes = options?.modes ?? []
   const own = options?.defaultModeId
+  // Claude's permission modes are worded in English by the adapter; show them in the UI language.
+  const modeName = (m: { id: string; name: string }) => (options?.modeSemantics === 'persona' ? m.name : permissionModeLabel({ id: m.id, label: m.name }, undefined, t))
   const fallback =
     inherit !== undefined
       ? inherit
-        ? t('agents.defaultMode.inheritNamed', { mode: modes.find((m) => m.id === inherit)?.name ?? inherit })
+        ? t('agents.defaultMode.inheritNamed', { mode: (() => { const m = modes.find((x) => x.id === inherit); return m ? modeName(m) : inherit })() })
         : t('agents.defaultMode.inherit')
       : own
-        ? t('agents.defaultMode.agentDefaultNamed', { mode: modes.find((m) => m.id === own)?.name ?? own })
+        ? t('agents.defaultMode.agentDefaultNamed', { mode: (() => { const m = modes.find((x) => x.id === own); return m ? modeName(m) : own })() })
         : t('agents.defaultMode.agentDefault')
-  const list = [{ value: '', label: fallback }, ...modes.map((m) => ({ value: m.id, label: m.name }))]
+  const list = [{ value: '', label: fallback }, ...modes.map((m) => ({ value: m.id, label: modeName(m) }))]
   if (value && !modes.some((m) => m.id === value)) list.push({ value, label: value })
   return <Select aria-label={label} value={value} onChange={onChange} options={list} disabled={disabled || options === null} className={className} />
 }

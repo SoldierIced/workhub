@@ -14,6 +14,7 @@ import { CATEGORY_TONE } from '../../lib/tickets'
 import { openSubagent } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
 import { usageWindowName } from '../../lib/usage-window'
+import { localizeToolTitle } from '../../lib/toolTitle'
 import { useCachedPullRequestLists } from '../../pullRequestsStore'
 import type { SessionData } from '../../store'
 import { AiReviewSection } from './AiReviewPanel'
@@ -370,7 +371,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
                       <li key={c.id} className="flex items-start gap-2 text-sm">
                         <Icon className={cn('mt-0.5 size-3.5 shrink-0', failed ? 'text-danger' : done ? 'text-subtle' : 'text-info')} aria-hidden />
                         <div className="min-w-0 flex-1">
-                          <div className="line-clamp-2 break-words">{c.title}</div>
+                          <div className="line-clamp-2 break-words">{localizeToolTitle(c.title, t)}</div>
                           {c.detail && (
                             <div className="truncate font-mono text-2xs text-subtle" title={c.detail}>
                               {c.detail}
