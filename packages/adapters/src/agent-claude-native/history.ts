@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { HistoryEntry, HistoryMessage, ImageInput, SessionHistorySource } from '@workhub/core'
+import { promptTitle, stripPromptWrappers, type HistoryEntry, type HistoryMessage, type ImageInput, type SessionHistorySource } from '@workhub/core'
 import { claudeToolResult, claudeToolView } from '../shared/claude-tool-view'
 import { describeTool } from '../shared/claude-tools'
 
@@ -16,6 +16,9 @@ type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj | undefined => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : undefined)
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined)
+
+/** A history title keeps more than a sidebar row does: the resume list has the room. */
+const HISTORY_TITLE_MAX = 200
 
 export interface ClaudeHistoryOptions {
   bridgeDir: string
@@ -34,10 +37,10 @@ export function toHistoryEntries(raw: unknown, agentId: string, accountId: strin
       agentId,
       accountId,
       agentSessionId: id,
-      title: str(s['customTitle']) ?? str(s['summary']) ?? str(s['firstPrompt']) ?? id,
+      title: promptTitle(str(s['customTitle'])) ?? promptTitle(str(s['summary'])) ?? promptTitle(str(s['firstPrompt'])) ?? id,
       lastModified: typeof s['lastModified'] === 'number' ? s['lastModified'] : 0
     }
-    const firstPrompt = str(s['firstPrompt'])
+    const firstPrompt = stripPromptWrappers(str(s['firstPrompt']) ?? '')
     if (firstPrompt) entry.firstPrompt = firstPrompt
     const cwd = str(s['cwd'])
     if (cwd) entry.cwd = cwd
@@ -51,7 +54,7 @@ export function toHistoryEntries(raw: unknown, agentId: string, accountId: strin
 /** Text a user typed, without the wrappers Claude Code adds for local commands and reminders. */
 function typedText(text: string): string | undefined {
   if (text.includes('<command-name>') || text.includes('<local-command') || HARNESS_WRAPPER.test(text)) return undefined
-  return text.trim() || undefined
+  return stripPromptWrappers(text) || undefined
 }
 
 /** Text the harness injects as a user turn (reminders, background-task results, command echoes), never typed by the user. */
