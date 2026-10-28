@@ -1,9 +1,9 @@
-import { ExternalLink, GitPullRequest, Link, MessageSquarePlus, RefreshCw, SquareTerminal, Sparkles, UserCheck } from 'lucide-react'
+import { ExternalLink, GitPullRequest, Link, MessageSquarePlus, SquareTerminal, Sparkles, UserCheck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { historyForTicket, listedPullRequests, pullRequestsForTicket, sessionsForTicket, type PullRequest, type SessionRef, type TicketDetail, type TicketRef, type TicketTransition } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import { Badge, Button, IconButton, Select, Spinner, StateDot, STATE_TONE, Textarea, TooltipProvider } from '../components/atoms'
-import { Markdown, PastSessions, ToastProvider, useToast } from '../components/molecules'
+import { Markdown, PastSessions, ToastProvider, useToast, RefreshButton } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { usePlatform } from '../lib/platform'
@@ -61,7 +61,6 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
   const [sessions, setSessions] = useState<SessionView[]>([])
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
-  const [reloading, setReloading] = useState(false)
 
   const reload = useCallback(async () => {
     const [detail, moves, st] = await Promise.all([
@@ -116,10 +115,6 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
   const ready = load.state === 'ready' ? load.detail : null
   const ticketTarget = { key: ticketKey, title: ready?.title ?? ticketKey, url: ready?.url }
   const browseUrl = ready?.url
-  const reloadNow = async () => {
-    setReloading(true)
-    await reload().finally(() => setReloading(false))
-  }
   const header = (
     <header className={cn('drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border px-4', platform === 'mac' && 'pl-20', platform !== 'mac' && 'pr-36')}>
       <span className="shrink-0 font-mono text-sm font-semibold text-accent">{ticketKey}</span>
@@ -150,7 +145,7 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
             <IconButton label={t('tickets.openInBrowser')} icon={<ExternalLink className="size-4" aria-hidden />} onClick={() => void window.hub.tickets.openExternal(browseUrl)} />
           </>
         )}
-        <IconButton label={t('ticket.reload')} icon={reloading ? <Spinner className="size-4" /> : <RefreshCw className="size-4" aria-hidden />} disabled={reloading} onClick={() => void reloadNow()} />
+        <RefreshButton size="md" iconClassName="size-4" label={t('ticket.reload')} onRefresh={reload} />
       </div>
     </header>
   )

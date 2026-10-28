@@ -1,4 +1,4 @@
-import { AppWindow, ExternalLink, FileText, FolderGit2, GitPullRequest, RefreshCw, Search, X } from 'lucide-react'
+import { AppWindow, ExternalLink, FileText, FolderGit2, GitPullRequest, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   branchLine,
@@ -16,8 +16,8 @@ import {
   type ReviewComment
 } from '@workhub/core'
 import type { LocalReviewLoad, LocalReviewSession } from '@shared/local-review-api'
-import { Badge, Button, IconButton, Input, Select, Spinner, TooltipProvider } from '../components/atoms'
-import { Dialog, EmptyState } from '../components/molecules'
+import { Badge, Button, Input, Select, Spinner, TooltipProvider } from '../components/atoms'
+import { Dialog, EmptyState, RefreshButton } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { fileName, newCommentId } from '../lib/localReview'
@@ -45,6 +45,7 @@ function Review({ sessionId }: { sessionId: string }) {
   const sendShortcut = shortcutLabel(SEND_SHORTCUT, platform)
   const [scope, setScope] = useState<LocalReviewScope>('branch')
   const [reloads, setReloads] = useState(0)
+  const reload = () => setReloads((n) => n + 1)
   const [result, setResult] = useState<LocalReviewLoad | null>(null)
   const [session, setSession] = useState<LocalReviewSession | null>(null)
   const [loading, setLoading] = useState(true)
@@ -214,7 +215,7 @@ function Review({ sessionId }: { sessionId: string }) {
             </button>
           ))}
         </div>
-        <IconButton label={t('localReview.reload')} icon={<RefreshCw className="size-4" />} onClick={() => setReloads((n) => n + 1)} />
+        <RefreshButton size="md" iconClassName="size-4" label={t('localReview.reload')} loading={loading} onRefresh={reload} />
         <Button
           variant={comments.length ? 'primary' : 'secondary'}
           disabled={!!blocker || (comments.length === 0 && !(composer && draft.trim()))}
@@ -236,7 +237,7 @@ function Review({ sessionId }: { sessionId: string }) {
       ) : !result.ok ? (
         <EmptyState
           title={result.reason === 'unknownSession' ? t('localReview.unknownSession') : t('localReview.failed', { detail: result.detail ?? '' })}
-          action={<Button onClick={() => setReloads((n) => n + 1)}>{t('localReview.reload')}</Button>}
+          action={<RefreshButton variant="button" size="md" iconClassName="size-4" label={t('localReview.reload')} loading={loading} onRefresh={reload} />}
         />
       ) : repos.length === 0 ? (
         result.review.scannedRepos === 0 ? (
@@ -244,7 +245,7 @@ function Review({ sessionId }: { sessionId: string }) {
             icon={<FolderGit2 className="size-6" aria-hidden />}
             title={t('localReview.noRepo')}
             description={t('localReview.noRepoBody', { folder: fileName(result.review.folder) })}
-            action={<Button onClick={() => setReloads((n) => n + 1)}>{t('localReview.reload')}</Button>}
+            action={<RefreshButton variant="button" size="md" iconClassName="size-4" label={t('localReview.reload')} loading={loading} onRefresh={reload} />}
           />
         ) : (
           <EmptyState
@@ -255,7 +256,7 @@ function Review({ sessionId }: { sessionId: string }) {
               scope === 'uncommitted' ? (
                 <Button onClick={() => setScope('branch')}>{t('localReview.compareBase')}</Button>
               ) : (
-                <Button onClick={() => setReloads((n) => n + 1)}>{t('localReview.reload')}</Button>
+                <RefreshButton variant="button" size="md" iconClassName="size-4" label={t('localReview.reload')} loading={loading} onRefresh={reload} />
               )
             }
           />

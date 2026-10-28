@@ -35,7 +35,7 @@ export async function refreshPullRequests(profileId: string | null, force = fals
 }
 
 /** The lists of a profile, refreshed on mount and every `REFRESH_MS` while mounted. */
-export function usePullRequestLists(profileId: string | null): { lists: CodeHostLists | null; loading: boolean; refresh: () => void } {
+export function usePullRequestLists(profileId: string | null): { lists: CodeHostLists | null; loading: boolean; refresh: () => Promise<void> } {
   const key = keyOf(profileId)
   const entry = useSyncExternalStore(
     (l) => {
@@ -49,7 +49,7 @@ export function usePullRequestLists(profileId: string | null): { lists: CodeHost
     const timer = setInterval(() => void refreshPullRequests(profileId, true), REFRESH_MS)
     return () => clearInterval(timer)
   }, [profileId])
-  const refresh = useCallback(() => void refreshPullRequests(profileId, true), [profileId])
+  const refresh = useCallback(() => refreshPullRequests(profileId, true), [profileId])
   return { lists: entry.lists, loading: entry.loading, refresh }
 }
 

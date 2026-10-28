@@ -1,8 +1,8 @@
-import { RefreshCw, Ticket as TicketIcon } from 'lucide-react'
+import { Ticket as TicketIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import { groupBySprint, sessionsForTicket, type Profile } from '@workhub/core'
 import { Badge, Button, Spinner } from '../components/atoms'
-import { Card, CardHeader, EmptyState } from '../components/molecules'
+import { Card, CardHeader, EmptyState, RefreshButton } from '../components/molecules'
 import { TicketRow } from '../components/molecules/TicketRow'
 import { useI18n } from '../i18n/I18nProvider'
 import { keyProviders, sessionRefs } from '../lib/tickets'
@@ -96,9 +96,7 @@ export function TicketsScreen({ profile, sessions, onOpenSettings }: TicketsScre
         {status?.state === 'demo' && <Badge tone="warning">{t('tickets.demo')}</Badge>}
         {fetchedAt && <span className="pt-1.5 text-sm text-muted">{t('tickets.updated', { time: formatDate(fetchedAt, { hour: '2-digit', minute: '2-digit' }) })}</span>}
         {status && (status.state === 'ready' || status.state === 'demo') && (
-          <Button size="sm" icon={loading ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" aria-hidden />} onClick={() => void refresh()} disabled={loading}>
-            {t('tickets.refresh')}
-          </Button>
+          <RefreshButton variant="button" label={t('tickets.refresh')} loading={loading} onRefresh={refresh} />
         )}
       </header>
       {body}

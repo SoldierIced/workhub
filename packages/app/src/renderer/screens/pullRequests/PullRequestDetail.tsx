@@ -9,7 +9,6 @@ import {
   Link,
   MessageSquare,
   PanelLeft,
-  RefreshCw,
   SquareTerminal,
   Sparkles,
   Timer,
@@ -33,7 +32,7 @@ import type { PullRequestViewResult, PullRequestWindowTab } from '@shared/codeho
 import type { PullRequestTarget } from '@shared/links-api'
 import type { TicketsStatus } from '@shared/tickets-api'
 import { Avatar, Badge, Button, IconButton, Spinner, Textarea } from '../../components/atoms'
-import { EmptyState, Markdown, PastSessions, SlackBadge, Tabs, useToast } from '../../components/molecules'
+import { EmptyState, Markdown, PastSessions, SlackBadge, Tabs, useToast, RefreshButton } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
@@ -403,12 +402,11 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
           <span className="min-w-0 truncate font-mono text-sm font-semibold text-accent">{prName(head, head.provider)}</span>
           <SlackBadge summary={slack.summary} onOpen={() => setTab('slack')} />
           <div className="ml-auto flex shrink-0 items-center gap-0.5">
-            {loading && <Spinner className="mr-1 size-4" />}
             <IconButton size="sm" label={t('pr.detail.copyLink')} icon={<Link className="size-4" aria-hidden />} onClick={copyLink} />
             <IconButton size="sm" label={t('pr.detail.openBrowser')} icon={<ExternalLink className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.openExternal(profileId, url)} />
             {standalone && <IconButton size="sm" label={t('pr.detail.showInWorkhub')} icon={<PanelLeft className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.showInWorkhub(profileId, url)} />}
             {onOpenWindow && <IconButton size="sm" label={t('pr.detail.openWindow')} icon={<AppWindow className="size-4" aria-hidden />} onClick={onOpenWindow} />}
-            <IconButton size="sm" label={t('pr.refresh')} icon={<RefreshCw className="size-4" aria-hidden />} onClick={() => void afterWrite()} />
+            <RefreshButton label={t('pr.refresh')} iconClassName="size-4" loading={loading} onRefresh={afterWrite} />
           </div>
         </div>
         <div className="flex flex-col gap-2 px-5 pb-3">
