@@ -1,5 +1,5 @@
-import { Brain, ExternalLink, FilePen, FileSearch, FileText, GitBranch, Globe, MoveRight, Power, PowerOff, RefreshCw, RotateCw, SquareTerminal, Ticket, Trash2, Wrench, type LucideIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Brain, ExternalLink, FilePen, FileSearch, FileText, GitBranch, Globe, MoveRight, Power, PowerOff, RefreshCw, RotateCw, Settings, SquareTerminal, Ticket, Trash2, Wrench, type LucideIcon } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { sessionWork, visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
 import { Badge, Button, IconButton, Spinner, StateDot } from '../../components/atoms'
 import { useConfig } from '../../configStore'
@@ -9,8 +9,8 @@ import { formatTokens } from '../../lib/home'
 import { changesTotal, contextView, requestBars, pullRequestLabel, sessionTime, subagentTokens } from '../../lib/monitorView'
 import { DEFAULT_PREFS, SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
 import { PaneResizeHandle } from '../../components/molecules/PaneResizeHandle'
-import { usePullRequestsByUrl, useTicketPreviews, useTicketProviders } from '../../lib/sessionWork'
-import { CATEGORY_TONE } from '../../lib/tickets'
+import { usePullRequestsByUrl, useTicketPreviews, useTicketsStatus } from '../../lib/sessionWork'
+import { CATEGORY_TONE, keyProviders, trackerHint } from '../../lib/tickets'
 import { openSubagent } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
 import { usageWindowName } from '../../lib/usage-window'
@@ -189,12 +189,14 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const [dragging, setDragging] = useState<number | null>(null)
   const width = dragging ?? prefs.monitorWidth
 
-  const providers = useTicketProviders(profileId)
+  const trackerStatus = useTicketsStatus(profileId)
+  const providers = useMemo(() => keyProviders(trackerStatus), [trackerStatus])
+  const ticketHint = trackerHint(trackerStatus)
   const listed = [...(lists?.mine ?? []), ...(lists?.toReview ?? [])]
   const named = usePullRequestsByUrl(profileId, m.pullRequests, listed)
   // A folder of repositories lists only the ones with changes: their branches alone would miss clean work.
   const repos = changes && (changes.touched || !changes.nested) ? changes.repos : undefined
-  const { prs, ticketKeys: tickets } = sessionWork({ items: [...listed, ...named], mentionedPrs: m.pullRequests, repos, mentionedTickets: m.ticketKeys, providers })
+  const { prs, ticketKeys: tickets } = sessionWork({ items: [...listed, ...named], mentionedPrs: m.pullRequests, repos, mentionedTickets: m.ticketKeys, linkedTickets: m.linkedTicketKeys, titles: [m.title, v.label], providers })
   const time = sessionTime(v.startedAt, now, m.activeTimeMs, m.toolCalls)
   // Before the first state change nothing is known yet: say so rather than show 0.
   const activeKnown = m.activeTimeMs !== undefined
@@ -238,9 +240,18 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
 
         <SlackThreadsSection view={v} prUrls={prs.map((p) => p.pr.url)} ticketKeys={tickets} />
 
-        {tickets.length > 0 && (
-          <MonitorSection id="tickets" title={tn('monitor.ticketsCount', tickets.length)}>
-            <TicketList keys={tickets} profileId={profileId} />
+        {(tickets.length > 0 || ticketHint) && (
+          <MonitorSection id="tickets" title={tickets.length > 0 ? tn('monitor.ticketsCount', tickets.length) : t('monitor.tickets')}>
+            {tickets.length > 0 && <TicketList keys={tickets} profileId={profileId} />}
+            {/* Keys are still found without a tracker; their titles and statuses need one. */}
+            {ticketHint && (
+              <div className={cn('flex flex-col items-start gap-1.5', tickets.length > 0 && 'mt-2 border-t border-border pt-2')} data-testid="monitor-tickets-hint">
+                <p className="text-xs text-muted">{t(`monitor.trackerHint.${ticketHint}`)}</p>
+                <Button size="sm" variant="ghost" icon={<Settings className="size-3.5" aria-hidden />} onClick={() => window.hub.setup.openSettings('trackers')}>
+                  {t('monitor.openTrackerSettings')}
+                </Button>
+              </div>
+            )}
           </MonitorSection>
         )}
 

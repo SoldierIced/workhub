@@ -440,3 +440,32 @@ export function sessionSlackThreads(threads: readonly TrackedThread[], identity:
   const own = threads.filter((t) => t.owner === identity)
   return [...own, ...threads.filter((t) => t.owner !== identity && !t.closed && linked(t))]
 }
+
+/** How many channel messages the monitor shows (Workhub 1's five latest). */
+export const SESSION_MESSAGE_LIMIT = 5
+
+/**
+ * The monitor's channel messages of a session (Workhub 1's `SessionSlackSection` messages): the
+ * latest ones of the watched channels that link one of its pull requests or name one of its
+ * tickets, newest first. The keys are matched again in the text, case-insensitively, because a
+ * message was stored with the generic upper-case pattern (`billetera-12` in a branch name counts).
+ */
+export function sessionSlackMessages(messages: readonly ChatMessage[], prUrls: readonly string[], ticketKeys: readonly string[], limit = SESSION_MESSAGE_LIMIT): ChatMessage[] {
+  const prs = new Set(prUrls.map(canonicalUrl))
+  const tickets = new Set(ticketKeys.map((k) => k.toUpperCase()))
+  if (prs.size === 0 && tickets.size === 0) return []
+  const projects = [...new Set([...tickets].map((k) => /^([A-Z][A-Z0-9]*)-\d+$/.exec(k)?.[1]).filter((p): p is string => !!p))]
+  const named = (m: ChatMessage) =>
+    m.tickets.some((k) => tickets.has(k.toUpperCase())) || (projects.length > 0 && ticketsIn(m.text, [{ provider: 'jira', projectKeys: projects }]).some((k) => tickets.has(k)))
+  const linked = (m: ChatMessage) => m.prUrls.some((u) => prs.has(canonicalUrl(u))) || named(m)
+  const seen = new Set<string>()
+  return messages
+    .filter((m) => {
+      const id = `${m.channelId}:${m.ts}`
+      if (seen.has(id) || !linked(m)) return false
+      seen.add(id)
+      return true
+    })
+    .sort((a, b) => tsToMs(b.ts) - tsToMs(a.ts))
+    .slice(0, limit)
+}

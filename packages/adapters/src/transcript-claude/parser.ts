@@ -6,7 +6,7 @@
  */
 import { homedir } from 'node:os'
 import { noteWorkPath, toolWorkPaths, type SessionMonitorSnapshot, type SubagentSummary, type TokenUsage, type ToolCallSummary } from '@workhub/core'
-import { contextWindow, describeTool, estimateCost, isJiraTool, pullRequestUrls, ticketKeys, toolKind } from '../shared/claude-tools'
+import { contextWindow, describeTool, estimateCost, isJiraTool, isJiraWrite, jiraTargetKeys, pullRequestUrls, ticketKeys, toolKind } from '../shared/claude-tools'
 
 type Obj = Record<string, unknown>
 const obj = (v: unknown): Obj | undefined => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : undefined)
@@ -60,6 +60,7 @@ function resultText(content: unknown): string {
 
 const STEP_LIMIT = 40
 const KEY_LIMIT = 200
+const LINKED_LIMIT = 20
 
 export interface ClaudeTranscriptOptions {
   /** Ticket project keys to look for; any key-like text in commands and prompts when empty. */
@@ -81,6 +82,11 @@ export class ClaudeTranscriptParser {
   private readonly prs: string[] = []
   private readonly keys: string[] = []
   private readonly jiraCalls = new Set<string>()
+  /** Jira calls that create a ticket: their result names the new key. */
+  private readonly jiraCreates = new Set<string>()
+  /** Tickets the session created, then the ones it changed (edit, transition, comment, link); most recent first. */
+  private readonly created: string[] = []
+  private readonly changed: string[] = []
   private closedTurnsMs = 0
   /** Ids of the assistant messages of the current turn, in order. */
   private turnMessages: string[] = []
@@ -148,6 +154,8 @@ export class ClaudeTranscriptParser {
         if (isJiraTool(tool)) {
           this.jiraCalls.add(callId)
           this.noteKeys(raw)
+          if (isJiraWrite(tool) === 'create') this.jiraCreates.add(callId)
+          if (isJiraWrite(tool)) for (const key of ticketKeys(jiraTargetKeys(input), this.options.ticketPrefixes)) noteFirst(this.changed, key)
         }
         this.steps.push({ id: callId, title, detail: detail || undefined, kind: toolKind(tool), status: 'in_progress', startedAt: at })
       }
@@ -185,6 +193,11 @@ export class ClaudeTranscriptParser {
       this.notePrs(text)
       // A Jira tool's result names the tickets it touched, e.g. a created issue's key.
       if (this.jiraCalls.delete(callId)) this.noteKeys(text)
+      // The first key of a create's result is the ticket it made (a parent named later is not).
+      if (this.jiraCreates.delete(callId) && b['is_error'] !== true) {
+        const made = ticketKeys(text, this.options.ticketPrefixes)[0]
+        if (made) noteFirst(this.created, made)
+      }
       const step = this.steps.findLast((s) => s.id === callId)
       if (step) {
         step.status = b['is_error'] === true ? 'failed' : 'completed'
@@ -219,6 +232,8 @@ export class ClaudeTranscriptParser {
     }
     if (this.prs.length) snap.pullRequests = [...this.prs]
     if (this.keys.length) snap.ticketKeys = [...this.keys]
+    const linked = [...new Set([...this.created, ...this.changed])]
+    if (linked.length) snap.linkedTicketKeys = linked
     if (this.workPaths.length) snap.workPaths = [...this.workPaths]
     return snap
   }
@@ -257,6 +272,14 @@ export class ClaudeTranscriptParser {
     }
     if (this.keys.length > KEY_LIMIT) this.keys.splice(0, this.keys.length - KEY_LIMIT)
   }
+}
+
+/** Moves the key to the front of a short list (most recent first). */
+function noteFirst(list: string[], key: string): void {
+  const i = list.indexOf(key)
+  if (i >= 0) list.splice(i, 1)
+  list.unshift(key)
+  if (list.length > LINKED_LIMIT) list.length = LINKED_LIMIT
 }
 
 /** `agent-<id>.meta.json` next to a subagent transcript. */

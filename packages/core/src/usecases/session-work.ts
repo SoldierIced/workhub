@@ -8,7 +8,7 @@ import type { PullRequest } from '../codehost/domain'
 import { canonicalUrl } from '../codehost/urls'
 import type { PullRequestItem } from '../codehost/usecases'
 import type { RepoChanges } from '../domain/monitor'
-import { ticketKeysIn, type TicketKeyProvider } from '../tickets/keys'
+import { projectOfKey, ticketKeysIn, type TicketKeyProvider } from '../tickets/keys'
 
 /** Long-lived branches say nothing about which PR a session works on. */
 const SHARED_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk', 'staging', 'production', 'release', 'head'])
@@ -25,6 +25,10 @@ export interface SessionWorkInput {
   repos?: readonly Pick<RepoChanges, 'name' | 'branch' | 'slug'>[]
   /** Ticket keys named in the conversation (the monitor's `ticketKeys`), oldest first. */
   mentionedTickets?: readonly string[]
+  /** Tickets the session created or changed in the tracker (the monitor's `linkedTicketKeys`), strongest first. */
+  linkedTickets?: readonly string[]
+  /** The session's titles (the agent's and the one the user gave it), which often carry its ticket. */
+  titles?: readonly (string | null | undefined)[]
   /** The profile's tracker: only its keys count. Any key-like text when empty. */
   providers?: readonly TicketKeyProvider[]
 }
@@ -32,7 +36,11 @@ export interface SessionWorkInput {
 export interface SessionWork {
   /** Open PRs of the branches the session works on, then the PRs it named (newest first), then open PRs of its tickets. */
   prs: PullRequestItem[]
-  /** Tickets of those PRs, of the branches, then the ones named in the conversation (newest first). */
+  /**
+   * The tickets the session created or changed first, as they came; then, the profile's main
+   * project first (the order of the tracker's project keys), the tickets of its PRs, of the
+   * branches, of the titles and the ones named in the conversation (newest first).
+   */
   ticketKeys: string[]
 }
 
@@ -79,9 +87,14 @@ export function sessionWork(input: SessionWorkInput): SessionWork {
   const note = (key: string) => {
     if (!tickets.some((k) => k.toUpperCase() === key.toUpperCase())) tickets.push(key)
   }
+  for (const key of input.linkedTickets ?? []) if (keysIn(key).length > 0) note(key)
+  const linked = tickets.length
   for (const item of prs) for (const key of keysIn(`${item.pr.title}\n${item.pr.branch}`)) note(key)
   for (const r of repos) for (const key of keysIn(r.branch!)) note(key)
+  for (const title of input.titles ?? []) if (title) for (const key of keysIn(title)) note(key)
   for (const key of [...(input.mentionedTickets ?? [])].reverse()) if (keysIn(key).length > 0) note(key)
+  // A branch or PR of another team's project (a ticket the work only relates to) must not come before the profile's own.
+  const ranked = [...tickets.slice(0, linked), ...byProject(tickets.slice(linked), providers)]
 
   // Open PRs of the session's tickets (Workhub 1 linked a PR by its ticket too).
   if (tickets.length > 0) {
@@ -92,5 +105,16 @@ export function sessionWork(input: SessionWorkInput): SessionWork {
       if (keys.some((k) => wanted.has(k.toUpperCase()))) add(item)
     }
   }
-  return { prs, ticketKeys: tickets }
+  return { prs, ticketKeys: ranked }
+}
+
+/** Stable sort by the position of each key's project in the tracker's project keys; keys of unlisted projects keep their place after them. */
+function byProject(keys: readonly string[], providers: readonly TicketKeyProvider[]): string[] {
+  const order = providers.flatMap((p) => p.projectKeys ?? []).map((k) => k.trim().toUpperCase())
+  if (order.length < 2) return [...keys]
+  const rank = (key: string) => {
+    const i = order.indexOf(projectOfKey(key) ?? '')
+    return i < 0 ? order.length : i
+  }
+  return keys.map((key, i) => ({ key, i, r: rank(key) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.key)
 }
