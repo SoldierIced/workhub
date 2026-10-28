@@ -112,7 +112,7 @@ describe('Claude tool helpers', () => {
 
   it('finds ticket keys between underscores, as branch names write them', () => {
     expect(ticketKeys('hotfix_WT-8571_same-holder', ['WT'])).toEqual(['WT-8571'])
-    expect(ticketKeys('feat/billetera-3619-savings and XBILLETERA-1', ['BILLETERA'])).toEqual(['BILLETERA-3619'])
+    expect(ticketKeys('feat/pay-3619-savings and XPAY-1', ['PAY'])).toEqual(['PAY-3619'])
   })
 
   it('tells the Jira tools that create or change a ticket from the ones that read', () => {
@@ -125,22 +125,22 @@ describe('Claude tool helpers', () => {
   })
 
   it('reports the tickets the session created or changed, the created one first, apart from the ones it named', () => {
-    const parser = new ClaudeTranscriptParser({ ticketPrefixes: ['BILLETERA', 'WT'] })
+    const parser = new ClaudeTranscriptParser({ ticketPrefixes: ['PAY', 'WT'] })
     let n = 0
     const call = (name: string, input: Record<string, unknown>, result: string) => {
       const id = `t${++n}`
       parser.ingest(JSON.stringify({ type: 'assistant', message: { id: `m${n}`, content: [{ type: 'tool_use', id, name: `mcp__atlassian__${name}`, input }] } }))
       parser.ingest(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: result }] } }))
     }
-    parser.ingest(JSON.stringify({ type: 'user', message: { content: 'Fraud asked for WT-8571, see also BILLETERA-1648' } }))
+    parser.ingest(JSON.stringify({ type: 'user', message: { content: 'Fraud asked for WT-8571, see also PAY-1648' } }))
     call('getJiraIssue', { issueIdOrKey: 'WT-8571' }, 'WT-8571: block same-holder Pix')
-    call('createJiraIssue', { projectKey: 'BILLETERA', summary: 'Block same-holder Pix (WT-8571)', parent: 'BILLETERA-2029' }, '{"key":"BILLETERA-3806","parent":"BILLETERA-2029"}')
-    call('createIssueLink', { inwardIssue: 'BILLETERA-3806', outwardIssue: 'WT-8571' }, 'linked')
-    call('addCommentToJiraIssue', { issueIdOrKey: 'WT-8571', commentBody: 'Tracked in BILLETERA-3806' }, 'ok')
+    call('createJiraIssue', { projectKey: 'PAY', summary: 'Block same-holder Pix (WT-8571)', parent: 'PAY-2029' }, '{"key":"PAY-3806","parent":"PAY-2029"}')
+    call('createIssueLink', { inwardIssue: 'PAY-3806', outwardIssue: 'WT-8571' }, 'linked')
+    call('addCommentToJiraIssue', { issueIdOrKey: 'WT-8571', commentBody: 'Tracked in PAY-3806' }, 'ok')
     const snap = parser.snapshot()
-    expect(snap.linkedTicketKeys).toEqual(['BILLETERA-3806', 'WT-8571'])
+    expect(snap.linkedTicketKeys).toEqual(['PAY-3806', 'WT-8571'])
     // The named ones stay in order of last mention.
-    expect(snap.ticketKeys).toContain('BILLETERA-1648')
+    expect(snap.ticketKeys).toContain('PAY-1648')
   })
 
   it('prices known models only', () => {
