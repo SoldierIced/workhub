@@ -439,7 +439,7 @@ function Shell() {
             {selectedSession && detached.has(selectedSession) && <DetachedSessionNotice data={sessionMap[selectedSession]} />}
           </div>
           {route !== 'sessions' && (
-            <div key={route} className="h-full animate-fade-in overflow-y-auto">
+            <div key={route} className="h-full animate-fade-in [scrollbar-gutter:stable] overflow-y-auto">
               {route === 'home' ? (
                 <HomeScreen
                   profile={profile}

@@ -62,7 +62,8 @@ export function Tabs({ items, value, onChange, label, className, variant = 'unde
     <RTabs.Root value={value} onValueChange={onChange} className={cn('flex min-h-0 flex-col', className)}>
       {header ? (
         <div className="sticky top-0 z-20 -mx-1 flex shrink-0 flex-col gap-4 bg-bg px-1 pt-7 pb-3" data-testid="pinned-header">
-          <div className="flex max-h-[40vh] flex-col gap-4 overflow-y-auto">{header}</div>
+          {/* Inset by the focus ring's reach, so the scroller does not clip a focused control at its edge. */}
+          <div className="-mx-1 -mt-1 flex max-h-[40vh] flex-col gap-4 overflow-y-auto px-1 pt-1">{header}</div>
           {list}
         </div>
       ) : (
