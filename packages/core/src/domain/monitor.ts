@@ -114,6 +114,11 @@ export interface SessionMonitorSnapshot {
   /** Ticket keys (`ABC-123`) named in the session's prompts, tool calls and commands, oldest first. */
   ticketKeys?: string[]
   /**
+   * Tickets the session itself created or changed through the tracker (edit, transition, comment,
+   * link): the ones it is associated with, created first, then most recent first.
+   */
+  linkedTicketKeys?: string[]
+  /**
    * Folders the session worked in (see `toolWorkPaths`): its cwd as it moved, and the folders its
    * edits, writes, `cd` and `git -C` commands touched; most recent last. Unset for an agent that
    * does not report them, which leaves "Local changes" on the session's folder.

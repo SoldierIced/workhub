@@ -168,13 +168,14 @@ const NOT_TICKETS = new Set(['UTF', 'ISO', 'SHA', 'MD', 'RFC', 'HTTP', 'TLS', 'S
 
 /**
  * Ticket keys (`ABC-123`) in a text, uppercased, in order. With project prefixes only those
- * projects count; without them any key-like word does, minus common non-ticket words.
+ * projects count; without them any key-like word does, minus common non-ticket words. A key
+ * between underscores counts too (`hotfix_ABC-123_retry`), as in the core's `ticketKeysIn`.
  */
 export function ticketKeys(text: string, prefixes: readonly string[] = []): string[] {
   const wanted = prefixes.map((p) => p.trim().toUpperCase()).filter(Boolean)
   const pattern = wanted.length
-    ? new RegExp(`\\b(${wanted.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})-(\\d+)\\b`, 'gi')
-    : /\b([A-Z][A-Z0-9]{1,9})-(\d+)\b/g
+    ? new RegExp(`(?<![A-Za-z0-9])(${wanted.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})-(\\d+)(?![A-Za-z0-9])`, 'gi')
+    : /(?<![A-Za-z0-9])([A-Z][A-Z0-9]{1,9})-(\d+)(?![A-Za-z0-9])/g
   const out: string[] = []
   for (const m of text.matchAll(pattern)) {
     const project = (m[1] ?? '').toUpperCase()
@@ -183,6 +184,26 @@ export function ticketKeys(text: string, prefixes: readonly string[] = []): stri
     if (!out.includes(key)) out.push(key)
   }
   return out
+}
+
+/**
+ * Whether a Jira tool changes a ticket: `create` makes one, `change` edits, moves, comments on or
+ * links an existing one. Null for reads. A ticket the session changed is one it works on, unlike
+ * the ones it only read or named.
+ */
+export function isJiraWrite(tool: string): 'create' | 'change' | null {
+  if (!isJiraTool(tool)) return null
+  const action = (tool.split('__').pop() ?? '').toLowerCase()
+  if (action.startsWith('createjiraissue') || action === 'createissue') return 'create'
+  return /^(create|edit|update|transition|add|assign)/.test(action) ? 'change' : null
+}
+
+/** The fields of a Jira tool call that name the ticket it acts on (never its free text, which can name any ticket). */
+export function jiraTargetKeys(input: Record<string, unknown>): string {
+  return ['issueIdOrKey', 'issueKey', 'key', 'inwardIssue', 'outwardIssue']
+    .map((f) => input[f])
+    .filter((v): v is string => typeof v === 'string')
+    .join(' ')
 }
 
 /** Jira tools of an Atlassian MCP, except the ones that list many unrelated issues (Workhub 1's rule). */
