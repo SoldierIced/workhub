@@ -64,9 +64,9 @@ export function isThrowawayFolder(cwd: string | undefined): boolean {
 }
 
 /**
- * Whether a past session belongs to a profile: it ran with one of the profile's agent accounts, or
- * in a folder the profile owns (`owningProfile`: its deepest folder holding the session's folder,
- * else the profile that also owns everything outside every profile's folders). Pass every profile
+ * Whether a past session belongs to a profile: it ran in a folder the profile owns (`owningProfile`:
+ * its deepest folder holding the session's folder, else the profile that also owns everything
+ * outside every profile's folders), or, in a folder no profile owns, with one of its accounts. Pass every profile
  * so a deeper folder of another profile wins; without them only this profile is considered. A
  * profile with neither folders nor accounts owns every session.
  */
@@ -77,10 +77,12 @@ export function historyInProfile(
 ): boolean {
   const folders = profile.folders ?? []
   if (!folders.length && !profile.accountIds.length) return true
-  if (entry.accountId && profile.accountIds.includes(entry.accountId)) return true
   const self: FolderProfile = { id: profile.id ?? '\0this', folders: profile.folders, folderOptions: profile.folderOptions, ownsOutside: profile.ownsOutside }
   const all = scope.profiles?.some((p) => p.id === self.id) ? scope.profiles.map((p) => (p.id === self.id ? self : p)) : [self, ...(scope.profiles ?? [])]
-  return owningProfile(entry.cwd, all, scope.home)?.id === self.id
+  // The folder decides: profiles often share an account, so it only places work no profile owns.
+  const owner = owningProfile(entry.cwd, all, scope.home)
+  if (owner) return owner.id === self.id
+  return Boolean(entry.accountId && profile.accountIds.includes(entry.accountId))
 }
 
 /** The history a folder's "Resume session…" sheet offers: sessions run in exactly that folder, newest first, not open now. */

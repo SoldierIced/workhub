@@ -97,6 +97,13 @@ describe('ownership in history and token spend', () => {
     expect(historyInProfile(entry('/srv/other'), { ...work, accountIds: [] }, scope)).toBe(false)
   })
 
+  it("goes by folder when profiles share an account: another profile's folder is not listed", () => {
+    const shared = ['acc-a', 'acc-b']
+    const scope = { profiles: [{ ...work, accountIds: shared }, { ...personal, accountIds: shared }], home: HOME }
+    expect(historyInProfile({ cwd: '/srv/other', accountId: 'acc-a' }, { ...work, accountIds: shared }, scope)).toBe(false)
+    expect(historyInProfile({ cwd: '/home/u/work/api', accountId: 'acc-a' }, { ...work, accountIds: shared }, scope)).toBe(true)
+  })
+
   it('counts spend only where the profile owns the work, and outside work under its own folder', () => {
     const day = '2026-10-27'
     const buckets = {
