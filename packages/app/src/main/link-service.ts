@@ -43,7 +43,7 @@ export function createLinkService(deps: LinkDeps): { open: (url: string, profile
       if (kind === 'invalid') return
       if (kind === 'slack' && (await openInSlack(url))) return
       const profile = profileForLink(await deps.config(), url, profileId)
-      const command = linkLaunch(deps.platform, { browser: profile?.linkBrowser, chromeProfile: profile?.linkChromeProfile }, url)
+      const command = linkLaunch(deps.platform, { browser: profile?.linkBrowser, chromeProfile: profile?.linkChromeProfile, command: profile?.linkCommand }, url)
       // A browser that cannot be started falls back to the default one.
       if (!command || !(await deps.run(command))) await openDefault(url)
     }

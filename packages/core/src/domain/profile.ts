@@ -54,6 +54,8 @@ export interface Profile {
   symbol?: string
   /** The browser that opens this profile's GitHub and Jira links (an app name on macOS, a command elsewhere); unset: the default browser. */
   linkBrowser?: string
+  /** A command that opens the profile's links (Workhub 1's `linkOpener`, e.g. `open-acme`): run with the link as its only argument, no shell. Wins over the browser settings. */
+  linkCommand?: string
   /** A Chrome profile directory (`Default`, `Profile 1`): links open in a new Chrome (`linkBrowser`, else Google Chrome) on that profile. macOS only. */
   linkChromeProfile?: string
   /** Also owns every folder outside all profiles' folders (at most one profile at a time). */

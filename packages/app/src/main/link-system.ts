@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { parseChromeProfiles, type ChromeProfile, type LinkCommand } from '@workhub/core'
+import { chromeDataDirName, parseChromeProfiles, type ChromeProfile, type LinkCommand } from '@workhub/core'
 import { slackTeamIdFromState, type LinkDeps } from './link-service'
 
 const SLACK_APPS = ['/Applications/Slack.app', join(homedir(), 'Applications', 'Slack.app')]
@@ -13,15 +13,16 @@ const SLACK_STATE = [
   join(homedir(), 'Library/Containers/com.tinyspeck.slackmacgap/Data/Library/Application Support/Slack/storage/root-state.json'),
   join(homedir(), 'Library/Application Support/Slack/storage/root-state.json')
 ]
-const CHROME_LOCAL_STATE = join(homedir(), 'Library/Application Support/Google/Chrome/Local State')
+const CHROME_SUPPORT = join(homedir(), 'Library/Application Support/Google')
 
 /** The real system behind the link service. */
-export function systemLinkDeps(config: LinkDeps['config']): LinkDeps {
+/** `path` is the login shell's PATH (read once at start-up), so a custom command resolves as it does in a terminal. */
+export function systemLinkDeps(config: LinkDeps['config'], path: () => string | undefined): LinkDeps {
   return {
     platform: process.platform,
     config,
     openDefault: (url) => shell.openExternal(url),
-    run: ({ command, args }: LinkCommand) => new Promise<boolean>((done) => execFile(command, args, { windowsHide: true }, (err) => done(!err))),
+    run: ({ command, args }: LinkCommand) => new Promise<boolean>((done) => execFile(command, args, { windowsHide: true, env: { ...process.env, PATH: path() ?? process.env['PATH'] } }, (err) => done(!err))),
     slack: {
       installed: () => SLACK_APPS.some((app) => existsSync(app)),
       teamId: async (host) => {
@@ -35,8 +36,13 @@ export function systemLinkDeps(config: LinkDeps['config']): LinkDeps {
   }
 }
 
-/** Chrome's profiles, from its `Local State` file (read only, nothing else in Chrome's folder); empty off macOS or without Chrome. */
-export async function listChromeProfiles(): Promise<ChromeProfile[]> {
-  if (process.platform !== 'darwin') return []
-  return readFile(CHROME_LOCAL_STATE, 'utf8').then(parseChromeProfiles, () => [])
+/**
+ * Chrome's profiles, from the `Local State` file of the Chrome app's data folder (read only,
+ * nothing else in it): Google's own, or a separate copy's `~/Library/Application Support/Google/<app name>`.
+ * Empty off macOS, without that Chrome, or when the folder is not where the name suggests.
+ */
+export async function listChromeProfiles(app?: string): Promise<ChromeProfile[]> {
+  const folder = chromeDataDirName(app)
+  if (process.platform !== 'darwin' || !folder) return []
+  return readFile(join(CHROME_SUPPORT, folder, 'Local State'), 'utf8').then(parseChromeProfiles, () => [])
 }

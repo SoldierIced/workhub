@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyUrl, linkLaunch, parseChromeProfiles, parseConfig, profileForLink, slackDeepLink, slackTarget } from '../src'
+import { chromeDataDirName, classifyUrl, fillWorkhub1FolderFlags, importedLinkOpener, linkLaunch, planWorkhub1Import, parseChromeProfiles, parseConfig, profileForLink, slackDeepLink, slackTarget } from '../src'
 
 describe('classifyUrl', () => {
   it('tells Slack, web and other links apart', () => {
@@ -101,5 +101,56 @@ describe('profileForLink', () => {
   })
   it('honours an explicit profile', () => {
     expect(profileForLink(config, 'https://example.com', 'work')?.id).toBe('work')
+  })
+})
+
+describe('custom command', () => {
+  it('runs the command through env with the link as one argument', () => {
+    expect(linkLaunch('darwin', { command: 'open-work' }, 'https://x.y/')).toEqual({ command: '/usr/bin/env', args: ['open-work', 'https://x.y/'] })
+    expect(linkLaunch('linux', { command: ' /opt/bin/open-work ', browser: 'Safari', chromeProfile: 'Default' }, 'https://x.y/')).toEqual({ command: '/usr/bin/env', args: ['/opt/bin/open-work', 'https://x.y/'] })
+    expect(linkLaunch('win32', { command: 'open-work.cmd' }, 'https://x.y/')).toEqual({ command: 'open-work.cmd', args: ['https://x.y/'] })
+  })
+  it('never puts the link in a shell string: shell syntax stays inside one argument', () => {
+    const url = `https://x.y/?a=1;rm -rf ~&b=$(touch /tmp/x)&c=\`id\`&d="q"&e='s'`
+    const launch = linkLaunch('darwin', { command: 'open-work' }, url)
+    expect(launch).toEqual({ command: '/usr/bin/env', args: ['open-work', url] })
+    expect(launch!.args).toHaveLength(2)
+  })
+  it('refuses a command that env would take for an option, or with line breaks', () => {
+    expect(linkLaunch('darwin', { command: '-i' }, 'https://x.y/')).toBeNull()
+    expect(linkLaunch('darwin', { command: 'a\nb' }, 'https://x.y/')).toBeNull()
+  })
+  it('does not run for a link that is not a web link', () => {
+    expect(linkLaunch('darwin', { command: 'open-work' }, 'file:///etc/passwd')).toBeNull()
+  })
+})
+
+describe('chromeDataDirName', () => {
+  it('names the data folder of a Chrome app', () => {
+    expect(chromeDataDirName(undefined)).toBe('Chrome')
+    expect(chromeDataDirName('Google Chrome')).toBe('Chrome')
+    expect(chromeDataDirName('Chrome Work')).toBe('Chrome Work')
+    expect(chromeDataDirName('/Users/me/Applications/Chrome Work.app/')).toBe('Chrome Work')
+    expect(chromeDataDirName('..')).toBeNull()
+  })
+})
+
+describe('Workhub 1 linkOpener import', () => {
+  it('maps open -a to the app and any other command to the custom command', () => {
+    expect(importedLinkOpener('open -a "Google Chrome"')).toEqual({ linkBrowser: 'Google Chrome' })
+    expect(importedLinkOpener("open -a 'Safari'")).toEqual({ linkBrowser: 'Safari' })
+    expect(importedLinkOpener(' open -a Firefox ')).toEqual({ linkBrowser: 'Firefox' })
+    expect(importedLinkOpener('open-acme')).toEqual({ linkCommand: 'open-acme' })
+    expect(importedLinkOpener('open -na Foo --args x')).toEqual({ linkCommand: 'open -na Foo --args x' })
+    expect(importedLinkOpener('  ')).toBeNull()
+    expect(importedLinkOpener(undefined)).toBeNull()
+  })
+  it('lands in the imported profile, and fills an existing profile that has no setting', () => {
+    const v1 = { profiles: [{ id: 'work', name: 'Work', linkOpener: 'open-acme' }, { id: 'home', name: 'Home', linkOpener: 'open -a Safari' }, { id: 'none', name: 'None' }] }
+    const plan = planWorkhub1Import(v1, parseConfig({ version: 7 }), '/Users/acme')
+    expect(plan.profiles.map((p) => [p.id, p.linkCommand, p.linkBrowser])).toEqual([['work', 'open-acme', undefined], ['home', undefined, 'Safari'], ['none', undefined, undefined]])
+    const config = parseConfig({ version: 7, profiles: [{ id: 'work', name: 'Work' }, { id: 'home', name: 'Home', linkChromeProfile: 'Default' }] })
+    const filled = fillWorkhub1FolderFlags(v1, config, '/Users/acme')
+    expect(filled.map((p) => [p.id, p.linkCommand])).toEqual([['work', 'open-acme']])
   })
 })

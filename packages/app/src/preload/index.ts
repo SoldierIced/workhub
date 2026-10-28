@@ -25,7 +25,7 @@ const api: HubApi = {
   pickFolder: () => ipcRenderer.invoke('hub:pickFolder'),
   profileFolders: (profileId) => ipcRenderer.invoke('hub:profileFolders', profileId),
   openExternal: (url, profileId) => ipcRenderer.send('hub:openExternal', url, profileId ?? null),
-  chromeProfiles: () => ipcRenderer.invoke('links:chromeProfiles'),
+  chromeProfiles: (app) => ipcRenderer.invoke('links:chromeProfiles', app),
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     saveConnection: (c, s) => ipcRenderer.invoke('config:saveConnection', c, s),
