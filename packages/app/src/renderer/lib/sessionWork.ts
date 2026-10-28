@@ -1,33 +1,45 @@
 import { useEffect, useState } from 'react'
-import { canonicalUrl, type PullRequestItem, type TicketKeyProvider } from '@workhub/core'
-import { keyProviders } from './tickets'
+import { canonicalUrl, type PullRequestItem } from '@workhub/core'
+import type { TicketsStatus } from '@shared/tickets-api'
+import { useConfig } from '../configStore'
 import { ticketPreviews, type TicketPreview } from './ticketPreview'
 
 /**
- * What the session monitor reads beyond the session itself: the profile's ticket keys, the pull
+ * What the session monitor reads beyond the session itself: the profile's tracker state, the pull
  * requests the session named that are in neither list, and its tickets' titles and statuses.
  * Each is read once and shared by every open monitor.
  */
 
-const providersByProfile = new Map<string, Promise<TicketKeyProvider[]>>()
+const statusByProfile = new Map<string, Promise<TicketsStatus | undefined>>()
 
-/** The profile's tracker as ticket key providers; empty when none is connected (any key then counts). */
-export function useTicketProviders(profileId: string | null): TicketKeyProvider[] {
-  const [providers, setProviders] = useState<TicketKeyProvider[]>([])
+/**
+ * The profile's tracker connection state; undefined while it loads or when it cannot be read.
+ * Read once per profile and tracker connection: editing the connection reads it again.
+ */
+export function useTicketsStatus(profileId: string | null): TicketsStatus | undefined {
+  const [status, setStatus] = useState<TicketsStatus | undefined>()
+  const config = useConfig()?.config
+  const trackerId = config?.profiles.find((p) => p.id === profileId)?.connections.tracker
+  const tracker = config?.connections.find((c) => c.id === trackerId)
+  const key = `${profileId ?? ''}|${tracker ? JSON.stringify([tracker.provider, tracker.endpoint, tracker.secretRef, tracker.settings]) : ''}`
   useEffect(() => {
     let alive = true
-    const key = profileId ?? ''
-    let read = providersByProfile.get(key)
+    let read = statusByProfile.get(key)
     if (!read) {
-      read = window.hub.tickets.status(profileId).then(keyProviders, () => [])
-      providersByProfile.set(key, read)
+      read = window.hub.tickets.status(profileId).then(
+        (s) => s,
+        () => undefined
+      )
+      statusByProfile.set(key, read)
     }
-    void read.then((p) => alive && setProviders(p))
+    void read.then((s) => alive && setStatus(s))
     return () => {
       alive = false
     }
-  }, [profileId])
-  return providers
+    // `key` stands for the profile and its tracker connection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  return status
 }
 
 /** How many named PRs outside the lists are read, the most recently named first. */

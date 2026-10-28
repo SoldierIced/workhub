@@ -12,6 +12,21 @@ export function keyProviders(status: TicketsStatus | undefined): TicketKeyProvid
   return [{ provider: status.provider, projectKeys: status.projectKeys.length > 0 ? status.projectKeys : undefined }]
 }
 
+/**
+ * What keeps the monitor from reading a session's tickets from the tracker, as a hint to fix it in
+ * Settings: no tracker on the profile (`connect`), a connection missing its site, email or token
+ * (`complete`), or a provider Workhub cannot read (`unsupported`). Null when it reads (or the status is not known yet).
+ */
+export type TrackerHint = 'connect' | 'complete' | 'unsupported'
+
+export function trackerHint(status: Pick<TicketsStatus, 'state'> | undefined): TrackerHint | null {
+  if (!status) return null
+  if (status.state === 'noConnection') return 'connect'
+  if (status.state === 'incomplete') return 'complete'
+  if (status.state === 'unsupported') return 'unsupported'
+  return null
+}
+
 /** What links a live session to a ticket: its label and folder, plus the keys its monitor found. */
 export function sessionRefs(sessions: SessionData[]): (SessionRef & { state: string })[] {
   return sessions.map((s) => ({ id: s.view.id, title: s.view.label, cwd: s.view.cwd, ticketKeys: s.monitor.ticketKeys, state: s.view.state }))

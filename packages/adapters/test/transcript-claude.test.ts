@@ -2,7 +2,8 @@ import { appendFile, cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { describeTool, estimateCost, pullRequestUrls, ticketKeys } from '../src/shared/claude-tools'
+import { describeTool, estimateCost, isJiraWrite, pullRequestUrls, ticketKeys } from '../src/shared/claude-tools'
+import { ClaudeTranscriptParser } from '../src/transcript-claude/parser'
 import { ClaudeTranscriptReader, subagentStatus } from '../src/transcript-claude'
 
 // A synthetic transcript (test/fixtures/claude-config): one session in /tmp/acme-web with a
@@ -107,6 +108,39 @@ describe('Claude tool helpers', () => {
   it('finds ticket keys, limited to the configured projects when there are any', () => {
     expect(ticketKeys('ABC-1 then UTF-8 and def-2')).toEqual(['ABC-1'])
     expect(ticketKeys('ABC-1 then def-2 and XYZ-3', ['def', 'ABC'])).toEqual(['ABC-1', 'DEF-2'])
+  })
+
+  it('finds ticket keys between underscores, as branch names write them', () => {
+    expect(ticketKeys('hotfix_TEAM-8571_same-holder', ['TEAM'])).toEqual(['TEAM-8571'])
+    expect(ticketKeys('feat/pay-3619-savings and XPAY-1', ['PAY'])).toEqual(['PAY-3619'])
+  })
+
+  it('tells the Jira tools that create or change a ticket from the ones that read', () => {
+    expect(isJiraWrite('mcp__atlassian__createJiraIssue')).toBe('create')
+    expect(isJiraWrite('mcp__atlassian__createIssueLink')).toBe('change')
+    expect(isJiraWrite('mcp__atlassian__transitionJiraIssue')).toBe('change')
+    expect(isJiraWrite('mcp__atlassian__addCommentToJiraIssue')).toBe('change')
+    expect(isJiraWrite('mcp__atlassian__getJiraIssue')).toBeNull()
+    expect(isJiraWrite('Bash')).toBeNull()
+  })
+
+  it('reports the tickets the session created or changed, the created one first, apart from the ones it named', () => {
+    const parser = new ClaudeTranscriptParser({ ticketPrefixes: ['PAY', 'TEAM'] })
+    let n = 0
+    const call = (name: string, input: Record<string, unknown>, result: string) => {
+      const id = `t${++n}`
+      parser.ingest(JSON.stringify({ type: 'assistant', message: { id: `m${n}`, content: [{ type: 'tool_use', id, name: `mcp__atlassian__${name}`, input }] } }))
+      parser.ingest(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: result }] } }))
+    }
+    parser.ingest(JSON.stringify({ type: 'user', message: { content: 'Fraud asked for TEAM-8571, see also PAY-1648' } }))
+    call('getJiraIssue', { issueIdOrKey: 'TEAM-8571' }, 'TEAM-8571: block same-holder Pix')
+    call('createJiraIssue', { projectKey: 'PAY', summary: 'Block same-holder Pix (TEAM-8571)', parent: 'PAY-2029' }, '{"key":"PAY-3806","parent":"PAY-2029"}')
+    call('createIssueLink', { inwardIssue: 'PAY-3806', outwardIssue: 'TEAM-8571' }, 'linked')
+    call('addCommentToJiraIssue', { issueIdOrKey: 'TEAM-8571', commentBody: 'Tracked in PAY-3806' }, 'ok')
+    const snap = parser.snapshot()
+    expect(snap.linkedTicketKeys).toEqual(['PAY-3806', 'TEAM-8571'])
+    // The named ones stay in order of last mention.
+    expect(snap.ticketKeys).toContain('PAY-1648')
   })
 
   it('prices known models only', () => {
