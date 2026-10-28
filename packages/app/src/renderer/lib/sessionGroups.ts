@@ -154,7 +154,9 @@ let writes: Promise<unknown> = Promise.resolve()
  */
 export function updateGroups(change: (state: SessionGroups) => SessionGroups, liveKeys: readonly string[]): Promise<void> {
   const run = async (): Promise<void> => {
-    const stored = (await refreshConfig()).config.sessionGroups ?? EMPTY_SESSION_GROUPS
+    // Read without publishing: every published snapshot renders the whole window again, and the
+    // saved one is published below anyway.
+    const stored = (await window.hub.config.get()).config.sessionGroups ?? EMPTY_SESSION_GROUPS
     const base = reconcileTop(stored, liveKeys)
     const next = change(base)
     if (next === base) return
