@@ -23,6 +23,8 @@ import { ContinuityNotice } from './ContinuityNotice'
 import { openSubagent, subagentOfCall } from '../../lib/subagentView'
 import { errorText } from '../../lib/errorText'
 
+/** The Claude adapter's English compaction notice, shown in the reader's language. */
+const COMPACTED_TEXT = 'The conversation was compacted.'
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
 
 function Disclosure({ icon: Icon, title, tone, children, testId }: { icon: LucideIcon; title: string; tone?: 'danger' | 'warning'; children: ReactNode; testId?: string }) {
@@ -89,7 +91,7 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
     case 'notice':
       return (
         <Disclosure icon={NOTICE_ICON[item.noticeKind]} title={item.title} tone={item.failed ? 'danger' : item.noticeKind === 'warning' ? 'warning' : undefined} testId="notice">
-          <pre className="font-mono text-xs whitespace-pre-wrap">{item.text || t('chat.noticeEmpty')}</pre>
+          <pre className="max-h-80 overflow-auto font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">{item.text === COMPACTED_TEXT ? t('chat.noticeCompacted') : item.text || t('chat.noticeEmpty')}</pre>
         </Disclosure>
       )
     case 'tool': {

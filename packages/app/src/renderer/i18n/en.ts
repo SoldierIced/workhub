@@ -330,6 +330,7 @@ export const en = {
   'chat.images.one': '{count} image',
   'chat.images.other': '{count} images',
   'chat.noticeEmpty': 'No output',
+  'chat.noticeCompacted': 'The conversation was compacted.',
   'chat.permissionWithdrawn': 'The agent withdrew the request',
   'chat.resumedHere.one': '{count} earlier message · resumed here',
   'chat.resumedHere.other': '{count} earlier messages · resumed here',
