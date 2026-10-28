@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.4](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.3...v2.0.0-alpha.4) (2026-10-28)
+
+
+### Tests
+
+* **adapters:** wait for the fake agent's stderr before asserting it ([#5](https://github.com/SoldierIced/workhub/issues/5)) ([021a1e0](https://github.com/SoldierIced/workhub/commit/021a1e0070d8d5b13fe03453003bd81df0d0ef1c))
+
 ## [2.0.0-alpha.3](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.2...v2.0.0-alpha.3) (2026-10-28)
 
 
