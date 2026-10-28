@@ -629,7 +629,7 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
           {t('settings.accountsList')}
           <HelpTip text={t('help.accounts.list')} label={t('settings.accountsList')} />
         </h2>
-        <p className="px-1 text-sm text-subtle" data-testid="accounts-hint">
+        <p className="px-1 pb-1.5 text-sm text-subtle" data-testid="accounts-hint">
           {t('settings.accountsHint')}
         </p>
         <MasterDetail
