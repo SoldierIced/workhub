@@ -1,6 +1,7 @@
 export { AgentOrderList } from './AgentOrderList'
 export { Card, CardBody, CardHeader } from './Card'
 export { Dialog } from './Dialog'
+export { ConfirmDeleteDialog } from './ConfirmDeleteDialog'
 export { EmptyState } from './EmptyState'
 export { Field, SwitchRow } from './Field'
 export { ListRow } from './ListRow'

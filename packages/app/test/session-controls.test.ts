@@ -54,16 +54,16 @@ describe('SessionControls', () => {
 })
 
 describe('composer layout', () => {
-  it('places the controls inside the composer card, under the input row', () => {
+  it('places the controls in the composer card’s bottom bar: after the input, before the send button', () => {
     const src = readFileSync(new URL('../src/renderer/screens/sessions/ChatPane.tsx', import.meta.url), 'utf8')
-    const card = src.indexOf('rounded-xl border border-border bg-surface shadow-md')
+    const card = src.indexOf('rounded-xl border border-border bg-surface shadow-sm')
     const input = src.indexOf("aria-label={t('chat.prompt')}")
-    const send = src.indexOf("label={t('chat.send')}")
     const controls = src.indexOf('<SessionControls')
+    const send = src.indexOf("label={t('chat.send')}")
     expect(card).toBeGreaterThan(-1)
-    expect(controls).toBeGreaterThan(send)
-    expect(send).toBeGreaterThan(input)
     expect(input).toBeGreaterThan(card)
+    expect(controls).toBeGreaterThan(input)
+    expect(send).toBeGreaterThan(controls)
     expect(src).not.toContain('SessionFacts')
   })
 })

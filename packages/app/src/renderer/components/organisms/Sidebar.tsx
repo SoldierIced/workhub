@@ -40,9 +40,10 @@ export interface SidebarProps {
   usage: UsageGroup[]
 }
 
+/** A section's title, its text on the rows' left edge and its action over the rows' right-hand buttons. */
 function SectionTitle({ children, action }: { children: string; action?: ReactNode }) {
   return (
-    <div className="flex h-7 items-center justify-between px-2.5 pt-3">
+    <div className="mt-3 flex h-7 items-center justify-between pr-1 pl-2.5">
       <h2 className="text-xs font-semibold tracking-wide text-subtle uppercase">{children}</h2>
       {action}
     </div>

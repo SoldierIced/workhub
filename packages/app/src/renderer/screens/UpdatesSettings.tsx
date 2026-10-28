@@ -4,6 +4,7 @@ import type { UpdateStatus } from '@shared/updates-api'
 import { Button, Switch } from '../components/atoms'
 import { SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
+import { useAsyncAction } from '../lib/useAsyncAction'
 
 /** The "check for updates" switch and the result of the last check (P8). */
 export function UpdatesSettings({
@@ -17,6 +18,8 @@ export function UpdatesSettings({
 }) {
   const { t } = useI18n()
   const [status, setStatus] = useState<UpdateStatus | null>(null)
+  const install = useAsyncAction(() => window.hub.updates.install())
+  const check = useAsyncAction(() => window.hub.updates.check())
 
   useEffect(() => {
     void window.hub.updates.status().then(setStatus)
@@ -50,9 +53,9 @@ export function UpdatesSettings({
         </span>
         <div className="flex gap-2">
           {status?.state === 'available' && (
-            <Button onClick={() => void window.hub.updates.install()}>{status.canInstall ? t('updates.install') : t('updates.download')}</Button>
+            <Button disabled={install.pending} onClick={() => install.run()}>{status.canInstall ? t('updates.install') : t('updates.download')}</Button>
           )}
-          <Button disabled={!status || status.state === 'unsupported' || status.state === 'checking' || status.state === 'downloading'} onClick={() => void window.hub.updates.check()}>
+          <Button disabled={!status || status.state === 'unsupported' || status.state === 'checking' || status.state === 'downloading' || check.pending} onClick={() => check.run()}>
             {t('updates.checkNow')}
           </Button>
         </div>

@@ -53,8 +53,9 @@ export function FolderBrowser({ workspaces, sessions, profileId, accent, onOpen,
 
   return (
     <div data-testid="folder-browser" className="flex flex-col gap-0.5">
-      <div className="relative mx-0.5 mb-1">
-        <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-subtle" aria-hidden />
+      {/* Flush with the rows: its icon over their icons, its clear button over their star. */}
+      <div className="relative mb-1">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle" aria-hidden />
         <input
           type="search"
           value={query}
@@ -63,14 +64,14 @@ export function FolderBrowser({ workspaces, sessions, profileId, accent, onOpen,
           placeholder={t('sidebar.filterFolders')}
           aria-label={t('sidebar.filterFolders')}
           data-testid="folder-filter"
-          className="h-7 w-full rounded-md border border-border bg-surface pr-7 pl-7 text-sm text-text placeholder:text-subtle focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="h-7 w-full rounded-md border border-border bg-surface pr-8 pl-8.5 text-sm text-text placeholder:text-subtle focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button
             type="button"
             aria-label={t('sidebar.clearFilter')}
             onClick={() => setQuery('')}
-            className="absolute top-1/2 right-1 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-subtle hover:text-text"
+            className="absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-subtle hover:bg-surface-hover hover:text-text"
           >
             <X className="size-3" aria-hidden />
           </button>

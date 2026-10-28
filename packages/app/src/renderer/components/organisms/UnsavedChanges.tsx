@@ -1,7 +1,7 @@
 import { Check, Trash2 } from 'lucide-react'
 import { createContext, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Button, Kbd } from '../atoms'
-import { Dialog } from '../molecules'
+import { ConfirmDeleteDialog, Dialog } from '../molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { createUnsavedChanges, draftKey, type SaveOutcome, type UnsavedChanges, type UnsavedSnapshot } from '../../lib/unsavedChanges'
 
@@ -172,32 +172,7 @@ export function DeleteButton({ name, onDelete }: { name: string; onDelete: () =>
       <Button size="sm" variant="danger" icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => setAsking(true)} data-testid="form-delete">
         {t('common.delete')}
       </Button>
-      <Dialog
-        open={asking}
-        onOpenChange={setAsking}
-        title={t('unsaved.confirmDeleteTitle', { name })}
-        description={t('unsaved.confirmDeleteBody')}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setAsking(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="danger"
-              autoFocus
-              data-testid="form-delete-confirm"
-              onClick={() => {
-                setAsking(false)
-                onDelete()
-              }}
-            >
-              {t('common.delete')}
-            </Button>
-          </>
-        }
-      >
-        {null}
-      </Dialog>
+      <ConfirmDeleteDialog name={name} open={asking} onOpenChange={setAsking} onConfirm={onDelete} />
     </>
   )
 }

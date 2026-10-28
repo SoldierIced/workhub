@@ -6,6 +6,7 @@ import { Avatar, Badge, Button, Input, Spinner } from '../components/atoms'
 import { EmptyState, useToast } from '../components/molecules'
 import { useSlack } from '../chatStore'
 import { useI18n } from '../i18n/I18nProvider'
+import { useAsyncAction } from '../lib/useAsyncAction'
 import { cn } from '../lib/cn'
 import { relativeTime } from '../lib/pullRequests'
 import type { SessionData } from '../store'
@@ -141,6 +142,7 @@ function NavItem({ icon, label, count, active, onClick }: { icon: ReactNode; lab
 /** Title, the watcher's state and schedule, whether sessions' messages are followed on their own, the last error. */
 function StatusHeader({ snap, now, onOpenSettings }: { snap: SlackSnapshot; now: number; onOpenSettings: () => void }) {
   const { t, tn, locale } = useI18n()
+  const runNow = useAsyncAction(() => window.hub.slack.runNow())
   const last = snap.runs[0]
   const parts: string[] = []
   if (!snap.settings.enabled) parts.push(t('slack.watcherOff'))
@@ -160,7 +162,7 @@ function StatusHeader({ snap, now, onOpenSettings }: { snap: SlackSnapshot; now:
         <Button size="sm" variant="ghost" icon={<Settings className="size-3.5" aria-hidden />} onClick={onOpenSettings}>
           {t('slack.settings')}
         </Button>
-        <Button size="sm" variant="primary" icon={checking ? <Spinner /> : <Play className="size-3.5" aria-hidden />} disabled={checking} onClick={() => void window.hub.slack.runNow()}>
+        <Button size="sm" variant="primary" icon={checking ? <Spinner /> : <Play className="size-3.5" aria-hidden />} disabled={checking || runNow.pending} onClick={() => runNow.run()}>
           {checking ? t('slack.health.checking') : t('slack.runNow')}
         </Button>
       </div>

@@ -25,6 +25,7 @@ import {
   type Profile,
   type SessionGroup,
   type SessionGroups,
+  type StatusLevel,
   type SubagentSummary,
   type TopSlot
 } from '@workhub/core'
@@ -46,6 +47,7 @@ import { Button } from '../atoms/Button'
 import { Input } from '../atoms/Input'
 import { Tooltip } from '../atoms/Tooltip'
 import { STATE_TONE, StateDot } from '../atoms/StateDot'
+import { StatusGlyph } from '../atoms/StatusGlyph'
 import { Dialog } from '../molecules/Dialog'
 import { SlackBadge } from '../molecules/SlackBadge'
 import { useSessionSlack } from '../../lib/slackLinks'
@@ -332,11 +334,13 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
           if (row.type === 'session') return sessionItem(memberOf(row.session), row.session, false)
           const { group } = row
           const summary = groupSummary(row.members)
+          const selectedInside = active && row.members.some((m) => m.session !== undefined && m.session.data.view.id === selectedId)
           return (
             <li key={group.id} data-testid="group" data-group={group.name} data-attention={summary.count || undefined}>
               <GroupHeader
                 group={group}
                 summary={summary}
+                selectedInside={selectedInside}
                 dropping={over === `g:${group.id}`}
                 menu={() => groupMenu(group)}
                 // Flipped on the stored state, not this render's: quick clicks each count while a save is on its way.
@@ -529,7 +533,7 @@ const SessionItem = memo(function SessionItem(props: SessionItemProps) {
             onDrop={(e) => actions.drop(e, member.key)}
             className={cn(
               'group/row relative flex items-center rounded-md transition-colors duration-150',
-              props.selected ? 'bg-accent-soft text-text' : 'text-muted hover:bg-surface-hover hover:text-text',
+              props.selected ? SELECTED_ROW : 'text-muted hover:bg-surface-hover hover:text-text',
               props.dropping && 'ring-2 ring-accent/60',
               (closed || stopped) && 'opacity-60'
             )}
@@ -584,19 +588,16 @@ const SessionItem = memo(function SessionItem(props: SessionItemProps) {
                     className={account?.color ? 'ring-2 ring-offset-1 ring-offset-sidebar' : undefined}
                     style={account?.color ? ({ '--tw-ring-color': account.color } as CSSProperties) : undefined}
                   />
+                  {/* The dot says the agent's own state (ready, starting, stopped); the glyph at the right says what it is up to. */}
                   {closed ? (
                     <RotateCcw className="absolute -right-1 -bottom-1 size-3 rounded-full bg-surface text-subtle" aria-hidden />
                   ) : (
-                    <StateDot
-                      tone={tone}
-                      pulse={level === 'working' || data?.view.state === 'busy' || data?.view.state === 'starting'}
-                      className="absolute -right-0.5 -bottom-0.5 rounded-full ring-2 ring-sidebar"
-                    />
+                    <StateDot tone={tone} className="absolute -right-0.5 -bottom-0.5 rounded-full ring-2 ring-sidebar" />
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={cn('block truncate text-base', data?.unseen && 'font-semibold text-text')}>{title}</span>
-                  <span className="block truncate text-xs text-subtle" data-testid="row-subtitle">
+                  <span className={cn('block truncate text-base', (data?.unseen || props.selected) && 'font-semibold text-text')}>{title}</span>
+                  <span className={cn('block truncate text-xs', props.selected ? 'text-muted' : 'text-subtle')} data-testid="row-subtitle">
                     {account && (
                       <>
                         <span data-testid="row-account" className="font-medium" style={account.color ? { color: account.color } : undefined}>
@@ -605,13 +606,12 @@ const SessionItem = memo(function SessionItem(props: SessionItemProps) {
                         {' · '}
                       </>
                     )}
-                    {folderName(cwd)} · {status}
+                    {folderName(cwd)} · <span className={cn(level && STATUS_TEXT[level])}>{status}</span>
                   </span>
                 </span>
                 {automation && <Settings data-testid="automation-badge" role="img" aria-label={t('automations.sessionBadge', { name: automation })} className="size-3.5 shrink-0 text-subtle" />}
-                {data?.unseen && (
-                  <span data-testid="unseen-mark" role="img" aria-label={t('attention.unseen')} className="size-2 shrink-0 rounded-full bg-accent" />
-                )}
+                {/* Working, waiting on an answer, a reply to read or an error: a glyph that tells them apart at a glance. */}
+                {level && <StatusGlyph level={level} label={t(LEVEL_LABEL[level])} data-testid="status-glyph" data-unseen={data?.unseen} className="mr-0.5" />}
               </button>
             </Tooltip>
             {props.slack && <SlackBadge summary={slack.summary} onOpen={actions.openSlack} />}
@@ -695,7 +695,12 @@ function SubagentRow({ subagent: s, onOpen }: { subagent: SubagentSummary; onOpe
   )
 }
 
-/** A row's hover actions: shown on hover or keyboard focus. */
+/** The row of the session on screen (or the folded group that holds it): a tinted fill with an edge, apart from a hover. */
+const SELECTED_ROW = 'bg-accent/20 text-text ring-1 ring-accent/50 ring-inset'
+
+/** The colour of a row's state text when it needs you; working and idle stay quiet. */
+const STATUS_TEXT: Record<StatusLevel, string> = { error: 'text-danger', needsAnswer: 'text-warning', readyToReview: 'text-success', working: 'text-info' }
+
 /** A session row's hover actions: out of the layout until the row is hovered or focused, or its menu is open. */
 const ROW_ACTIONS = 'hidden shrink-0 items-center group-hover/row:flex group-focus-within/row:flex has-[[data-state=open]]:flex'
 
@@ -720,6 +725,8 @@ function OptionsButton({ label, menu }: { label: string; menu: () => MenuItem[] 
 function GroupHeader(props: {
   group: SessionGroup
   summary: ReturnType<typeof summarize>
+  /** The session on screen is one of its members: the header stands in for its row while folded. */
+  selectedInside: boolean
   dropping: boolean
   menu: () => MenuItem[]
   onToggle: () => void
@@ -731,6 +738,7 @@ function GroupHeader(props: {
   const { t, tn } = useI18n()
   const { group, summary } = props
   const Icon = group.collapsed ? FolderClosed : FolderOpen
+  const standsIn = props.selectedInside && group.collapsed
   const onKey = (e: KeyboardEvent) => {
     if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
     e.preventDefault()
@@ -749,8 +757,10 @@ function GroupHeader(props: {
           onDragOver={props.onDragOver}
           onDragLeave={props.onDragLeave}
           onDrop={props.onDrop}
+          data-selected-inside={props.selectedInside || undefined}
           className={cn(
-            'group/row flex items-center rounded-md text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text',
+            'group/row flex items-center rounded-md transition-colors duration-150',
+            standsIn ? SELECTED_ROW : 'text-muted hover:bg-surface-hover hover:text-text',
             props.dropping && 'ring-2 ring-accent/60'
           )}
         >
@@ -762,7 +772,7 @@ function GroupHeader(props: {
             className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md pr-1 pl-2 text-left"
           >
             <ChevronRight className={cn('size-3.5 shrink-0 text-subtle transition-transform duration-150', !group.collapsed && 'rotate-90')} aria-hidden />
-            <Icon className="size-3.5 shrink-0 text-subtle" aria-hidden />
+            <Icon className={cn('size-3.5 shrink-0', props.selectedInside ? 'text-accent' : 'text-subtle')} aria-hidden />
             <span className="min-w-0 flex-1 truncate text-base font-medium">{group.name}</span>
             {summary.count > 0 && (
               <Badge

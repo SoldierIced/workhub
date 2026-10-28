@@ -2,7 +2,7 @@ import { Ear, Folder, MessagesSquare, MoreHorizontal, Square, SquareTerminal, Te
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import { sessionIdentity } from '@workhub/core'
 import type { SessionMode, SessionView } from '@shared/api'
-import { Badge, Button, IconButton, STATE_TONE, StateDot, type Tone } from '../../components/atoms'
+import { Badge, Button, IconButton, Spinner, STATE_TONE, StateDot, type Tone } from '../../components/atoms'
 import { useSlack } from '../../chatStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
@@ -12,6 +12,7 @@ import { sessionModePicker } from '../../lib/agent-pickers'
 import { readPrefs, setPrefs } from '../../lib/prefs'
 import { abbreviateFolder, activityElapsed, activityOf, foldDensity, headerDensity, isClockActivity, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
 import { useNow } from '../../lib/usage'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 import { awaitingAnswer, pushItem, type SessionData } from '../../store'
 import { AiReviewButton } from './AiReviewPanel'
 import { ContinueMenu } from './ContinueMenu'
@@ -179,6 +180,7 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
 export function SessionHeader({ data, visible }: { data: SessionData; visible: boolean }) {
   const { t } = useI18n()
   const v = data.view
+  const stop = useAsyncAction(() => window.hub.sessions.stop(v.id))
   const [ref, width] = useWidth<HTMLElement>()
   const identityRef = useRef<HTMLDivElement>(null)
   // Levels folded past the width's density because the row still overflowed at this width.
@@ -263,7 +265,7 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
         {actionsInline && live && <AiReviewButton view={v} compact={iconControls} />}
         {actionsInline && showContinue && <ContinueMenu view={v} compact={iconControls} />}
         {live && (
-          <Button size="sm" variant="ghost" icon={<Square className="size-3" aria-hidden />} onClick={() => void window.hub.sessions.stop(v.id)}>
+          <Button size="sm" variant="ghost" icon={stop.pending ? <Spinner className="size-3" /> : <Square className="size-3" aria-hidden />} disabled={stop.pending} onClick={() => stop.run()}>
             {t('session.stop')}
           </Button>
         )}

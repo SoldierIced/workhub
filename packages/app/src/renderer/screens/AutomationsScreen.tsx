@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react'
 import { newAutomation, prReviewsPreset, type AutomationDefinition, type AutomationRun, type EffectiveAgent, type Profile } from '@workhub/core'
 import type { AutomationStatus } from '@shared/chat-api'
 import { Badge, Button, IconButton, Spinner, Switch } from '../components/atoms'
-import { Card, CardBody, CardHeader, EmptyState, useToast } from '../components/molecules'
+import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, useToast } from '../components/molecules'
 import { useAutomations, useSlack } from '../chatStore'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
+import { useAsyncAction } from '../lib/useAsyncAction'
 import { relativeTime } from '../lib/pullRequests'
 import { formatTokens } from '../lib/home'
 import { runUsageLabel } from '../lib/runUsage'
@@ -29,6 +30,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
   const snap = useAutomations()
   const slack = useSlack()
   const [editing, setEditing] = useState<AutomationDefinition | null>(null)
+  const [removing, setRemoving] = useState<AutomationDefinition | null>(null)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 15_000)
@@ -54,6 +56,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
   const remove = async (id: string) => {
     const r = await window.hub.automations.remove(id)
     if (r.ok) void refreshConfig()
+    else toast(r.issues.map((i) => i.message).join('; '), 'danger')
   }
   const open = async (id: string) => {
     const viewId = await window.hub.automations.openSession(id)
@@ -90,7 +93,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
               lastRun={snap.runs.find((r) => r.automationId === s.definition.id)}
               channelName={(id) => channels.find((c) => c.id === id)?.name ?? id}
               onEdit={() => setEditing(structuredClone(s.definition))}
-              onRemove={() => void remove(s.definition.id)}
+              onRemove={() => setRemoving(s.definition)}
               onOpen={() => void open(s.definition.id)}
             />
           ))}
@@ -109,6 +112,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
         </CardBody>
       </Card>
 
+      <ConfirmDeleteDialog name={removing?.name ?? ''} open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)} onConfirm={() => removing && void remove(removing.id)} />
       <AutomationEditor automation={editing} agents={agents} channels={channels} presets={[{ id: 'prReviews', label: t('automations.preset.prReviews'), build: reviewsPreset }]} onClose={() => setEditing(null)} onSave={save} />
     </div>
   )
@@ -117,6 +121,12 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
 function AutomationCard({ status: s, now, lastRun, channelName, onEdit, onRemove, onOpen }: { status: AutomationStatus; now: number; lastRun: AutomationRun | undefined; channelName: (id: string) => string; onEdit: () => void; onRemove: () => void; onOpen: () => void }) {
   const { t, locale } = useI18n()
   const a = s.definition
+  const toggle = useAsyncAction(async (on: boolean) => {
+    const r = await window.hub.automations.setEnabled(a.id, on)
+    if (!r.ok) throw new Error(r.issues.map((i) => i.message).join('; '))
+  })
+  const stop = useAsyncAction(() => window.hub.automations.stop(a.id))
+  const runNow = useAsyncAction(() => window.hub.automations.runNow(a.id))
   const triggers = [
     ...(a.triggers.chatChannelIds.length ? [t('automations.trigger.chat', { channels: a.triggers.chatChannelIds.map((id) => `#${channelName(id)}`).join(', ') })] : []),
     ...(a.triggers.intervalMinutes ? [t('automations.trigger.interval', { minutes: a.triggers.intervalMinutes })] : [])
@@ -126,7 +136,7 @@ function AutomationCard({ status: s, now, lastRun, channelName, onEdit, onRemove
       <CardHeader
         title={a.name}
         meta={<Badge tone={HEALTH_TONE[s.health]}>{t(`automations.health.${s.health}`)}</Badge>}
-        actions={<Switch checked={a.enabled} onChange={(on) => void window.hub.automations.setEnabled(a.id, on)} aria-label={t('automations.field.enabled')} />}
+        actions={<Switch checked={a.enabled} disabled={toggle.pending} onChange={toggle.run} aria-label={t('automations.field.enabled')} />}
       />
       <CardBody className="flex flex-col gap-2">
         <code className="truncate rounded bg-surface-raised px-2 py-1 text-sm" title={a.prompt}>
@@ -159,11 +169,11 @@ function AutomationCard({ status: s, now, lastRun, channelName, onEdit, onRemove
         {s.lastError && <p className="truncate text-xs text-danger">{s.lastError}</p>}
         <div className="flex items-center gap-1">
           {s.health === 'running' ? (
-            <Button size="sm" variant="secondary" icon={<Square className="size-3.5" aria-hidden />} onClick={() => void window.hub.automations.stop(a.id)}>
+            <Button size="sm" variant="secondary" icon={stop.pending ? <Spinner className="size-3.5" /> : <Square className="size-3.5" aria-hidden />} disabled={stop.pending} onClick={() => stop.run()}>
               {t('automations.stop')}
             </Button>
           ) : (
-            <Button size="sm" icon={<Play className="size-3.5" aria-hidden />} onClick={() => void window.hub.automations.runNow(a.id)}>
+            <Button size="sm" icon={runNow.pending ? <Spinner className="size-3.5" /> : <Play className="size-3.5" aria-hidden />} disabled={runNow.pending} onClick={() => runNow.run()}>
               {t('automations.runNow')}
             </Button>
           )}

@@ -1,7 +1,7 @@
 import { ArrowRight, Gauge } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ApiAgentSpend, CreditSpend } from '@workhub/core'
-import { Badge, Button } from '../atoms'
+import { AgentIcon, Badge, Button } from '../atoms'
 import { Card, CardBody, CardHeader } from '../molecules/Card'
 import { accountTitle, UsageRowTooltip, UsageWindowRow, useWindowHover } from '../molecules/UsageWindowRow'
 import { UsageRefreshButton } from '../molecules/UsageRefreshButton'
@@ -45,10 +45,13 @@ export function KiroSpent({ spend, compact = false }: { spend: CreditSpend; /** 
   )
 }
 
+/** One account's block: the agent's mark and name (and plan) on top, its windows under them, one line each, lined up under the name. */
+const ACCOUNT_BLOCK = '-mx-2 flex cursor-default flex-col gap-1.5 rounded-md px-2 py-2 outline-none hover:bg-surface-hover/60 focus-visible:ring-2 focus-visible:ring-accent/40'
+
 /**
- * One account on one row: its name on the left, its windows stacked on the right, one line each.
- * The whole row shows its details on hover: every window's percent, credits, ceiling and reset,
- * plus `hoverExtra` (Kiro's spend).
+ * One account: its agent's mark, name and plan on the first line, its windows stacked under them,
+ * one line each. The whole block shows its details on hover: every window's percent, credits,
+ * ceiling and reset, plus `hoverExtra` (Kiro's spend).
  */
 function AccountRow({
   agentId,
@@ -79,20 +82,18 @@ function AccountRow({
   ])
   return (
     <UsageRowTooltip text={text}>
-      <li
-        data-testid="agent-usage-account"
-        tabIndex={0}
-        className="-mx-2 grid cursor-default grid-cols-[8.5rem_minmax(0,1fr)] items-start gap-x-3 rounded-md px-2 py-1.5 outline-none hover:bg-surface-hover/60 focus-visible:ring-2 focus-visible:ring-accent/40"
-      >
-        <span className="flex min-w-0 flex-col gap-0.5 pt-px">
+      <li data-testid="agent-usage-account" tabIndex={0} className={ACCOUNT_BLOCK}>
+        <span className="flex min-w-0 items-center gap-2">
+          <AgentIcon agentId={agentId} className="size-4 rounded-sm" />
           <span className="truncate text-sm font-medium">{title}</span>
+          {plan && <span className="shrink-0 text-xs text-subtle">{plan}</span>}
           {budget.action !== 'allow' && (
-            <Badge tone={budget.action === 'block' ? 'danger' : 'warning'} className="self-start">
+            <Badge tone={budget.action === 'block' ? 'danger' : 'warning'} className="ml-auto shrink-0">
               {t(budget.action === 'block' ? 'agentUsage.state.block' : 'agentUsage.state.warn')}
             </Badge>
           )}
         </span>
-        <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex min-w-0 flex-col gap-1 pl-6">
           {account.windows.length === 0 ? (
             <span className="text-xs text-danger">{t('agentUsage.readFailed')}</span>
           ) : (
@@ -139,6 +140,7 @@ export function AgentUsageCard({
       <CardHeader
         title={t('agentUsage.title')}
         icon={<Gauge className="size-4" aria-hidden />}
+        help={t('usage.help')}
         actions={
           <span className="flex items-center gap-1">
             <UsageRefreshButton />
@@ -168,13 +170,12 @@ export function AgentUsageCard({
           ))}
           {!kiroSection && (kiro || kiroSpend) && (
             <UsageRowTooltip text={accountHoverText(t('agentUsage.agent.kiro'), [kiroSpend ? spendHover(kiroSpend, false) : t('agentUsage.kiroNoRemaining')])}>
-              <li
-                tabIndex={0}
-                className="-mx-2 grid cursor-default grid-cols-[8.5rem_minmax(0,1fr)] items-start gap-x-3 rounded-md px-2 py-1.5 outline-none hover:bg-surface-hover/60 focus-visible:ring-2 focus-visible:ring-accent/40"
-                data-testid="kiro-usage"
-              >
-                <span className="truncate text-sm font-medium">{t('agentUsage.agent.kiro')}</span>
-                <span className="min-w-0">
+              <li tabIndex={0} className={ACCOUNT_BLOCK} data-testid="kiro-usage">
+                <span className="flex min-w-0 items-center gap-2">
+                  <AgentIcon agentId="kiro" className="size-4 rounded-sm" />
+                  <span className="truncate text-sm font-medium">{t('agentUsage.agent.kiro')}</span>
+                </span>
+                <span className="min-w-0 pl-6">
                   {kiroSpend ? <KiroSpent spend={kiroSpend} /> : <span className="text-xs text-muted">{t('agentUsage.kiroCredits', { credits: formatNumber(round2(kiro?.credits ?? 0)) })}</span>}
                 </span>
               </li>

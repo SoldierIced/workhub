@@ -1,5 +1,5 @@
-import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, ImagePlus, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { filterSlashCommands, gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, slashQuery, type SlashCommandInfo, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
 import { CopyButton, Markdown } from '../../components/molecules'
@@ -8,7 +8,7 @@ import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
 import { onComposerDraft, takeComposerDraft } from '../../lib/drafts'
-import { hasImageFiles, imageFilesOf, MAX_PROMPT_IMAGES, pickImageFiles, readImageFiles } from '../../lib/images'
+import { hasImageFiles, imageFilesOf, insertImageMarkers, MAX_PROMPT_IMAGES, pickImageFiles, PROMPT_IMAGE_TYPES, readImageFiles, removeImageMarker } from '../../lib/images'
 import { acceptsInput, restoreComposer } from '../../lib/prompt-queue'
 import { isEditable, shouldFocusComposer } from '../../lib/composer-focus'
 import { interruptSession, onRecoveredPrompts, removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
@@ -31,6 +31,32 @@ import { errorText } from '../../lib/errorText'
 const COMPACTED_TEXT = 'The conversation was compacted.'
 const CLEARED_TEXT = 'The conversation was cleared.'
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
+/** The input grows with its text up to this height (`max-h-48`), then scrolls. */
+const MAX_COMPOSER_HEIGHT = 192
+
+/** The number a pasted image goes by in the prompt's text (`[Image 2]`), on its thumbnail. */
+function ImageNumber({ n }: { n: number }) {
+  return (
+    <span aria-hidden className="absolute bottom-1 left-1 rounded-sm bg-black/65 px-1 text-2xs font-medium text-white tabular-nums">
+      {n}
+    </span>
+  )
+}
+
+/** A key, drawn as a key cap. */
+function KeyCap({ children }: { children: string }) {
+  return <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded-sm border border-border bg-surface-raised px-1 font-sans text-2xs text-muted">{children}</kbd>
+}
+
+/** What a key does, next to its cap: `↵ send`. */
+function KeyHint({ keys, children }: { keys: string; children: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      <KeyCap>{keys}</KeyCap>
+      {children}
+    </span>
+  )
+}
 
 /** When a message was sent: day, month and hour:minute (plus the year outside the current one); nothing when unknown. */
 function SentAt({ at, align }: { at?: number; align: 'left' | 'right' }) {
@@ -87,10 +113,11 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
                   title={t('chat.imageOpen')}
                   aria-label={t('chat.imageOpenLabel', { n: i + 1 })}
                   data-testid="chat-pasted-image"
-                  className="max-w-full cursor-zoom-in rounded-md focus-visible:outline-2 focus-visible:outline-accent"
+                  className="relative max-w-full cursor-zoom-in rounded-md focus-visible:outline-2 focus-visible:outline-accent"
                   onClick={() => void openChatImage(sessionId, item, i)}
                 >
                   <img src={src} alt={t('chat.imageAlt', { n: i + 1 })} className="max-h-64 max-w-full rounded-md border border-border object-contain" />
+                  <ImageNumber n={i + 1} />
                 </button>
               ))}
             </div>
@@ -283,6 +310,34 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
   }
 
   const acceptsImages = v.capabilities.imageInput
+  const imageLabel = t('chat.imageMarkerLabel')
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  // The input is one line to begin with and grows with its text, up to MAX_COMPOSER_HEIGHT; it is
+  // measured again when its width changes (a wrap moves lines) and when its session comes on screen.
+  const grow = useCallback(() => {
+    const el = composer.current
+    if (!el || el.clientWidth === 0) return
+    el.style.height = 'auto'
+    const next = `${Math.min(el.scrollHeight, MAX_COMPOSER_HEIGHT)}px`
+    if (el.style.height !== next) el.style.height = next
+  }, [])
+  useLayoutEffect(grow, [grow, text, active])
+  useEffect(() => {
+    const el = composer.current
+    if (!el) return
+    const observer = new ResizeObserver(grow)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [grow])
+
+  // The whole box is the target: a click on its padding or its bottom bar (not on a control) puts the cursor in the input.
+  const focusFromBox = (e: MouseEvent<HTMLDivElement>) => {
+    if (!open || !(e.target instanceof Element)) return
+    if (e.target.closest('button, a, input, select, textarea, img, [role="button"], [role="combobox"], [role="listbox"], [role="option"]')) return
+    if (window.getSelection()?.toString()) return
+    composer.current?.focus()
+  }
 
   // Usage budget of the session's account (Settings → Usage): past a ceiling, a prompt needs "Send anyway".
   const reads = useAccountUsage()
@@ -426,22 +481,50 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
     }
   }
 
-  // Pasted or dropped images: checked before reading (type, size, count), then shown as thumbnails.
-  const attach = (data: DataTransfer): boolean => {
-    if (!hasImageFiles(data) && !imageFilesOf(data).length) return false
+  // Pasted, dropped or picked images: checked before reading (type, size, count), then shown as
+  // numbered thumbnails and named in the text where the caret is (`[Image 2]`), so the prompt can
+  // say which image it talks about.
+  const attachFiles = (files: readonly File[]) => {
     if (!acceptsImages) {
       pushItem(v.id, 'error', t('chat.imagesUnsupported'))
-      return true
+      return
     }
-    const { accepted, rejected } = pickImageFiles(imageFilesOf(data), images.length)
+    const { accepted, rejected } = pickImageFiles(files, images.length)
     if (rejected.some((r) => r.reason !== 'count')) pushItem(v.id, 'error', t('chat.imageRejected'))
     if (rejected.some((r) => r.reason === 'count')) pushItem(v.id, 'error', t('chat.imageTooMany', { n: MAX_PROMPT_IMAGES }))
-    if (accepted.length)
-      readImageFiles(accepted).then(
-        (urls) => setImages((prev) => [...prev, ...urls].slice(0, MAX_PROMPT_IMAGES)),
-        () => pushItem(v.id, 'error', t('chat.imageRejected'))
-      )
+    if (!accepted.length) return
+    const from = images.length
+    const el = composer.current
+    const caret = el && document.activeElement === el ? el.selectionStart : text.length
+    readImageFiles(accepted).then(
+      (urls) => {
+        setImages((prev) => [...prev, ...urls].slice(0, MAX_PROMPT_IMAGES))
+        let after = caret
+        setText((current) => {
+          const next = insertImageMarkers(current, caret, imageLabel, from, urls.length)
+          after = next.caret
+          return next.text
+        })
+        requestAnimationFrame(() => {
+          el?.focus()
+          el?.setSelectionRange(after, after)
+        })
+      },
+      () => pushItem(v.id, 'error', t('chat.imageRejected'))
+    )
+  }
+  const attach = (data: DataTransfer): boolean => {
+    if (!hasImageFiles(data) && !imageFilesOf(data).length) return false
+    attachFiles(imageFilesOf(data))
     return true
+  }
+  const pickFiles = (e: ChangeEvent<HTMLInputElement>) => {
+    attachFiles([...(e.target.files ?? [])])
+    e.target.value = ''
+  }
+  const removeImage = (i: number) => {
+    setImages((prev) => prev.filter((_, j) => j !== i))
+    setText((current) => removeImageMarker(current, imageLabel, i + 1))
   }
 
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -517,8 +600,14 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
           <div ref={bottom} />
         </div>
       </div>
-      <div className="shrink-0 px-6 pb-5">
-        <div className="w-full rounded-xl border border-border bg-surface shadow-md transition-colors focus-within:border-accent/60" onDragOver={onDragOver} onDrop={onDrop}>
+      <div className="shrink-0 px-6 pb-4">
+        <div
+          className={cn('@container w-full rounded-xl border border-border bg-surface shadow-sm transition-colors focus-within:border-accent/60', open && 'cursor-text')}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          onClick={focusFromBox}
+          data-testid="composer"
+        >
           <BudgetNotice
             status={gate.status}
             account={accountLabel(usageSettings.accountsOf(v.agentId), reads.find((r) => r.key === gate.key)?.name ?? v.accountName ?? '')}
@@ -570,11 +659,12 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
               {images.map((src, i) => (
                 <li key={i} className="relative">
                   <img src={src} alt={t('chat.imageAlt', { n: i + 1 })} className="size-14 rounded-md border border-border object-cover" />
+                  <ImageNumber n={i + 1} />
                   <IconButton
                     size="sm"
                     label={t('chat.removeImage', { n: i + 1 })}
                     icon={<X className="size-3" />}
-                    onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                    onClick={() => removeImage(i)}
                     className="absolute -top-1.5 -right-1.5 size-5 rounded-full border border-border bg-surface-raised"
                   />
                 </li>
@@ -584,43 +674,58 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
           {menu.length > 0 && (
             <SlashCommandMenu sessionId={v.id} agentName={v.agentName} commands={menu} selected={menuIndex} onPick={pickCommand} onHover={setMenuSelected} />
           )}
-          <textarea
-            ref={composer}
-            aria-label={t('chat.prompt')}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={menu.length > 0}
-            aria-controls={menu.length > 0 ? `slash-${v.id}` : undefined}
-            aria-activedescendant={menu.length > 0 ? slashOptionId(v.id, menuIndex) : undefined}
-            rows={2}
-            value={text}
-            disabled={!open}
-            placeholder={t(placeholder)}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            className="block max-h-48 min-h-14 w-full resize-none bg-transparent px-4 pt-3 text-base text-text placeholder:text-subtle focus:outline-none disabled:opacity-60"
-          />
-          <div className="flex items-center gap-2 px-3 pb-1.5">
-            <span className="min-w-0 truncate text-xs text-subtle" title={acceptsImages ? t('chat.keysImages') : t('chat.keys')}>
-              {acceptsImages ? t('chat.keysImages') : t('chat.keys')}
-            </span>
-            <div className="ml-auto flex items-center gap-1.5">
+          <div className="relative">
+            {/* The keys, where the text will go, while there is none: gone as soon as typing starts, and on a narrow pane. */}
+            {text === '' && v.state === 'ready' && (
+              <span className="pointer-events-none absolute top-2.5 right-3.5 hidden items-center gap-2.5 text-2xs text-subtle @md:flex" data-testid="composer-keys">
+                <KeyHint keys="↵">{t('chat.keyEnter')}</KeyHint>
+                <KeyHint keys="⇧↵">{t('chat.keyNewLine')}</KeyHint>
+                <KeyHint keys="/">{t('chat.keyCommands')}</KeyHint>
+              </span>
+            )}
+            <textarea
+              ref={composer}
+              aria-label={t('chat.prompt')}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={menu.length > 0}
+              aria-controls={menu.length > 0 ? `slash-${v.id}` : undefined}
+              aria-activedescendant={menu.length > 0 ? slashOptionId(v.id, menuIndex) : undefined}
+              rows={1}
+              value={text}
+              disabled={!open}
+              placeholder={t(placeholder)}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              className="block max-h-48 min-h-9 w-full resize-none overflow-y-auto bg-transparent px-3.5 pt-2.5 pb-1 text-base leading-normal text-text placeholder:text-subtle focus:outline-none disabled:opacity-60"
+            />
+          </div>
+          {/* One bar: what the session runs with on the left, the send button on the right. */}
+          <div className="flex items-center gap-1 px-2 pb-1.5">
+            {acceptsImages && (
+              <>
+                <input ref={fileInput} type="file" accept={PROMPT_IMAGE_TYPES.join(',')} multiple hidden onChange={pickFiles} data-testid="image-picker" />
+                <IconButton size="sm" className="size-6" label={t('chat.attachImages')} icon={<ImagePlus className="size-3.5" />} disabled={!open} onClick={() => fileInput.current?.click()} />
+              </>
+            )}
+            <SessionControls view={v} reportedModel={data.monitor.model} />
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               {v.state === 'busy' && (
-                <Button size="sm" variant="secondary" icon={<Square className="size-3" aria-hidden />} onClick={interrupt}>
+                <Button size="sm" variant="secondary" icon={<Square className="size-3" aria-hidden />} title={`${t('chat.interrupt')} · Esc`} onClick={interrupt}>
                   {t('chat.interrupt')}
                 </Button>
               )}
               <IconButton
                 label={t('chat.send')}
+                hint={<KeyCap>↵</KeyCap>}
                 icon={<ArrowUp className="size-4" />}
                 disabled={!canSend}
                 onClick={() => void send()}
-                className="bg-accent text-accent-fg hover:bg-accent-strong hover:text-accent-fg"
+                className="size-7 bg-accent text-accent-fg hover:bg-accent-strong hover:text-accent-fg"
               />
             </div>
           </div>
-          <SessionControls view={v} reportedModel={data.monitor.model} />
         </div>
       </div>
     </div>

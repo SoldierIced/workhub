@@ -55,6 +55,10 @@ function useTheme(): 'light' | 'dark' {
   return useAppearance()
 }
 
+/** Screens kept mounted (hidden) after their first visit; the others remount, which also re-reads their data. */
+const KEPT_ROUTES: ReadonlySet<Route> = new Set<Route>(['history', 'pullRequests'])
+const SCREEN_PANE = 'h-full animate-fade-in [scrollbar-gutter:stable] overflow-y-auto'
+
 function Shell() {
   const { t, tn, locale } = useI18n()
   const toast = useToast()
@@ -64,6 +68,12 @@ function Shell() {
   const sessionMap = useSessions()
   const accountUsage = useAccountUsage()
   const [route, setRoute] = useState<Route>('home')
+  // History and Pull requests stay mounted once visited: filters, selection and loaded lists survive a trip elsewhere.
+  const [visited, setVisited] = useState<ReadonlySet<Route>>(() => new Set())
+  useEffect(() => {
+    if (KEPT_ROUTES.has(route)) setVisited((prev) => (prev.has(route) ? prev : new Set(prev).add(route)))
+  }, [route])
+  const kept = KEPT_ROUTES.has(route) && !visited.has(route) ? [...visited, route] : [...visited]
   const [settingsTab, setSettingsTab] = useState('general')
   // Settings is a modal over whatever screen is up, not a screen of its own.
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -438,8 +448,17 @@ function Shell() {
             <SessionsScreen sessions={docked} selectedId={selectedSession} visible={route === 'sessions'} theme={theme} onNewSession={() => void quickSession()} />
             {selectedSession && detached.has(selectedSession) && <DetachedSessionNotice data={sessionMap[selectedSession]} />}
           </div>
-          {route !== 'sessions' && (
-            <div key={route} className="h-full animate-fade-in [scrollbar-gutter:stable] overflow-y-auto">
+          {kept.map((r) => (
+            <div key={r} className={r === route ? SCREEN_PANE : 'hidden'}>
+              {r === 'history' ? (
+                <HistoryScreen profileId={activeProfileId} profiles={profiles} onOpened={openSession} visible={route === 'history'} />
+              ) : (
+                <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
+              )}
+            </div>
+          ))}
+          {route !== 'sessions' && !KEPT_ROUTES.has(route) && (
+            <div key={route} className={SCREEN_PANE}>
               {route === 'home' ? (
                 <HomeScreen
                   profile={profile}
@@ -450,10 +469,6 @@ function Shell() {
                   onOpenPullRequest={openPullRequest}
                   onNavigate={navigate}
                 />
-              ) : route === 'history' ? (
-                <HistoryScreen profileId={activeProfileId} profiles={profiles} onOpened={openSession} />
-              ) : route === 'pullRequests' ? (
-                <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
               ) : route === 'health' ? (
                 <HealthScreen profile={profile} projectFolders={projectFolders} onOpenSettings={openSettings} onInvestigate={investigate} />
               ) : route === 'tickets' ? (

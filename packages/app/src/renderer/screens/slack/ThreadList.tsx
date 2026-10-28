@@ -1,10 +1,12 @@
 import { Archive, BellRing, ChevronRight, Clock, ExternalLink, GitPullRequest, Hash, MessageSquareReply, RotateCcw, SquareArrowOutUpRight, Ticket, Trash2, X } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { archivedThreadIds, hasUnread, plainText, threadActivity, type TrackedThread } from '@workhub/core'
 import { Avatar, Badge, Button, IconButton, Switch } from '../../components/atoms'
+import { ConfirmDeleteDialog } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { relativeTime } from '../../lib/pullRequests'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 
 export interface ThreadActions {
   onOpenSession?: (thread: TrackedThread) => void
@@ -82,6 +84,11 @@ function ThreadCard({ thread: th, me, now, actions }: { thread: TrackedThread; m
   const channel = actions.channelName?.(th.channelId) ?? th.channelId
   const shown = th.replies.slice(-3)
   const lastWake = th.wakeLog[0]
+  const wake = useAsyncAction((on: boolean) => window.hub.slack.setWake(th.id, on))
+  const send = useAsyncAction(() => window.hub.slack.sendToSession(th.id))
+  const follow = useAsyncAction(() => window.hub.slack.setClosed(th.id, !th.closed))
+  const remove = useAsyncAction(() => window.hub.slack.remove(th.id))
+  const [confirming, setConfirming] = useState(false)
   return (
     <li className={cn('rounded-lg border border-border bg-surface p-3.5 shadow-sm transition-colors', th.closed && 'opacity-70')} data-testid="thread-card">
       <div className="flex items-start gap-2">
@@ -144,7 +151,7 @@ function ThreadCard({ thread: th, me, now, actions }: { thread: TrackedThread; m
       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5">
         {th.owner ? (
           <label className="mr-auto flex items-center gap-2 text-sm text-muted">
-            <Switch checked={th.wake} onChange={(v) => void window.hub.slack.setWake(th.id, v)} aria-label={t('slack.wake')} />
+            <Switch checked={th.wake} disabled={wake.pending} onChange={wake.run} aria-label={t('slack.wake')} />
             {t('slack.wake')}
           </label>
         ) : (
@@ -156,16 +163,18 @@ function ThreadCard({ thread: th, me, now, actions }: { thread: TrackedThread; m
           </Button>
         )}
         {th.owner && !th.closed && th.replies.length > 0 && (
-          <IconButton size="sm" label={t('slack.sendToSession')} icon={<MessageSquareReply className="size-3.5" />} onClick={() => void window.hub.slack.sendToSession(th.id)} />
+          <IconButton size="sm" label={t('slack.sendToSession')} icon={<MessageSquareReply className="size-3.5" />} disabled={send.pending} onClick={() => send.run()} />
         )}
         <IconButton
           size="sm"
           label={th.closed ? t('slack.reopen') : t('slack.stopFollowing')}
           icon={th.closed ? <RotateCcw className="size-3.5" /> : <X className="size-3.5" />}
-          onClick={() => void window.hub.slack.setClosed(th.id, !th.closed)}
+          disabled={follow.pending}
+          onClick={() => follow.run()}
         />
-        <IconButton size="sm" label={t('common.delete')} icon={<Trash2 className="size-3.5" />} onClick={() => void window.hub.slack.remove(th.id)} />
+        <IconButton size="sm" label={t('common.delete')} icon={<Trash2 className="size-3.5" />} disabled={remove.pending} onClick={() => setConfirming(true)} />
       </div>
+      <ConfirmDeleteDialog name={plainText(th.title) || th.permalink} open={confirming} onOpenChange={setConfirming} onConfirm={() => remove.run()} />
     </li>
   )
 }

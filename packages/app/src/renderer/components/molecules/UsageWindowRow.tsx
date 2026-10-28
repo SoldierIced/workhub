@@ -8,7 +8,7 @@ import { formatCountdown, shortReset, usageTone } from '../../lib/agent-usage'
 
 /** Short window names, so a window fits on one line. */
 const WINDOW_LABEL: Record<string, MessageKey> = { '5h': 'agentUsage.window.5h', weekly: 'agentUsage.window.weekly', monthly: 'agentUsage.window.monthly' }
-const TONE_CLASS = { danger: 'bg-danger', warning: 'bg-warning', normal: 'brand-gradient' } as const
+const TONE_CLASS = { danger: 'bg-danger', warning: 'bg-warning', normal: 'bg-accent' } as const
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 
@@ -38,10 +38,11 @@ export function useWindowLabel(): (window: string) => string {
   return (window) => (WINDOW_LABEL[window] ? t(WINDOW_LABEL[window]!) : window.replace(/^weekly /, ''))
 }
 
-function UsageBar({ percent, ceiling, label, tone, className }: { percent: number; ceiling?: number; label: string; tone: keyof typeof TONE_CLASS; className?: string }) {
+/** The bar: how much of the window is used, the ceiling as a mark. `className` gives its height and width. */
+function UsageBar({ percent, ceiling, label, tone, className }: { percent: number; ceiling?: number; label: string; tone: keyof typeof TONE_CLASS; className: string }) {
   return (
     <span
-      className={cn('relative h-1.5 overflow-hidden rounded-full bg-surface-hover', className)}
+      className={cn('relative overflow-hidden rounded-full bg-surface-hover', className)}
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}
@@ -56,33 +57,22 @@ function UsageBar({ percent, ceiling, label, tone, className }: { percent: numbe
 
 const TONE_TEXT = { danger: 'text-danger', warning: 'text-warning', normal: '' } as const
 
-/** A window in a few characters, to sit beside another one: `5h ▮▮▯ 47%`. Details on hover. */
-export function UsageWindowChip({ w, ceiling, now }: { w: PlanUsageWindow; ceiling?: number; now: number }) {
-  const label = useWindowLabel()(w.window)
-  const tone = usageTone(w.percent, ceiling)
-  return (
-    <span className="flex min-w-0 items-center gap-1 text-xs" data-testid="usage-window">
-      <span className="shrink-0 text-subtle">{label}</span>
-      <UsageBar percent={w.percent} ceiling={ceiling} label={label} tone={tone} className="w-6 shrink-0" />
-      <span className={cn('shrink-0 font-medium tabular-nums', TONE_TEXT[tone])}>{Math.round(w.percent)}%</span>
-    </span>
-  )
-}
-
 /**
- * One plan usage window on one line: short name · bar (with the ceiling mark) · percent · short
- * reset (`18:59` today, `Thu 17:59` this week). The full reset date, credits and ceiling are on hover.
+ * One plan usage window on one line: short name · bar (with the ceiling mark) · percent used ·
+ * short reset (`18:59` today, `Thu 17:59` this week). The full reset date, credits and ceiling are
+ * on hover. `compact` (the sidebar) drops the reset and sizes the name to its text, so two windows
+ * share one line.
  */
-export function UsageWindowRow({ w, ceiling, now, className }: { w: PlanUsageWindow; ceiling?: number; now: number; className?: string }) {
+export function UsageWindowRow({ w, ceiling, now, compact = false, className }: { w: PlanUsageWindow; ceiling?: number; now: number; compact?: boolean; className?: string }) {
   const { formatDate } = useI18n()
   const tone = usageTone(w.percent, ceiling)
   const label = useWindowLabel()(w.window)
   return (
-    <span className={cn('flex items-center gap-1.5 text-xs', className)} data-testid="usage-window">
-      <span className="w-11 shrink-0 truncate text-subtle">{label}</span>
-      <UsageBar percent={w.percent} ceiling={ceiling} label={label} tone={tone} className="min-w-8 flex-1" />
-      <span className={cn('w-8 shrink-0 text-right font-medium tabular-nums', tone === 'danger' && 'text-danger', tone === 'warning' && 'text-warning')}>{Math.round(w.percent)}%</span>
-      <span className="w-16 shrink-0 truncate text-right text-2xs text-subtle tabular-nums">{w.resetsAt !== undefined ? shortReset(w.resetsAt, now, formatDate) : ''}</span>
+    <span className={cn('flex items-center gap-1.5 text-xs', className)} data-testid="usage-window" data-window={w.window}>
+      <span className={cn('shrink-0 truncate text-subtle', !compact && 'w-12')}>{label}</span>
+      <UsageBar percent={w.percent} ceiling={ceiling} label={label} tone={tone} className={cn('min-w-8 flex-1', compact ? 'h-1.5' : 'h-2')} />
+      <span className={cn('shrink-0 text-right font-medium tabular-nums', compact ? 'w-7' : 'w-8', TONE_TEXT[tone])}>{Math.round(w.percent)}%</span>
+      {!compact && <span className="w-16 shrink-0 truncate text-right text-2xs text-subtle tabular-nums">{w.resetsAt !== undefined ? shortReset(w.resetsAt, now, formatDate) : ''}</span>}
     </span>
   )
 }

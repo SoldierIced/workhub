@@ -1,7 +1,7 @@
 import { ChevronRight, CircleAlert, Folder, History, MessagesSquare, Search, Settings, SquareTerminal, UserRound } from 'lucide-react'
 import { AgentIcon } from '../components/atoms/AgentIcon'
 import { ContextMenu } from 'radix-ui'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { groupAutomationHistory, groupHistory, historyId, historyInProfile, isThrowawayFolder, owningProfile, type FolderProfile, type Profile } from '@workhub/core'
 import type { HistoryItem, HistoryResult, SessionView } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Spinner } from '../components/atoms'
@@ -18,6 +18,8 @@ export interface HistoryScreenProps {
   /** Every profile, for the profile filter. */
   profiles?: Profile[]
   onOpened: (sessionId: string) => void
+  /** False while another screen shows; the list reloads in the background when History comes back. */
+  visible?: boolean
 }
 
 export interface HistoryFilter {
@@ -71,7 +73,7 @@ export function historyAgents(entries: HistoryItem[]): { id: string; name: strin
 const ALL = '*'
 
 /** Every session of every agent that keeps a history, searchable, filterable by agent, grouped by folder. */
-export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScreenProps) {
+export function HistoryScreen({ profileId, profiles = [], onOpened, visible = true }: HistoryScreenProps) {
   const { t, tn, formatDate } = useI18n()
   const toast = useToast()
   const sessionMap = useSessions()
@@ -82,6 +84,8 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
   const [result, setResult] = useState<HistoryResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
+  // Grouping and fuzzy matching run on the settled text, so typing never waits for them.
+  const deferredQuery = useDeferredValue(query)
   const [account, setAccount] = useState(ALL)
   const [agent, setAgent] = useState(ALL)
   const [error, setError] = useState('')
@@ -98,8 +102,8 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
     }
   }, [])
   useEffect(() => {
-    void load()
-  }, [load])
+    if (visible) void load()
+  }, [load, visible])
 
   const [home, setHome] = useState<string | undefined>()
   useEffect(() => {
@@ -110,8 +114,8 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
   // An automation's runs collapse into one row per automation; the other sessions group by folder.
   const [hideAutomations, setHideAutomations] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
-  const byAutomation = useMemo(() => groupAutomationHistory(entries, query), [entries, query])
-  const groups = useMemo(() => groupHistory(byAutomation.rest, query), [byAutomation, query])
+  const byAutomation = useMemo(() => groupAutomationHistory(entries, deferredQuery), [entries, deferredQuery])
+  const groups = useMemo(() => groupHistory(byAutomation.rest, deferredQuery), [byAutomation, deferredQuery])
   const automationGroups = hideAutomations ? [] : byAutomation.groups
   const toggleAutomation = (id: string) =>
     setExpanded((prev) => {
@@ -121,6 +125,10 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
     })
   const accounts = useMemo(() => historyAccounts(result?.entries ?? []), [result])
   const agents = useMemo(() => historyAgents(result?.entries ?? []), [result])
+  // Long histories render a page at a time: every row carries a context menu, and one folder can hold hundreds.
+  const [limit, setLimit] = useState(HISTORY_PAGE)
+  useEffect(() => setLimit(HISTORY_PAGE), [deferredQuery, agent, account, profileFilter, hideAutomations])
+  const page = useMemo(() => pageGroups(groups, limit), [groups, limit])
 
   const resume = async (e: HistoryItem, mode: 'app' | 'console') => {
     // Already open: show it rather than start a second copy of the conversation.
@@ -332,19 +340,24 @@ export function HistoryScreen({ profileId, profiles = [], onOpened }: HistoryScr
           </ul>
         </section>
       )}
-      {groups.map((g) => (
+      {page.groups.map((g) => (
         <section key={g.folder} aria-label={g.folder || t('history.noFolder')} className="flex flex-col gap-1.5">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-muted" title={g.folder}>
             <Folder className="size-3.5 text-subtle" aria-hidden />
             {g.folder ? folderName(g.folder) : t('history.noFolder')}
             <span className="truncate font-mono text-xs font-normal text-subtle">{g.folder}</span>
-            <span className="ml-auto text-xs font-normal text-subtle tabular-nums">{g.entries.length}</span>
+            <span className="ml-auto text-xs font-normal text-subtle tabular-nums">{g.total}</span>
           </h2>
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
             {g.entries.map(renderEntry)}
           </ul>
         </section>
       ))}
+      {page.hidden > 0 && (
+        <Button variant="secondary" className="self-center" onClick={() => setLimit((n) => n + HISTORY_PAGE)} data-testid="history-show-more">
+          {t('history.showMore', { hidden: page.hidden })}
+        </Button>
+      )}
       {result && groups.length > 0 && <p className="text-xs text-subtle">{t('history.doubleClick')}</p>}
     </div>
   )
@@ -355,6 +368,31 @@ function startOfToday(): number {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
   return d.getTime()
+}
+
+/** Rows shown before "Show more". */
+export const HISTORY_PAGE = 50
+
+/**
+ * The first `limit` rows across the folder groups, in order. `total` keeps each folder's real count
+ * for its heading; `hidden` is how many rows stay unrendered.
+ */
+export function pageGroups<E, G extends { entries: E[] }>(groups: readonly G[], limit: number): { groups: (G & { total: number })[]; hidden: number } {
+  const out: (G & { total: number })[] = []
+  let left = Math.max(0, limit)
+  let hidden = 0
+  for (const g of groups) {
+    const total = g.entries.length
+    if (left >= total) {
+      out.push({ ...g, total })
+      left -= total
+    } else {
+      if (left > 0) out.push({ ...g, entries: g.entries.slice(0, left), total })
+      hidden += total - left
+      left = 0
+    }
+  }
+  return { groups: out, hidden }
 }
 
 const MENU_CONTENT = 'z-50 min-w-48 animate-fade-in rounded-md border border-border bg-surface-raised p-1 shadow-lg'

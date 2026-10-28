@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isEditable, shouldFocusComposer } from '../src/renderer/lib/composer-focus'
-import { MAX_IMAGE_FILE_BYTES, MAX_PROMPT_IMAGES, checkImageFile, pickImageFiles } from '../src/renderer/lib/images'
+import { MAX_IMAGE_FILE_BYTES, MAX_PROMPT_IMAGES, checkImageFile, insertImageMarkers, pickImageFiles, removeImageMarker } from '../src/renderer/lib/images'
 import { PromptQueues, acceptsInput, restoreComposer, submitMode } from '../src/renderer/lib/prompt-queue'
 import { withTurnEnd, type SessionData } from '../src/renderer/store'
 
@@ -252,5 +252,27 @@ describe('composer focus', () => {
     expect(isEditable({ tagName: 'INPUT' } as Element)).toBe(true)
     expect(isEditable({ tagName: 'DIV', isContentEditable: true } as unknown as Element)).toBe(true)
     expect(isEditable({ tagName: 'BUTTON' } as Element)).toBe(false)
+  })
+})
+
+describe('image markers in the prompt text', () => {
+  it('names each attached image where the caret is, kept apart from the words around', () => {
+    expect(insertImageMarkers('', 0, 'Image', 0, 1)).toEqual({ text: '[Image 1] ', caret: 10 })
+    expect(insertImageMarkers('this box', 8, 'Image', 0, 2)).toEqual({ text: 'this box [Image 1] [Image 2] ', caret: 29 })
+    expect(insertImageMarkers('this box looks big', 8, 'Image', 1, 1)).toEqual({ text: 'this box [Image 2] looks big', caret: 18 })
+    // No extra spaces next to the ones already there; the caret is clamped to the text.
+    expect(insertImageMarkers('a  b', 2, 'Imagen', 0, 1).text).toBe('a [Imagen 1] b')
+    expect(insertImageMarkers('ab', 9, 'Image', 0, 1).text).toBe('ab [Image 1] ')
+    expect(insertImageMarkers('ab', 1, 'Image', 0, 0)).toEqual({ text: 'ab', caret: 1 })
+  })
+
+  it('drops a removed image’s marker and renumbers the ones after it', () => {
+    expect(removeImageMarker('see [Image 1] and [Image 2] then [Image 3]', 'Image', 2)).toBe('see [Image 1] and then [Image 2]')
+    expect(removeImageMarker('[Image 1] first', 'Image', 1)).toBe('first')
+    expect(removeImageMarker('last [Image 1]', 'Image', 1)).toBe('last')
+    expect(removeImageMarker('[Image 1] [Image 2]', 'Image', 1)).toBe('[Image 1]')
+    // Other numbers and other words are left alone.
+    expect(removeImageMarker('[Image 10] [Image 1] [Imagen 1]', 'Image', 1)).toBe('[Image 9] [Imagen 1]')
+    expect(removeImageMarker('nothing here', 'Image', 1)).toBe('nothing here')
   })
 })

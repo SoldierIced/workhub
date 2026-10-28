@@ -1,5 +1,5 @@
 import { Bot, GitBranch, History, Search } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { historyId, sessionsOfFolder } from '@workhub/core'
 import type { HistoryItem } from '@shared/api'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -36,6 +36,7 @@ export function ResumeSheet({ folder, profileId, onClose, onOpened }: ResumeShee
   const [selected, setSelected] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const listRef = useRef<HTMLUListElement>(null)
 
   useEffect(() => {
     if (!folder) return
@@ -104,7 +105,22 @@ export function ResumeSheet({ folder, profileId, onClose, onOpened }: ResumeShee
       <div className="flex flex-col gap-3">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-subtle" aria-hidden />
-          <Input autoFocus aria-label={t('resume.search')} placeholder={t('resume.search')} value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8!" spellCheck={false} />
+          <Input
+            autoFocus
+            aria-label={t('resume.search')}
+            placeholder={t('resume.search')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(k) => {
+              // Return resumes the highlighted session; ↓ moves into the list.
+              if (k.key === 'Enter') return void resume(current, 'app')
+              if (k.key !== 'ArrowDown') return
+              k.preventDefault()
+              listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus()
+            }}
+            className="pl-8!"
+            spellCheck={false}
+          />
         </div>
         {error && (
           <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -128,7 +144,7 @@ export function ResumeSheet({ folder, profileId, onClose, onOpened }: ResumeShee
             </div>
           )}
           {list.length > 0 && (
-            <ul role="listbox" aria-label={t('resume.title')} className="flex flex-col divide-y divide-border">
+            <ul ref={listRef} role="listbox" aria-label={t('resume.title')} className="flex flex-col divide-y divide-border">
               {list.map((e) => {
                 const id = historyId(e)
                 const picked = id === selected
@@ -147,9 +163,13 @@ export function ResumeSheet({ folder, profileId, onClose, onOpened }: ResumeShee
                       if (!step) return
                       k.preventDefault()
                       const next = list[list.indexOf(e) + step]
-                      if (next) setSelected(historyId(next))
+                      if (!next) return
+                      setSelected(historyId(next))
+                      // Focus follows the pick, so the highlighted row is the one that gets the next key.
+                      const row = step > 0 ? k.currentTarget.nextElementSibling : k.currentTarget.previousElementSibling
+                      if (row instanceof HTMLElement) row.focus()
                     }}
-                    className={cn('flex cursor-default flex-col gap-0.5 px-3 py-2 outline-none', picked ? 'bg-accent-soft' : 'hover:bg-surface-hover')}
+                    className={cn('flex cursor-default flex-col gap-0.5 px-3 py-2 outline-none focus-visible:ring-1 focus-visible:ring-accent/40 focus-visible:ring-inset', picked ? 'bg-accent-soft' : 'hover:bg-surface-hover')}
                   >
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-base font-medium">{e.title || t('history.untitled')}</span>

@@ -2,7 +2,7 @@ import { Gauge } from 'lucide-react'
 import { AgentIcon } from '../atoms/AgentIcon'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
-import { accountTitle, UsageRowTooltip, UsageWindowChip, useWindowHover } from '../molecules/UsageWindowRow'
+import { accountTitle, UsageRowTooltip, UsageWindowRow, useWindowHover } from '../molecules/UsageWindowRow'
 import { UsageRefreshButton } from '../molecules/UsageRefreshButton'
 import { ApiSpendList } from '../molecules/ApiSpendList'
 import type { UsageGroup } from '../../lib/home'
@@ -18,8 +18,8 @@ const AGENT_NAME: Record<string, MessageKey> = { claude: 'agentUsage.agent.claud
 
 /**
  * Plan usage at the bottom of the sidebar (Workhub 1's "Claude usage"), compact so the folders
- * above stay visible: per account its name and next reset, then its main windows side by side
- * (`5h ▮▮▯ 47%  week ▮▯ 91%`). Per-model windows, full dates and credits are on hover. Claude,
+ * above stay visible: per account its name and next reset, then its main windows side by side on
+ * one line (`5h ▮▮▮▯ 47%  week ▮▮▮▮ 91%`). The other windows, full dates and credits are on hover. Claude,
  * Codex and Kiro, from what running agents report or from each account's own read (Settings →
  * Usage). Kiro reads like a Claude account (its monthly credits); what it spent is on hover, and
  * on the row only while its credits left are not read.
@@ -50,7 +50,7 @@ export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: 
       ) : (
         <div className="mt-1 flex flex-col gap-0.5">
           {groups.map((g) => {
-            const { shown, extra } = compactWindows(g.windows)
+            const { shown } = compactWindows(g.windows)
             const ceilings = budget.ceilings[g.key]
             const reset = shown.find((w) => w.resetsAt !== undefined)?.resetsAt
             const plan = g.windows.find((w) => w.plan)?.plan
@@ -79,15 +79,10 @@ export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: 
                   {g.error ? (
                     <p className="text-xs text-danger">{t('usage.readFailed')}</p>
                   ) : (
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="mt-0.5 flex min-w-0 items-center gap-2.5 pl-5">
                       {shown.map((w) => (
-                        <UsageWindowChip key={w.window} w={w} ceiling={ceilings?.[w.window]} now={now} />
+                        <UsageWindowRow key={w.window} w={w} ceiling={ceilings?.[w.window]} now={now} compact className="min-w-0 flex-1" />
                       ))}
-                      {extra.length > 0 && (
-                        <span className="shrink-0 text-2xs text-subtle" data-testid="usage-extra">
-                          +{extra.length}
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>

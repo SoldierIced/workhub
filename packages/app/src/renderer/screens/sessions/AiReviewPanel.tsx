@@ -14,6 +14,7 @@ import { ESCALATION_TEXT } from '../../lib/useAiReviewNotices'
 import { errorText } from '../../lib/errorText'
 import { requestOpen } from '../../lib/continuity'
 import { usageWindowName } from '../../lib/usage-window'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 
 export const REVIEW_STATUS_TONE: Record<ReviewStatus, Tone> = {
   reviewing: 'info',
@@ -98,6 +99,8 @@ const LOOP_TONE: Record<ReviewLoopPhase, Tone> = { briefing: 'info', starting: '
 /** Where a "Review with another agent" loop is, in both of its chats: round, who it waits on, Stop. */
 export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sessionId: string }) {
   const { t } = useI18n()
+  const dismiss = useAsyncAction(() => window.hub.aiReview.dismissLoop(loop.id))
+  const stopLoop = useAsyncAction(() => window.hub.aiReview.stopLoop(loop.id))
   const ended = LOOP_ENDED.includes(loop.phase)
   const other = sessionId === loop.authorSessionId ? loop.reviewerSessionId : loop.authorSessionId
   return (
@@ -124,11 +127,11 @@ export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sess
           </Button>
         )}
         {ended ? (
-          <Button size="sm" variant="ghost" onClick={() => void window.hub.aiReview.dismissLoop(loop.id)}>
+          <Button size="sm" variant="ghost" disabled={dismiss.pending} onClick={() => dismiss.run()}>
             {t('agentReview.dismiss')}
           </Button>
         ) : (
-          <Button size="sm" variant="ghost" data-testid="review-loop-stop" onClick={() => void window.hub.aiReview.stopLoop(loop.id)}>
+          <Button size="sm" variant="ghost" data-testid="review-loop-stop" disabled={stopLoop.pending} onClick={() => stopLoop.run()}>
             {t('agentReview.stop')}
           </Button>
         )}
@@ -139,6 +142,7 @@ export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sess
 
 function FindingRow({ review, f, selected, onSelect }: { review: AiReviewView; f: ReviewFinding; selected: boolean; onSelect: (on: boolean) => void }) {
   const { t } = useI18n()
+  const setStatus = useAsyncAction((status: FindingStatus) => window.hub.aiReview.setFindingStatus(review.id, [f.id], status))
   return (
     <li className="flex flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm" data-testid={`ai-finding-${f.id}`}>
       <div className="flex items-start gap-1.5">
@@ -159,7 +163,8 @@ function FindingRow({ review, f, selected, onSelect }: { review: AiReviewView; f
       <Select
         aria-label={t('aiReview.findingStatus', { id: f.id })}
         value={f.status}
-        onChange={(v) => void window.hub.aiReview.setFindingStatus(review.id, [f.id], v as FindingStatus)}
+        onChange={(v) => setStatus.run(v as FindingStatus)}
+        disabled={setStatus.pending}
         options={FINDING_STATES.map((s) => ({ value: s, label: t(`aiReview.findingState.${s}`) }))}
         className="h-7 text-xs"
       />
@@ -170,6 +175,10 @@ function FindingRow({ review, f, selected, onSelect }: { review: AiReviewView; f
 /** The Review panel of a dev session: rounds, findings by severity and the user's controls. */
 export function AiReviewSection({ view }: { view: SessionView }) {
   const { t } = useI18n()
+  const dismissHold = useAsyncAction((identity: string) => window.hub.aiReview.dismissHold(identity))
+  const resume = useAsyncAction((reviewId: string) => window.hub.aiReview.continue(reviewId))
+  const dismissFindings = useAsyncAction((reviewId: string, ids: string[]) => window.hub.aiReview.setFindingStatus(reviewId, ids, 'dismissed'))
+  const stopReview = useAsyncAction((reviewId: string) => window.hub.aiReview.stop(reviewId))
   const toast = useToast()
   const snap = useAiReviews()
   const config = useConfig()
@@ -209,7 +218,7 @@ export function AiReviewSection({ view }: { view: SessionView }) {
               <Button size="sm" variant="primary" onClick={() => void run(true)}>
                 {t('aiReview.runAnyway')}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => void window.hub.aiReview.dismissHold(hold.devIdentity)}>
+              <Button size="sm" variant="ghost" disabled={dismissHold.pending} onClick={() => dismissHold.run(hold.devIdentity)}>
                 {t('aiReview.dismissHold')}
               </Button>
             </div>
@@ -269,15 +278,16 @@ export function AiReviewSection({ view }: { view: SessionView }) {
             })}
             <div className="flex flex-wrap gap-1.5">
               {review.status === 'paused' && (
-                <Button size="sm" variant="primary" title={t('aiReview.continueHint')} data-testid="ai-review-continue" onClick={() => void window.hub.aiReview.continue(review.id)}>
+                <Button size="sm" variant="primary" title={t('aiReview.continueHint')} data-testid="ai-review-continue" disabled={resume.pending} onClick={() => resume.run(review.id)}>
                   {t('aiReview.continue')}
                 </Button>
               )}
               {selected.length > 0 && (
                 <Button
                   size="sm"
+                  disabled={dismissFindings.pending}
                   onClick={() => {
-                    void window.hub.aiReview.setFindingStatus(review.id, selected, 'dismissed')
+                    dismissFindings.run(review.id, selected)
                     setSelected([])
                   }}
                 >
@@ -290,7 +300,7 @@ export function AiReviewSection({ view }: { view: SessionView }) {
                 </Button>
               )}
               {review.status !== 'stopped' && (
-                <Button size="sm" variant="ghost" onClick={() => void window.hub.aiReview.stop(review.id)}>
+                <Button size="sm" variant="ghost" disabled={stopReview.pending} onClick={() => stopReview.run(review.id)}>
                   {t('aiReview.stop')}
                 </Button>
               )}

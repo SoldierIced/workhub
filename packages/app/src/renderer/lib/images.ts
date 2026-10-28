@@ -74,3 +74,40 @@ export function readImageFiles(files: readonly File[]): Promise<string[]> {
     )
   )
 }
+
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** The marker of image `n` in a prompt's text: `[Image 2]` (the word is the reader's language). */
+export function imageMarker(label: string, n: number): string {
+  return `[${label} ${n}]`
+}
+
+/**
+ * Puts the markers of images `from + 1` to `from + count` into the text at the caret, so the prompt
+ * can say which pasted image it talks about. A space keeps them apart from the words around them.
+ * Returns the new text and where the caret goes, right after the markers.
+ */
+export function insertImageMarkers(text: string, caret: number, label: string, from: number, count: number): { text: string; caret: number } {
+  if (count <= 0) return { text, caret }
+  const at = Math.max(0, Math.min(caret, text.length))
+  const before = text.slice(0, at)
+  const after = text.slice(at)
+  const markers = Array.from({ length: count }, (_, i) => imageMarker(label, from + i + 1)).join(' ')
+  const lead = before && !/\s$/.test(before) ? ' ' : ''
+  const trail = !after || !/^\s/.test(after) ? ' ' : ''
+  const inserted = `${lead}${markers}${trail}`
+  return { text: before + inserted + after, caret: at + inserted.length }
+}
+
+/**
+ * Takes image `n`'s marker out of the text (with the space that kept it apart) and renumbers the
+ * markers after it, so each still names the image it was put in for.
+ */
+export function removeImageMarker(text: string, label: string, n: number): string {
+  const own = new RegExp(`( ?)${escapeRegExp(imageMarker(label, n))}( ?)`, 'g')
+  const any = new RegExp(`\\[${escapeRegExp(label)} (\\d+)\\]`, 'g')
+  return text.replace(own, (_m, lead: string, trail: string) => (lead && trail ? ' ' : '')).replace(any, (m, digits: string) => {
+    const k = Number(digits)
+    return k > n ? imageMarker(label, k - 1) : m
+  })
+}

@@ -67,12 +67,12 @@ function ModeControl({ view: v }: { view: SessionView }) {
 }
 
 /**
- * The model and permission mode of the session, as small borderless menus under the composer's
- * input (Workhub 1's session controls). Wraps on a narrow pane; never overlaps the input row.
+ * The model and permission mode of the session, as small borderless menus in the composer's bottom
+ * bar (Workhub 1's session controls). Each one truncates on a narrow pane; neither wraps.
  */
 export function SessionControls({ view, reportedModel }: { view: SessionView; reportedModel?: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 px-2 pb-2" data-testid="composer-controls">
+    <div className="flex min-w-0 items-center gap-x-1" data-testid="composer-controls">
       <ModelControl view={view} reported={reportedModel} />
       <ModeControl view={view} />
     </div>
