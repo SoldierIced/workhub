@@ -550,17 +550,8 @@ export class SessionManager {
     // An agent that only reports its session id now (ACP) gives the session its real identity; the
     // group place it may have been given under the provisional one moves with it.
     if (patch.agentSessionId && patch.agentSessionId !== s.view.identity) {
-      const previous = s.view.identity
       patch.identity = patch.agentSessionId
-      if (previous) this.deps.names?.move(previous, patch.agentSessionId)
-      if (previous) {
-        try {
-          const moved = await this.deps.config.replaceSessionIdentity(previous, patch.agentSessionId)
-          if (moved?.ok) this.deps.emitConfigChanged?.()
-        } catch {
-          // The groups are a convenience; the session still starts.
-        }
-      }
+      await this.moveIdentity(s.view.identity, patch.agentSessionId)
     }
     if (started.permissionMode) patch.permissionMode = started.permissionMode
     if (started.currentModeId) patch.currentModeId = started.currentModeId
@@ -580,6 +571,31 @@ export class SessionManager {
     if (started.models?.length || started.availableModes?.length) {
       this.deps.onAgentOptions?.(s.agent.id, s.account?.id ?? null, { models: started.models ?? [], modes: started.availableModes ?? [] })
     }
+  }
+
+  /** The session's name and sidebar place follow it to a new identity. */
+  private async moveIdentity(previous: string | undefined, next: string): Promise<void> {
+    if (!previous || previous === next) return
+    this.deps.names?.move(previous, next)
+    try {
+      const moved = await this.deps.config.replaceSessionIdentity(previous, next)
+      if (moved?.ok) this.deps.emitConfigChanged?.()
+    } catch {
+      // The groups are a convenience; the session goes on.
+    }
+  }
+
+  /**
+   * The agent moved the conversation to a new session id (Claude's `/clear`): the session takes it
+   * as its id and identity, so its monitor, a resume and its sidebar place follow the live
+   * conversation. The session driver sees the new identity and tells the automations and the
+   * chat watcher.
+   */
+  private followAgentSession(s: ManagedSession, agentSessionId: string): void {
+    if (s.view.agentSessionId === agentSessionId) return
+    const previous = s.view.identity
+    this.update(s.view.id, { agentSessionId, identity: agentSessionId })
+    void this.moveIdentity(previous, agentSessionId)
   }
 
   private async startConsole(s: ManagedSession, cols?: number, rows?: number): Promise<void> {
@@ -722,6 +738,7 @@ export class SessionManager {
       }
     }
     if (s && !channel) {
+      if (e.type === 'agentSession') this.followAgentSession(s, e.agentSessionId)
       if (e.type === 'permissionMode') this.update(id, { permissionMode: e.mode, currentModeId: e.currentModeId })
       if (e.type === 'models') {
         this.update(id, { models: e.models, ...(e.currentModelId ? { currentModelId: e.currentModelId } : {}) })
