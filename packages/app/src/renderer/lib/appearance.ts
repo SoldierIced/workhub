@@ -33,6 +33,19 @@ export function applyAppearance(prefs: Prefs, systemDark: boolean): 'light' | 'd
 }
 
 /** Keeps <html> in sync with the appearance preferences and tells the main process (native chrome). */
+/**
+ * Keeps <html> in step with the appearance preferences in a secondary window (popover, pull
+ * request, ticket, review, file viewer): a theme picked in Settings reaches it without a reload.
+ * The main window's `useAppearance` also tells main the native theme; this only paints.
+ */
+export function useAppliedAppearance(): void {
+  const prefs = usePrefs()
+  const systemDark = useSystemDark()
+  useEffect(() => {
+    applyAppearance(prefs, systemDark)
+  }, [prefs, systemDark])
+}
+
 export function useAppearance(): 'light' | 'dark' {
   const prefs = usePrefs()
   const systemDark = useSystemDark()
