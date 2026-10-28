@@ -3,7 +3,7 @@ import { appOptions, parseThresholds, setCeiling, type Result, type UsageBudgetO
 import type { AccountUsage, ConfigSnapshot } from '@shared/api'
 import { Button, Input, Switch } from '../components/atoms'
 import { Card, Field, HelpTip, SwitchRow } from '../components/molecules'
-import { usageWindowName } from '../lib/usage-window'
+import { usageCeilingLabel } from '../lib/usage-window'
 import { useI18n } from '../i18n/I18nProvider'
 import { budgetWindows } from '../lib/agent-usage'
 import { useAccountLabel, useAccountUsage } from '../lib/usage'
@@ -64,7 +64,7 @@ function AccountBudget({ read, budget, editable, save }: { read: AccountUsage; b
           return (
             <div key={window} className="flex items-end gap-1.5">
               <NumberField
-                label={t('agentUsage.settings.ceiling', { window: usageWindowName(window, t) })}
+                label={usageCeilingLabel(window, t)}
                 value={own?.[window]}
                 placeholder={t('agentUsage.settings.none')}
                 hint={current ? t('agentUsage.settings.current', { percent: Math.round(current.percent) }) : undefined}

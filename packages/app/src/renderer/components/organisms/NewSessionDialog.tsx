@@ -15,6 +15,7 @@ import { Select } from '../atoms/Select'
 import { Dialog } from '../molecules/Dialog'
 import { Field } from '../molecules/Field'
 import { errorText } from '../../lib/errorText'
+import { permissionModeLabel } from '../../lib/sessionHeader'
 import { currentConfig } from '../../configStore'
 
 export interface NewSessionDialogProps {
@@ -208,7 +209,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
                   onChange={setModeId}
                   options={[
                     { value: '', label: optionDefault(t('agentControls.agentDefault'), options?.defaultModeId) },
-                    ...(options?.modes ?? []).map((m) => ({ value: m.id, label: m.name }))
+                    ...(options?.modes ?? []).map((m) => ({ value: m.id, label: options?.modeSemantics === 'persona' ? m.name : permissionModeLabel({ id: m.id, label: m.name }, undefined, t) }))
                   ]}
                 />
               </Field>
