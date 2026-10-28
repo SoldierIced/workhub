@@ -1,5 +1,5 @@
 import { Cpu, Ear, Folder, MessagesSquare, MoreHorizontal, Shield, ShieldAlert, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import { effectiveAgentKey, sessionIdentity } from '@workhub/core'
 import type { SessionMode, SessionView } from '@shared/api'
 import { Badge, Button, IconButton, Select, STATE_TONE, StateDot, type Tone } from '../../components/atoms'
@@ -265,6 +265,16 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
   // Levels folded past the width's density because the row still overflowed at this width.
   const [fold, setFold] = useState({ width: 0, steps: 0 })
   const steps = fold.width === width ? fold.steps : 0
+  // Chips that render on their own (Slack, the activity timer) change the row without rendering the
+  // header: re-run the overflow check below whenever the identity's content changes.
+  const [, recheck] = useReducer((n: number) => n + 1, 0)
+  useLayoutEffect(() => {
+    const identity = identityRef.current
+    if (!identity || typeof MutationObserver === 'undefined') return
+    const observer = new MutationObserver(() => recheck())
+    observer.observe(identity, { childList: true, subtree: true, characterData: true })
+    return () => observer.disconnect()
+  }, [])
   const density: HeaderDensity = foldDensity(headerDensity(width), steps)
   // Before paint: if the row does not fit (long labels, an account name, many controls), fold one
   // more level into "More", so items never overlap. A new width starts over from its density.

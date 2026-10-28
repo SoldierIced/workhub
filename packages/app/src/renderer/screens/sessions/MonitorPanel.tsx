@@ -66,8 +66,12 @@ function serverTone(s: McpServerStatus) {
   return s.state === 'running' ? 'success' : s.state === 'needs-auth' || s.state === 'loading' ? 'warning' : s.state === 'failed' ? 'danger' : 'neutral'
 }
 
-/** The uncommitted changes of the repositories the session worked in (else of its folder), read every 30 s while the session is on screen. */
-function useLocalChanges(id: string, visible: boolean): { changes: LocalChanges | null; loaded: boolean } {
+/**
+ * The uncommitted changes of the repositories the session worked in (else of its folder), read every
+ * 30 s while the session is on screen, and again as soon as the folders it worked in change (`workKey`):
+ * the first read can come before the transcript was read, which lists every repository of a base folder.
+ */
+function useLocalChanges(id: string, visible: boolean, workKey: string): { changes: LocalChanges | null; loaded: boolean } {
   const [state, setState] = useState<{ changes: LocalChanges | null; loaded: boolean }>({ changes: null, loaded: false })
   useEffect(() => {
     if (!visible) return
@@ -83,7 +87,7 @@ function useLocalChanges(id: string, visible: boolean): { changes: LocalChanges 
       alive = false
       clearInterval(timer)
     }
-  }, [id, visible])
+  }, [id, visible, workKey])
   return state
 }
 
@@ -179,7 +183,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const profileId = v.profileId ?? config?.config.activeProfileId ?? null
   const fields = visibleMonitorFields(v.capabilities, m)
   const now = useNow(visible ? 5_000 : 600_000)
-  const { changes, loaded } = useLocalChanges(v.id, visible)
+  const { changes, loaded } = useLocalChanges(v.id, visible, m.workPaths?.join('\n') ?? '')
   const lists = useCachedPullRequestLists(profileId)
   const [dragging, setDragging] = useState<number | null>(null)
   const width = dragging ?? prefs.monitorWidth

@@ -162,7 +162,7 @@ function Frame({
   failed: boolean
   /** Collapsible content; none makes the header static. */
   body?: () => ReactNode
-  /** Content always visible under the header (a command, a checklist). */
+  /** Content always visible under the header (a checklist). */
   always?: ReactNode
   defaultOpen?: boolean
 }) {
@@ -308,8 +308,12 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
           failed={failed}
           head={<span className="truncate">{view.description ?? title}</span>}
           meta={exit !== undefined ? <Badge tone={exit === 0 ? 'neutral' : 'danger'}>{t('tool.exit', { code: exit })}</Badge> : undefined}
-          always={<pre className="max-h-32 overflow-auto rounded-sm bg-bg px-2 py-1 font-mono text-chat-xs whitespace-pre-wrap break-all text-text">{`$ ${view.command}`}</pre>}
-          body={result ? output : undefined}
+          body={() => (
+            <>
+              <pre className="rounded-sm bg-bg px-2 py-1 font-mono text-chat-xs whitespace-pre-wrap break-all text-text">{`$ ${view.command}`}</pre>
+              {result && output()}
+            </>
+          )}
           defaultOpen={failed}
         />
       )
@@ -323,8 +327,16 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
           failed={failed}
           head={<span className="truncate font-mono text-chat-xs text-text">{view.url}</span>}
           actions={href ? <IconAction label={t('tool.openLink')} icon={ExternalLink} onClick={() => window.hub.openExternal(href)} /> : undefined}
-          always={view.prompt ? <p className="text-chat-xs text-subtle">{view.prompt}</p> : undefined}
-          body={result ? output : undefined}
+          body={
+            view.prompt || result
+              ? () => (
+                  <>
+                    {view.prompt && <p className="text-chat-xs text-subtle">{view.prompt}</p>}
+                    {result && output()}
+                  </>
+                )
+              : undefined
+          }
           defaultOpen={failed}
         />
       )
@@ -406,8 +418,16 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
               <span className="text-subtle">{view.server}</span> · <span className="font-mono text-chat-xs">{view.tool}</span>
             </span>
           }
-          always={view.args.length ? <Args args={view.args} /> : undefined}
-          body={result ? output : undefined}
+          body={
+            view.args.length || result
+              ? () => (
+                  <>
+                    <Args args={view.args} />
+                    {result && output()}
+                  </>
+                )
+              : undefined
+          }
           defaultOpen={failed}
         />
       )
@@ -418,8 +438,16 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
           status={status}
           failed={failed}
           head={<span className="truncate">{title}</span>}
-          always={view.args.length ? <Args args={view.args} /> : undefined}
-          body={result ? output : undefined}
+          body={
+            view.args.length || result
+              ? () => (
+                  <>
+                    <Args args={view.args} />
+                    {result && output()}
+                  </>
+                )
+              : undefined
+          }
           defaultOpen={failed}
         />
       )
