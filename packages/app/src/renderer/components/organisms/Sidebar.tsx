@@ -78,8 +78,11 @@ function NavButton({
     >
       <Icon className={cn('size-4 shrink-0', active ? 'text-accent' : 'text-subtle group-hover:text-muted')} aria-hidden />
       <span className="flex-1 truncate">{t(ROUTE_LABEL[item.route])}</span>
-      {badge}
-      <Kbd shortcut={item.shortcut} className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+      {/* The badge and the shortcut share one slot at the right edge: the shortcut takes its place on hover. */}
+      <span className="grid justify-items-end *:col-start-1 *:row-start-1">
+        {badge && <span className="flex items-center gap-1 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0">{badge}</span>}
+        <Kbd shortcut={item.shortcut} className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+      </span>
     </button>
   )
 }
