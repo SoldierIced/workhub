@@ -38,6 +38,7 @@ import {
   pendingWorkhub1Secrets,
   pauseUntil,
   planWorkhub1Import,
+  fillDefaultFolders,
   fillWorkhub1FolderFlags,
   type Workhub1Settings,
   TRAY_ROUTES,
@@ -1383,6 +1384,17 @@ async function fillWorkhub1FolderFlagsOnce(): Promise<void> {
   }
 }
 
+/** Profiles with folders and no default folder get their first folder, so "New session" says where it starts. */
+async function fillDefaultFoldersOnStart(): Promise<void> {
+  if (loadError) return
+  let changed = false
+  for (const profile of fillDefaultFolders((await configuration.current()).profiles)) {
+    if (!(await configuration.saveProfile(profile)).ok) break
+    changed = true
+  }
+  if (changed) send('config:changed')
+}
+
 void app.whenReady().then(async () => {
   if (!firstInstance) return
   try {
@@ -1394,7 +1406,8 @@ void app.whenReady().then(async () => {
   registerIpc()
   await refreshMenu()
   createWindow()
-  void fillWorkhub1FolderFlagsOnce()
+  // One after the other: both rewrite profiles.
+  void fillWorkhub1FolderFlagsOnce().then(fillDefaultFoldersOnStart, () => undefined)
   await refreshOptionsCache()
   try {
     startTray()

@@ -34,6 +34,11 @@ export interface Profile {
   modules: ModuleToggles
   /** Folders the profile works in (Workhub 1's profile folders): new sessions and history group by them. */
   folders?: string[]
+  /**
+   * Where "New session" starts without asking (one of `folders` or any other folder). Unset: the
+   * first of `folders` (see `profileDefaultFolder`).
+   */
+  defaultFolder?: string
   /** Switches per folder path (keys are entries of `folders`). */
   folderOptions?: Record<string, FolderOptions>
   /** An icon name for the profile (a Lucide icon id from the picker). */

@@ -24,6 +24,7 @@ import { agentsEs } from './agents.es'
 import { toolViewEs } from './toolView.es'
 import { windowsEs } from './windows.es'
 import { localReviewEs } from './localReview.es'
+import { unsavedEs } from './unsaved.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -130,6 +131,8 @@ export const es: Record<keyof typeof en, string> = {
   'toolbar.newSession': 'Nueva sesión',
   'toolbar.chooseAgent': 'Elegir el agente para una sesión nueva',
   'toolbar.newSessionWith': 'Nueva sesión con',
+  'toolbar.newSessionIn': 'Nueva sesión de {agent} en {folder}',
+  'toolbar.moreOptions': 'Elegir agente y carpeta…',
 
   'newSession.title': 'Nueva sesión',
   'newSession.description': 'El agente trabaja en la carpeta que elijas, con el perfil activo.',
@@ -447,5 +450,6 @@ export const es: Record<keyof typeof en, string> = {
   ...settingsHelpEs,
   ...toolViewEs,
   ...windowsEs,
-  ...localReviewEs
+  ...localReviewEs,
+  ...unsavedEs
 }
