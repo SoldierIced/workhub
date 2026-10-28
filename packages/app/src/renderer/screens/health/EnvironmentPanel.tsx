@@ -1,18 +1,32 @@
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, RotateCcw, TriangleAlert } from 'lucide-react'
 import type { HealthEnvironmentView } from '@shared/health-api'
-import { Badge, Button, StateDot } from '../../components/atoms'
+import { Badge, Button, Spinner, StateDot } from '../../components/atoms'
 import { Card } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
-import { blindSpotText, HEALTH_HINT, HEALTH_LABEL, HEALTH_TONE, reasonText, visibleBlindSpots } from '../../lib/health'
+import { blindSpotText, connectionFailure, HEALTH_HINT, HEALTH_LABEL, HEALTH_TONE, reasonText, visibleBlindSpots } from '../../lib/health'
 import { relativeTime } from '../../lib/pullRequests'
 import { ErrorsCard, EventsCard, PodsCard, ReportingCard, showsStderrCard, SlowCard, StderrCard } from './HealthCards'
 
-/** One environment: its verdict with the reasons, what could not be read, and a card per signal. Rows act through `HealthRowsProvider`. */
-export function EnvironmentPanel({ env }: { env: HealthEnvironmentView }) {
+export interface EnvironmentPanelProps {
+  env: HealthEnvironmentView
+  /** Reads the environment again; offered when it could not be read. */
+  onRetry?: () => void
+  /** A read is running: the retry waits for it. */
+  retrying?: boolean
+}
+
+/**
+ * One environment: its verdict with the reasons, what could not be read, and a card per signal.
+ * When the cluster could not be read the failure is shown with its message and a retry, and the
+ * cards are left out until there are figures to show. Rows act through `HealthRowsProvider`.
+ */
+export function EnvironmentPanel({ env, onRetry, retrying = false }: EnvironmentPanelProps) {
   const { t, tn, locale } = useI18n()
   const s = env.snapshot
   const tone = HEALTH_TONE[s.state]
-  const blind = visibleBlindSpots(s.blindSpots)
+  const failure = connectionFailure(s)
+  // The failure box already says why; the same message is not repeated as a blind spot.
+  const blind = visibleBlindSpots(s.blindSpots).filter((b) => !(failure && b.code === 'connection'))
   const errorsRead = !s.blindSpots.some((b) => b.code === 'apmOff' || b.code === 'errorsOff')
   return (
     <div className="flex flex-col gap-3" aria-label={env.name}>
@@ -53,14 +67,33 @@ export function EnvironmentPanel({ env }: { env: HealthEnvironmentView }) {
           </div>
         )}
       </Card>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <ErrorsCard env={env} off={!errorsRead} />
-        <PodsCard env={env} />
-        {showsStderrCard(env) && <StderrCard env={env} />}
-        <EventsCard env={env} />
-        <ReportingCard env={env} />
-      </div>
-      <SlowCard env={env} />
+      {failure && (
+        <div role="alert" className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-danger">{t('health.failed.title', { environment: env.name })}</p>
+            <p className="mt-0.5 break-words text-sm text-danger">{failure.message || t('health.failed.noDetail')}</p>
+            <p className="mt-1 text-sm text-muted">{t('health.failed.hint')}</p>
+          </div>
+          {onRetry && (
+            <Button size="sm" icon={retrying ? <Spinner /> : <RotateCcw className="size-3.5" aria-hidden />} disabled={retrying} onClick={onRetry}>
+              {t('health.retry')}
+            </Button>
+          )}
+        </div>
+      )}
+      {failure?.neverRead ? null : (
+        <>
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <ErrorsCard env={env} off={!errorsRead} />
+            <PodsCard env={env} />
+            {showsStderrCard(env) && <StderrCard env={env} />}
+            <EventsCard env={env} />
+            <ReportingCard env={env} />
+          </div>
+          <SlowCard env={env} />
+        </>
+      )}
     </div>
   )
 }

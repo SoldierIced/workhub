@@ -34,10 +34,19 @@ function pinnedSocket(url: URL, fingerprint: string, timeoutMs: number): Promise
     })
     socket.once('timeout', () => {
       socket.destroy()
-      reject(Object.assign(new Error('connection timed out'), { name: 'TimeoutError' }))
+      reject(connectTimeout())
     })
     socket.once('error', reject)
   })
+}
+
+/**
+ * No connection could be opened in time: the host is not reachable (typically the VPN is down while
+ * its DNS answer is still cached). Not a `TimeoutError`, so it is reported as an unreachable cluster
+ * instead of a slow query.
+ */
+function connectTimeout(): Error {
+  return Object.assign(new Error('the connection could not be opened in time'), { code: 'ETIMEDOUT' })
 }
 
 /**
@@ -67,7 +76,13 @@ export function createElasticTransport(tls: TlsPolicy): HttpClient {
         res.on('end', () => resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString('utf8') }))
         res.on('error', reject)
       })
-      out.setTimeout(timeoutMs, () => out.destroy(Object.assign(new Error('request timed out'), { name: 'TimeoutError' })))
+      // A pinned socket is already connected; any other is connected once its (TLS) handshake ends.
+      let connected = Boolean(socket)
+      out.on('socket', (s) => {
+        if (!s.connecting) connected = true
+        else s.once(secure ? 'secureConnect' : 'connect', () => (connected = true))
+      })
+      out.setTimeout(timeoutMs, () => out.destroy(connected ? Object.assign(new Error('request timed out'), { name: 'TimeoutError' }) : connectTimeout()))
       out.on('error', reject)
       out.end(req.body)
     })
