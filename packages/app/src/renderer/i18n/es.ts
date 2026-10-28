@@ -31,7 +31,7 @@ export const es: Record<keyof typeof en, string> = {
   'common.cancel': 'Cancelar',
   'common.close': 'Cerrar',
   'common.delete': 'Eliminar',
-  'common.new': 'Nueva',
+  'common.new': 'Agregar',
   'common.none': 'Ninguna',
   'common.notifications': 'Notificaciones',
 
@@ -264,7 +264,7 @@ export const es: Record<keyof typeof en, string> = {
   'settings.dark': 'Oscuro',
   'settings.storage': 'Almacenamiento',
   'settings.dataDir': 'Configuración y secretos',
-  'settings.noneYet': 'Todavía no hay ninguno',
+  'settings.noneYet': 'Nada todavía',
   'settings.newConnection': 'Conexión nueva',
   'settings.newAccount': 'Cuenta nueva',
   'settings.newProfile': 'Perfil nuevo',
