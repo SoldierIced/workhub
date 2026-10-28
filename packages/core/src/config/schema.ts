@@ -274,6 +274,7 @@ const profile = z.object({
   folderOptions: z.record(z.string().min(1), folderOptions).optional(),
   symbol: z.string().trim().min(1).max(40).optional(),
   linkBrowser: z.string().trim().min(1).max(200).optional(),
+  linkCommand: z.string().trim().min(1).max(500).optional(),
   linkChromeProfile: z.string().trim().regex(CHROME_PROFILE_DIR).optional(),
   ownsOutside: z.boolean().optional(),
   envNames: z.array(z.string().regex(ENV_NAME)).optional(),

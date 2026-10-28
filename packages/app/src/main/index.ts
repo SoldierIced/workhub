@@ -632,7 +632,7 @@ function syncTitleBarOverlay(): void {
 }
 
 /** Every external link goes through here (see link-service.ts). */
-const links = createLinkService(systemLinkDeps(() => configuration.current()))
+const links = createLinkService(systemLinkDeps(() => configuration.current(), sessionPath))
 const openLink = (profileId: string | null, url: string): Promise<void> => links.open(url, profileId)
 
 const setup = new SetupService({
@@ -766,7 +766,7 @@ function registerIpc(): void {
   ipc.on('hub:openExternal', (_e, url: unknown, profileId: unknown) => {
     if (typeof url === 'string') void links.open(url, typeof profileId === 'string' ? profileId : null)
   })
-  ipc.handle('links:chromeProfiles', () => listChromeProfiles())
+  ipc.handle('links:chromeProfiles', (_e, app: unknown) => listChromeProfiles(typeof app === 'string' ? app : undefined))
 
   ipc.handle('updates:status', () => updates.status())
   ipc.handle('updates:check', () => updates.check())

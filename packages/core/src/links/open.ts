@@ -97,10 +97,18 @@ export interface LinkCommand {
 /**
  * How to open a web link in the browser a profile chose; null means "use the default browser".
  * `browser` is an application name on macOS (`open -a`) and an executable elsewhere. With a
- * `chromeProfile` (macOS only), a new Chrome instance starts on that profile directory.
+ * `chromeProfile` (macOS only), a new Chrome instance starts on that profile directory. A custom
+ * `command` wins over both and gets the link as its only argument.
  */
-export function linkLaunch(platform: string, setting: { browser?: string; chromeProfile?: string }, url: string): LinkCommand | null {
+export function linkLaunch(platform: string, setting: { browser?: string; chromeProfile?: string; command?: string }, url: string): LinkCommand | null {
   if (!isWebUrl(url)) return null
+  const custom = setting.command?.trim()
+  if (custom) {
+    // A custom command is one executable (a name on the PATH or a path). `env` resolves it on the
+    // login-shell PATH like Workhub 1 did; a leading `-` would be an option of `env`, so it is refused.
+    if (custom.startsWith('-') || /[\r\n\0]/.test(custom)) return null
+    return platform === 'win32' ? { command: custom, args: [url] } : { command: '/usr/bin/env', args: [custom, url] }
+  }
   const browser = setting.browser?.trim()
   const chromeProfile = setting.chromeProfile?.trim()
   if (platform === 'darwin') {
@@ -140,4 +148,24 @@ export function profileForLink(config: Pick<WorkhubConfig, 'connections' | 'prof
     if (owner && host === 'github.com' && codeHost && scopeOwners(codeHost.settings['scope']).includes(owner)) return profile
   }
   return byId(config.activeProfileId)
+}
+
+/**
+ * The name of a Chrome app's data folder under `~/Library/Application Support/Google` (Chrome's
+ * own is `Chrome`; a separate copy such as `Chrome Work.app` conventionally uses `Chrome Work`).
+ * Null for a name that cannot be a folder name.
+ */
+export function chromeDataDirName(app: string | undefined): string | null {
+  const name = (app?.trim() || DEFAULT_CHROME_APP).replace(/\/+$/, '').split('/').pop()!.replace(/\.app$/i, '').replace(/^Google /, '')
+  return name && !name.startsWith('.') && !/[\0]/.test(name) ? name : null
+}
+
+/** What Workhub 1's `linkOpener` becomes: `open -a X` is the browser app X; any other command stays a command. */
+export function importedLinkOpener(opener: string | undefined): { linkBrowser: string } | { linkCommand: string } | null {
+  const text = opener?.trim()
+  if (!text) return null
+  const app = /^open\s+-a\s+(?:"([^"]+)"|'([^']+)'|([^\s"']+))$/.exec(text)
+  const name = app?.[1] ?? app?.[2] ?? app?.[3]
+  if (name) return { linkBrowser: name }
+  return { linkCommand: text }
 }

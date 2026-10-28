@@ -777,6 +777,8 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
     if (!profile.linkBrowser?.trim()) delete profile.linkBrowser
     else profile.linkBrowser = profile.linkBrowser.trim()
     if (!profile.linkChromeProfile?.trim()) delete profile.linkChromeProfile
+    if (!profile.linkCommand?.trim()) delete profile.linkCommand
+    else profile.linkCommand = profile.linkCommand.trim()
     // Off stays saved as off: a switch the user set is never filled from Workhub 1 again.
     if (profile.ownsOutside === undefined) delete profile.ownsOutside
     const folderOptions = prunedFolderOptions(profile.folderOptions, profile.folders)

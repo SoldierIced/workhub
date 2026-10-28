@@ -54,6 +54,15 @@ describe('link service', () => {
     await broken.service.open('https://example.com/')
     expect(broken.opened).toEqual(['https://example.com/'])
   })
+  it('opens a link with the custom command, and falls back to the default browser when it fails', async () => {
+    const ok = setup({ profile: { linkCommand: 'open-work' } })
+    await ok.service.open('https://example.com/?a=1;b=$(x)')
+    expect(ok.ran).toEqual([{ command: '/usr/bin/env', args: ['open-work', 'https://example.com/?a=1;b=$(x)'] }])
+    expect(ok.opened).toEqual([])
+    const failing = setup({ profile: { linkCommand: 'open-work' }, run: async () => false })
+    await failing.service.open('https://example.com/')
+    expect(failing.opened).toEqual(['https://example.com/'])
+  })
   it('ignores anything that is not a web link', async () => {
     const { service, opened, ran } = setup({ profile: { linkBrowser: 'Safari' } })
     await service.open('file:///etc/passwd')

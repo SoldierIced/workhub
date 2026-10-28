@@ -406,8 +406,8 @@ export interface HubApi {
    * Slack app for a Slack link. Without a profile, the one the link belongs to, else the active one.
    */
   openExternal(url: string, profileId?: string | null): void
-  /** Chrome's profiles (macOS; empty elsewhere or without Chrome), for Settings → Profiles → "Open links with". */
-  chromeProfiles(): Promise<ChromeProfile[]>
+  /** The profiles of a Chrome app (default: Google Chrome), read from its data folder; empty when not found or off macOS. */
+  chromeProfiles(app?: string): Promise<ChromeProfile[]>
   config: ConfigApi
   sessions: SessionsApi
   history: HistoryApi
