@@ -17,6 +17,7 @@ import {
   type TranscriptReader
 } from '@workhub/core'
 import { SubagentConversationBuilder } from './conversation'
+import { noteBranch, noteLink, type SessionLinks } from './session-links'
 import {
   ClaudeTranscriptParser,
   parseSubagentMeta,
@@ -81,6 +82,7 @@ interface SessionState {
   tail: Tail
   parser: ClaudeTranscriptParser
   subagents: Map<string, SubagentState>
+  ticketPrefixes?: readonly string[]
 }
 
 export interface ClaudeTranscriptReaderOptions {
@@ -120,7 +122,7 @@ export class ClaudeTranscriptReader implements TranscriptReader {
     if (!state) {
       const path = await this.locate(query)
       if (!path) return null
-      state = { tail: new Tail(path), parser: new ClaudeTranscriptParser({ ticketPrefixes: query.ticketPrefixes, now: this.now }), subagents: new Map() }
+      state = { tail: new Tail(path), parser: new ClaudeTranscriptParser({ ticketPrefixes: query.ticketPrefixes, now: this.now }), subagents: new Map(), ticketPrefixes: query.ticketPrefixes }
       this.sessions.set(query.agentSessionId, state)
     }
     return state
@@ -142,6 +144,7 @@ export class ClaudeTranscriptReader implements TranscriptReader {
     const workPaths = [...(snap.workPaths ?? [])]
     for (const sub of state.subagents.values()) for (const path of sub.parser.workPaths) noteWorkPath(workPaths, path)
     if (workPaths.length) patch.workPaths = workPaths
+    Object.assign(patch, withSubagentLinks(snap, [...state.subagents.values()].map((s) => s.parser.links)))
     if (costs.length) patch.cost = { amount: costs.reduce((sum, c) => sum + c.amount, 0), currency: 'USD' }
     return mergeMonitor(snap, patch)
   }
@@ -219,7 +222,7 @@ export class ClaudeTranscriptReader implements TranscriptReader {
       let sub = state.subagents.get(file)
       if (!sub) {
         const meta = await readFile(path.replace(/\.jsonl$/, '.meta.json'), 'utf8').then(parseSubagentMeta, () => ({}))
-        sub = { tail: new Tail(path), parser: new SubagentParser(this.now), meta, modified: 0 }
+        sub = { tail: new Tail(path), parser: new SubagentParser(this.now, homedir(), state.ticketPrefixes), meta, modified: 0 }
         state.subagents.set(file, sub)
       }
       const parser = sub.parser
@@ -231,6 +234,27 @@ export class ClaudeTranscriptReader implements TranscriptReader {
     }
     return out.sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
   }
+}
+
+/** The PRs, tickets and branches the subagents acted on, added to the session's (what a subagent does is the session's work). */
+function withSubagentLinks(snap: SessionMonitorSnapshot, subagents: readonly SessionLinks[]): SessionMonitorSnapshot {
+  if (!subagents.some((l) => l.prs.length || l.branches.length || l.linkedTickets().length)) return {}
+  const links = (snap.pullRequestLinks ?? []).map((l) => ({ ...l }))
+  const branches = (snap.branches ?? []).map((b) => ({ ...b }))
+  const linked = [...(snap.linkedTicketKeys ?? [])]
+  for (const sub of subagents) {
+    for (const l of sub.prs) noteLink(links, { ...l })
+    for (const b of sub.branches) noteBranch(branches, b)
+    for (const key of sub.linkedTickets()) if (!linked.includes(key)) linked.push(key)
+  }
+  const out: SessionMonitorSnapshot = {}
+  if (links.length) {
+    out.pullRequestLinks = links
+    out.pullRequests = links.map((l) => l.url).filter((u): u is string => !!u)
+  }
+  if (branches.length) out.branches = branches
+  if (linked.length) out.linkedTicketKeys = linked
+  return out
 }
 
 async function isFile(path: string): Promise<boolean> {
