@@ -1,4 +1,4 @@
-import { ExternalLink, FileText, FolderGit2, GitPullRequest, RefreshCw, Search, X } from 'lucide-react'
+import { AppWindow, ExternalLink, FileText, FolderGit2, GitPullRequest, RefreshCw, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   branchLine,
@@ -483,7 +483,7 @@ function FilePane({ sessionId, repo, file, ...diff }: { sessionId: string; repo:
             </Button>
           )}
           {canOpen && (
-            <Button size="sm" variant="ghost" title={t('localReview.openFileHint')} onClick={openFile}>
+            <Button size="sm" variant="ghost" icon={<AppWindow className="size-3.5" aria-hidden />} title={t('localReview.openFileHint')} onClick={openFile}>
               {t('localReview.openFile')}
             </Button>
           )}
