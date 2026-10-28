@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { emptyConfig, RETYPE_SECRET_TO_TEST, type Connection, type HealthEnvironment, type Profile, type SecretStore, type WorkhubConfig, DEFAULT_HEALTH_THRESHOLDS, DEFAULT_HEALTH_FLOOR_MINUTES, DEFAULT_OPTIONS } from '@workhub/core'
 import type { HttpClient, HttpRequest } from '@workhub/adapters/http'
-import { buildHealthProvider, HEALTH_DETAIL_LIFETIME_MS, HEALTH_MIN_GAP_MS, HealthService, tlsOf } from '../src/main/health-service'
+import { buildHealthProvider, HEALTH_DETAIL_LIFETIME_MS, HEALTH_MIN_GAP_MS, HEALTH_RETRY_GAP_MS, HealthService, tlsOf } from '../src/main/health-service'
 
 const elastic: Connection = { id: 'es', kind: 'health', provider: 'elastic-apm', endpoint: 'https://es.example.test:9200', secretRef: 'connection/es', settings: {} }
 const env: HealthEnvironment = {
@@ -175,6 +175,35 @@ describe('HealthService', () => {
     const s = service({ secrets: { 'connection/es': 'k' }, http: async () => Promise.reject(new Error('getaddrinfo ENOTFOUND es.example.test')) })
     const view = await s.get('work')
     expect(view.environments[0]?.snapshot.state).toBe('unreachable')
+  })
+
+  it('lets Retry read again soon after a failed read, without waiting for the refresh floor', async () => {
+    let up = false
+    const c = cluster()
+    let reads = 0
+    const http: HttpClient = async (req) => {
+      reads++
+      if (!up) throw new Error('getaddrinfo ENOTFOUND es.example.test')
+      return c.http(req)
+    }
+    let now = 1_000_000
+    const s = service({ secrets: { 'connection/es': 'k' }, http, now: () => now })
+    expect((await s.get('work')).environments[0]?.snapshot.state).toBe('unreachable')
+    const failedReads = reads
+    // A click right away is still answered from the failed read.
+    now += 1_000
+    await s.get('work', true)
+    expect(reads).toBe(failedReads)
+    up = true
+    now += HEALTH_RETRY_GAP_MS
+    const view = await s.get('work', true)
+    expect(reads).toBeGreaterThan(failedReads)
+    expect(view.environments[0]?.snapshot.state).not.toBe('unreachable')
+    // Once read, the floor applies again.
+    const okReads = reads
+    now += HEALTH_RETRY_GAP_MS
+    await s.get('work', true)
+    expect(reads).toBe(okReads)
   })
 
   it('adds Kibana links per service and for the environment', async () => {
