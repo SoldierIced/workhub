@@ -111,3 +111,15 @@ Open a GitHub issue with the steps to reproduce, your OS and the app version. Fo
 issues, do not open a public issue: follow [SECURITY.md](SECURITY.md).
 
 By contributing you agree that your work is released under the [MIT license](LICENSE).
+
+## Keeping private data out
+
+This repository is public. Tests, fixtures, docs, comments and commit messages use synthetic data
+only (`acme`, `~/work`, `PAY-123`), never names, ticket keys, repositories, channels or paths from a
+real workplace.
+
+`npm install` points git at `.githooks`, which run `scripts/check-private-terms.sh` on every commit,
+commit message and push. List the terms that must never be published in
+`~/.config/workhub/private-terms.txt` (or the file in `$WORKHUB_PRIVATE_TERMS`), one case-insensitive
+regex per line. The file stays outside the repository; without it the hooks do nothing. Check the
+whole tree with `scripts/check-private-terms.sh tree`.

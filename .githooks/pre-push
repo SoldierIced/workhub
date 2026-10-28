@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# stdin: <local ref> <local sha> <remote ref> <remote sha> per pushed ref.
+check="$(git rev-parse --show-toplevel)/scripts/check-private-terms.sh"
+zero=0000000000000000000000000000000000000000
+while read -r _ local_sha _ remote_sha; do
+  [[ "$local_sha" == "$zero" ]] && continue
+  if [[ "$remote_sha" == "$zero" ]]; then "$check" range "$local_sha" "$local_sha" || exit 1
+  else "$check" range "$remote_sha" "$local_sha" || exit 1
+  fi
+done

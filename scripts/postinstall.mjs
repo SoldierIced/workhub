@@ -22,6 +22,10 @@ const run = (cmd, args) => {
 
 run(process.execPath, [join('node_modules', 'electron', 'install.js')])
 
+// The repo's own hooks (.githooks): they block commits and pushes carrying private terms, and do
+// nothing until the developer keeps a terms file (see scripts/check-private-terms.sh).
+if (existsSync(join(root, '.git')) && !process.env.CI) spawnSync('git', ['config', 'core.hooksPath', '.githooks'], { cwd: root, stdio: 'ignore' })
+
 const prebuilt = join(root, 'node_modules', 'node-pty', 'prebuilds', `${process.platform}-${process.arch}`)
 if (process.platform === 'win32' && existsSync(prebuilt)) {
   console.log(`node-pty: using the prebuilt binaries in ${prebuilt} (no rebuild)`)
