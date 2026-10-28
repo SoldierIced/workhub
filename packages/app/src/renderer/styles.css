@@ -188,6 +188,10 @@
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--color-border-strong);
   }
+  /* Where both scrollbars meet: the page's own colour, not the default white square. */
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 /* Window dragging: toolbars drag the window, their controls do not. */
