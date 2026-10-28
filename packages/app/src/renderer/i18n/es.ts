@@ -268,6 +268,7 @@ export const es: Record<keyof typeof en, string> = {
   'settings.newConnection': 'Conexión nueva',
   'settings.newAccount': 'Cuenta nueva',
   'settings.newProfile': 'Perfil nuevo',
+  'settings.accountNamePlaceholder': 'Trabajo en Acme',
   'settings.id': 'Id',
   'settings.name': 'Nombre',
   'settings.kind': 'Tipo',
