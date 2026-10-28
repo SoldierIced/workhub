@@ -267,6 +267,10 @@ const api: HubApi = {
   },
   menu: {
     onCommand: (cb) => subscribe<[MenuCommand]>('menu:command', cb)
+  },
+  diagnostics: {
+    report: (report) => ipcRenderer.send('diag:report', report),
+    revealLogs: () => ipcRenderer.send('diag:revealLogs')
   }
 }
 

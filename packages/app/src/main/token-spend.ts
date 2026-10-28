@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises'
+import { performance } from 'node:perf_hooks'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { emptySpendCache, TokenSpendScanner, worktreeAliases, type SpendCache, type SpendFileEntry, type SpendSources, type WorktreeLink } from '@workhub/adapters/token-spend'
@@ -21,6 +22,10 @@ export interface TokenSpendDeps {
   now?: () => number
   /** Expands `~` in the profiles' folders (the user's home by default). */
   home?: string
+  /** Each scan, timed: how long it took and how many files it holds (the main log). */
+  onScanned?: (scan: { ms: number; files: number; failed: boolean }) => void
+  /** Marks the scan as running work, so an event-loop stall during it names it (see `Activity`). */
+  begin?: (label: string) => () => void
 }
 
 /**
@@ -62,6 +67,9 @@ export class TokenSpendService {
 
   async refresh(): Promise<void> {
     const now = this.now()
+    const started = performance.now()
+    let failed = false
+    const end = this.deps.begin?.('token spend scan')
     this.scanning = true
     try {
       const sources = await this.deps.sources()
@@ -71,8 +79,11 @@ export class TokenSpendService {
       this.deps.store.save(this.scanner.snapshot())
     } catch {
       // A failed scan keeps the previous figures; the next one tries again.
+      failed = true
     } finally {
+      end?.()
       this.scanning = false
+      this.deps.onScanned?.({ ms: Math.round(performance.now() - started), files: Object.keys(this.scanner.snapshot().files).length, failed })
       this.deps.emit()
     }
   }

@@ -137,7 +137,27 @@ export interface TerminalOutput {
 
 function set(next: Record<string, SessionData>): void {
   sessions = next
+  notify()
+}
+
+/** How often streamed agent events are shown at most (the state itself is always current). */
+export const EVENT_RENDER_MS = 50
+let notifyTimer: ReturnType<typeof setTimeout> | null = null
+
+function notify(): void {
+  if (notifyTimer) clearTimeout(notifyTimer)
+  notifyTimer = null
   for (const l of listeners) l()
+}
+
+/**
+ * Stores a streamed event's state now and renders it with the others of the next few
+ * milliseconds: an agent streams many small deltas per second, and rendering the window for each
+ * one kept it too busy to take a click.
+ */
+function setStreamed(next: Record<string, SessionData>): void {
+  sessions = next
+  notifyTimer ??= setTimeout(notify, EVENT_RENDER_MS)
 }
 
 function patch(id: string, fn: (s: SessionData) => SessionData): void {
@@ -360,7 +380,8 @@ export function onEvent(e: AgentEvent): void {
   const s = sessions[e.sessionId]
   if (!s) return
   const next = applyEvent(s, e, () => ++seq)
-  if (next !== s) set({ ...sessions, [e.sessionId]: next })
+  // Text deltas are batched; anything else (a tool call, a permission, the end of a turn) shows at once.
+  if (next !== s) (e.type === 'message' ? setStreamed : set)({ ...sessions, [e.sessionId]: next })
   if (e.type === 'permission') raise(e.sessionId, 'needsAnswer')
 }
 

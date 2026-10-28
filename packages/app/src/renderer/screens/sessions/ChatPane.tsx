@@ -1,5 +1,5 @@
 import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
-import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
 import { Markdown } from '../../components/molecules'
@@ -64,7 +64,12 @@ interface ChatBlockProps {
   subagents?: SubagentSummary[]
 }
 
-function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps) {
+/**
+ * A message is rendered again only when it changes (items are replaced, never mutated): a long chat
+ * would otherwise parse all its Markdown again on every render of the pane (a clock tick, a sidebar
+ * click that refreshes the config).
+ */
+const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps) {
   const { t, tn } = useI18n()
   switch (item.kind) {
     case 'user':
@@ -187,7 +192,7 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
     case 'exit':
       return <div className="text-center text-xs text-subtle">{t('chat.exited', { code: item.code ?? t('chat.signal') })}</div>
   }
-}
+})
 
 /**
  * The structured chat of a session: Markdown replies, tools, permissions, hook notices, pasted
@@ -342,10 +347,13 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
     setImages([])
   }
 
-  const answer = (requestId: string, optionId: string | null, label: string) => {
-    window.hub.sessions.respondPermission(v.id, requestId, optionId)
-    markPermission(v.id, requestId, label)
-  }
+  const answer = useCallback(
+    (requestId: string, optionId: string | null, label: string) => {
+      window.hub.sessions.respondPermission(v.id, requestId, optionId)
+      markPermission(v.id, requestId, label)
+    },
+    [v.id]
+  )
 
   // Workhub 1 keys: Return sends, Shift-Return adds a line, Esc interrupts.
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
