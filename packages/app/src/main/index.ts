@@ -17,7 +17,7 @@ import { readNotificationPermission } from '@workhub/adapters/notification-permi
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
-import { GitReview, LocalChanges, ReviewTargets } from '@workhub/adapters/git-review'
+import { GitReview, LocalChanges } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { readKeychainItem, readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
@@ -167,7 +167,7 @@ const ticketService = new TicketService(configuration, secrets, process.env['WOR
 
 let win: BrowserWindow | null = null
 /** What session and sub-agent windows follow too: the sessions' live state and what their screens show. */
-const SHARED_CHANNELS = new Set(['session:event', 'session:changed', 'session:removed', 'session:replay', 'automations:prompted', 'automations:turnEnded', 'aiReview:changed', 'usage:changed'])
+const SHARED_CHANNELS = new Set(['session:event', 'session:changed', 'session:removed', 'session:replay', 'automations:prompted', 'automations:turnEnded', 'aiReview:changed', 'agentReview:changed', 'usage:changed'])
 const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   if (SHARED_CHANNELS.has(channel)) sessionWindows.broadcastShared(channel, args)
@@ -514,7 +514,7 @@ const localReview = new LocalReviewService({
 // Continuity across accounts and agents: Claude account failover and hand-off to another agent.
 const transcriptReaderFor = (id: string | undefined) =>
   id === 'kiro' ? new KiroTranscriptReader() : id === 'opencode' ? new OpenCodeTranscriptReader() : id === 'codex' ? new CodexTranscriptReader() : id === 'claude' ? new ClaudeTranscriptReader() : null
-// What a hand-off brief (and an agent review prompt) knows of a session: its goal, links, files and commands.
+// What a hand-off brief knows of a session: its goal, links, files and commands.
 const handoffFacts: ContinuityDeps['facts'] = async (view, agent, account, config) => {
   if (!view.agentSessionId) return EMPTY_FACTS
   const family = agent?.accountsOf ?? agent?.id ?? view.agentId
@@ -557,23 +557,18 @@ const continuity = new ContinuityService({
   showTurnEnd: (id, stopReason) => send('automations:turnEnded', id, stopReason)
 })
 
-// "Review with another agent": a read-only reviewer session on what a session worked on (any repo it touched, a PR, commits).
+// "Review with another agent": the session's agent writes a brief, a read-only reviewer session reviews it, and the two loop over the findings.
 const agentAvailabilityOf = (config: WorkhubConfig) => agentAvailability(knownAgents(config), { extraPath, path: [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter) })
 const agentReview = new AgentReviewService({
   config: () => configuration.current(),
   sessions,
-  targets: new ReviewTargets(localGit, (command, args, options) => createCliRunner(cliPath.split(delimiter))(command, args, options)),
   remotes: (root) => localGit.remotes(root),
   availability: agentAvailabilityOf,
-  goal: async (view) => {
-    const config = await configuration.current()
-    const agent = knownAgents(config).find((a) => a.id === view.agentId)
-    const account = view.accountId ? (config.accounts.find((a) => a.id === view.accountId) ?? null) : null
-    return (await handoffFacts(view, agent, account, config)).goal
-  },
-  ticketPrefixes,
+  budget: (config, agentKey) => agentKeyBudget(config, agentKey, budgetOf),
   showPrompt: (id, text) => send('automations:prompted', id, text),
-  placeBeside: placeInSidebar
+  showTurnEnd: (id, stopReason) => send('automations:turnEnded', id, stopReason),
+  placeBeside: placeInSidebar,
+  emit: (loops) => send('agentReview:changed', loops)
 })
 
 async function snapshot(): Promise<ConfigSnapshot> {

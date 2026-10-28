@@ -4,7 +4,7 @@ import { toPlatform, type AccountUsage, type UsageAlert, type HubApi, type Sessi
 import type { UpdateStatus } from '../shared/updates-api'
 import type { PrEventBatch } from '../shared/pr-events-api'
 import type { SessionIntent } from '../shared/links-api'
-import type { AiReviewNotice, AiReviewSnapshot } from '../shared/ai-review-api'
+import type { AiReviewNotice, AiReviewSnapshot, ReviewLoopView } from '../shared/ai-review-api'
 import type { AutomationsSnapshot, ChatNoticeEvent, SlackSnapshot } from '../shared/chat-api'
 import type { ContinuityMoved, ContinuityOffer } from '../shared/continuity-api'
 import type { TrayPopoverView, TrayRoute } from '../shared/tray-api'
@@ -189,8 +189,12 @@ const api: HubApi = {
     opinion: (reviewId, text) => ipcRenderer.invoke('aiReview:opinion', reviewId, text),
     stop: (reviewId) => ipcRenderer.invoke('aiReview:stop', reviewId),
     dismissHold: (devIdentity) => ipcRenderer.invoke('aiReview:dismissHold', devIdentity),
-    targetOptions: (sessionId) => ipcRenderer.invoke('agentReview:options', sessionId),
-    startAgentReview: (sessionId, request) => ipcRenderer.invoke('agentReview:start', sessionId, request),
+    loopOptions: (sessionId) => ipcRenderer.invoke('agentReview:options', sessionId),
+    startLoop: (sessionId, request) => ipcRenderer.invoke('agentReview:start', sessionId, request),
+    loops: () => ipcRenderer.invoke('agentReview:loops'),
+    stopLoop: (loopId) => ipcRenderer.invoke('agentReview:stop', loopId),
+    dismissLoop: (loopId) => ipcRenderer.invoke('agentReview:dismiss', loopId),
+    onLoopsChanged: (cb) => subscribe<[ReviewLoopView[]]>('agentReview:changed', cb),
     onChanged: (cb) => subscribe<[AiReviewSnapshot]>('aiReview:changed', cb),
     onNotice: (cb) => subscribe<[AiReviewNotice]>('aiReview:notice', cb)
   },

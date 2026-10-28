@@ -1,5 +1,5 @@
 // Types of the AI review bridge (window.hub.aiReview), shared by main, preload and renderer.
-import type { AgentDefinition, BranchReview, BudgetStatus, EscalationReason, FindingStatus, GhState, ReviewRepoOption, ReviewTargetError, ReviewTargetRequest } from '@workhub/core'
+import type { AgentDefinition, BranchReview, BudgetStatus, EscalationReason, FindingStatus } from '@workhub/core'
 
 /** A review as the renderer shows it: the stored review plus the live dev session it belongs to. */
 export interface AiReviewView extends BranchReview {
@@ -43,26 +43,55 @@ export interface AgentReviewReviewer {
 
 /** What "Review with another agent" offers for a session. */
 export interface AgentReviewOptions {
-  /** Touched repositories first, then the session folder's own, then the ones right inside it. */
-  repos: ReviewRepoOption[]
   reviewers: AgentReviewReviewer[]
   /** An installed agent of another kind than the session's own, when there is one. */
   defaultReviewerKey?: string
-  /** The pull request target needs `ready`. */
-  gh: GhState
-  /** The profile's base branch, the branch target's default. */
-  baseBranch: string
+  /** The profile's brief prompt (Settings → Profiles → AI review), else the default. */
+  briefPrompt: string
+  /** The profile's round limit, the dialog's default. */
+  maxRounds: number
 }
 
 export interface AgentReviewRequest {
   reviewerKey: string
-  target: ReviewTargetRequest
+  /** The brief prompt as the user left it in the dialog: sent to the session's own agent. */
+  prompt: string
+  maxRounds: number
+  /** "Run anyway" past a usage budget. */
+  override?: boolean
 }
 
-/** Why the reviewer did not start: the target's reasons, plus the reviewer's and the session's own. */
-export type AgentReviewBlocker = ReviewTargetError | 'unknownSession' | 'reviewerSession' | 'noReviewer' | 'reviewerMissing' | 'startFailed' | 'badRequest'
+/** Why the loop did not start. */
+export type AgentReviewBlocker = 'unknownSession' | 'reviewerSession' | 'notChat' | 'authorBusy' | 'running' | 'noReviewer' | 'reviewerMissing' | 'budget' | 'badRequest'
 
-export type AgentReviewStartResult = { ok: true; sessionId: string; description: string } | { ok: false; reason: AgentReviewBlocker; detail?: string }
+export type AgentReviewStartResult = { ok: true; loopId: string } | { ok: false; reason: AgentReviewBlocker; detail?: string }
+
+/**
+ * Where a review loop is: the author writes the brief, the reviewer starts, then reviewing and
+ * fixing alternate; it ends approved, at its round limit, stopped (by the user, or a turn the user
+ * cancelled) or failed.
+ */
+export type ReviewLoopPhase = 'briefing' | 'starting' | 'reviewing' | 'fixing' | 'approved' | 'maxRounds' | 'stopped' | 'failed'
+
+/** Why a loop failed; `detail` adds the agent's or the system's own words. */
+export type ReviewLoopFailure = 'authorClosed' | 'reviewerClosed' | 'reviewerStart' | 'noBrief' | 'emptyReview' | 'timeout' | 'budget' | 'error'
+
+export interface ReviewLoopView {
+  id: string
+  authorSessionId: string
+  reviewerSessionId?: string
+  reviewerLabel: string
+  /** The review round in progress (1-based); 0 while the author writes the brief. */
+  round: number
+  maxRounds: number
+  phase: ReviewLoopPhase
+  failure?: ReviewLoopFailure
+  /** `cancelled`: a turn of the loop was cancelled in a chat; `user`: the Stop button. */
+  stoppedBy?: 'user' | 'cancelled'
+  detail?: string
+  startedAt: number
+  updatedAt: number
+}
 
 export interface AiReviewApi {
   get(): Promise<AiReviewSnapshot>
@@ -75,10 +104,16 @@ export interface AiReviewApi {
   opinion(reviewId: string, text: string): Promise<void>
   stop(reviewId: string): Promise<void>
   dismissHold(devIdentity: string): Promise<void>
-  /** "Review with another agent": the repositories, reviewers and `gh` state for a session; null for an unknown session. */
-  targetOptions(sessionId: string): Promise<AgentReviewOptions | null>
-  /** Starts the reviewer as a read-only session of its own in the target's repository. */
-  startAgentReview(sessionId: string, request: AgentReviewRequest): Promise<AgentReviewStartResult>
+  /** "Review with another agent": the reviewers, brief prompt and round limit for a session; null for an unknown session. */
+  loopOptions(sessionId: string): Promise<AgentReviewOptions | null>
+  /** Sends the brief prompt to the session's agent, then runs the loop with the reviewer it starts. */
+  startLoop(sessionId: string, request: AgentReviewRequest): Promise<AgentReviewStartResult>
+  loops(): Promise<ReviewLoopView[]>
+  /** Ends a loop now: the turn it waits on is interrupted, both chats stay open. */
+  stopLoop(loopId: string): Promise<void>
+  /** Drops a finished loop from the panel. */
+  dismissLoop(loopId: string): Promise<void>
+  onLoopsChanged(cb: (loops: ReviewLoopView[]) => void): () => void
   onChanged(cb: (snapshot: AiReviewSnapshot) => void): () => void
   onNotice(cb: (notice: AiReviewNotice) => void): () => void
 }

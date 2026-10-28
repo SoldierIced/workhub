@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { sessionIdentity } from '@workhub/core'
 import type { SessionView } from '@shared/api'
-import type { AiReviewHold, AiReviewSnapshot, AiReviewView } from '@shared/ai-review-api'
+import type { AiReviewHold, AiReviewSnapshot, AiReviewView, ReviewLoopView } from '@shared/ai-review-api'
 
 /** The AI reviews pushed by the main process. */
 let value: AiReviewSnapshot | null = null
@@ -42,4 +42,37 @@ export function reviewForSession(snap: AiReviewSnapshot | null, view: Pick<Sessi
 export function holdForSession(snap: AiReviewSnapshot | null, view: Pick<SessionView, 'id' | 'identity' | 'agentSessionId'>): AiReviewHold | undefined {
   const identity = sessionIdentity(view)
   return snap?.holds.find((h) => h.devIdentity === identity)
+}
+
+/** The "Review with another agent" loops pushed by the main process. */
+let loops: ReviewLoopView[] = []
+let loopsStarted = false
+const loopListeners = new Set<() => void>()
+
+function setLoops(next: ReviewLoopView[]): void {
+  loops = next
+  for (const l of loopListeners) l()
+}
+
+function startLoops(): void {
+  if (loopsStarted) return
+  loopsStarted = true
+  window.hub.aiReview.onLoopsChanged(setLoops)
+  void window.hub.aiReview.loops().then(setLoops, () => undefined)
+}
+
+export function useReviewLoops(): ReviewLoopView[] {
+  useEffect(startLoops, [])
+  return useSyncExternalStore(
+    (l) => {
+      loopListeners.add(l)
+      return () => loopListeners.delete(l)
+    },
+    () => loops
+  )
+}
+
+/** The loop a session takes part in, as the author or as the reviewer: the newest one. */
+export function loopForSession(list: readonly ReviewLoopView[], sessionId: string): ReviewLoopView | undefined {
+  return [...list].filter((l) => l.authorSessionId === sessionId || l.reviewerSessionId === sessionId).sort((a, b) => b.startedAt - a.startedAt)[0]
 }

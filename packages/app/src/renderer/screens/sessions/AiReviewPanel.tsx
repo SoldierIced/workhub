@@ -2,16 +2,17 @@ import { ChevronRight, ScanSearch } from 'lucide-react'
 import { useState } from 'react'
 import { REVIEW_SEVERITIES, cycleRound, roundLimit, aiReviewSettings, type FindingStatus, type ReviewFinding, type ReviewSeverity, type ReviewStatus } from '@workhub/core'
 import type { SessionView } from '@shared/api'
-import type { AiReviewStartBlocker, AiReviewView } from '@shared/ai-review-api'
+import type { AiReviewStartBlocker, AiReviewView, ReviewLoopPhase, ReviewLoopView } from '@shared/ai-review-api'
 import { Badge, Button, Select, Spinner, Textarea, type Tone } from '../../components/atoms'
 import { useToast } from '../../components/molecules'
-import { useAiReviews, holdForSession, reviewForSession } from '../../aiReviewStore'
+import { useAiReviews, holdForSession, loopForSession, reviewForSession, useReviewLoops } from '../../aiReviewStore'
 import { AgentReviewDialog } from './AgentReviewDialog'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { ESCALATION_TEXT } from '../../lib/useAiReviewNotices'
 import { errorText } from '../../lib/errorText'
+import { requestOpen } from '../../lib/continuity'
 import { usageWindowName } from '../../lib/usage-window'
 
 export const REVIEW_STATUS_TONE: Record<ReviewStatus, Tone> = {
@@ -60,8 +61,8 @@ function useStartReview(view: SessionView) {
 
 /**
  * "Review before PR" in the session header: always offered on a live session. It opens the
- * "Review with another agent" dialog (any repo the session touched, a PR, commits); the dialog
- * can still start the automatic review loop on the session's own branch.
+ * "Review with another agent" dialog (the session's agent briefs a reviewer and the two loop over
+ * the findings); the dialog can still start the automatic review loop on the session's own branch.
  */
 export function AiReviewButton({ view, compact }: { view: SessionView; compact?: boolean }) {
   const { t } = useI18n()
@@ -69,7 +70,8 @@ export function AiReviewButton({ view, compact }: { view: SessionView; compact?:
   const review = reviewForSession(snap, view)
   const { run, pending } = useStartReview(view)
   const [picking, setPicking] = useState(false)
-  const reviewing = review?.status === 'reviewing'
+  const loop = loopForSession(useReviewLoops(), view.id)
+  const reviewing = review?.status === 'reviewing' || (loop !== undefined && !LOOP_ENDED.includes(loop.phase))
   return (
     <>
       <Button
@@ -87,6 +89,51 @@ export function AiReviewButton({ view, compact }: { view: SessionView; compact?:
       </Button>
       <AgentReviewDialog view={view} open={picking} onOpenChange={setPicking} onLoop={() => void run()} />
     </>
+  )
+}
+
+const LOOP_ENDED: ReviewLoopPhase[] = ['approved', 'maxRounds', 'stopped', 'failed']
+const LOOP_TONE: Record<ReviewLoopPhase, Tone> = { briefing: 'info', starting: 'info', reviewing: 'info', fixing: 'warning', approved: 'success', maxRounds: 'danger', stopped: 'neutral', failed: 'danger' }
+
+/** Where a "Review with another agent" loop is, in both of its chats: round, who it waits on, Stop. */
+export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sessionId: string }) {
+  const { t } = useI18n()
+  const ended = LOOP_ENDED.includes(loop.phase)
+  const other = sessionId === loop.authorSessionId ? loop.reviewerSessionId : loop.authorSessionId
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface px-2 py-1.5 text-sm" data-testid="review-loop">
+      <div className="flex items-center gap-1.5">
+        <span className="min-w-0 flex-1 truncate text-xs text-muted">{t('agentReview.loop.title', { reviewer: loop.reviewerLabel })}</span>
+        <Badge tone={LOOP_TONE[loop.phase]} data-testid="review-loop-phase">
+          {!ended && <Spinner className="mr-1 size-2.5" />}
+          {t(`agentReview.phase.${loop.phase}`)}
+        </Badge>
+      </div>
+      {loop.round > 0 && <div className="text-xs text-subtle">{t('aiReview.round', { n: loop.round, max: loop.maxRounds })}</div>}
+      {loop.phase === 'stopped' && loop.stoppedBy === 'cancelled' && <p className="text-xs text-subtle">{t('agentReview.stoppedByCancel')}</p>}
+      {loop.phase === 'maxRounds' && <p className="text-xs text-subtle">{t('agentReview.maxRoundsHint')}</p>}
+      {loop.failure && (
+        <p className="text-xs break-words text-danger" data-testid="review-loop-failure">
+          {t(`agentReview.failure.${loop.failure}`, { detail: loop.detail ?? '' })}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-1.5">
+        {other && (
+          <Button size="sm" variant="ghost" onClick={() => requestOpen(other)}>
+            {t(other === loop.reviewerSessionId ? 'agentReview.openReviewer' : 'agentReview.openAuthor')}
+          </Button>
+        )}
+        {ended ? (
+          <Button size="sm" variant="ghost" onClick={() => void window.hub.aiReview.dismissLoop(loop.id)}>
+            {t('agentReview.dismiss')}
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" data-testid="review-loop-stop" onClick={() => void window.hub.aiReview.stopLoop(loop.id)}>
+            {t('agentReview.stop')}
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -128,10 +175,11 @@ export function AiReviewSection({ view }: { view: SessionView }) {
   const config = useConfig()
   const review = reviewForSession(snap, view)
   const hold = holdForSession(snap, view)
+  const loop = loopForSession(useReviewLoops(), view.id)
   const { run } = useStartReview(view)
   const [selected, setSelected] = useState<string[]>([])
   const [opinion, setOpinion] = useState('')
-  if (!review && !hold) return null
+  if (!review && !hold && !loop) return null
   const profile = config?.config.profiles.find((p) => p.id === (review?.profileId ?? view.profileId ?? config.config.activeProfileId))
   const settings = aiReviewSettings(profile)
   const round = review?.rounds.at(-1)
@@ -153,6 +201,7 @@ export function AiReviewSection({ view }: { view: SessionView }) {
         )}
       </summary>
       <div className="mt-2 flex flex-col gap-2 text-sm">
+        {loop && <ReviewLoopCard loop={loop} sessionId={view.id} />}
         {hold && (
           <div role="alert" className="flex flex-col gap-1.5 rounded-md bg-warning-soft px-2 py-1.5 text-warning" data-testid="ai-review-hold">
             <span>{t('aiReview.held', { percent: Math.round(hold.budget.percent ?? 0), window: hold.budget.window ? usageWindowName(hold.budget.window, t) : '', ceiling: hold.budget.ceiling ?? '' })}</span>
@@ -269,7 +318,8 @@ export function AiReviewSection({ view }: { view: SessionView }) {
 export function AiReviewAside({ view }: { view: SessionView }) {
   const { t } = useI18n()
   const snap = useAiReviews()
-  if (!reviewForSession(snap, view) && !holdForSession(snap, view)) return null
+  const loop = loopForSession(useReviewLoops(), view.id)
+  if (!reviewForSession(snap, view) && !holdForSession(snap, view) && !loop) return null
   return (
     <aside aria-label={t('aiReview.panel')} className="w-72 shrink-0 overflow-y-auto border-l border-border bg-sidebar px-4 py-1">
       <AiReviewSection view={view} />
