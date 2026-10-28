@@ -1,11 +1,11 @@
-import { ArrowRight, FolderPlus, Workflow } from 'lucide-react'
+import { ArrowRight, FolderPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { ConnectionKind, CreditSpend, Profile } from '@workhub/core'
+import type { CreditSpend, Profile } from '@workhub/core'
 import { Button, STATE_TONE, StateDot, type Tone } from '../components/atoms'
-import { Card, CardBody, CardHeader, EmptyState, HOME_INSET_ROW, StatTile } from '../components/molecules'
+import { Card, CardBody, CardHeader, HOME_INSET_ROW, StatTile } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
-import { ATTENTION_ORDER, folderName, groupByAttention, hasConnection, planUsage, type Attention } from '../lib/home'
+import { ATTENTION_ORDER, folderName, groupByAttention, planUsage, type Attention } from '../lib/home'
 import { moduleScreens, ticketsInProgress } from '@workhub/core'
 import { HomeTicketsCard } from '../components/organisms/HomeTickets'
 import { AgentUsageCard } from '../components/organisms/AgentUsageCard'
@@ -42,23 +42,6 @@ export interface HomeScreenProps {
   /** Opens the Pull requests screen, on one PR when a URL is given. */
   onOpenPullRequest: (url?: string) => void
   onNavigate?: (route: Route) => void
-}
-
-/** "Connect X in Settings" or "arrives in phase N", depending on whether the profile has the connection. */
-function ConnectionNote({ profile, kind, phase, onOpenSettings }: { profile: Profile | undefined; kind: ConnectionKind; phase: string; onOpenSettings: HomeScreenProps['onOpenSettings'] }) {
-  const { t } = useI18n()
-  const connected = hasConnection(profile, kind)
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md bg-surface-hover/60 px-3 py-2.5 text-sm">
-      <span className="text-muted">{connected ? t('home.arrivesIn', { phase }) : t(`home.notConnected.${kind}`)}</span>
-      {!connected && (
-        <Button size="sm" variant="ghost" className="text-accent hover:text-accent" onClick={() => onOpenSettings('connections')}>
-          {t('home.openSettings')}
-          <ArrowRight className="size-3.5" aria-hidden />
-        </Button>
-      )}
-    </div>
-  )
 }
 
 /** Kiro credits spent today and this week, read from its session files when Home shows and every minute after. */
@@ -178,15 +161,6 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
             })}
           </div>
         </section>
-
-        {modules.has('flows') && (
-          <Card>
-            <CardHeader title={t('home.flowsInProgress')} icon={<Workflow className="size-4" aria-hidden />} />
-            <CardBody>
-              <EmptyState compact title={t('home.noFlows')} description={t('home.arrivesIn', { phase: 'P7' })} />
-            </CardBody>
-          </Card>
-        )}
 
         <div className="grid grid-cols-2 gap-3 @min-[760px]:grid-cols-4">
           <PullRequestTile kind="mine" lists={pullRequests.lists} loading={pullRequests.loading} />

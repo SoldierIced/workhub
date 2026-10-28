@@ -60,7 +60,7 @@ describe('translate', () => {
   it('translates per locale', () => {
     expect(translate('en', 'nav.settings')).toBe('Settings')
     expect(translate('es', 'nav.settings')).toBe('Ajustes')
-    expect(translate('es', 'placeholder.phase', { phase: 'P3' })).toBe('Llega en la fase P3')
+    expect(translate('es', 'chat.imageAlt', { n: 3 })).toBe('Imagen pegada 3')
   })
 
   it('picks the plural form', () => {

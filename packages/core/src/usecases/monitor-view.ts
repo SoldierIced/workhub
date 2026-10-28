@@ -1,6 +1,6 @@
 import type { AgentCapabilities, AgentCapabilityName } from '../domain/agent'
 import type { MonitorField, SessionMonitorSnapshot } from '../domain/monitor'
-import { OPTIONAL_MODULES, type ModuleToggles, type OptionalModule } from '../domain/profile'
+import { OFFERED_MODULES, type ModuleToggles, type OptionalModule } from '../domain/profile'
 
 /** The capability that must be on for a monitor field to be shown. `null`: always allowed. */
 const FIELD_CAPABILITY: Record<MonitorField, AgentCapabilityName | null> = {
@@ -66,9 +66,9 @@ export function sessionScreens(capabilities: AgentCapabilities): SessionScreen[]
   return screens
 }
 
-/** Optional-module screens a profile turns on. */
+/** Optional-module screens a profile turns on (retired modules never have one). */
 export function moduleScreens(modules: ModuleToggles | undefined): OptionalModule[] {
-  return OPTIONAL_MODULES.filter((m) => modules?.[m] === true)
+  return OFFERED_MODULES.filter((m) => modules?.[m] === true)
 }
 
 /** Merges a partial monitor update into a snapshot. Lists and nested objects are replaced whole. */
