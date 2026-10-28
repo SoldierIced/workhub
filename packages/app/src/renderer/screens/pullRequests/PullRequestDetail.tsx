@@ -450,26 +450,28 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
           <Button size="sm" variant="secondary" icon={<Sparkles className="size-3.5" aria-hidden />} title={t('links.pr.reviewHint')} onClick={() => window.hub.links.request({ kind: 'reviewPullRequest', profileId, pr: target })}>
             {t('links.pr.review')}
           </Button>
-          <span className="flex-1" />
-          {capabilities &&
-            open &&
-            actions
-              .filter((a) => capabilities.reviewActions.includes(a.action))
-              .filter((a) => !isMine || a.action === 'comment')
-              .map((a) => {
-                const refusal = reviewRefusal(capabilities, a.action, 'x', isMine)
-                const Icon = a.icon
-                return (
-                  <Button key={a.action} size="sm" variant={a.variant} icon={<Icon className="size-3.5" aria-hidden />} disabled={refusal !== null} onClick={() => setAction(a.action)}>
-                    {t(a.label)}
-                  </Button>
-                )
-              })}
-          {result?.ok && closeRefusal(head, isMine) === null && (
-            <Button size="sm" variant="danger" icon={<GitPullRequestClosed className="size-3.5" aria-hidden />} title={t('pr.close.openHint')} onClick={() => setClosing(true)}>
-              {t('pr.close.open')}
-            </Button>
-          )}
+          {/* The review actions wrap as one group, kept at the right edge, rather than one button at a time. */}
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+            {capabilities &&
+              open &&
+              actions
+                .filter((a) => capabilities.reviewActions.includes(a.action))
+                .filter((a) => !isMine || a.action === 'comment')
+                .map((a) => {
+                  const refusal = reviewRefusal(capabilities, a.action, 'x', isMine)
+                  const Icon = a.icon
+                  return (
+                    <Button key={a.action} size="sm" variant={a.variant} icon={<Icon className="size-3.5" aria-hidden />} disabled={refusal !== null} onClick={() => setAction(a.action)}>
+                      {t(a.label)}
+                    </Button>
+                  )
+                })}
+            {result?.ok && closeRefusal(head, isMine) === null && (
+              <Button size="sm" variant="danger" icon={<GitPullRequestClosed className="size-3.5" aria-hidden />} title={t('pr.close.openHint')} onClick={() => setClosing(true)}>
+                {t('pr.close.open')}
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
