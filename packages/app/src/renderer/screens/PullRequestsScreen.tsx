@@ -84,7 +84,7 @@ function Row({ item, profileId, selected, showAuthor, mine, onSelect, onOpenWind
     <li>
       <ContextMenu.Root>
         <ContextMenu.Trigger asChild>
-          <div className={cn('relative flex gap-2.5 rounded-md px-2.5 py-2 transition-colors duration-150 hover:bg-surface-hover', selected && 'bg-accent-soft hover:bg-accent-soft')} data-testid="pr-row">
+          <div className={cn('relative flex gap-2.5 rounded-md px-2.5 py-2 transition-colors duration-150 hover:bg-surface-hover data-[state=open]:bg-surface-hover', selected && 'bg-accent-soft hover:bg-accent-soft')} data-testid="pr-row">
             <button
               type="button"
               onClick={onSelect}
