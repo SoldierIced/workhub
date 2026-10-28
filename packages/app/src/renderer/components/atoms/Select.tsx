@@ -24,32 +24,37 @@ export interface SelectProps {
   placeholder?: string
   className?: string
   /**
-   * Icon-only trigger: shows this icon (and the chevron) instead of the value; `title` names the
-   * current value on hover. The value stays readable to screen readers.
+   * Borderless inline trigger (a composer's controls): this icon, the visible value and the
+   * chevron, with a hover background instead of a border. `display` replaces the value's text and
+   * `title` is its tooltip.
    */
-  compact?: { icon: ReactNode; title: string }
+  inline?: { icon: ReactNode; display?: string; title?: string }
 }
 
-export function Select({ value, onChange, options, disabled, placeholder, className, id, compact, ...aria }: SelectProps) {
+export function Select({ value, onChange, options, disabled, placeholder, className, id, inline, ...aria }: SelectProps) {
   return (
     <RSelect.Root value={value === '' ? EMPTY : value} onValueChange={(v) => onChange(v === EMPTY ? '' : v)} disabled={disabled}>
       <RSelect.Trigger
         id={id}
         aria-label={aria['aria-label']}
-        title={compact?.title}
+        title={inline?.title}
         className={cn(
-          'inline-flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-base text-text shadow-sm',
-          'transition-colors duration-150 hover:border-border-strong data-[placeholder]:text-subtle',
-          'focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:opacity-50',
+          inline
+            ? 'inline-flex h-6 max-w-full min-w-0 items-center gap-1 rounded-md px-1.5 text-left text-xs text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted'
+            : cn(
+                'inline-flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-base text-text shadow-sm',
+                'transition-colors duration-150 hover:border-border-strong data-[placeholder]:text-subtle',
+                'focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 disabled:opacity-50'
+              ),
           className
         )}
       >
-        {compact && compact.icon}
-        <span className={compact ? 'sr-only' : 'truncate'}>
-          <RSelect.Value placeholder={placeholder} />
+        {inline?.icon}
+        <span className="truncate">
+          <RSelect.Value placeholder={placeholder}>{inline?.display}</RSelect.Value>
         </span>
         <RSelect.Icon>
-          <ChevronDown className="size-3.5 text-muted" aria-hidden />
+          <ChevronDown className={inline ? 'size-3 shrink-0 opacity-70' : 'size-3.5 text-muted'} aria-hidden />
         </RSelect.Icon>
       </RSelect.Trigger>
       <RSelect.Portal>
