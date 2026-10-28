@@ -27,6 +27,20 @@ import { errorText } from '../../lib/errorText'
 const COMPACTED_TEXT = 'The conversation was compacted.'
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
 
+/** When a message was sent: day, month and hour:minute (plus the year outside the current one); nothing when unknown. */
+function SentAt({ at, align }: { at?: number; align: 'left' | 'right' }) {
+  const { formatDate } = useI18n()
+  if (at === undefined) return null
+  const sameYear = new Date(at).getFullYear() === new Date().getFullYear()
+  const shown = formatDate(at, { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }), hour: '2-digit', minute: '2-digit' })
+  const full = formatDate(at, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return (
+    <time dateTime={new Date(at).toISOString()} title={full} data-testid="chat-sent-at" className={cn('block text-2xs text-subtle tabular-nums', align === 'right' && 'text-right')}>
+      {shown}
+    </time>
+  )
+}
+
 function Disclosure({ icon: Icon, title, tone, children, testId }: { icon: LucideIcon; title: string; tone?: 'danger' | 'warning'; children: ReactNode; testId?: string }) {
   return (
     <details className={cn('group ml-8 text-sm', tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-muted')} data-testid={testId}>
@@ -73,13 +87,17 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
           )}
           {typeof item.images === 'number' && <span className="text-xs text-subtle">{tn('chat.images', item.images)}</span>}
           {item.text && <div className="max-w-[80%] rounded-xl rounded-br-sm bg-accent-soft px-3.5 py-2 whitespace-pre-wrap text-text">{item.text}</div>}
+          <SentAt at={item.at} align="right" />
         </div>
       )
     case 'agent':
       return (
         <div className="flex gap-3" data-testid="agent-message">
           <BrandMark className="mt-0.5 size-5 shrink-0" />
-          <Markdown text={item.text} className="flex-1 leading-relaxed" />
+          <div className="min-w-0 flex-1">
+            <Markdown text={item.text} className="leading-relaxed" />
+            <SentAt at={item.at} align="left" />
+          </div>
         </div>
       )
     case 'thought':
@@ -139,9 +157,12 @@ function ChatBlock({ item, onAnswer, sessionId, cwd, subagents }: ChatBlockProps
       )
     case 'error':
       return (
-        <div role="alert" className="flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
-          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <span className="whitespace-pre-wrap">{item.text}</span>
+        <div>
+          <div role="alert" className="flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span className="whitespace-pre-wrap">{item.text}</span>
+          </div>
+          <SentAt at={item.at} align="left" />
         </div>
       )
     case 'replayStart':

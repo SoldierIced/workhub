@@ -63,6 +63,13 @@ function storedImage(block: Obj): ImageInput | null {
   return { mediaType, data }
 }
 
+/** A transcript line's ISO `timestamp` as epoch ms; undefined when missing or unreadable. */
+function stamp(m: Obj): number | undefined {
+  const t = str(m['timestamp'])
+  const ms = t ? Date.parse(t) : NaN
+  return Number.isNaN(ms) ? undefined : ms
+}
+
 /** `SessionMessage` list -> the conversation to replay when a past session opens in the app. */
 export function toHistoryMessages(raw: unknown): HistoryMessage[] {
   const out: HistoryMessage[] = []
@@ -73,11 +80,13 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
     // Subagent turns belong to their Agent call.
     if (!m || str(m['parent_tool_use_id'])) continue
     const message = obj(m['message'])
+    const at = stamp(m)
+    const when = at === undefined ? {} : { at }
     const content = message?.['content']
     if (m['type'] === 'user') {
       if (typeof content === 'string') {
         const text = typedText(content)
-        if (text) out.push({ kind: 'user', text })
+        if (text) out.push({ kind: 'user', ...when, text })
         continue
       }
       const blocks = arr(content).map(obj).filter((b): b is Obj => !!b)
@@ -86,7 +95,7 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
       const images = imageBlocks.length
       if (text || images) {
         const imageData = imageBlocks.map(storedImage).filter((i): i is ImageInput => i !== null)
-        out.push(images ? { kind: 'user', text: text ?? '', images, ...(imageData.length ? { imageData } : {}) } : { kind: 'user', text: text! })
+        out.push(images ? { kind: 'user', ...when, text: text ?? '', images, ...(imageData.length ? { imageData } : {}) } : { kind: 'user', ...when, text: text! })
       }
       const results = blocks.filter((b) => b['type'] === 'tool_result')
       for (const b of results) {
@@ -103,11 +112,11 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
         if (b?.['type'] === 'text' && str(b['text'])) {
           const last = out[out.length - 1]
           if (last?.kind === 'agent') last.text += `\n\n${b['text'] as string}`
-          else out.push({ kind: 'agent', text: b['text'] as string })
+          else out.push({ kind: 'agent', ...when, text: b['text'] as string })
         } else if (b?.['type'] === 'tool_use' && str(b['id']) && str(b['name'])) {
           const input = obj(b['input']) ?? {}
           const { title, detail } = describeTool(b['name'] as string, input)
-          const tool: Extract<HistoryMessage, { kind: 'tool' }> = { kind: 'tool', id: b['id'] as string, title, view: claudeToolView(b['name'] as string, input) }
+          const tool: Extract<HistoryMessage, { kind: 'tool' }> = { kind: 'tool', ...when, id: b['id'] as string, title, view: claudeToolView(b['name'] as string, input) }
           names.set(tool.id, b['name'] as string)
           if (detail) tool.detail = detail
           tools.set(tool.id, tool)

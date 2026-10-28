@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ImportPlan } from '@workhub/core'
 import { safeHref } from '../src/renderer/components/molecules/Markdown'
 import { isEmptyPlan, mergedPrefs, notesFor, optionRows, otherNotes } from '../src/renderer/components/organisms/Workhub1Import'
@@ -101,6 +101,23 @@ describe('chat store', () => {
     let s = applyEvent(empty(), { sessionId: 's', type: 'tool', toolCallId: 't1', title: 'Read a file', status: 'pending' }, next)
     s = applyEvent(s, { sessionId: 's', type: 'tool', toolCallId: 't1', status: 'completed', detail: 'src/a.ts' }, next)
     expect(s.items).toEqual([expect.objectContaining({ kind: 'tool', title: 'Read a file', status: 'completed', detail: 'src/a.ts' })])
+  })
+
+  it('stamps live items and keeps the first chunk\'s time when a reply grows', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000)
+    let s = applyEvent(empty(), { sessionId: 's', type: 'message', role: 'agent', text: 'Hi' }, next)
+    vi.setSystemTime(5_000)
+    s = applyEvent(s, { sessionId: 's', type: 'message', role: 'agent', text: ' there' }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'exit', code: 0 }, next)
+    vi.useRealTimers()
+    expect(s.items).toEqual([expect.objectContaining({ kind: 'agent', text: 'Hi there', at: 1_000 }), expect.objectContaining({ kind: 'exit', at: 5_000 })])
+  })
+
+  it('carries the time of a replayed message and leaves unknown ones without it', () => {
+    const items = replayItems([{ kind: 'user', text: 'q', at: 42 }, { kind: 'agent', text: 'a' }], next)
+    expect(items[0]).toMatchObject({ kind: 'user', at: 42 })
+    expect(items[1]).not.toHaveProperty('at')
   })
 
   it('turns a past conversation into chat items', () => {
