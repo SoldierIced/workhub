@@ -1,4 +1,4 @@
-import { Activity, ListChecks, Sparkles } from 'lucide-react'
+import { Activity, ListChecks, RotateCcw, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { folderForEvent, folderForPod, folderName, matchFolder, moduleScreens, pruneSelection, selectableItems, toggleItem, workloadName, type HealthItemId, type Profile } from '@workhub/core'
 import type { HealthEnvironmentView, HealthState } from '@shared/health-api'
@@ -58,7 +58,7 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
   const enabled = Boolean(profile && moduleScreens(profile.modules).includes('health'))
   const { view, loading, error, refresh } = useHealth(profile?.id, enabled)
   const [selected, setSelected] = useState<string | null>(null)
-  const environments = view?.environments ?? []
+  const environments = enabled ? (view?.environments ?? []) : []
   const current = environments.find((e) => e.id === selected) ?? environments[0]
   useEffect(() => {
     if (selected && !environments.some((e) => e.id === selected)) setSelected(null)
@@ -130,7 +130,8 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
     if (done) finish()
   }
 
-  const copy = view ? STATUS_COPY[view.state] : undefined
+  // Without the module (or the profile) nothing is asked for: say so instead of waiting forever.
+  const copy = enabled ? (view ? STATUS_COPY[view.state] : undefined) : STATUS_COPY.moduleOff
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4 px-8 py-7">
       <header className="flex items-start gap-3">
@@ -146,12 +147,15 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
       </header>
 
       {error && (
-        <p role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
-          {error}
-        </p>
+        <div role="alert" className="flex items-center gap-3 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3">
+          <p className="min-w-0 flex-1 break-words text-sm text-danger">{t('health.loadFailed', { message: error })}</p>
+          <Button size="sm" icon={loading ? <Spinner /> : <RotateCcw className="size-3.5" aria-hidden />} disabled={loading} onClick={() => void refresh()}>
+            {t('health.retry')}
+          </Button>
+        </div>
       )}
 
-      {!view && !error && (
+      {enabled && !view && !error && (
         <p className="flex items-center gap-2 py-10 text-sm text-muted" role="status">
           <Spinner /> {t('health.loading')}
         </p>
@@ -214,7 +218,7 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
             )}
           </div>
           <HealthRowsProvider value={actions}>
-            <EnvironmentPanel key={current.id} env={current} />
+            <EnvironmentPanel key={current.id} env={current} onRetry={() => void refresh()} retrying={loading} />
           </HealthRowsProvider>
           {picked.size > 0 && (
             <div role="region" aria-label={t('health.investigateTogether')} className="sticky bottom-3 z-10 mx-auto flex w-full max-w-xl items-center gap-3 rounded-xl border border-border bg-surface-raised px-4 py-2.5 shadow-lg">

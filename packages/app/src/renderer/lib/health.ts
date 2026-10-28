@@ -1,4 +1,4 @@
-import { matchFolder, type BlindSpot, type ErrorGroup, type HealthReason, type HealthReasonCode, type HealthSignal, type HealthState, type PodKind, type PodVisibility, type TrendState, type TrendStats, type WindowRegression, type WindowVerdict } from '@workhub/core'
+import { matchFolder, type BlindSpot, type ErrorGroup, type HealthReason, type HealthReasonCode, type HealthSignal, type HealthSnapshot, type HealthState, type PodKind, type PodVisibility, type TrendState, type TrendStats, type WindowRegression, type WindowVerdict } from '@workhub/core'
 import type { Tone } from '../components/atoms'
 import type { I18n } from '../i18n/I18nProvider'
 import type { MessageKey, PluralKey } from '../i18n/translate'
@@ -79,6 +79,17 @@ export function formatRate(rate: number): string {
 /** "No blind spot is shown for what a section already says": the pod spots when pods are not visible have their own card message. */
 export function visibleBlindSpots(spots: BlindSpot[]): BlindSpot[] {
   return spots.filter((s) => s.code !== 'noPodMetrics' && s.code !== 'noKubernetesSuffix' && s.code !== 'noKubeState')
+}
+
+/**
+ * Why an environment could not be read at all, or null when it was read. `neverRead` means there
+ * are no earlier figures either, so the signal cards would only show empty lists that look like
+ * "nothing wrong": the screen shows the failure instead of them.
+ */
+export function connectionFailure(snapshot: Pick<HealthSnapshot, 'state' | 'errorMessage' | 'blindSpots' | 'fetchedAt'>): { message: string; neverRead: boolean } | null {
+  if (snapshot.state !== 'unreachable') return null
+  const message = snapshot.errorMessage?.trim() || snapshot.blindSpots.find((b) => b.code === 'connection')?.detail?.trim() || ''
+  return { message, neverRead: snapshot.fetchedAt === undefined }
 }
 
 /** Worst state first, for the Home strip. */

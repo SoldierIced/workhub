@@ -38,6 +38,8 @@ import type { HealthDetail, HealthDetailResult, HealthEnvironmentView, HealthSta
 
 /** The least time between two real reads of a profile or of one row's details, however often the screen asks. */
 export const HEALTH_MIN_GAP_MS = 30_000
+/** A read that failed at the connection (VPN down, refused credentials) may be retried this soon. */
+export const HEALTH_RETRY_GAP_MS = 5_000
 /** How long the details of an expanded row stay valid; its refresh button reads them again. */
 export const HEALTH_DETAIL_LIFETIME_MS = 10 * 60_000
 
@@ -162,8 +164,10 @@ export class HealthService {
     if ('view' in r) return r.view
     const { provider, environments, cached, refreshMinutes } = r
     const age = this.now() - cached.at
-    // A forced read still waits for the floor: a shared cluster is not read on every click.
-    const floor = Math.max(HEALTH_MIN_GAP_MS, r.floorMinutes * 60_000)
+    // A forced read still waits for the floor: a shared cluster is not read on every click. A read
+    // that never reached the cluster cost it nothing, so Retry after a failure is honoured quickly.
+    const failed = [...cached.byEnv.values()].some((reading) => reading.snapshot.state === 'unreachable')
+    const floor = failed ? HEALTH_RETRY_GAP_MS : Math.max(HEALTH_MIN_GAP_MS, r.floorMinutes * 60_000)
     const due = cached.at === 0 || age >= refreshMinutes * 60_000 || (force && age >= floor)
     if (due) {
       const now = this.now()
