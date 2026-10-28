@@ -15,23 +15,24 @@ import { containsBell } from './lib/attention'
 import { TerminalScrollback } from './lib/terminal-scrollback'
 import type { SessionView } from '@shared/api'
 
+/** `at`: epoch ms the item was sent (live) or written in the transcript (replayed); absent when unknown. */
 export type ChatItem =
-  | { id: number; kind: 'agent' | 'thought' | 'error'; text: string }
+  | { id: number; at?: number; kind: 'agent' | 'thought' | 'error'; text: string }
   /**
    * `images`: data URLs of the pasted images, shown as thumbnails; a number when only the count is
    * known (a replayed message whose images could not be read back). `imagePaths`: each image's file
    * in the data folder once written (see main/pasted-images.ts), which the file viewer opens.
    */
-  | { id: number; kind: 'user'; text: string; images?: string[] | number; imagePaths?: (string | null)[] }
+  | { id: number; at?: number; kind: 'user'; text: string; images?: string[] | number; imagePaths?: (string | null)[] }
   /** A prompt turn ended; the reason is the agent's stop reason (end_turn, cancelled...). */
-  | { id: number; kind: 'turnEnd'; stopReason: string }
+  | { id: number; at?: number; kind: 'turnEnd'; stopReason: string }
   /** The agent process exited; `code` is null when a signal ended it. */
-  | { id: number; kind: 'exit'; code: number | null }
+  | { id: number; at?: number; kind: 'exit'; code: number | null }
   /** `view`/`result`: what the call did per tool (diff, command output), when the agent reports it. */
-  | { id: number; kind: 'tool'; toolCallId: string; title: string; status: string; toolKind?: string; detail?: string; view?: ToolView; result?: ToolResultView }
-  | { id: number; kind: 'permission'; requestId: string; title: string; detail?: string; options: PermissionOption[]; answer?: string }
+  | { id: number; at?: number; kind: 'tool'; toolCallId: string; title: string; status: string; toolKind?: string; detail?: string; view?: ToolView; result?: ToolResultView }
+  | { id: number; at?: number; kind: 'permission'; requestId: string; title: string; detail?: string; options: PermissionOption[]; answer?: string }
   /** A hook's output or a harness banner: its own block, never part of the agent's reply. */
-  | { id: number; kind: 'notice'; noticeKind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
+  | { id: number; at?: number; kind: 'notice'; noticeKind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
   /** Messages of a resumed session before this run. */
   | { id: number; kind: 'replayStart'; count: number }
 
@@ -145,12 +146,12 @@ function patch(id: string, fn: (s: SessionData) => SessionData): void {
 }
 
 export function pushItem(id: string, kind: 'error', text: string): void {
-  patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, kind, text }] }))
+  patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, at: Date.now(), kind, text }] }))
 }
 
 export function pushUser(id: string, text: string, images?: string[]): void {
   const itemId = ++seq
-  patch(id, (s) => ({ ...s, items: [...s.items, { id: itemId, kind: 'user', text, ...(images?.length ? { images } : {}) }] }))
+  patch(id, (s) => ({ ...s, items: [...s.items, { id: itemId, at: Date.now(), kind: 'user', text, ...(images?.length ? { images } : {}) }] }))
   // Each pasted image is written once to a file of its own, so its thumbnail opens in the file viewer.
   if (images?.length) void cacheImages(images).then((paths) => paths && setImagePaths(id, itemId, paths))
 }
@@ -206,7 +207,7 @@ export function withTurnEnd(s: SessionData, stopReason: string, next: () => numb
     stopReason === 'end_turn'
       ? s.items
       : s.items.map((i) => (i.kind === 'tool' && (i.status === 'pending' || i.status === 'in_progress') ? { ...i, status: 'cancelled' } : i))
-  return { ...s, items: [...items, { id: next(), kind: 'turnEnd', stopReason }] }
+  return { ...s, items: [...items, { id: next(), at: Date.now(), kind: 'turnEnd', stopReason }] }
 }
 
 export function markPermission(id: string, requestId: string, answer: string): void {
@@ -246,6 +247,8 @@ export function seedTerminals(sessionId: string, terminals: Record<string, strin
   }
 }
 
+const at = (m: HistoryMessage): { at?: number } => (m.at === undefined ? {} : { at: m.at })
+
 /** Chat items for the earlier messages of a resumed session. */
 export function replayItems(messages: HistoryMessage[], next: () => number): ChatItem[] {
   return messages.map((m): ChatItem => {
@@ -254,12 +257,12 @@ export function replayItems(messages: HistoryMessage[], next: () => number): Cha
         // Images read back from the stored conversation show again; else only how many there were.
         const shown = (m.imageData ?? []).map((i) => `data:${i.mediaType};base64,${i.data}`)
         const images = shown.length ? shown : m.images
-        return { id: next(), kind: 'user', text: m.text, ...(images ? { images } : {}) }
+        return { id: next(), kind: 'user', text: m.text, ...(images ? { images } : {}), ...at(m) }
       }
       case 'agent':
-        return { id: next(), kind: 'agent', text: m.text }
+        return { id: next(), kind: 'agent', text: m.text, ...at(m) }
       case 'tool':
-        return { id: next(), kind: 'tool', toolCallId: m.id, title: m.title, detail: m.detail, status: m.failed ? 'failed' : 'completed', view: m.view, result: m.result }
+        return { id: next(), kind: 'tool', toolCallId: m.id, title: m.title, detail: m.detail, status: m.failed ? 'failed' : 'completed', view: m.view, result: m.result, ...at(m) }
     }
   })
 }
@@ -300,7 +303,7 @@ export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): S
       const items =
         last && last.kind === kind
           ? [...s.items.slice(0, -1), { ...last, text: last.text + e.text }]
-          : [...s.items, { id: next(), kind, text: e.text }]
+          : [...s.items, { id: next(), at: Date.now(), kind, text: e.text }]
       return { ...s, items }
     }
     case 'tool': {
@@ -321,20 +324,20 @@ export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): S
           )
         : [
             ...s.items,
-            { id: next(), kind: 'tool' as const, toolCallId: e.toolCallId, title: e.title ?? e.toolCallId, status: e.status ?? '', toolKind: e.kind, detail: e.detail, view: e.view, result: e.result }
+            { id: next(), at: Date.now(), kind: 'tool' as const, toolCallId: e.toolCallId, title: e.title ?? e.toolCallId, status: e.status ?? '', toolKind: e.kind, detail: e.detail, view: e.view, result: e.result }
           ]
       return { ...s, items }
     }
     case 'permission':
-      return { ...s, items: [...s.items, { id: next(), kind: 'permission', requestId: e.requestId, title: e.title, detail: e.detail, options: e.options }] }
+      return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'permission', requestId: e.requestId, title: e.title, detail: e.detail, options: e.options }] }
     case 'permissionCancelled':
       return { ...s, items: s.items.map((i) => (i.kind === 'permission' && i.requestId === e.requestId && !i.answer ? { ...i, answer: '—' } : i)) }
     case 'notice':
-      return { ...s, items: [...s.items, { id: next(), kind: 'notice', noticeKind: e.kind, title: e.title, text: e.text, failed: e.failed }] }
+      return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'notice', noticeKind: e.kind, title: e.title, text: e.text, failed: e.failed }] }
     case 'monitor':
       return { ...s, monitor: mergeMonitor(s.monitor, e.snapshot) }
     case 'exit':
-      return { ...s, items: [...s.items, { id: next(), kind: 'exit', code: e.code ?? null }] }
+      return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'exit', code: e.code ?? null }] }
     default:
       return s
   }

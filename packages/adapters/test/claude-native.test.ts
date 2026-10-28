@@ -305,6 +305,17 @@ describe('Claude session history', () => {
     expect(await history.messages('sess-1', '/tmp/moved')).toEqual([{ kind: 'user', text: 'hello from sess-1 in undefined' }])
   })
 
+  it('reads the time each stored message was written', () => {
+    const messages = toHistoryMessages([
+      { type: 'user', timestamp: '2026-10-28T14:05:00.000Z', message: { content: 'hi' } },
+      { type: 'assistant', timestamp: '2026-10-28T14:05:09.000Z', message: { content: [{ type: 'text', text: 'hello' }] } },
+      { type: 'user', timestamp: 'not a date', message: { content: 'later' } }
+    ])
+    expect(messages[0]).toMatchObject({ kind: 'user', at: Date.parse('2026-10-28T14:05:00.000Z') })
+    expect(messages[1]).toMatchObject({ kind: 'agent', at: Date.parse('2026-10-28T14:05:09.000Z') })
+    expect(messages[2]).not.toHaveProperty('at')
+  })
+
   it('turns stored messages into a replayable conversation', () => {
     const messages = toHistoryMessages([
       { type: 'user', message: { content: '<command-name>/clear</command-name>' } },

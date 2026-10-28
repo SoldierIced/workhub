@@ -198,7 +198,7 @@ describe('turn end divider', () => {
   it('adds one divider when several prompts settle together', () => {
     let n = 0
     const once = withTurnEnd(data([{ id: 1, kind: 'agent', text: 'hi' }]), 'end_turn', () => ++n + 10)
-    expect(once.items.at(-1)).toEqual({ id: 11, kind: 'turnEnd', stopReason: 'end_turn' })
+    expect(once.items.at(-1)).toEqual({ id: 11, at: expect.any(Number), kind: 'turnEnd', stopReason: 'end_turn' })
     expect(withTurnEnd(once, 'end_turn', () => 99)).toBe(once)
     expect(withTurnEnd(once, 'cancelled', () => 99).items).toHaveLength(3)
   })

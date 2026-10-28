@@ -48,11 +48,12 @@ export interface HistoryEntry {
 }
 
 /** A message of a past session, enough to replay the conversation when it is resumed in the app. */
+/** `at`: epoch ms the message was written, when the transcript records it. */
 export type HistoryMessage =
   /** `images`: how many the message carried; `imageData`: the ones that could be read back, to show them again. */
-  | { kind: 'user'; text: string; images?: number; imageData?: ImageInput[] }
-  | { kind: 'agent'; text: string }
-  | { kind: 'tool'; id: string; title: string; detail?: string; failed?: boolean; view?: ToolView; result?: ToolResultView }
+  | { kind: 'user'; at?: number; text: string; images?: number; imageData?: ImageInput[] }
+  | { kind: 'agent'; at?: number; text: string }
+  | { kind: 'tool'; at?: number; id: string; title: string; detail?: string; failed?: boolean; view?: ToolView; result?: ToolResultView }
 
 /** Lists and reads past sessions of one agent account (Claude: the Agent SDK's session store). */
 export interface SessionHistorySource {
