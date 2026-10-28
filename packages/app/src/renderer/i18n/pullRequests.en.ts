@@ -48,7 +48,7 @@ export const prEn = {
   'pr.status.draft': 'Draft',
   'pr.status.approved': 'Approved',
   'pr.status.ciRunning': 'CI running',
-  'pr.status.waitingReview': 'Waiting review',
+  'pr.status.waitingReview': 'Awaiting review',
   'pr.review.approved': 'Approved',
   'pr.review.changesRequested': 'Changes requested',
   'pr.review.reviewRequired': 'Review required',
