@@ -291,6 +291,15 @@ describe('ClaudeNativeRuntime stop', () => {
 })
 
 describe('Claude session history', () => {
+  it('replays a stopped turn as an interruption, not as a user message', () => {
+    const messages = toHistoryMessages([
+      { type: 'user', message: { content: 'go' } },
+      { type: 'user', timestamp: '2026-10-27T21:22:00.000Z', message: { content: [{ type: 'text', text: '[Request interrupted by user for tool use]' }] } },
+      { type: 'user', message: { content: '[Request interrupted by user]' } }
+    ])
+    expect(messages).toEqual([{ kind: 'user', text: 'go' }, { kind: 'interrupted', at: Date.parse('2026-10-27T21:22:00.000Z') }, { kind: 'interrupted' }])
+  })
+
   it('lists every session of an account with its folder and title', async () => {
     const history = new ClaudeSessionHistory({ bridgeDir: fakeBridge })
     const entries = await history.list({ agentId: 'claude', accountId: 'work', configDir: '/tmp/acme-work' })
@@ -344,7 +353,7 @@ describe('Claude session history', () => {
       lines[6] = { ...lines[6]!, isSidechain: true } as unknown as (typeof lines)[number]
       writeFileSync(join(config, 'projects', '-tmp-acme', 'sess-x.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
       const messages = await new ClaudeSessionHistory({ bridgeDir: fakeBridge }).messages('sess-x', '/tmp/acme', config)
-      expect(messages.map((m) => (m.kind === 'notice' ? `notice:${m.title}` : m.kind === 'tool' ? 'tool' : `${m.kind}:${m.text}`))).toEqual([
+      expect(messages.map((m) => (m.kind === 'notice' ? `notice:${m.title}` : m.kind === 'tool' || m.kind === 'interrupted' ? m.kind : `${m.kind}:${m.text}`))).toEqual([
         'user:first question',
         'agent:first answer',
         'notice:Conversation compacted',
