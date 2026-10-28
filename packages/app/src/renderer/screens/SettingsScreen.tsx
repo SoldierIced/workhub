@@ -654,7 +654,7 @@ function AccountsSection({ snap, run, initialId }: SectionProps & { initialId?: 
                   <Select value={form.agentId} onChange={(v) => setForm({ ...form, agentId: v })} options={snap.agents.map((a) => ({ value: a.id, label: a.name }))} />
                 </Field>
                 <Field label={t('settings.name')} help={t('help.account.name')} className="col-span-2" error={errors?.name && t(errors.name)}>
-                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Acme work" />
+                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('settings.accountNamePlaceholder')} />
                 </Field>
                 <Field
                   label={t('settings.configDir')}

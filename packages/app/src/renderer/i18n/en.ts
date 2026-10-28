@@ -269,6 +269,7 @@ export const en = {
   'settings.newConnection': 'New connection',
   'settings.newAccount': 'New account',
   'settings.newProfile': 'New profile',
+  'settings.accountNamePlaceholder': 'Acme work',
   'settings.id': 'Id',
   'settings.name': 'Name',
   'settings.kind': 'Kind',
