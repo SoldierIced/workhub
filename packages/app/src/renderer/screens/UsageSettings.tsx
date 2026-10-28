@@ -97,9 +97,20 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
   const saveBudget = (next: UsageBudgetOptions) => void run(() => window.hub.config.saveOptions({ usageBudget: next }))
   const toggle = (key: 'claudePlanUsage' | 'codexUsage' | 'kiroUsage', on: boolean) => void run(() => window.hub.config.saveOptions({ [key]: on })).then((ok) => ok && void window.hub.usage.get(true))
 
+  // One note per agent, each named: run together, the two "Off by default…" notes read as one repeated sentence.
+  const readingNote = (
+    <>
+      <span className="block">
+        <span className="font-medium text-muted">Claude</span> · {t('settings.planUsageNote')}
+      </span>
+      <span className="mt-1 block">
+        <span className="font-medium text-muted">Codex</span> · {t('agentUsage.settings.codexNote')}
+      </span>
+    </>
+  )
   return (
     <div className="flex flex-col gap-6">
-      <Group title={t('agentUsage.settings.reading')} help={t('help.usage.reading')} footnote={<>{t('settings.planUsageNote')} {t('agentUsage.settings.codexNote')}</>}>
+      <Group title={t('agentUsage.settings.reading')} help={t('help.usage.reading')} footnote={readingNote}>
         <SwitchRow label={t('agentUsage.settings.claude')} hint={t('settings.planUsageHint')}>
           <Switch checked={options.claudePlanUsage} disabled={!editable} onChange={(on) => toggle('claudePlanUsage', on)} />
         </SwitchRow>
