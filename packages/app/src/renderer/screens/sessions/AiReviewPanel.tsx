@@ -6,6 +6,7 @@ import type { AiReviewStartBlocker, AiReviewView } from '@shared/ai-review-api'
 import { Badge, Button, Select, Spinner, Textarea, type Tone } from '../../components/atoms'
 import { useToast } from '../../components/molecules'
 import { useAiReviews, holdForSession, reviewForSession } from '../../aiReviewStore'
+import { AgentReviewDialog } from './AgentReviewDialog'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
@@ -57,27 +58,35 @@ function useStartReview(view: SessionView) {
   return { run, pending }
 }
 
-/** "Review before PR" in the session header: always offered on a live session (main says why when it cannot run). */
+/**
+ * "Review before PR" in the session header: always offered on a live session. It opens the
+ * "Review with another agent" dialog (any repo the session touched, a PR, commits); the dialog
+ * can still start the automatic review loop on the session's own branch.
+ */
 export function AiReviewButton({ view, compact }: { view: SessionView; compact?: boolean }) {
   const { t } = useI18n()
   const snap = useAiReviews()
   const review = reviewForSession(snap, view)
   const { run, pending } = useStartReview(view)
+  const [picking, setPicking] = useState(false)
   const reviewing = review?.status === 'reviewing'
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      data-testid="ai-review-start"
-      title={compact ? `${t('aiReview.button')}\n${t('aiReview.buttonHint')}` : t('aiReview.buttonHint')}
-      aria-label={compact ? t('aiReview.button') : undefined}
-      className={compact ? 'px-1.5' : undefined}
-      disabled={pending || reviewing}
-      icon={reviewing || pending ? <Spinner className="size-3" /> : <ScanSearch className="size-3.5" aria-hidden />}
-      onClick={() => void run()}
-    >
-      {!compact && t('aiReview.button')}
-    </Button>
+    <>
+      <Button
+        size="sm"
+        variant="ghost"
+        data-testid="ai-review-start"
+        title={compact ? `${t('aiReview.button')}\n${t('aiReview.buttonHint')}` : t('aiReview.buttonHint')}
+        aria-label={compact ? t('aiReview.button') : undefined}
+        className={compact ? 'px-1.5' : undefined}
+        disabled={pending}
+        icon={reviewing || pending ? <Spinner className="size-3" /> : <ScanSearch className="size-3.5" aria-hidden />}
+        onClick={() => setPicking(true)}
+      >
+        {!compact && t('aiReview.button')}
+      </Button>
+      <AgentReviewDialog view={view} open={picking} onOpenChange={setPicking} onLoop={() => void run()} />
+    </>
   )
 }
 

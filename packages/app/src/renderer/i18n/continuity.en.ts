@@ -25,6 +25,7 @@ export const continuityEn = {
   'continuity.origin.failoverCeilingNoWindow': 'Continued in {account}: {from} is past your ceiling.',
   'continuity.origin.failoverManual': 'Continued in {account} (moved from {from}).',
   'continuity.origin.handoff': 'Handed off from {from}. The brief below is a summary of that session, not its conversation.',
+  'continuity.origin.review': 'Reviewer of {from}: a read-only session that reviews the change below and edits nothing.',
 
   'continuity.toast.moved': 'Continued in {account}.',
   'continuity.toast.handedOff': 'Hand-off to {agent} drafted. Review the brief, then send it.',
