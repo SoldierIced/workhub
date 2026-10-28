@@ -4,8 +4,10 @@ import { join, resolve } from 'node:path'
 import {
   AutomationEngine,
   EMPTY_AUTOMATIONS_STATE,
+  knownAgents,
   startedInWindow,
   startedToday,
+  supportsClearContext,
   type AutomationDefinition,
   type AutomationHost,
   type AutomationNotice,
@@ -132,6 +134,11 @@ export class AutomationService {
         if (!budgetOf || !this.config) return null
         const status = agentKeyBudget(this.config, a.agentKey, budgetOf)
         return status.action === 'block' ? { window: status.window ?? 'budget', ...(status.resetsAt !== undefined ? { resetsAt: status.resetsAt } : {}) } : null
+      },
+      clearsContext: (a) => {
+        const agentId = accountOf(a.agentKey).agentId
+        const agent = this.config ? knownAgents(this.config).find((x) => x.id === agentId) : undefined
+        return supportsClearContext(agent?.adapter, a.view)
       },
       readGate: async (path) => {
         try {

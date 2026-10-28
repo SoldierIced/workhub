@@ -49,6 +49,7 @@ class FakeWorld implements AutomationHost {
   usage: number | null = null
   budget: { window: string; resetsAt?: number } | null = null
   gate: unknown = undefined
+  clears = true
 
   now = () => this.time
   newId = () => `id${++this.ids}`
@@ -56,6 +57,7 @@ class FakeWorld implements AutomationHost {
   isActive = (a: AutomationDefinition) => !a.profileId || !this.inactiveProfiles.has(a.profileId)
   usagePercent = () => this.usage
   budgetPaused = () => this.budget
+  clearsContext = () => this.clears
   readGate = async () => this.gate
   replaceIdentity = async (oldKey: string, newKey: string) => {
     this.groups = replaceSessionIdentity(this.groups, oldKey, newKey)
@@ -316,14 +318,18 @@ describe('run cost', () => {
 })
 
 describe('new session each run (Workhub 1 bugs)', () => {
-  /** A first run whose session sent a Slack message (the hook) and sits in group "Bots", second of two. */
+  /**
+   * A first run whose session sent a Slack message (the hook) and sits in group "Bots", second of
+   * two; then the app restarts with that session still open, so the next run opens a new one.
+   */
   async function firstRun() {
-    const { world, engine } = setup({ sessionPolicy: 'newEachRun' })
-    engine.runNow('a1')
-    await runOnce(world, engine)
+    const { world, engine: before } = setup({ sessionPolicy: 'newEachRun' })
+    before.runNow('a1')
+    await runOnce(world, before)
     const old = world.live[0]!
     world.groups = reconcileTop(moveToGroup(createGroup(EMPTY_SESSION_GROUPS, 'g1', 'Bots', { key: 'other', title: 'x', agentKey: 'shell', cwd: '/tmp' }), { key: old.identity, title: 'Reviews', agentKey: 'shell', cwd: '/tmp' }, 'g1'), [])
     world.chat = ingestRecord(world.chat, { sessionId: old.identity, channelId: 'C01', ts: '40.000001', text: 'review request' }, { now: T0, newId: world.newId }).state
+    const engine = new AutomationEngine(world, before.snapshot())
     return { world, engine, old }
   }
 
@@ -382,6 +388,112 @@ describe('new session each run (Workhub 1 bugs)', () => {
     expect(engine.wakeBlocked(old.identity)).toBe('noReplies')
     expect(engine.ignoresChat(old.identity)).toBe(true)
     expect(engine.wakeBlocked('someone-else')).toBeNull()
+  })
+})
+
+describe('one session per automation while the app runs', () => {
+  /** What each run typed, and into which session (`0` the first one opened, `1` the next…). */
+  const sessionTexts = (world: FakeWorld) => {
+    const order = [...new Set(world.delivered.map((d) => d.sessionId))]
+    return world.delivered.map((d) => `${order.indexOf(d.sessionId)}:${d.text}`)
+  }
+
+  it('sends every run into the session it opened while that one is open and idle', async () => {
+    const { world, engine } = setup({ sessionPolicy: 'newEachRun' })
+    for (let i = 0; i < 3; i++) {
+      engine.runNow('a1')
+      await runOnce(world, engine)
+    }
+    expect(world.live).toHaveLength(1)
+    expect(sessionTexts(world)).toEqual(['0:/review', '0:/review', '0:/review'])
+    expect(engine.snapshot().runs.filter((r) => r.outcome === 'ok')).toHaveLength(3)
+    expect(new Set(engine.snapshot().runs.map((r) => r.session))).toEqual(new Set([world.live[0]!.identity]))
+  })
+
+  it('starts a new session once its session was closed, failed or left the list, and after a restart', async () => {
+    const { world, engine } = setup({ sessionPolicy: 'newEachRun' })
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    world.live[0]!.state = 'stopped'
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    expect(world.live).toHaveLength(2)
+    world.live[1]!.state = 'error'
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    expect(world.live).toHaveLength(3)
+    // The third one left the session list (closed and dropped).
+    world.live = world.live.slice(0, 2)
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    expect(world.live).toHaveLength(3)
+    expect(new Set(world.delivered.map((d) => d.sessionId)).size).toBe(4)
+    // After a restart the open session is not the automation's any more: the next run opens another.
+    const restarted = new AutomationEngine(world, engine.snapshot())
+    restarted.runNow('a1')
+    await runOnce(world, restarted)
+    expect(new Set(world.delivered.map((d) => d.sessionId)).size).toBe(5)
+  })
+
+  it('never opens a second session while its session is busy: the run waits and later triggers merge into it', async () => {
+    const { world, engine } = setup({ sessionPolicy: 'newEachRun', triggers: { chatChannelIds: ['C01'], prOwner: '', intervalMinutes: null } })
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    const session = world.live[0]!
+    // A Slack reply woke it, or the user is typing in it: it is busy (a permission prompt counts too).
+    session.state = 'busy'
+    engine.onChatMessages([prMessage('50.000001')], 'me')
+    await engine.tick()
+    engine.onChatMessages([prMessage('51.000001')], 'me')
+    await engine.tick()
+    expect(world.live).toHaveLength(1)
+    expect(world.delivered).toHaveLength(1)
+    expect(engine.runState('a1')).toMatchObject({ waitReason: 'sessionBusy', pending: { merged: 1 } })
+    // Free again: the one waiting run goes into the same session.
+    Object.assign(session, { state: 'ready', turnsEnded: session.turnsEnded + 1 })
+    await runOnce(world, engine)
+    expect(world.live).toHaveLength(1)
+    expect(sessionTexts(world)).toEqual(['0:/review', '0:/review'])
+    expect(engine.runState('a1').pending).toBeUndefined()
+  })
+
+  it('clears the context before a run in a session already used, when asked and when the agent can', async () => {
+    const { world, engine } = setup({ sessionPolicy: 'newEachRun', clearContext: true })
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    // A fresh session has nothing to clear.
+    expect(sessionTexts(world)).toEqual(['0:/review'])
+    engine.runNow('a1')
+    await engine.tick()
+    expect(sessionTexts(world)).toEqual(['0:/review', '0:/clear'])
+    expect(engine.runState('a1').active?.stage).toBe('clearing')
+    // `/clear` ends its own turn, then the prompt goes in.
+    world.endTurns()
+    await engine.tick()
+    await engine.tick()
+    expect(sessionTexts(world)).toEqual(['0:/review', '0:/clear', '0:/review'])
+    world.endTurns()
+    await engine.tick()
+    expect(engine.snapshot().runs.filter((r) => r.outcome === 'ok')).toHaveLength(2)
+    // An agent that cannot clear, or the option off: the prompt goes straight in.
+    world.clears = false
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    world.clears = true
+    world.defs[0] = { ...world.defs[0]!, clearContext: false }
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    expect(world.delivered.slice(3).map((d) => d.text)).toEqual(['/review', '/review'])
+  })
+
+  it('keeps the old identity linked to the automation when the session moves to a new one', async () => {
+    const { world, engine } = setup()
+    engine.runNow('a1')
+    await runOnce(world, engine)
+    const before = world.live[0]!.identity
+    engine.identityChanged(before, 'after-clear')
+    expect(engine.snapshot().owned).toMatchObject({ [before]: 'a1', 'after-clear': 'a1' })
+    expect(engine.snapshot().sessions['a1']).toBe('after-clear')
   })
 })
 
