@@ -43,7 +43,7 @@ export function SettingsDialog({ open, onOpenChange, snap, tab, onTabChange }: S
             className="fixed top-1/2 left-1/2 z-50 flex h-[min(860px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 animate-pop-in flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-lg focus-visible:outline-none"
           >
             {/* The scrolling parent of the pinned header: only the tab content moves. */}
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-auto">
               <SettingsScreen
                 snap={snap}
                 tab={tab}
