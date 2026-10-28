@@ -346,7 +346,7 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
   const copyLink = () => void navigator.clipboard.writeText(head?.url ?? url).then(() => notify(t('pr.detail.linkCopied')))
 
   // In its own window the first header row is the title bar: room for the traffic lights or the overlay controls.
-  const titleBar = cn('flex h-12 shrink-0 items-center gap-2 px-5', standalone && 'drag-region', standalone && platform === 'mac' && 'pl-20', standalone && platform !== 'mac' && 'pr-36')
+  const titleBar = cn('flex min-h-12 shrink-0 items-center gap-2 px-5 py-2', standalone && 'drag-region', standalone && platform === 'mac' && 'pl-20', standalone && platform !== 'mac' && 'pr-36')
 
   if (!head) {
     return (
@@ -382,7 +382,7 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
       <header className="shrink-0 border-b border-border">
         <div className={titleBar}>
           <span className="shrink-0 font-mono text-sm font-semibold text-accent">{prName(head, head.provider)}</span>
-          <h1 className="min-w-0 truncate text-md font-semibold tracking-tight select-text" title={head.title}>
+          <h1 className="line-clamp-2 min-w-0 text-md leading-snug font-semibold tracking-tight break-words select-text" title={head.title}>
             {head.title}
           </h1>
           <SlackBadge summary={slack.summary} onOpen={() => setTab('slack')} />
@@ -396,23 +396,27 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
           </div>
         </div>
         <div className="flex flex-col gap-2 px-5 pb-3">
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted select-text">
+          {/* Running text, the separators glued to the word before them: a wrapped line never starts with "·". */}
+          <p className="text-sm text-muted select-text">
             <span>{t('pr.detail.wantsToMerge', { author: head.author, head: head.branch, base: head.base })}</span>
             {head.changedFiles > 0 && (
               <>
-                <span aria-hidden>·</span>
-                <span>{tn('pr.detail.filesChanged', head.changedFiles)}</span>
+                <span aria-hidden>{'\u00a0· '}</span>
+                <span className="whitespace-nowrap">{tn('pr.detail.filesChanged', head.changedFiles)}</span>
               </>
             )}
             {(head.additions > 0 || head.deletions > 0) && (
-              <span className="tabular-nums" aria-label={t('pr.detail.lines', { additions: head.additions, deletions: head.deletions })}>
-                <span className="text-success">+{formatNumber(head.additions)}</span> <span className="text-danger">−{formatNumber(head.deletions)}</span>
-              </span>
+              <>
+                {' '}
+                <span className="whitespace-nowrap tabular-nums" aria-label={t('pr.detail.lines', { additions: head.additions, deletions: head.deletions })}>
+                  <span className="text-success">+{formatNumber(head.additions)}</span> <span className="text-danger">−{formatNumber(head.deletions)}</span>
+                </span>
+              </>
             )}
             {head.updatedAt && (
               <>
-                <span aria-hidden>·</span>
-                <span>{t('pr.updated', { time: relativeTime(head.updatedAt, Date.now(), locale) })}</span>
+                <span aria-hidden>{'\u00a0· '}</span>
+                <span className="whitespace-nowrap">{t('pr.updated', { time: relativeTime(head.updatedAt, Date.now(), locale) })}</span>
               </>
             )}
           </p>
