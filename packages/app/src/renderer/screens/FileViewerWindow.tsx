@@ -68,10 +68,11 @@ function TextView({ text }: { text: string }) {
       <pre className="min-w-max px-0 py-2 font-mono text-sm leading-5">
         {shown.map((line, i) => (
           <div key={i} className="flex">
-            <span className="sticky left-0 shrink-0 select-none bg-surface pr-3 pl-3 text-right text-subtle tabular-nums" style={{ width: `${width + 2.5}ch` }}>
+            {/* The number column: as wide as the longest number, inset like the header, ruled off from the text. */}
+            <span className="sticky left-0 box-content shrink-0 border-r border-border bg-surface pr-3 pl-4 text-right text-subtle tabular-nums select-none" style={{ width: `${width}ch` }}>
               {i + 1}
             </span>
-            <span className="pr-4 whitespace-pre">{line === '' ? ' ' : line}</span>
+            <span className="pr-4 pl-3 whitespace-pre">{line === '' ? ' ' : line}</span>
           </div>
         ))}
       </pre>
