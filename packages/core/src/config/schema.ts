@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ENV_NAME } from '../domain/profile'
+import { CHROME_PROFILE_DIR, ENV_NAME } from '../domain/profile'
 import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { CONNECTION_KINDS, type Connection } from '../domain/connection'
 import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
@@ -274,6 +274,7 @@ const profile = z.object({
   folderOptions: z.record(z.string().min(1), folderOptions).optional(),
   symbol: z.string().trim().min(1).max(40).optional(),
   linkBrowser: z.string().trim().min(1).max(200).optional(),
+  linkChromeProfile: z.string().trim().regex(CHROME_PROFILE_DIR).optional(),
   ownsOutside: z.boolean().optional(),
   envNames: z.array(z.string().regex(ENV_NAME)).optional(),
   health: healthSettings.optional(),
