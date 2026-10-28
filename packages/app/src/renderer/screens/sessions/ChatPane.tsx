@@ -1,4 +1,4 @@
-import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, Cpu, History, Info, Shield, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
@@ -13,6 +13,8 @@ import { acceptsInput, restoreComposer } from '../../lib/prompt-queue'
 import { isEditable, shouldFocusComposer } from '../../lib/composer-focus'
 import { interruptSession, onRecoveredPrompts, removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
 import { markPermission, openChatImage, pushItem, type ChatItem, type SessionData } from '../../store'
+import { followLog, isAtBottom, lastPromptId, type FollowMark } from '../../lib/chatScroll'
+import { sessionModelName, sessionPermissionName } from '../../lib/sessionHeader'
 import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useNow, useSessionCeilings, useUsageSettings } from '../../lib/usage'
@@ -239,14 +241,21 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
     [v.id]
   )
   const interrupt = () => void interruptSession(v.id).catch(() => undefined)
+  // The log follows new output only while the reader is at its bottom; scrolling up to read stops
+  // it until they scroll back down or send (or queue) a prompt themselves.
+  const log = useRef<HTMLDivElement>(null)
+  const atBottom = useRef(true)
+  const followMark = useRef<FollowMark>({ lastPromptId: lastPromptId(data.items), queued: queued.length })
   useEffect(() => {
+    const { follow, mark } = followLog(followMark.current, data.items, queued.length, atBottom.current)
+    followMark.current = mark
+    if (!follow) return
+    atBottom.current = true
     // Braces matter: scrollIntoView returns a Promise in recent Chromium, which React would take as a cleanup.
     void bottom.current?.scrollIntoView({ block: 'end' })
   }, [data.items, queued])
   // The log keeps its last line in view when it gets shorter (a narrower window wraps the composer's
   // hint, a notice or attached images appear above it), unless the user had scrolled up to read.
-  const log = useRef<HTMLDivElement>(null)
-  const atBottom = useRef(true)
   useEffect(() => {
     const el = log.current
     if (!el) return
@@ -258,7 +267,8 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
   }, [])
   const onLogScroll = () => {
     const el = log.current
-    if (el) atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+    // A hidden log (another session on screen) measures zero: that is not the reader scrolling.
+    if (el && el.clientHeight > 0) atBottom.current = isAtBottom(el)
   }
 
   const acceptsImages = v.capabilities.imageInput
@@ -516,6 +526,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
             className="block max-h-48 min-h-14 w-full resize-none bg-transparent px-4 pt-3 text-base text-text placeholder:text-subtle focus:outline-none disabled:opacity-60"
           />
           <div className="flex items-center gap-2 px-3 pb-2.5">
+            <SessionFacts data={data} />
             <span className="min-w-0 truncate text-xs text-subtle" title={acceptsImages ? t('chat.keysImages') : t('chat.keys')}>
               {acceptsImages ? t('chat.keysImages') : t('chat.keys')}
             </span>
@@ -536,6 +547,34 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The model and the permission mode the session runs with, always in view under the composer
+ * (the header folds its pickers into "More" when the window is narrow).
+ */
+function SessionFacts({ data }: { data: SessionData }) {
+  const { t } = useI18n()
+  const v = data.view
+  const model = sessionModelName(v, data.monitor.model, t)
+  const permission = sessionPermissionName(v, t)
+  const unattended = v.permissionMode?.unattended === true
+  return (
+    <div className="flex min-w-0 shrink items-center gap-1.5 text-xs" data-testid="session-facts">
+      <span className="flex min-w-0 max-w-44 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-muted" title={`${t('session.model')}: ${model}`} data-testid="session-model">
+        <Cpu className="size-3 shrink-0" aria-hidden />
+        <span className="truncate">{model}</span>
+      </span>
+      <span
+        className={cn('flex min-w-0 max-w-44 items-center gap-1 rounded-md border px-1.5 py-0.5', unattended ? 'border-warning/40 text-warning' : 'border-border text-muted')}
+        title={t('session.permissionMode', { mode: permission })}
+        data-testid="session-permission"
+      >
+        {unattended ? <ShieldAlert className="size-3 shrink-0" aria-hidden /> : <Shield className="size-3 shrink-0" aria-hidden />}
+        <span className="truncate">{permission}</span>
+      </span>
     </div>
   )
 }

@@ -110,3 +110,25 @@ export function permissionModeLabel(
   if (mode.label === 'Plan (read-only)') return t('session.mode.planReadOnly')
   return mode.label
 }
+
+type Translate = (key: MessageKey, params?: Record<string, string | number>) => string
+
+/**
+ * The model a session runs, as shown under its chat: the one picked (by its listed name), else the
+ * one the agent reported in its replies, else the agent's default.
+ */
+export function sessionModelName(
+  v: { models?: { id: string; name: string }[]; currentModelId?: string; modelIgnored?: boolean },
+  reported: string | undefined,
+  t: Translate
+): string {
+  const picked = v.modelIgnored ? undefined : v.currentModelId
+  if (picked) return v.models?.find((m) => m.id === picked)?.name ?? picked
+  return reported?.trim() || t('session.modelDefault')
+}
+
+/** The permission mode of a session in words, or why it is not known yet. */
+export function sessionPermissionName(v: { permissionMode: { id: string; label: string } | null; currentModeId?: string; state: SessionState }, t: Translate): string {
+  if (v.permissionMode) return permissionModeLabel(v.permissionMode, v.currentModeId, t)
+  return v.state === 'starting' ? t('session.pending') : t('session.unknown')
+}
