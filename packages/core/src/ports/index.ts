@@ -53,6 +53,8 @@ export type HistoryMessage =
   /** `images`: how many the message carried; `imageData`: the ones that could be read back, to show them again. */
   | { kind: 'user'; at?: number; text: string; images?: number; imageData?: ImageInput[] }
   | { kind: 'agent'; at?: number; text: string }
+  /** A harness banner worth keeping in the replay, e.g. the summary a compaction left. */
+  | { kind: 'notice'; at?: number; title: string; text: string }
   | { kind: 'tool'; at?: number; id: string; title: string; detail?: string; failed?: boolean; view?: ToolView; result?: ToolResultView }
 
 /** Lists and reads past sessions of one agent account (Claude: the Agent SDK's session store). */

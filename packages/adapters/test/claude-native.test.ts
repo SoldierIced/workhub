@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { BUILTIN_AGENTS, type AgentEvent } from '@workhub/core'
@@ -314,6 +315,49 @@ describe('Claude session history', () => {
     expect(messages[0]).toMatchObject({ kind: 'user', at: Date.parse('2026-10-28T14:05:00.000Z') })
     expect(messages[1]).toMatchObject({ kind: 'agent', at: Date.parse('2026-10-28T14:05:09.000Z') })
     expect(messages[2]).not.toHaveProperty('at')
+  })
+
+  it('replays the whole transcript across compactions without harness text', async () => {
+    const config = mkdtempSync(join(tmpdir(), 'wh-claude-'))
+    try {
+      mkdirSync(join(config, 'projects', '-tmp-acme'), { recursive: true })
+      const t = (n: number) => `2026-10-28T10:00:0${n}.000Z`
+      const user = (uuid: string, parentUuid: string | null, n: number, content: unknown, extra: object = {}) => ({ type: 'user', uuid, parentUuid, timestamp: t(n), message: { role: 'user', content }, ...extra })
+      const agent = (uuid: string, parentUuid: string, n: number, text: string) => ({ type: 'assistant', uuid, parentUuid, timestamp: t(n), message: { role: 'assistant', content: [{ type: 'text', text }] } })
+      const boundary = (uuid: string, logicalParentUuid: string, n: number) => ({ type: 'system', subtype: 'compact_boundary', uuid, parentUuid: null, logicalParentUuid, timestamp: t(n) })
+      const summary = 'This session is being continued from a previous conversation that ran out of context.'
+      const lines = [
+        user('u1', null, 0, 'first question'),
+        agent('a1', 'u1', 1, 'first answer'),
+        boundary('b1', 'a1', 2),
+        user('s1', 'b1', 2, summary, { isCompactSummary: true }),
+        user('u2', 's1', 3, 'second question'),
+        user('n1', 'u2', 3, '<task-notification>done</task-notification>'),
+        agent('x1', 'u2', 3, 'side work'),
+        agent('a2', 'n1', 4, 'second answer'),
+        boundary('b2', 'a2', 5),
+        user('s2', 'b2', 5, summary, { isCompactSummary: true }),
+        user('u3', 's2', 6, [{ type: 'text', text: '<local-command-stdout>ok</local-command-stdout>' }]),
+        user('u4', 'u3', 7, 'third question'),
+        agent('a3', 'u4', 8, 'third answer')
+      ]
+      lines[6] = { ...lines[6]!, isSidechain: true } as unknown as (typeof lines)[number]
+      writeFileSync(join(config, 'projects', '-tmp-acme', 'sess-x.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+      const messages = await new ClaudeSessionHistory({ bridgeDir: fakeBridge }).messages('sess-x', '/tmp/acme', config)
+      expect(messages.map((m) => (m.kind === 'notice' ? `notice:${m.title}` : m.kind === 'tool' ? 'tool' : `${m.kind}:${m.text}`))).toEqual([
+        'user:first question',
+        'agent:first answer',
+        'notice:Conversation compacted',
+        'user:second question',
+        'agent:second answer',
+        'notice:Conversation compacted',
+        'user:third question',
+        'agent:third answer'
+      ])
+      expect(messages[7]).toMatchObject({ at: Date.parse(t(8)) })
+    } finally {
+      rmSync(config, { recursive: true, force: true })
+    }
   })
 
   it('turns stored messages into a replayable conversation', () => {

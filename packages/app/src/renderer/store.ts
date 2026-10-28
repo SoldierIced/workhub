@@ -261,6 +261,8 @@ export function replayItems(messages: HistoryMessage[], next: () => number): Cha
       }
       case 'agent':
         return { id: next(), kind: 'agent', text: m.text, ...at(m) }
+      case 'notice':
+        return { id: next(), kind: 'notice', noticeKind: 'info', title: m.title, text: m.text, ...at(m) }
       case 'tool':
         return { id: next(), kind: 'tool', toolCallId: m.id, title: m.title, detail: m.detail, status: m.failed ? 'failed' : 'completed', view: m.view, result: m.result, ...at(m) }
     }

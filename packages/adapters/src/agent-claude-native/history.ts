@@ -4,6 +4,9 @@
  * `CLAUDE_CONFIG_DIR`, the same way `claude` itself picks the account.
  */
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { readdir, readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { HistoryEntry, HistoryMessage, ImageInput, SessionHistorySource } from '@workhub/core'
 import { claudeToolResult, claudeToolView } from '../shared/claude-tool-view'
@@ -47,9 +50,15 @@ export function toHistoryEntries(raw: unknown, agentId: string, accountId: strin
 
 /** Text a user typed, without the wrappers Claude Code adds for local commands and reminders. */
 function typedText(text: string): string | undefined {
-  if (text.includes('<command-name>') || text.includes('<local-command') || text.startsWith('<system-reminder>')) return undefined
+  if (text.includes('<command-name>') || text.includes('<local-command') || HARNESS_WRAPPER.test(text)) return undefined
   return text.trim() || undefined
 }
+
+/** Text the harness injects as a user turn (reminders, background-task results, command echoes), never typed by the user. */
+const HARNESS_WRAPPER = /^\s*<(system-reminder|task-notification|command-message|command-name|command-args|bash-input|bash-stdout|bash-stderr)[\s>]/
+
+/** The summary Claude Code writes as a user turn after a compaction. */
+const COMPACT_SUMMARY = 'This session is being continued from a previous conversation'
 
 /** Image types a replayed message shows again (the ones a prompt can carry). */
 const REPLAY_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
@@ -84,6 +93,11 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
     const when = at === undefined ? {} : { at }
     const content = message?.['content']
     if (m['type'] === 'user') {
+      const raw = typeof content === 'string' ? content : arr(content).map((b) => str(obj(b)?.['text']) ?? '').join('\n')
+      if (m['isCompactSummary'] === true || raw.trimStart().startsWith(COMPACT_SUMMARY)) {
+        if (raw.trim()) out.push({ kind: 'notice', ...when, title: 'Conversation compacted', text: raw.trim() })
+        continue
+      }
       if (typeof content === 'string') {
         const text = typedText(content)
         if (text) out.push({ kind: 'user', ...when, text })
@@ -128,6 +142,60 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
   return out
 }
 
+/** The fields of a transcript line the replay needs. */
+interface Line extends Obj {
+  uuid: string
+}
+
+/**
+ * The conversation of a session read from its transcript. The SDK only returns the chain since the
+ * last compaction, so this takes the newest main-thread message, walks `parentUuid` back and crosses
+ * each `compact_boundary` through its `logicalParentUuid`. The file is read once; null when it is
+ * not under `<config dir>/projects` or cannot be read.
+ */
+export async function transcriptMessages(agentSessionId: string, configDir?: string): Promise<HistoryMessage[] | null> {
+  try {
+    const projects = join(configDir || process.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude'), 'projects')
+    const dir = (await readdir(projects)).find((d) => existsSync(join(projects, d, `${agentSessionId}.jsonl`)))
+    if (!dir) return null
+    const text = await readFile(join(projects, dir, `${agentSessionId}.jsonl`), 'utf8')
+    const byId = new Map<string, Line>()
+    let tip: Line | undefined
+    let tipAt = -Infinity
+    for (const row of text.split('\n')) {
+      if (!row.includes('"uuid"')) continue
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(row)
+      } catch {
+        continue
+      }
+      const line = obj(parsed)
+      const uuid = str(line?.['uuid'])
+      if (!line || !uuid) continue
+      byId.set(uuid, { ...line, uuid })
+      if ((line['type'] !== 'user' && line['type'] !== 'assistant') || line['isSidechain'] === true || line['isMeta'] === true) continue
+      const at = Date.parse(str(line['timestamp']) ?? '')
+      if (!Number.isNaN(at) && at >= tipAt) {
+        tip = byId.get(uuid)
+        tipAt = at
+      }
+    }
+    if (!tip) return null
+    const chain: Line[] = []
+    const seen = new Set<string>()
+    for (let cur: Line | undefined = tip; cur && !seen.has(cur.uuid); ) {
+      seen.add(cur.uuid)
+      if (cur['type'] === 'user' || cur['type'] === 'assistant') chain.push(cur)
+      const parent: string | undefined = str(cur['parentUuid']) ?? (cur['subtype'] === 'compact_boundary' ? str(cur['logicalParentUuid']) : undefined)
+      cur = parent ? byId.get(parent) : undefined
+    }
+    return toHistoryMessages(chain.reverse().filter((l) => l['isSidechain'] !== true && l['isMeta'] !== true))
+  } catch {
+    return null
+  }
+}
+
 export class ClaudeSessionHistory implements SessionHistorySource {
   constructor(private readonly options: ClaudeHistoryOptions) {}
 
@@ -142,6 +210,8 @@ export class ClaudeSessionHistory implements SessionHistorySource {
    * symlink) is looked up in every project.
    */
   async messages(agentSessionId: string, cwd: string, configDir?: string): Promise<HistoryMessage[]> {
+    const stored = await transcriptMessages(agentSessionId, configDir)
+    if (stored?.length) return stored
     const raw = await this.run(['messages', agentSessionId, cwd], configDir)
     if (Array.isArray(raw) && raw.length > 0) return toHistoryMessages(raw)
     return toHistoryMessages(await this.run(['messages', agentSessionId], configDir))
