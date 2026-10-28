@@ -7,6 +7,8 @@ import { Field, HelpTip, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { PROFILE_SYMBOLS, PROFILE_SYMBOL_IDS } from '../lib/profileSymbols'
+import { abbreviateFolder } from '../lib/sessionHeader'
+import { envDirty } from '../lib/unsavedChanges'
 
 // --- Environment variables ---------------------------------------------------------------------
 
@@ -25,6 +27,10 @@ export interface EnvDraft {
   names: () => string[]
   /** Writes the typed values and forgets the removed names; true when it went through. */
   commit: (profileId: string) => Promise<boolean>
+  /** Something was typed, added or removed since the rows were loaded or saved. */
+  dirty: boolean
+  /** Back to the rows as loaded or last saved. */
+  reset: () => void
 }
 
 /** The rows of a saved variable name that has a value to keep or one typed now. */
@@ -57,17 +63,22 @@ export function envChanges(rows: readonly EnvRow[], savedNames: readonly string[
 
 /** Draft of the profile's environment variables; reloads when another profile is selected. */
 export function useProfileEnvDraft(saved: Profile | undefined): EnvDraft {
-  const [rows, setRows] = useState<EnvRow[]>([])
+  const [rows, setRowsState] = useState<EnvRow[]>([])
+  const [loaded, setLoaded] = useState<EnvRow[]>([])
+  const load = (next: EnvRow[]) => {
+    setRowsState(next)
+    setLoaded(next)
+  }
   const savedNames = useRef<string[]>([])
   const id = saved?.id
   useEffect(() => {
     const names = saved?.envNames ?? []
     savedNames.current = names
-    setRows(names.map((name) => ({ name, value: '', stored: true })))
+    load(names.map((name) => ({ name, value: '', stored: true })))
     if (!id) return
     let cancelled = false
     void window.hub.profileEnv.stored(id).then((stored) => {
-      if (!cancelled) setRows(names.map((name) => ({ name, value: '', stored: stored.includes(name) })))
+      if (!cancelled) load(names.map((name) => ({ name, value: '', stored: stored.includes(name) })))
     })
     return () => {
       cancelled = true
@@ -77,18 +88,23 @@ export function useProfileEnvDraft(saved: Profile | undefined): EnvDraft {
   }, [id])
   return {
     rows,
-    setRows,
+    setRows: setRowsState,
+    dirty: envDirty(rows, loaded),
+    reset: () => setRowsState(loaded),
     names: () => envNamesToSave(rows),
     commit: async (profileId) => {
       const { values, removed } = envChanges(rows, savedNames.current)
-      if (Object.keys(values).length === 0 && removed.length === 0) return true
+      if (Object.keys(values).length === 0 && removed.length === 0) {
+        setLoaded(rows)
+        return true
+      }
       try {
         await window.hub.profileEnv.save(profileId, values, removed)
       } catch {
         return false
       }
       savedNames.current = envNamesToSave(rows)
-      setRows(rows.filter((r) => savedNames.current.includes(r.name.trim())).map((r) => ({ name: r.name.trim(), value: '', stored: true })))
+      load(rows.filter((r) => savedNames.current.includes(r.name.trim())).map((r) => ({ name: r.name.trim(), value: '', stored: true })))
       return true
     }
   }
@@ -257,5 +273,36 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
         <EnvFields env={env} />
       </FieldGroup>
     </>
+  )
+}
+
+// --- Default folder ----------------------------------------------------------------------------
+
+/** The `Select` value that opens the folder picker instead of choosing a folder. */
+const PICK_OTHER = '__other__'
+
+/** Where "New session" starts without asking: one of the profile's folders, another one, or (empty) the first folder. */
+export function DefaultFolderField({ form, onChange }: { form: Profile; onChange: (defaultFolder: string | undefined) => void }) {
+  const { t } = useI18n()
+  const folders = (form.folders ?? []).map((f) => f.trim()).filter(Boolean)
+  const current = form.defaultFolder?.trim() || ''
+  const options = [
+    { value: '', label: folders[0] ? t('settings.defaultFolderFirst', { folder: abbreviateFolder(folders[0]) }) : t('settings.defaultFolderHome') },
+    ...folders.map((f) => ({ value: f, label: abbreviateFolder(f) })),
+    ...(current && !folders.includes(current) ? [{ value: current, label: abbreviateFolder(current) }] : []),
+    { value: PICK_OTHER, label: t('settings.defaultFolderOther') }
+  ]
+  return (
+    <Field label={t('settings.defaultFolder')} hint={t('settings.defaultFolderHint')}>
+      <Select
+        aria-label={t('settings.defaultFolder')}
+        value={current}
+        onChange={(v) => {
+          if (v !== PICK_OTHER) return onChange(v || undefined)
+          void window.hub.pickFolder().then((picked) => picked && onChange(picked))
+        }}
+        options={options}
+      />
+    </Field>
   )
 }

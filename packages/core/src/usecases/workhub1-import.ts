@@ -447,7 +447,9 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
       // Workhub 1's accounts serve every profile.
       accountIds: [...accountIds],
       modules: { ...NO_MODULES },
-      folders
+      folders,
+      // "New session" starts in the first folder, as Workhub 1 did.
+      ...(folders[0] ? { defaultFolder: folders[0] } : {})
     }
     // Workhub 1's folder switches: "Only git repos" and "Each subfolder is its own project".
     const folderOptions: Record<string, FolderOptions> = {}

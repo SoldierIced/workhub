@@ -46,6 +46,29 @@ export function normalizeFolder(path: string, home?: string): string {
   return expanded.replace(/[\\/]+$/, '') || expanded
 }
 
+/**
+ * Where a new session of the profile starts when nobody picks a folder: its default folder, else
+ * its first folder; home expanded. Undefined for no profile or one without folders (the caller then
+ * uses the home folder).
+ */
+export function profileDefaultFolder(profile: Pick<Profile, 'folders' | 'defaultFolder'> | undefined, home?: string): string | undefined {
+  const chosen = profile?.defaultFolder?.trim() || profile?.folders?.find((f) => f.trim())
+  return chosen ? normalizeFolder(chosen, home) : undefined
+}
+
+/**
+ * The profiles with folders and no default folder, each with its first folder as the default, so
+ * every profile states where "New session" starts. Returns only the profiles that changed.
+ */
+export function fillDefaultFolders(profiles: readonly Profile[]): Profile[] {
+  const changed: Profile[] = []
+  for (const p of profiles) {
+    const first = p.folders?.find((f) => f.trim())
+    if (!p.defaultFolder?.trim() && first) changed.push({ ...p, defaultFolder: first })
+  }
+  return changed
+}
+
 /** `path` is `folder` or inside it, on whole path segments. */
 export function isInsideFolder(path: string, folder: string): boolean {
   return path === folder || path.startsWith(`${folder}/`) || path.startsWith(`${folder}\\`)
