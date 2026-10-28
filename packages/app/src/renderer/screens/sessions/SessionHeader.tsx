@@ -1,16 +1,16 @@
-import { Cpu, Ear, Folder, MessagesSquare, MoreHorizontal, Shield, ShieldAlert, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
+import { Ear, Folder, MessagesSquare, MoreHorizontal, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react'
-import { effectiveAgentKey, sessionIdentity } from '@workhub/core'
+import { sessionIdentity } from '@workhub/core'
 import type { SessionMode, SessionView } from '@shared/api'
-import { Badge, Button, IconButton, Select, STATE_TONE, StateDot, type Tone } from '../../components/atoms'
+import { Badge, Button, IconButton, STATE_TONE, StateDot, type Tone } from '../../components/atoms'
 import { useSlack } from '../../chatStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
-import { sessionModelPicker, sessionModePicker } from '../../lib/agent-pickers'
-import { readPrefs, rememberMode, rememberModel, setPrefs } from '../../lib/prefs'
-import { abbreviateFolder, activityElapsed, activityOf, foldDensity, headerDensity, isClockActivity, permissionModeLabel, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
+import { sessionModePicker } from '../../lib/agent-pickers'
+import { readPrefs, setPrefs } from '../../lib/prefs'
+import { abbreviateFolder, activityElapsed, activityOf, foldDensity, headerDensity, isClockActivity, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
 import { useNow } from '../../lib/usage'
 import { awaitingAnswer, pushItem, type SessionData } from '../../store'
 import { AiReviewButton } from './AiReviewPanel'
@@ -69,64 +69,6 @@ function ModeSwitch({ view: v, iconsOnly }: { view: SessionView; iconsOnly: bool
   )
 }
 
-/** The current option's name, for an icon-only picker's tooltip. */
-function optionName(options: readonly { value: string; label: string }[], value: string, fallback: string): string {
-  return options.find((o) => o.value === value)?.label ?? fallback
-}
-
-function ModelPicker({ view: v, wide, compact }: { view: SessionView; wide?: boolean; compact?: boolean }) {
-  const { t } = useI18n()
-  const picker = sessionModelPicker(v)
-  const change = (id: string) => {
-    rememberModel(effectiveAgentKey(v.agentId, v.accountId), id || null)
-    void window.hub.sessions.setModel(v.id, id || null).catch((e: unknown) => pushItem(v.id, 'error', errorText(e)))
-  }
-  const options = [...(picker.allowDefault ? [{ value: '', label: t('session.modelDefault') }] : []), ...picker.options]
-  const name = `${t('session.model')}: ${optionName(options, picker.value, t('session.modelDefault'))}`
-  return (
-    <span data-testid="model-picker" title={v.modelIgnored ? t('agentControls.modelIgnored') : undefined}>
-      <Select
-        aria-label={t('session.model')}
-        value={picker.value}
-        onChange={change}
-        disabled={picker.disabled}
-        options={options}
-        compact={compact ? { icon: <Cpu className="size-3.5 shrink-0 text-muted" aria-hidden />, title: v.modelIgnored ? `${name}\n${t('agentControls.modelIgnored')}` : name } : undefined}
-        className={cn('h-7 text-sm', wide ? 'w-full!' : compact ? 'w-auto! gap-1 px-1.5' : 'w-40!')}
-      />
-    </span>
-  )
-}
-
-/** The session's agent (Kiro, OpenCode) or permission preset (Codex, Gemini), switched live over ACP. */
-function ModePicker({ view: v, wide, compact }: { view: SessionView; wide?: boolean; compact?: boolean }) {
-  const { t } = useI18n()
-  const picker = sessionModePicker(v)
-  const change = (id: string) => {
-    if (!id) return
-    rememberMode(effectiveAgentKey(v.agentId, v.accountId), id)
-    void window.hub.sessions.setAgentMode(v.id, id).catch((e: unknown) => pushItem(v.id, 'error', errorText(e)))
-  }
-  const label = t(picker.kind === 'agent' ? 'agentControls.agent' : 'agentControls.permission')
-  const hint = v.modeIgnored ? t('agentControls.modeIgnored') : t(picker.kind === 'agent' ? 'agentControls.agentHint' : 'agentControls.permissionHint')
-  const Icon = picker.kind === 'agent' ? UserRound : Shield
-  return (
-    <span data-testid="mode-picker" className={cn('inline-flex items-center gap-1 text-xs text-muted', wide && 'w-full')} title={compact ? undefined : hint}>
-      {picker.kind === 'agent' && !compact && <UserRound className="size-3.5 shrink-0" aria-hidden />}
-      <Select
-        aria-label={label}
-        value={picker.value}
-        onChange={change}
-        disabled={picker.disabled}
-        options={picker.options}
-        placeholder={label}
-        compact={compact ? { icon: <Icon className="size-3.5 shrink-0 text-muted" aria-hidden />, title: `${label}: ${optionName(picker.options, picker.value, label)}\n${hint}` } : undefined}
-        className={cn('h-7 text-sm', wide ? 'w-full!' : compact ? 'w-auto! gap-1 px-1.5' : 'w-36!')}
-      />
-    </span>
-  )
-}
-
 const ACTIVITY_TONE: Record<Activity, Tone> = { starting: 'warning', working: 'info', needsYou: 'warning', idle: 'neutral', stopped: 'neutral', error: 'danger' }
 
 /** Workhub 1's activity capsule: "Working 1:23", "Idle 2 min", counted from when the state began. */
@@ -179,29 +121,6 @@ function SlackChip({ view }: { view: SessionView }) {
       <Ear className="size-3" aria-hidden />
       {tn('header.slack', count)}
     </button>
-  )
-}
-
-/**
- * The permission mode. On the row it shows the mode's name only ("Bypass permissions"), with the
- * full "Permission mode: …" and its source on hover; in the "More" menu (`full`) it spells it out.
- */
-function PermissionChip({ view: v, full }: { view: SessionView; full?: boolean }) {
-  const { t } = useI18n()
-  const mode = v.permissionMode
-  const name = mode ? permissionModeLabel(mode, v.currentModeId, t) : v.state === 'starting' ? t('session.pending') : t('session.unknown')
-  const text = t('session.permissionMode', { mode: name })
-  return (
-    <Badge
-      tone={mode?.unattended ? 'warning' : 'neutral'}
-      data-testid="permission-mode"
-      aria-label={text}
-      title={mode ? `${text}\n${t('session.permissionSource', { source: mode.source })}` : text}
-      icon={mode?.unattended ? <ShieldAlert className="size-3 shrink-0" aria-hidden /> : undefined}
-      className={cn('min-w-0', full ? 'max-w-full' : 'max-w-44 shrink-0')}
-    >
-      <span className="truncate">{full ? text : name}</span>
-    </Badge>
   )
 }
 
@@ -286,29 +205,19 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
     if (overflows) setFold({ width, steps: steps + 1 })
   })
   const live = v.state === 'ready' || v.state === 'busy' || v.state === 'starting'
-  const showModePicker = sessionModePicker(v).visible
-  const showModelPicker = sessionModelPicker(v).visible
-  const showAgentMode = Boolean(v.currentModeId && v.permissionMode?.id === 'agent-managed' && !showModePicker)
+  // An agent that owns the modes and offers no picker still shows its current one here.
+  const showAgentMode = Boolean(v.currentModeId && v.permissionMode?.id === 'agent-managed' && !sessionModePicker(v).visible)
   const showContinue = live && !v.readOnly && v.modes.includes('app')
-  const unattended = v.permissionMode?.unattended === true
 
   // Below `full` the pickers and actions keep their icon only; then, level by level, the chips,
   // the actions and the pickers fold into "More".
   const iconControls = density !== 'full'
   const chipsInline = density === 'full' || density === 'icons'
   const actionsInline = chipsInline || density === 'compact'
-  const controlsInline = density !== 'narrow'
   const agentMode = showAgentMode && <Badge className="shrink-0">{t('session.agentMode', { mode: v.currentModeId! })}</Badge>
   const overflow = (
     <>
-      {!controlsInline && showModePicker && <ModePicker view={v} wide />}
-      {!controlsInline && showModelPicker && <ModelPicker view={v} wide />}
-      {!chipsInline && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <PermissionChip view={v} full />
-          {agentMode}
-        </div>
-      )}
+      {!chipsInline && agentMode && <div className="flex flex-wrap items-center gap-1.5">{agentMode}</div>}
       {!actionsInline && !v.readOnly && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
           <SessionReviewTools data={data} />
@@ -322,7 +231,7 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
       )}
     </>
   )
-  const hasOverflow = !chipsInline || (!actionsInline && (live || !v.readOnly)) || (!controlsInline && (showModePicker || showModelPicker))
+  const hasOverflow = (!chipsInline && showAgentMode) || (!actionsInline && (live || !v.readOnly))
 
   return (
     <header ref={ref} className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-surface/60 px-4" data-testid="session-header" data-density={density}>
@@ -346,18 +255,10 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
           </span>
         </span>
         <SlackChip view={v} />
-        {unattended && !chipsInline && (
-          <span className="shrink-0 text-warning" title={v.permissionMode ? permissionModeLabel(v.permissionMode, v.currentModeId, t) : undefined}>
-            <ShieldAlert className="size-3.5" aria-label={t('session.permissionMode', { mode: v.permissionMode ? permissionModeLabel(v.permissionMode, v.currentModeId, t) : '' })} />
-          </span>
-        )}
       </div>
       <div className={cn('flex shrink-0 items-center', iconControls ? 'gap-1' : 'gap-1.5')}>
-        {chipsInline && <PermissionChip view={v} />}
         {chipsInline && agentMode}
         {v.modes.length > 1 && <ModeSwitch view={v} iconsOnly={iconControls} />}
-        {controlsInline && showModePicker && <ModePicker view={v} compact={iconControls} />}
-        {controlsInline && showModelPicker && <ModelPicker view={v} compact={iconControls} />}
         {actionsInline && <SessionReviewTools data={data} compact={iconControls} />}
         {actionsInline && live && <AiReviewButton view={v} compact={iconControls} />}
         {actionsInline && showContinue && <ContinueMenu view={v} compact={iconControls} />}
