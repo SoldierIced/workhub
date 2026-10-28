@@ -220,6 +220,23 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
     // Braces matter: scrollIntoView returns a Promise in recent Chromium, which React would take as a cleanup.
     void bottom.current?.scrollIntoView({ block: 'end' })
   }, [data.items, queued])
+  // The log keeps its last line in view when it gets shorter (a narrower window wraps the composer's
+  // hint, a notice or attached images appear above it), unless the user had scrolled up to read.
+  const log = useRef<HTMLDivElement>(null)
+  const atBottom = useRef(true)
+  useEffect(() => {
+    const el = log.current
+    if (!el) return
+    const observer = new ResizeObserver(() => {
+      if (atBottom.current) el.scrollTop = el.scrollHeight
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  const onLogScroll = () => {
+    const el = log.current
+    if (el) atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24
+  }
 
   const acceptsImages = v.capabilities.imageInput
 
@@ -361,7 +378,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto text-[length:var(--wh-chat-font-size,13px)]" aria-live="polite" aria-label={t('chat.log')} role="log">
+      <div ref={log} onScroll={onLogScroll} className="min-h-0 flex-1 overflow-y-auto text-[length:var(--wh-chat-font-size,13px)]" aria-live="polite" aria-label={t('chat.log')} role="log">
         <div className="flex w-full flex-col gap-3.5 px-6 py-5">
           {data.items.length === 0 && !v.origin && <p className="py-10 text-center text-sm text-subtle">{t('chat.empty')}</p>}
           {replayAt < 0 && originLine}
@@ -476,7 +493,9 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
             className="block max-h-48 min-h-14 w-full resize-none bg-transparent px-4 pt-3 text-base text-text placeholder:text-subtle focus:outline-none disabled:opacity-60"
           />
           <div className="flex items-center gap-2 px-3 pb-2.5">
-            <span className="text-xs text-subtle">{acceptsImages ? t('chat.keysImages') : t('chat.keys')}</span>
+            <span className="min-w-0 truncate text-xs text-subtle" title={acceptsImages ? t('chat.keysImages') : t('chat.keys')}>
+              {acceptsImages ? t('chat.keysImages') : t('chat.keys')}
+            </span>
             <div className="ml-auto flex items-center gap-1.5">
               {v.state === 'busy' && (
                 <Button size="sm" variant="secondary" icon={<Square className="size-3" aria-hidden />} onClick={interrupt}>
