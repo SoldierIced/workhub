@@ -1,4 +1,5 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
+import type { ChromeProfile } from '@workhub/core'
 import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type { ProfileEnvApi, SetupApi, SystemNotificationsApi } from './setup-api'
 import type {
@@ -400,8 +401,13 @@ export interface HubApi {
   pickFolder(): Promise<string | null>
   /** The profile's folders and the folders inside each (Workhub 1's "All folders"); empty without a profile. */
   profileFolders(profileId: string | null): Promise<WorkspaceFolder[]>
-  /** Opens an http(s) link in the default browser. */
-  openExternal(url: string): void
+  /**
+   * Opens an http(s) link the way the profile chose (its browser or Chrome profile), or in the
+   * Slack app for a Slack link. Without a profile, the one the link belongs to, else the active one.
+   */
+  openExternal(url: string, profileId?: string | null): void
+  /** The profiles of a Chrome app (default: Google Chrome), read from its data folder; empty when not found or off macOS. */
+  chromeProfiles(app?: string): Promise<ChromeProfile[]>
   config: ConfigApi
   sessions: SessionsApi
   history: HistoryApi

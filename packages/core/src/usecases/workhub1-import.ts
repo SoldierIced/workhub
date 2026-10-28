@@ -16,6 +16,7 @@ import {
   type HealthThresholds
 } from '../health/types'
 import { PR_EVENT_KINDS, type PrEventToggles } from '../pr-events/types'
+import { importedLinkOpener } from '../links/open'
 import { DEFAULT_AI_REVIEW_SETTINGS } from '../ai-review/defaults'
 import { DEFAULT_PROTECTED_BRANCHES } from '../codehost/usecases'
 import { effectiveAgentKey } from './effective-agents'
@@ -97,6 +98,8 @@ export interface Workhub1Profile {
   sessionEnvironment?: { name?: string; value?: string }[]
   /** The profile's accent, `#rrggbb`. */
   color?: string
+  /** The command that opened the profile's links (run with the link as its argument). */
+  linkOpener?: string
 }
 
 export interface Workhub1Jira {
@@ -309,6 +312,8 @@ export function fillWorkhub1FolderFlags(v1: Workhub1Settings, config: Pick<Workh
       next = { ...next, ownsOutside: true }
       ownerTaken = true
     }
+    const opener = importedLinkOpener(p.linkOpener)
+    if (opener && !target.linkBrowser && !target.linkCommand && !target.linkChromeProfile) next = { ...next, ...opener }
     if (next !== target) changed.push(next)
   }
   return changed
@@ -464,6 +469,7 @@ export function planWorkhub1Import(v1: Workhub1Settings, current: WorkhubConfig,
     // Workhub 1 writes `#RRGGBB` (its parser also takes the digits alone).
     const color = p.color?.trim().replace(/^#/, '')
     if (color && /^[0-9a-fA-F]{6}$/.test(color)) profile.color = `#${color.toLowerCase()}`
+    Object.assign(profile, importedLinkOpener(p.linkOpener))
     // Workhub 1 wrote its prompts in one language; Workhub 2's AI review is the prompt with a language.
     if (usesSpanish) profile.aiReview = { ...DEFAULT_AI_REVIEW_SETTINGS, language: 'es' }
     if (p.sessionEnvironment?.some((v) => v.name)) note('notSupported', `profiles.${id}`, 'sessionEnvironment')

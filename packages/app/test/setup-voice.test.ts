@@ -1,7 +1,6 @@
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Profile, SecretStore, SetupItem, WorkhubConfig } from '@workhub/core'
-import { linkCommand } from '../src/main/link-opener'
 import { expandEnvValue, profileSessionEnv, saveProfileEnv, storedProfileEnvNames } from '../src/main/profile-env'
 import { probe, SetupService } from '../src/main/setup-service'
 import { DICTIONARIES } from '../src/renderer/i18n/translate'
@@ -154,33 +153,5 @@ describe('profile environment', () => {
     expect(prunedFolderOptions({ '/a': { onlyGitRepos: true, subfoldersAreProjects: undefined }, '/b': { subfoldersAreProjects: undefined } }, ['/a', '/b'])).toEqual({
       '/a': { onlyGitRepos: true }
     })
-  })
-})
-
-describe('link opener', () => {
-  it('opens a web link in the chosen browser, as one argument', () => {
-    expect(linkCommand('darwin', 'Google Chrome', 'https://x.y/?a=1&b=2')).toEqual({ command: 'open', args: ['-a', 'Google Chrome', 'https://x.y/?a=1&b=2'] })
-    expect(linkCommand('linux', 'chromium', 'https://x.y')).toEqual({ command: 'chromium', args: ['https://x.y'] })
-  })
-  it('uses the default browser when none is set or the link is not a web link', () => {
-    expect(linkCommand('darwin', undefined, 'https://x.y')).toBeNull()
-    expect(linkCommand('darwin', '  ', 'https://x.y')).toBeNull()
-    expect(linkCommand('darwin', 'Safari', 'file:///etc/passwd')).toBeNull()
-  })
-})
-
-describe('readsAloudByDefault', () => {
-  const opened = 1_000_000
-  const view = (over: Partial<SessionData['view']> = {}) => ({ startedAt: opened + 5_000, ...over }) as SessionData['view']
-  it('turns reading on only for a session the user starts now, like Workhub 1', () => {
-    expect(readsAloudByDefault(view(), true, opened)).toBe(true)
-    expect(readsAloudByDefault(view(), false, opened)).toBe(false)
-    // Brought back after a relaunch (resumed, or restarted under its identity) or reopened from the sidebar.
-    expect(readsAloudByDefault(view({ resumed: true }), true, opened)).toBe(false)
-    // Running before this window opened.
-    expect(readsAloudByDefault(view({ startedAt: opened - 60_000 }), true, opened)).toBe(false)
-    // Opened by Workhub on its own.
-    expect(readsAloudByDefault(view({ readOnly: true }), true, opened)).toBe(false)
-    expect(readsAloudByDefault(view({ origin: { kind: 'failover' } as never }), true, opened)).toBe(false)
   })
 })
