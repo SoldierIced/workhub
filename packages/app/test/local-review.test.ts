@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { LocalReview } from '@workhub/core'
 import type { SessionView } from '../src/shared/api'
@@ -130,7 +130,7 @@ describe('LocalReviewService', () => {
 
     expect(service.filePath('s1', '/w/app', 'a.ts')).toBeNull()
     ;(service as unknown as { roots: Map<string, Set<string>> }).roots.set('s1', new Set(['/w/app']))
-    expect(service.filePath('s1', '/w/app', 'src/a.ts')).toBe('/w/app/src/a.ts')
+    expect(service.filePath('s1', '/w/app', 'src/a.ts')).toBe(resolve('/w/app/src/a.ts'))
     expect(service.filePath('s1', '/w/app', '../etc/passwd')).toBeNull()
     expect(insideRoot('/w/app', '/etc/passwd')).toBeNull()
   })

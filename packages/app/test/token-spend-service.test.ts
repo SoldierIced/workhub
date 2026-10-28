@@ -48,7 +48,7 @@ describe('TokenSpendService', () => {
     const config: WorkhubConfig = { ...emptyConfig(), profiles: [profile('one', [work])], activeProfileId: 'one' }
     const svc = new TokenSpendService({ config: async () => config, store: memoryStore(), sources: async () => ({ claudeDirs: [join(root, '.claude')], codexHomes: [], kiroDirs: [] }), emit: () => {} })
     await svc.refresh()
-    expect((await svc.forProfile('one')).entries).toMatchObject([{ name: 'api', path: main, tokens: 7 }])
+    expect((await svc.forProfile('one')).entries).toMatchObject([{ name: 'api', path: main.replaceAll('\\', '/'), tokens: 7 }])
   })
 
   it('scans at start-up, keeps each profile to its own folders, and persists the cache', async () => {

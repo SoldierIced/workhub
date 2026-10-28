@@ -15,7 +15,7 @@ describe('LocalChanges on real repositories', () => {
   const changes = new LocalChanges()
 
   beforeAll(() => {
-    dir = realpathSync(mkdtempSync(join(tmpdir(), 'workhub-local-review-')))
+    dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'workhub-local-review-')))
     repo = join(dir, 'app')
     git(dir, 'init', '--quiet', '-b', 'main', repo)
     writeFileSync(join(repo, 'a.txt'), 'one\ntwo\nthree\n')

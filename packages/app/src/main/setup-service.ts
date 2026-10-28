@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   agentItem,
@@ -21,13 +22,38 @@ import { claudeAccounts, claudeConfigDirOf } from './claude-accounts'
 /** Seconds a command-line check may take. */
 export const SETUP_TIMEOUT_MS = 10_000
 
+/** The file a Windows shell would run for `command` (PATH folders, then PATHEXT extensions), or null. */
+export function findOnWindowsPath(command: string, env: NodeJS.ProcessEnv): string | null {
+  const value = (name: string) => Object.entries(env).find(([k]) => k.toUpperCase() === name)?.[1]
+  const exts = (value('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+  const hasExt = /\.[^\\/.]+$/.test(command)
+  const names = hasExt ? [command, ...exts.map((e) => command + e)] : exts.map((e) => command + e)
+  const dirs = /[\\/]/.test(command) ? [''] : (value('PATH') ?? '').split(';').filter(Boolean)
+  for (const dir of dirs) {
+    for (const name of names) {
+      const full = dir ? join(dir, name) : name
+      try {
+        if (statSync(full).isFile()) return full
+      } catch {
+        /* not here */
+      }
+    }
+  }
+  return null
+}
+
 /** Runs one command and reports how it ended; a slow or hanging tool never holds the window. */
 export function probe(command: string, args: string[], options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}): Promise<Probe> {
   return new Promise((done) => {
+    const env = options.env ?? process.env
+    // cmd.exe reports a missing command as an ordinary failure (localized text, exit code 1), so on
+    // Windows the command is looked up first; only `.cmd`/`.bat` shims need the shell.
+    const found = process.platform === 'win32' ? findOnWindowsPath(command, env) : command
+    if (!found) return done({ result: 'notFound', output: '' })
     execFile(
-      command,
+      found,
       args,
-      { env: options.env ?? process.env, timeout: options.timeoutMs ?? SETUP_TIMEOUT_MS, windowsHide: true, maxBuffer: 1 << 20, shell: process.platform === 'win32' },
+      { env, timeout: options.timeoutMs ?? SETUP_TIMEOUT_MS, windowsHide: true, maxBuffer: 1 << 20, shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(found) },
       (err, stdout, stderr) => {
         const output = String(stdout || stderr || '').trim()
         if (!err) return done({ result: 'ok', output })

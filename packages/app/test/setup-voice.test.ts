@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Profile, SecretStore, SetupItem, WorkhubConfig } from '@workhub/core'
 import { linkCommand } from '../src/main/link-opener'
@@ -48,7 +49,7 @@ describe('SetupService', () => {
     })
     const items = await service.run()
     expect(items.map((i) => i.id)).toEqual(['claudeCode', 'claudeSignIn:default', 'claudeSignIn:work', 'node', 'github', 'profile', 'codex', 'kiro', 'jira', 'slack', 'health', 'usage'])
-    expect(calls.find((c) => c.args[0] === 'auth' && c.dir)?.dir).toBe('/tmp/workhub-test-claude-work')
+    expect(calls.find((c) => c.args[0] === 'auth' && c.dir)?.dir).toBe(resolve('/tmp/workhub-test-claude-work'))
     expect(items.find((i) => i.id === 'github')).toMatchObject({ status: 'ok', params: { login: 'octo' } })
     expect(items.find((i) => i.id === 'profile')).toMatchObject({ status: 'missing' })
   })

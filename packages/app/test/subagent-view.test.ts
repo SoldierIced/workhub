@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ConversationEntry } from '@workhub/core'
 import { pathInsideFolder } from '../src/main/reveal'
@@ -6,8 +7,8 @@ import { backSubagent, closeSubagent, isLive, openSubagent, shortDuration, subag
 
 describe('pathInsideFolder', () => {
   it('accepts files inside the session folder only', () => {
-    expect(pathInsideFolder('/repo', '/repo/src/a.ts')).toBe('/repo/src/a.ts')
-    expect(pathInsideFolder('/repo', 'src/a.ts')).toBe('/repo/src/a.ts')
+    expect(pathInsideFolder('/repo', '/repo/src/a.ts')).toBe(resolve('/repo/src/a.ts'))
+    expect(pathInsideFolder('/repo', 'src/a.ts')).toBe(resolve('/repo/src/a.ts'))
     expect(pathInsideFolder('/repo', '/repo/../etc/passwd')).toBeNull()
     expect(pathInsideFolder('/repo', '/repository/a.ts')).toBeNull()
     expect(pathInsideFolder('/repo', '/repo')).toBeNull()

@@ -71,7 +71,10 @@ export function fillDefaultFolders(profiles: readonly Profile[]): Profile[] {
 
 /** `path` is `folder` or inside it, on whole path segments. */
 export function isInsideFolder(path: string, folder: string): boolean {
-  return path === folder || path.startsWith(`${folder}/`) || path.startsWith(`${folder}\\`)
+  // Either side may use `\\` or `/` (a path moved by git or by `aliasPath` uses `/` on Windows).
+  const p = path.replaceAll('\\', '/')
+  const f = folder.replaceAll('\\', '/')
+  return p === f || p.startsWith(`${f}/`)
 }
 
 const lastSegment = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path

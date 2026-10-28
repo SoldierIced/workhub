@@ -32,7 +32,7 @@ describe('readNotificationPermission', () => {
       exportNcprefs: async () => ncprefs
     })
     expect(result).toBe('allowed')
-    expect(reads).toEqual(['/Applications/Workhub 2.app/Contents/Info.plist'])
+    expect(reads).toEqual([join('/Applications/Workhub 2.app/Contents', 'Info.plist')])
   })
 
   it('is unknown without a bundle id or without the preferences (macOS 15 and later)', async () => {

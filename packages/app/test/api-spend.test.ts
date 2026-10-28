@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { emptyConfig, localDayKey, type WorkhubConfig } from '@workhub/core'
 import { TokenSpendScanner } from '@workhub/adapters/token-spend'
@@ -23,16 +23,16 @@ describe('which Claude folders run on an API key', () => {
         { id: 'pro', agentId: 'claude', name: 'Pro', configDir: '/h/.claude-pro' }
       ]
     }
-    expect(apiKeyClaudeDirs(config, '/h', {})).toEqual(['/h/.claude-api'])
-    expect(apiKeyClaudeDirs(config, '/h', { ANTHROPIC_API_KEY: 'x' }).sort()).toEqual(['/h/.claude', '/h/.claude-api', '/h/.claude-pro'])
+    expect(apiKeyClaudeDirs(config, '/h', {})).toEqual([resolve('/h/.claude-api')])
+    expect(apiKeyClaudeDirs(config, '/h', { ANTHROPIC_API_KEY: 'x' }).sort()).toEqual([resolve('/h/.claude'), resolve('/h/.claude-api'), resolve('/h/.claude-pro')].sort())
   })
 
   it('bills Codex rollouts without plan limits and Claude transcripts in API folders', () => {
     const entry = { size: 0, mtimeMs: 0, offset: 0, buckets: {} }
     expect(billedByApiKey('/h/.codex/sessions/2026/10/27/rollout-x.jsonl', entry, [])).toBe(true)
     expect(billedByApiKey('/h/.codex/sessions/2026/10/27/rollout-x.jsonl', { ...entry, state: { plan: true } }, [])).toBe(false)
-    expect(billedByApiKey('/h/.claude-api/projects/p/s.jsonl', entry, ['/h/.claude-api'])).toBe(true)
-    expect(billedByApiKey('/h/.claude-api2/projects/p/s.jsonl', entry, ['/h/.claude-api'])).toBe(false)
+    expect(billedByApiKey(resolve('/h/.claude-api/projects/p/s.jsonl'), entry, [resolve('/h/.claude-api')])).toBe(true)
+    expect(billedByApiKey(resolve('/h/.claude-api2/projects/p/s.jsonl'), entry, [resolve('/h/.claude-api')])).toBe(false)
   })
 })
 

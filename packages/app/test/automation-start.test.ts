@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { emptyConfig, newAutomation, parseConfig, type AutomationDefinition, type ConfigurationService } from '@workhub/core'
 import { AutomationService } from '../src/main/automations'
@@ -26,15 +27,15 @@ function setup(def: AutomationDefinition) {
 
 describe('automation session start', () => {
   it('starts its session with the model, effort and permission mode of the automation', async () => {
-    const { service, started } = setup(newAutomation('a1', { agentKey: 'claude', folder: '/tmp', model: 'haiku', effort: 'high', permissionMode: 'acceptEdits' }))
+    const { service, started } = setup(newAutomation('a1', { agentKey: 'claude', folder: tmpdir(), model: 'haiku', effort: 'high', permissionMode: 'acceptEdits' }))
     await service.start()
     await service.runNow('a1')
     service.stop()
-    expect(started[0]).toMatchObject({ agentKey: 'claude', cwd: '/tmp', model: 'haiku', effort: 'high', modeId: 'acceptEdits' })
+    expect(started[0]).toMatchObject({ agentKey: 'claude', cwd: tmpdir(), model: 'haiku', effort: 'high', modeId: 'acceptEdits' })
   })
 
   it('leaves them out when the automation sets none', async () => {
-    const { service, started } = setup(newAutomation('a2', { folder: '/tmp' }))
+    const { service, started } = setup(newAutomation('a2', { folder: tmpdir() }))
     await service.start()
     await service.runNow('a2')
     service.stop()
