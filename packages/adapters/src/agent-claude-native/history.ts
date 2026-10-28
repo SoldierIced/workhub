@@ -57,6 +57,9 @@ function typedText(text: string): string | undefined {
 /** Text the harness injects as a user turn (reminders, background-task results, command echoes), never typed by the user. */
 const HARNESS_WRAPPER = /^\s*<(system-reminder|task-notification|command-message|command-name|command-args|bash-input|bash-stdout|bash-stderr)[\s>]/
 
+/** What Claude Code writes as a user turn when the user stops the agent mid-turn. */
+const INTERRUPTED = /^\s*\[Request interrupted by user[^\]]*\]\s*$/
+
 /** The summary Claude Code writes as a user turn after a compaction. */
 const COMPACT_SUMMARY = 'This session is being continued from a previous conversation'
 
@@ -96,6 +99,10 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
       const raw = typeof content === 'string' ? content : arr(content).map((b) => str(obj(b)?.['text']) ?? '').join('\n')
       if (m['isCompactSummary'] === true || raw.trimStart().startsWith(COMPACT_SUMMARY)) {
         if (raw.trim()) out.push({ kind: 'notice', ...when, title: 'Conversation compacted', text: raw.trim() })
+        continue
+      }
+      if (INTERRUPTED.test(raw)) {
+        out.push({ kind: 'interrupted', ...when })
         continue
       }
       if (typeof content === 'string') {

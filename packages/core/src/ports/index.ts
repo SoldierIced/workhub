@@ -55,6 +55,8 @@ export type HistoryMessage =
   | { kind: 'agent'; at?: number; text: string }
   /** A harness banner worth keeping in the replay, e.g. the summary a compaction left. */
   | { kind: 'notice'; at?: number; title: string; text: string }
+  /** The user stopped the agent mid-turn (Claude Code records it as a user turn). */
+  | { kind: 'interrupted'; at?: number }
   | { kind: 'tool'; at?: number; id: string; title: string; detail?: string; failed?: boolean; view?: ToolView; result?: ToolResultView }
 
 /** Lists and reads past sessions of one agent account (Claude: the Agent SDK's session store). */
