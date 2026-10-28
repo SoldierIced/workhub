@@ -1,6 +1,6 @@
 {
   "name": "workhub2",
-  "version": "2.0.0-alpha.3",
+  "version": "2.0.0-alpha.4",
   "private": true,
   "description": "Workhub 2: a cross-platform desktop app to run and supervise coding agents",
   "license": "MIT",
