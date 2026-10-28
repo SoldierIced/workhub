@@ -17,7 +17,7 @@ import { readNotificationPermission } from '@workhub/adapters/notification-permi
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
-import { GitReview, LocalChanges } from '@workhub/adapters/git-review'
+import { GitReview, LocalChanges, ReviewTargets } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { readKeychainItem, readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
@@ -84,10 +84,11 @@ import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
 import { AgentOptionsService, runsKiroCli } from './agent-options'
 import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
+import { AgentReviewService, registerAgentReviewIpc } from './agent-review'
 import { AiReviewService, registerAiReviewIpc, reviewBudgetGate } from './ai-review'
 import { claudeConfigDirOf } from './claude-accounts'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
-import { ContinuityService } from './continuity'
+import { ContinuityService, type ContinuityDeps } from './continuity'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
 import { permissionAllowed } from './permissions'
@@ -323,6 +324,7 @@ const sessions = new SessionManager({
     driver.onEvent(e)
     continuity.onEvent(e)
     aiReview.onEvent(e)
+    agentReview.onEvent(e)
     send('session:event', e)
   },
   emitChanged: (s) => {
@@ -512,43 +514,66 @@ const localReview = new LocalReviewService({
 // Continuity across accounts and agents: Claude account failover and hand-off to another agent.
 const transcriptReaderFor = (id: string | undefined) =>
   id === 'kiro' ? new KiroTranscriptReader() : id === 'opencode' ? new OpenCodeTranscriptReader() : id === 'codex' ? new CodexTranscriptReader() : id === 'claude' ? new ClaudeTranscriptReader() : null
+// What a hand-off brief (and an agent review prompt) knows of a session: its goal, links, files and commands.
+const handoffFacts: ContinuityDeps['facts'] = async (view, agent, account, config) => {
+  if (!view.agentSessionId) return EMPTY_FACTS
+  const family = agent?.accountsOf ?? agent?.id ?? view.agentId
+  if (family === 'claude') {
+    const configDir = claudeConfigDirOf(config, account, homedir())
+    return (await readClaudeHandoffFacts({ sessionId: view.agentSessionId, cwd: view.cwd, configDir, ticketPrefixes: ticketPrefixes(config) })) ?? EMPTY_FACTS
+  }
+  const source = historySources[family as keyof typeof historySources]
+  const messages = source ? await source.messages(view.agentSessionId, view.cwd, account?.configDir).catch(() => []) : []
+  const monitor = await transcriptReaderFor(agent?.transcript)
+    ?.read({ agentSessionId: view.agentSessionId, cwd: view.cwd, configDir: account?.configDir, ticketPrefixes: ticketPrefixes(config) })
+    .catch(() => null)
+  return factsFromHistory(messages, monitor ?? {})
+}
+// Puts a session next to another in the sidebar (a hand-off, an agent reviewer).
+const placeInSidebar: ContinuityDeps['placeBeside'] = async (member, anchorKey) => {
+  const config = await configuration.current()
+  const groups = config.sessionGroups
+  if (!groups) return
+  const next = placeBeside(groups, member, anchorKey)
+  if (next === groups) return
+  const r = await configuration.saveSessionGroups(next)
+  if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+}
 const continuity = new ContinuityService({
   config: () => configuration.current(),
   sessions,
   budgetOf,
   claudeConfigDir: (account, config) => claudeConfigDirOf(config, account, homedir()),
   copySession: (input) => copyClaudeSession(input),
-  facts: async (view, agent, account, config) => {
-    if (!view.agentSessionId) return EMPTY_FACTS
-    const family = agent?.accountsOf ?? agent?.id ?? view.agentId
-    if (family === 'claude') {
-      const configDir = claudeConfigDirOf(config, account, homedir())
-      return (await readClaudeHandoffFacts({ sessionId: view.agentSessionId, cwd: view.cwd, configDir, ticketPrefixes: ticketPrefixes(config) })) ?? EMPTY_FACTS
-    }
-    const source = historySources[family as keyof typeof historySources]
-    const messages = source ? await source.messages(view.agentSessionId, view.cwd, account?.configDir).catch(() => []) : []
-    const monitor = await transcriptReaderFor(agent?.transcript)
-      ?.read({ agentSessionId: view.agentSessionId, cwd: view.cwd, configDir: account?.configDir, ticketPrefixes: ticketPrefixes(config) })
-      .catch(() => null)
-    return factsFromHistory(messages, monitor ?? {})
-  },
+  facts: handoffFacts,
   git: async (cwd) => {
     const probe = await new GitReview().probe(cwd, 'main')
     return probe ? { branch: probe.branch, dirtyFiles: probe.dirtyFiles } : null
   },
-  placeBeside: async (member, anchorKey) => {
-    const config = await configuration.current()
-    const groups = config.sessionGroups
-    if (!groups) return
-    const next = placeBeside(groups, member, anchorKey)
-    if (next === groups) return
-    const r = await configuration.saveSessionGroups(next)
-    if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
-  },
+  placeBeside: placeInSidebar,
   emitOffer: (offer) => send('continuity:offer', offer),
   emitMoved: (moved) => send('continuity:moved', moved),
   showPrompt: (id, text) => send('automations:prompted', id, text),
   showTurnEnd: (id, stopReason) => send('automations:turnEnded', id, stopReason)
+})
+
+// "Review with another agent": a read-only reviewer session on what a session worked on (any repo it touched, a PR, commits).
+const agentAvailabilityOf = (config: WorkhubConfig) => agentAvailability(knownAgents(config), { extraPath, path: [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter) })
+const agentReview = new AgentReviewService({
+  config: () => configuration.current(),
+  sessions,
+  targets: new ReviewTargets(localGit, (command, args, options) => createCliRunner(cliPath.split(delimiter))(command, args, options)),
+  remotes: (root) => localGit.remotes(root),
+  availability: agentAvailabilityOf,
+  goal: async (view) => {
+    const config = await configuration.current()
+    const agent = knownAgents(config).find((a) => a.id === view.agentId)
+    const account = view.accountId ? (config.accounts.find((a) => a.id === view.accountId) ?? null) : null
+    return (await handoffFacts(view, agent, account, config)).goal
+  },
+  ticketPrefixes,
+  showPrompt: (id, text) => send('automations:prompted', id, text),
+  placeBeside: placeInSidebar
 })
 
 async function snapshot(): Promise<ConfigSnapshot> {
@@ -918,6 +943,7 @@ function registerIpc(): void {
   ipc.handle('health:details', (_e, profileId: string | null, environmentId: string, request: HealthDetailRequest, force?: boolean) => health.details(profileId, environmentId, request, force === true))
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   registerAiReviewIpc(ipc, aiReview)
+  registerAgentReviewIpc(ipc, agentReview)
   registerLocalReviewIpc(ipc, localReview, { openWindow: openLocalReviewWindow, openPath: (path) => shell.openPath(path) })
   registerFileViewerIpc(ipc, {
     createWindow: (hash, title) => createAuxWindow(hash, title, FILE_WINDOW_SIZE),

@@ -40,7 +40,7 @@ export function useContinuityOffer(sessionId: string): ContinuityOffer | undefin
 }
 
 /** Asks the app to show a session (App owns the selection). */
-function requestOpen(id: string): void {
+export function requestOpen(id: string): void {
   for (const l of openListeners) l(id)
 }
 
@@ -53,6 +53,7 @@ export function accountOfLabel(label: string): string {
 /** The chat line of a session that continues another one. */
 export function originText(origin: SessionOrigin, view: Pick<SessionView, 'label' | 'accountName'>, t: (key: MessageKey, params?: Record<string, string | number>) => string): string {
   if (origin.kind === 'handoff') return t('continuity.origin.handoff', { from: origin.fromLabel })
+  if (origin.kind === 'review') return t('continuity.origin.review', { from: origin.fromLabel })
   const account = view.accountName ?? accountOfLabel(view.label)
   const from = accountOfLabel(origin.fromLabel)
   const params = { account, from, window: origin.window ?? '' }
