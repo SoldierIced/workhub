@@ -125,8 +125,8 @@ describe('monitor view', () => {
     expect(sessionScreens(NO_CAPABILITIES)).toEqual(['terminal'])
   })
 
-  it('lists module screens enabled in the profile', () => {
-    expect(moduleScreens({ flows: true, health: false, chatWatcher: true, automations: false })).toEqual(['flows', 'chatWatcher'])
+  it('lists module screens enabled in the profile, never a retired one (Flows)', () => {
+    expect(moduleScreens({ flows: true, health: false, chatWatcher: true, automations: false })).toEqual(['chatWatcher'])
     expect(moduleScreens(undefined)).toEqual([])
   })
 

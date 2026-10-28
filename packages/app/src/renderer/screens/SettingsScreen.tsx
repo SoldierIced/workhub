@@ -7,7 +7,7 @@ import {
   FAILOVER_MODES,
   failoverMode,
   NO_MODULES,
-  OPTIONAL_MODULES,
+  OFFERED_MODULES,
   orderAgents,
   resolveEffectiveAgents,
   slugId,
@@ -15,7 +15,7 @@ import {
   type Connection,
   type ConnectionKind,
   type FailoverMode,
-  type OptionalModule,
+  type OfferedModule,
   type Profile,
   type Result,
   type SecretChange,
@@ -60,8 +60,7 @@ const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
   chat: 'kind.chat',
   health: 'kind.health'
 }
-const MODULE_LABEL: Record<OptionalModule, MessageKey> = {
-  flows: 'module.flows',
+const MODULE_LABEL: Record<OfferedModule, MessageKey> = {
   health: 'module.health',
   chatWatcher: 'module.chatWatcher',
   automations: 'module.automations'
@@ -485,7 +484,7 @@ function ConnectionsSection({ snap, run, initialId }: SectionProps & { initialId
             <Select
               value={form.provider}
               onChange={(v) => setForm({ ...form, provider: v })}
-              options={providers.map((p) => ({ value: p.id, label: t('settings.providerPhase', { name: p.name, phase: p.phase }) }))}
+              options={providers.map((p) => ({ value: p.id, label: p.name }))}
             />
           </Field>
           <Field label={provider?.requiresEndpoint ? t('settings.endpointRequired') : t('settings.endpoint')} help={t('help.connection.endpoint')} className="col-span-2">
@@ -910,7 +909,7 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
             <AgentOrderList agents={orderedAgents} onChange={(keys) => setForm({ ...form, preferredAgents: keys })} />
           </FieldGroup>
           <FieldGroup legend={t('settings.modules')} help={t('help.profile.modules')}>
-            {OPTIONAL_MODULES.map((m) => (
+            {OFFERED_MODULES.map((m) => (
               <SwitchRow key={m} label={t(MODULE_LABEL[m])}>
                 <Switch checked={form.modules[m]} onChange={(on) => setForm({ ...form, modules: { ...form.modules, [m]: on } })} />
               </SwitchRow>

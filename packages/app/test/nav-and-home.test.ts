@@ -9,19 +9,16 @@ import type { ChatItem } from '../src/renderer/store'
 describe('navigation', () => {
   it('hides module screens while their module is off', () => {
     expect(visibleNavItems(undefined).map((i) => i.route)).toEqual(['home', 'pullRequests', 'tickets', 'history'])
-    expect(visibleNavItems({ ...NO_MODULES, flows: true, chatWatcher: true }).map((i) => i.route)).toEqual([
-      'home',
-      'pullRequests',
-      'tickets',
-      'slack',
-      'history',
-      'flows'
-    ])
+    expect(visibleNavItems({ ...NO_MODULES, chatWatcher: true }).map((i) => i.route)).toEqual(['home', 'pullRequests', 'tickets', 'slack', 'history'])
+  })
+
+  it('never shows Flows, which was dropped, even when an older config still has it on', () => {
+    expect(visibleNavItems({ ...NO_MODULES, flows: true }).map((i) => i.route)).toEqual(['home', 'pullRequests', 'tickets', 'history'])
   })
 
   it('keeps Workhub 1 keys and adds Sessions and Settings', () => {
     const all = allNavItems({ flows: true, health: true, chatWatcher: true, automations: true })
-    expect(all.map((i) => i.shortcut.key)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '0', ','])
+    expect(all.map((i) => i.shortcut.key)).toEqual(['1', '2', '3', '4', '5', '6', '8', '0', ','])
   })
 })
 

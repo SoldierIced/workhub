@@ -38,7 +38,6 @@ import { SlackScreen } from './screens/SlackScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
 import { HealthScreen } from './screens/HealthScreen'
 import { HomeScreen } from './screens/HomeScreen'
-import { PlaceholderScreen } from './screens/PlaceholderScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
 import { SettingsDialog } from './screens/SettingsDialog'
@@ -463,9 +462,7 @@ function Shell() {
                 <SlackScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} />
               ) : route === 'automations' ? (
                 <AutomationsScreen profile={profile} agents={agents} onOpenSession={openSession} />
-              ) : (
-                <PlaceholderScreen route={route} title={t(ROUTE_LABEL[route])} />
-              )}
+              ) : null}
             </div>
           )}
         </main>

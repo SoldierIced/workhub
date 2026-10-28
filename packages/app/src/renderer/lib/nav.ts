@@ -9,7 +9,6 @@ export type Route =
   | 'slack'
   | 'automations'
   | 'history'
-  | 'flows'
   | 'health'
   | 'sessions'
   | 'settings'
@@ -21,7 +20,7 @@ export interface NavItem {
   module?: OptionalModule
 }
 
-/** Main navigation, in Workhub 1's order and with its keys (⌘1-⌘8). */
+/** Main navigation, in Workhub 1's order and with its keys (⌘1-⌘8; ⌘7 was Flows, dropped). */
 export const NAV_ITEMS: readonly NavItem[] = [
   { route: 'home', shortcut: { key: '1' } },
   { route: 'pullRequests', shortcut: { key: '2' } },
@@ -29,7 +28,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { route: 'slack', shortcut: { key: '4' }, module: 'chatWatcher' },
   { route: 'automations', shortcut: { key: '5' }, module: 'automations' },
   { route: 'history', shortcut: { key: '6' } },
-  { route: 'flows', shortcut: { key: '7' }, module: 'flows' },
   { route: 'health', shortcut: { key: '8' }, module: 'health' }
 ]
 
@@ -47,14 +45,4 @@ export function visibleNavItems(modules: ModuleToggles | undefined): NavItem[] {
 /** Every item reachable from the sidebar and the keyboard, in shortcut order. */
 export function allNavItems(modules: ModuleToggles | undefined): NavItem[] {
   return [...visibleNavItems(modules), SESSIONS_ITEM, SETTINGS_ITEM]
-}
-
-/** The phase that brings each screen not built yet (PLAN section 5). */
-export const SCREEN_PHASE: Partial<Record<Route, string>> = {
-  pullRequests: 'P3',
-  tickets: 'P4',
-  slack: 'P6',
-  automations: 'P6',
-  flows: 'P7',
-  health: 'P6'
 }
