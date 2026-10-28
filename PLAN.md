@@ -1,5 +1,27 @@
 # Workhub 2 — Base Plan (Option B: one cross-platform app)
 
+## Current status
+
+This file is the original scope and design record; the README describes what the app does today.
+
+| Phase | Status |
+|---|---|
+| P0 Spike | Done (historical, see `spike/`) |
+| P1 Core + config | Done; CI runs on macOS, Windows and Linux |
+| P2 Sessions | Done: native Claude adapter, App/Terminal/Shell views, monitor, history, multiple accounts with failover, usage, Workhub 1 import |
+| P3 Code host | Done: GitHub; GitLab only fixture-tested |
+| P4 Tickets | Done: Jira and Linear, ticket/PR/session links |
+| P5 More agents | Done: Kiro, OpenCode, Codex, Gemini CLI over ACP; readers and history (only Claude sessions resume) |
+| P6 Modules | Done: Slack watcher, Automations, notifications, Health (Elastic) |
+| P7 Flows | **Dropped.** Flows from Workhub 1 are intentionally not ported; the profile module toggle remains but opens a placeholder screen |
+| P8 Release | Partly done: installers and update metadata are built by CI for three OSes, unsigned. Pending: Apple notarization, Windows code signing, docs site |
+
+Also delivered beyond the phases: usage budgets and alerts, per-session usage budget, local diff
+review and file viewer, AI review, tray popover, setup check, read aloud, themes, English/Spanish.
+Pending: signing, Windows and Linux testing on real machines, provider balances for API-key agents
+(section 9). The sections below are kept as written; where they mention Flows or open decisions,
+this status wins.
+
 Status: Stage 1 done (public repo SoldierIced/workhub, release v0.2.0, 2026-10-26). Stage 2: P0 spike in progress. Source of truth for scope until a tracked task list exists.
 
 ## 1. Goal

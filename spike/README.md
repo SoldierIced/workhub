@@ -1,5 +1,7 @@
 # Workhub 2 - P0 spike
 
+> Historical. This spike is finished and kept only as a reference for the stack and ACP findings below. It is not part of the workspaces and is not maintained; the app lives in `packages/`.
+
 Throwaway spike that proves the stack (Electron + electron-vite + React + strict TypeScript,
 xterm.js + node-pty, ACP client) on macOS and answers two open MCP questions.
 
@@ -80,5 +82,5 @@ status/reconnect/toggle controls either (D8 stands: Claude goes through the nati
 - Both agents take 10-15 s for `session/new` because they start all user MCP servers.
 - Cosmetic: switching agent shows the old agent's `[agent process exited]` line.
 - Probe runs create real sessions in the user's `~/.claude/projects` and `~/.kiro/sessions`, and the Claude
-  user hooks (engram) fire; the OAuth URLs in the Kiro log are redacted by the probe.
+  user hooks fire; the OAuth URLs in the Kiro log are redacted by the probe.
 - `out/` is electron-vite's build dir and gets cleaned, so screenshots live in `screenshots/`.
