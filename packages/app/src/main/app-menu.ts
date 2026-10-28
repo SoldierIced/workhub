@@ -23,6 +23,8 @@ export interface AppMenuInput {
   openHelp: () => void
   /** Help → the setup windows (setup check, welcome, how Workhub works). */
   openSetup?: (page: SetupPage) => void
+  /** Help → the main process log in the file manager. */
+  revealLogs?: () => void
   /** Reload and developer tools in the View menu (dev runs only). */
   developer: boolean
 }
@@ -122,7 +124,8 @@ export function buildAppMenuTemplate(input: AppMenuInput): MenuItemConstructorOp
             { type: 'separator' }
           ] as MenuItemConstructorOptions[])
         : []),
-      { label: t('menu.helpPage', { app: input.appName }), click: input.openHelp }
+      { label: t('menu.helpPage', { app: input.appName }), click: input.openHelp },
+      ...(input.revealLogs ? ([{ type: 'separator' }, { label: t('menu.revealLogs'), click: input.revealLogs }] as MenuItemConstructorOptions[]) : [])
     ]
   }
 

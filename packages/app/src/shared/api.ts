@@ -426,6 +426,22 @@ export interface HubApi {
   setup: SetupApi
   profileEnv: ProfileEnvApi
   systemNotifications: SystemNotificationsApi
+  diagnostics: DiagnosticsApi
+}
+
+/**
+ * What a renderer tells the main log: long tasks it saw (summed over a few seconds) and errors.
+ * Durations, counts and error messages only: never prompts, messages or settings.
+ */
+export type RendererReport =
+  | { kind: 'longtask'; count: number; maxMs: number; totalMs: number }
+  | { kind: 'error' | 'rejection'; message: string; source?: string }
+
+export interface DiagnosticsApi {
+  /** Adds a renderer report to the main log (throttled there too). */
+  report(report: RendererReport): void
+  /** Shows the log file in the file manager. */
+  revealLogs(): void
 }
 
 /** What Settings knows about Workhub 1 on this machine (see `previewWorkhub1Import`). */
