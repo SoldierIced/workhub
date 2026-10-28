@@ -14,10 +14,13 @@ import { parseSetupHash, SetupWindow } from './screens/SetupWindows'
 import { parseFileHash, parseReviewHash } from './lib/localReview'
 import { LocalReviewWindow } from './screens/LocalReviewWindow'
 import { FileViewerWindow } from './screens/FileViewerWindow'
+import { startPerfReports } from './lib/perfReport'
 import './styles.css'
 
 // Set the theme (and the text sizes) before the first paint so a light OS never flashes the dark palette.
 applyAppearance(readPrefs(), matchMedia('(prefers-color-scheme: dark)').matches)
+// Long tasks and uncaught errors of every window go to the main log (Help → Reveal Logs).
+startPerfReports()
 
 // Secondary windows load the same bundle and are routed by the URL hash:
 // `#tray-popover` is the menu bar popover, `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…`

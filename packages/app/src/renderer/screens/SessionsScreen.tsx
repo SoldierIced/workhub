@@ -1,5 +1,5 @@
 import { CircleAlert, Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { terminalChannel } from '@shared/api'
 import { Button, Spinner } from '../components/atoms'
 import { EmptyState } from '../components/molecules'
@@ -51,7 +51,12 @@ export function SessionsScreen({ sessions, selectedId, visible, theme, onNewSess
   )
 }
 
-export function SessionPane({ data, visible, theme }: { data: SessionData; visible: boolean; theme: 'light' | 'dark' }) {
+/**
+ * One session's header, chat or terminals and side panel. Rendered again only when that session
+ * changes (or is shown or hidden), not each time the window renders: every open session stays
+ * mounted, and re-rendering their chats on each sidebar click froze the window.
+ */
+export const SessionPane = memo(function SessionPane({ data, visible, theme }: { data: SessionData; visible: boolean; theme: 'light' | 'dark' }) {
   const { t } = useI18n()
   const v = data.view
   // A shell, once opened, stays mounted so its scrollback survives switching back and forth.
@@ -99,4 +104,4 @@ export function SessionPane({ data, visible, theme }: { data: SessionData; visib
       </div>
     </>
   )
-}
+})

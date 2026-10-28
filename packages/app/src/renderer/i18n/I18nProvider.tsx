@@ -10,13 +10,32 @@ export interface I18n {
   formatNumber: (n: number, options?: Intl.NumberFormatOptions) => string
 }
 
+/**
+ * One formatter per locale and options, built on first use: creating an `Intl` formatter costs far
+ * more than formatting with one, and a long chat formats two dates per message on every render.
+ */
+export function formatterCache<F>(create: (options: object | undefined) => F): (options: object | undefined) => F {
+  const cache = new Map<string, F>()
+  return (options) => {
+    const key = options ? JSON.stringify(options) : ''
+    let formatter = cache.get(key)
+    if (!formatter) {
+      formatter = create(options)
+      cache.set(key, formatter)
+    }
+    return formatter
+  }
+}
+
 function make(locale: Locale): I18n {
+  const dates = formatterCache((o) => new Intl.DateTimeFormat(locale, o as Intl.DateTimeFormatOptions | undefined))
+  const numbers = formatterCache((o) => new Intl.NumberFormat(locale, o as Intl.NumberFormatOptions | undefined))
   return {
     locale,
     t: (key, params) => translate(locale, key, params),
     tn: (base, count, params) => translatePlural(locale, base, count, params),
-    formatDate: (date, options) => new Intl.DateTimeFormat(locale, options).format(date),
-    formatNumber: (n, options) => new Intl.NumberFormat(locale, options).format(n)
+    formatDate: (date, options) => dates(options).format(date),
+    formatNumber: (n, options) => numbers(options).format(n)
   }
 }
 
