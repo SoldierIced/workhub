@@ -305,3 +305,11 @@
 @utility text-chat-2xs {
   font-size: calc(var(--wh-chat-font-size, 13px) * 0.77);
 }
+
+/* A scroller that hides its bar (a row of tabs that shows its overflow with a fade instead). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
