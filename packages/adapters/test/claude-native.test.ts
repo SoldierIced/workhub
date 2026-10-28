@@ -16,6 +16,7 @@ import {
   rateLimitWindow,
   rejectedLimit,
   settleResult,
+  toHistoryEntries,
   toHistoryMessages
 } from '../src/agent-claude-native'
 import { agentEnv } from '../src/agent-claude-native/bridge/env.mjs'
@@ -478,5 +479,28 @@ describe('Workhub 1 settings (read-only import)', () => {
     expect(v1.sessionEfforts).toEqual({ '.claude-work': 'medium' })
     expect(v1.appearance).toEqual({ 'terminal.fontSize': 17, 'terminal.fontFamily': '' })
     expect(JSON.stringify(v1)).not.toContain('cursors')
+  })
+})
+
+describe('Claude history with pasted prompts', () => {
+  it('titles an entry after the pasted text, not the wrapper tag', () => {
+    const [entry] = toHistoryEntries([{ sessionId: 's1', firstPrompt: '<pasted_content id="3d5d">\nReview the cashback PR\nline 2', lastModified: 1 }], 'claude', null)
+    expect(entry).toMatchObject({ title: 'Review the cashback PR', firstPrompt: 'Review the cashback PR\nline 2' })
+  })
+
+  it('prefers the custom title and falls back to the id when only a wrapper is left', () => {
+    const raw = [
+      { sessionId: 's1', customTitle: 'Cashback', firstPrompt: '<pasted_content id="1">', lastModified: 1 },
+      { sessionId: 's2', firstPrompt: '<pasted_content id="2">', lastModified: 1 }
+    ]
+    const [a, b] = toHistoryEntries(raw, 'claude', null)
+    expect(a?.title).toBe('Cashback')
+    expect(b).toMatchObject({ title: 's2' })
+    expect(b?.firstPrompt).toBeUndefined()
+  })
+
+  it('replays a pasted message without the tags', () => {
+    const messages = toHistoryMessages([{ type: 'user', message: { content: 'look:\n\n<pasted_content id="e812">\nError: boom\n</pasted_content>' } }])
+    expect(messages).toEqual([{ kind: 'user', text: 'look:\n\nError: boom' }])
   })
 })

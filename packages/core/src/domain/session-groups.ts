@@ -7,6 +7,7 @@
  * is not tied to a session being open: a closed member stays in its group until the user removes
  * it, and a session that is reopened appears at its stored place.
  */
+import { promptTitle } from './prompt-text'
 
 /** What a group remembers about a member, to list and reopen it while it is closed. */
 export interface GroupMember {
@@ -271,18 +272,9 @@ export function reconcileTop(state: SessionGroups, liveKeys: readonly string[]):
 
 // Names
 
-const NAME_MAX = 60
-
 /** The last segment of a path: what a session without a name of its own is called. */
 export function folderLabel(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path
-}
-
-/** The first non-blank line of a text, whitespace collapsed, cut to a sidebar row's length. */
-function firstLine(text: string | undefined): string | undefined {
-  const line = text?.split('\n').find((l) => l.trim())?.trim().replace(/\s+/g, ' ')
-  if (!line) return undefined
-  return line.length > NAME_MAX ? `${line.slice(0, NAME_MAX - 1)}…` : line
 }
 
 /** Where a session's name can come from, strongest first. */
@@ -302,7 +294,7 @@ export interface SessionNameSources {
  * first prompt, else its folder. `titled` tells whether it has a name of its own.
  */
 export function resolveSessionName(sources: SessionNameSources): { title: string; titled: boolean } {
-  const own = firstLine(sources.name) ?? firstLine(sources.title) ?? firstLine(sources.firstPrompt)
+  const own = promptTitle(sources.name) ?? promptTitle(sources.title) ?? promptTitle(sources.firstPrompt)
   return own ? { title: own, titled: true } : { title: folderLabel(sources.cwd), titled: false }
 }
 
