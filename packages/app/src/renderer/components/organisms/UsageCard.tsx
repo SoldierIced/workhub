@@ -1,4 +1,5 @@
 import { Gauge } from 'lucide-react'
+import { AgentIcon } from '../atoms/AgentIcon'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { accountTitle, UsageRowTooltip, UsageWindowChip, useWindowHover } from '../molecules/UsageWindowRow'
@@ -32,10 +33,10 @@ export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: 
   const kiroSpend = useKiroSpend()
   const apiSpend = useApiSpend()
   const hasKiro = groups.some((g) => g.agentId === 'kiro')
-  const name = (g: UsageGroup) => {
-    const agent = AGENT_NAME[g.agentId] ? t(AGENT_NAME[g.agentId]!) : g.agentId
-    return g.agentId === 'kiro' && !g.name ? agent : accountTitle(agent, g.name || t('usage.defaultAccount'))
-  }
+  const agentName = (g: UsageGroup) => (AGENT_NAME[g.agentId] ? t(AGENT_NAME[g.agentId]!) : g.agentId)
+  const name = (g: UsageGroup) => (g.agentId === 'kiro' && !g.name ? agentName(g) : accountTitle(agentName(g), g.name || t('usage.defaultAccount')))
+  // On the row the agent's mark stands in for its name: "Cuenta por defecto" rather than "Claude · Cuenta por defecto".
+  const shortName = (g: UsageGroup) => (g.agentId === 'kiro' && !g.name ? agentName(g) : g.name || t('usage.defaultAccount'))
   return (
     <section aria-label={t('usage.title')} className="rounded-lg border border-border bg-surface px-3 py-2 shadow-sm">
       <header className="flex items-center gap-1.5 text-sm font-medium text-muted">
@@ -63,10 +64,14 @@ export function UsageCard({ groups, running }: { groups: UsageGroup[]; running: 
             return (
               <UsageRowTooltip key={g.key} text={text} side="right">
                 <div data-testid="usage-account" tabIndex={0} className={ROW}>
-                  <div className="flex items-baseline gap-2 text-xs">
-                    <span className="min-w-0 flex-1 truncate font-medium text-text">{name(g)}</span>
+                  {/* The agent's mark says which agent it is, so the name gets the room; a long one wraps to a second line. */}
+                  <div className="flex items-start gap-1.5 text-xs">
+                    <AgentIcon agentId={g.agentId} label={agentName(g)} className="mt-px size-3.5 rounded-sm" />
+                    <span className="line-clamp-2 min-w-0 flex-1 leading-snug font-medium break-words text-text" data-testid="usage-account-name">
+                      {shortName(g)}
+                    </span>
                     {!g.error && reset !== undefined && (
-                      <span className="shrink-0 text-2xs text-subtle tabular-nums" data-testid="usage-reset">
+                      <span className="mt-px shrink-0 text-2xs text-subtle tabular-nums" data-testid="usage-reset">
                         {t('usage.resetsShort', { when: shortReset(reset, now, formatDate) })}
                       </span>
                     )}
