@@ -4,6 +4,23 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.2](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.1...v2.0.0-alpha.2) (2026-10-28)
+
+
+### Features
+
+* **automations:** keep running in one session while the app runs, with an optional context clear ([54dbb2f](https://github.com/SoldierIced/workhub/commit/54dbb2f2d8e5d40184da4e6c107939e03a8d4475))
+* **chat:** copy buttons on agent messages and code blocks ([2c60dc0](https://github.com/SoldierIced/workhub/commit/2c60dc0a8c21cbda78c9c5ee6a19bc71451ffd66))
+* **history:** group automation runs into one row per automation ([d55d0f7](https://github.com/SoldierIced/workhub/commit/d55d0f7edb5e4954cd5d155c9671318374ab27e5))
+* **sessions:** follow the new session id Claude's /clear moves the conversation to ([5a14d3d](https://github.com/SoldierIced/workhub/commit/5a14d3dda90d9b4363286355c6519f5e47fc1373))
+
+
+### Bug Fixes
+
+* **ai-review:** send the reviewer's last answer to the author when the loop ends ([2e04ca9](https://github.com/SoldierIced/workhub/commit/2e04ca98617beababa44270cc88aa3171c16e6af))
+* **monitor:** list only the tickets and PRs the session is related to ([3c8985a](https://github.com/SoldierIced/workhub/commit/3c8985ae75fad124331b2b0e00d5f1a6b92cf23c))
+* **transcript:** tell a session's own actions from tool output and listings ([38d33b0](https://github.com/SoldierIced/workhub/commit/38d33b0e41282ea539467e9eadaa59627d238f4d))
+
 ## 2.0.0-alpha.1
 
 The starting point of Workhub 2, the Electron and TypeScript rewrite of Workhub. This version was
