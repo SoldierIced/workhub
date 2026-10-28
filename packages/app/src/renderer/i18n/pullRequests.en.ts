@@ -137,6 +137,7 @@ export const prEn = {
   'pr.detail.tickets': 'Tickets',
   'pr.detail.reviewersShort': 'Reviewers',
   'pr.detail.toolbar': 'Pull request actions',
+  'pr.detail.moreActions': 'More actions',
   'pr.detail.reviewed': 'reviewed',
   'pr.detail.onLine': 'commented on {path}',
   'pr.slack.empty.title': 'Nothing in Slack for this pull request',
