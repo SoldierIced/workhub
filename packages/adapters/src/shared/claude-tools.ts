@@ -163,6 +163,23 @@ export function pullRequestUrls(text: string): string[] {
   return out
 }
 
+/**
+ * Pull requests a prompt names by number: `PR 12`, `PR #12`, `pull request 12`, `repo#12` or
+ * `owner/repo#12`; with the repository when it says. URLs are left to `pullRequestUrls`.
+ */
+export function pullRequestNumbers(text: string): { number: number; repo?: string }[] {
+  const out: { number: number; repo?: string }[] = []
+  const note = (number: number, repo?: string) => {
+    if (!out.some((r) => r.number === number && r.repo === repo)) out.push(repo ? { number, repo } : { number })
+  }
+  const noUrls = text.replace(/https?:\/\/\S+/g, ' ')
+  for (const m of noUrls.matchAll(/(?<![\w/.-])([A-Za-z][\w.-]*(?:\/[\w.-]+)?)#(\d+)\b/g)) {
+    if (!/^(prs?|mrs?)$/i.test(m[1]!)) note(Number(m[2]), m[1]!.toLowerCase())
+  }
+  for (const m of noUrls.matchAll(/\b(?:PRs?|MRs?|pull requests?)\s*#?(\d+)\b/gi)) if (!out.some((r) => r.number === Number(m[1]))) note(Number(m[1]))
+  return out
+}
+
 /** Key-like words that are not tickets. */
 const NOT_TICKETS = new Set(['UTF', 'ISO', 'SHA', 'MD', 'RFC', 'HTTP', 'TLS', 'SSL', 'UTC', 'GMT', 'AES', 'RSA', 'CVE', 'ES', 'PEP', 'X', 'TOP', 'PHASE', 'STEP', 'V'])
 
