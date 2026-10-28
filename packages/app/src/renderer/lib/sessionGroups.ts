@@ -39,14 +39,18 @@ export function listSessions(all: readonly SessionData[]): ListedSession[] {
   return [...best.entries()].map(([key, data]) => ({ key, data })).sort((a, b) => a.data.view.startedAt - b.data.view.startedAt)
 }
 
+/** A bare slash command (`/clear`, `/compact`) says nothing about what the session is for. */
+const BARE_COMMAND = /^\/\S+$/
+
 /**
  * What the sidebar calls an open session, and whether that is a name of its own: the name the user
- * gave it (Rename…), else the first line of what the user first asked, else its folder. The agent
- * and the account are shown by the row's icon and second line, not by its name.
+ * gave it (Rename…, `/rename`), else the title its agent gave it, else the first line of what the
+ * user first asked, else its folder. The agent and the account are shown by the row's icon and
+ * second line, not by its name.
  */
 export function sessionNameInfo(s: Pick<SessionData, 'items' | 'view'>): { title: string; titled: boolean } {
-  const firstPrompt = s.items.find((item) => item.kind === 'user' && item.text.trim())
-  return resolveSessionName({ name: s.view.name, firstPrompt: firstPrompt?.kind === 'user' ? firstPrompt.text : undefined, cwd: s.view.cwd })
+  const firstPrompt = s.items.find((item) => item.kind === 'user' && item.text.trim() && !BARE_COMMAND.test(item.text.trim()))
+  return resolveSessionName({ name: s.view.name, title: s.view.agentTitle, firstPrompt: firstPrompt?.kind === 'user' ? firstPrompt.text : undefined, cwd: s.view.cwd })
 }
 
 export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
@@ -73,7 +77,7 @@ export function rowName(entry: ListedSession | undefined, member: GroupMember, p
  * row; before anything is asked, its agent and folder, since there is no icon there to tell the agent.
  */
 export function sessionLabel(s: Pick<SessionData, 'items' | 'view'>): string {
-  const asked = !!s.view.name?.trim() || s.items.some((i) => i.kind === 'user' && i.text.trim())
+  const asked = !!s.view.name?.trim() || !!s.view.agentTitle || s.items.some((i) => i.kind === 'user' && i.text.trim())
   return asked ? sessionName(s) : `${s.view.agentName} · ${folderName(s.view.cwd)}`
 }
 

@@ -277,12 +277,20 @@ export class SessionManager {
     this.remove(id)
   }
 
-  /** Names a session; empty or null goes back to its agent's name. Kept by identity, so a resumed session keeps it. */
+  /**
+   * Names a session; empty or null goes back to its agent's name. Kept by identity, so a resumed
+   * session keeps it. An agent whose history takes titles (Claude) gets it too, as `/rename` would
+   * set it, so `claude --resume` and the terminal show the same name; that write is best effort.
+   */
   rename(id: string, name: string | null): void {
     const s = this.require(id)
     const key = s.view.identity ?? s.view.agentSessionId ?? s.view.id
     const stored = this.deps.names ? this.deps.names.set(key, name) : cleanSessionName(name)
     this.update(id, { name: stored })
+    const source = this.deps.history[s.agent.accountsOf ?? s.agent.id]
+    if (stored && source?.rename && s.view.agentSessionId) {
+      void source.rename(s.view.agentSessionId, s.view.cwd, stored, s.account?.configDir).catch(() => undefined)
+    }
   }
 
   /**
@@ -709,6 +717,7 @@ export class SessionManager {
     if (!snapshot || key === s.lastMonitor) return
     s.lastMonitor = key ?? undefined
     if (snapshot.workPaths) s.workPaths = snapshot.workPaths
+    if (snapshot.title) this.noteAgentTitle(s, snapshot.title)
     for (const t of snapshot.toolCalls ?? []) s.toolStatus.set(t.id, { status: t.status, startedAt: t.startedAt })
     this.deps.emitEvent({ sessionId: s.view.id, type: 'monitor', snapshot })
     this.checkPending(s)
@@ -740,6 +749,8 @@ export class SessionManager {
     if (s && !channel) {
       if (e.type === 'agentSession') this.followAgentSession(s, e.agentSessionId)
       if (e.type === 'permissionMode') this.update(id, { permissionMode: e.mode, currentModeId: e.currentModeId })
+      if (e.type === 'commands') this.update(id, { commands: e.commands })
+      if (e.type === 'monitor' && e.snapshot.title) this.noteAgentTitle(s, e.snapshot.title)
       if (e.type === 'models') {
         this.update(id, { models: e.models, ...(e.currentModelId ? { currentModelId: e.currentModelId } : {}) })
         if (e.models.length) this.deps.onAgentOptions?.(s.agent.id, s.account?.id ?? null, { models: e.models, modes: s.view.availableModes ?? [] })
@@ -749,6 +760,12 @@ export class SessionManager {
     if (s) this.track(s, e, channel)
     this.deps.emitEvent(e)
     if (s) this.checkPending(s)
+  }
+
+  /** The agent titled the conversation (or titled it again): the sidebar shows it unless the user named the session. */
+  private noteAgentTitle(s: ManagedSession, title: string): void {
+    const clean = cleanSessionName(title)
+    if (clean && clean !== s.view.agentTitle) this.update(s.view.id, { agentTitle: clean })
   }
 
   /** Keeps what decides whether a turn is in progress: open permission requests, the console's title. */

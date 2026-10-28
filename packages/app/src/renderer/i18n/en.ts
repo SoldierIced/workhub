@@ -22,6 +22,7 @@ import { sidebarEn } from './sidebar.en'
 import { agentsEn } from './agents.en'
 import { toolViewEn } from './toolView.en'
 import { windowsEn } from './windows.en'
+import { slashCommandsEn } from './slashCommands.en'
 import { localReviewEn } from './localReview.en'
 import { unsavedEn } from './unsaved.en'
 /**
@@ -232,7 +233,7 @@ export const en = {
   'chat.placeholder': 'Ask the agent…',
   'chat.placeholderStarting': 'Starting the agent…',
   'chat.placeholderClosed': 'This session is closed',
-  'chat.keys': 'Return sends · Shift-Return adds a line · Esc interrupts',
+  'chat.keys': 'Return sends · Shift-Return adds a line · / commands · Esc interrupts',
   'chat.send': 'Send',
   'chat.interrupt': 'Interrupt',
 
@@ -348,7 +349,7 @@ export const en = {
   'chat.imageTooMany': 'Up to {n} images per message: the rest were left out.',
   'chat.imagesUnsupported': 'This agent does not take images.',
   'chat.removeImage': 'Remove image {n}',
-  'chat.keysImages': 'Return sends · Shift-Return adds a line · Esc interrupts · paste images',
+  'chat.keysImages': 'Return sends · Shift-Return adds a line · / commands · Esc interrupts · paste images',
   'monitor.mcpRefresh': 'Refresh MCP status',
   'monitor.mcpReconnect': 'Reconnect {name}',
   'monitor.mcpEnable': 'Enable {name}',
@@ -442,6 +443,7 @@ export const en = {
   ...settingsHelpEn,
   ...toolViewEn,
   ...windowsEn,
+  ...slashCommandsEn,
   ...localReviewEn,
   ...unsavedEn
 } as const

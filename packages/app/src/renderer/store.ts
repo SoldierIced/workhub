@@ -169,6 +169,11 @@ export function pushItem(id: string, kind: 'error', text: string): void {
   patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, at: Date.now(), kind, text }] }))
 }
 
+/** A line Workhub adds to the chat itself (what one of its own slash commands did). */
+export function pushNotice(id: string, title: string, text: string): void {
+  patch(id, (s) => ({ ...s, items: [...s.items, { id: ++seq, at: Date.now(), kind: 'notice', noticeKind: 'info', title, text }] }))
+}
+
 export function pushUser(id: string, text: string, images?: string[]): void {
   const itemId = ++seq
   patch(id, (s) => ({ ...s, items: [...s.items, { id: itemId, at: Date.now(), kind: 'user', text, ...(images?.length ? { images } : {}) }] }))

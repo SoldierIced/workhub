@@ -1,6 +1,6 @@
 import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
-import { Fragment, memo, useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, type SubagentSummary } from '@workhub/core'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { filterSlashCommands, gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, slashQuery, type SlashCommandInfo, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
 import { CopyButton, Markdown } from '../../components/molecules'
 import { BrandMark, ToolCallCard } from '../../components/organisms'
@@ -12,7 +12,9 @@ import { hasImageFiles, imageFilesOf, MAX_PROMPT_IMAGES, pickImageFiles, readIma
 import { acceptsInput, restoreComposer } from '../../lib/prompt-queue'
 import { isEditable, shouldFocusComposer } from '../../lib/composer-focus'
 import { interruptSession, onRecoveredPrompts, removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
-import { markPermission, openChatImage, pushItem, type ChatItem, type SessionData } from '../../store'
+import { markPermission, openChatImage, pushItem, pushNotice, type ChatItem, type SessionData } from '../../store'
+import { runWorkhubCommand, sessionSlashCommands } from '../../lib/chatCommands'
+import { SlashCommandMenu, slashOptionId } from './SlashCommandMenu'
 import { followLog, isAtBottom, lastPromptId, type FollowMark } from '../../lib/chatScroll'
 import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
@@ -25,8 +27,9 @@ import { ContinuityNotice } from './ContinuityNotice'
 import { openSubagent, subagentOfCall } from '../../lib/subagentView'
 import { errorText } from '../../lib/errorText'
 
-/** The Claude adapter's English compaction notice, shown in the reader's language. */
+/** The Claude adapter's English compaction and `/clear` notices, shown in the reader's language. */
 const COMPACTED_TEXT = 'The conversation was compacted.'
+const CLEARED_TEXT = 'The conversation was cleared.'
 const NOTICE_ICON: Record<'hook' | 'info' | 'warning', LucideIcon> = { hook: Webhook, info: Info, warning: TriangleAlert }
 
 /** When a message was sent: day, month and hour:minute (plus the year outside the current one); nothing when unknown. */
@@ -119,7 +122,7 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
     case 'notice':
       return (
         <Disclosure icon={NOTICE_ICON[item.noticeKind]} title={item.title} tone={item.failed ? 'danger' : item.noticeKind === 'warning' ? 'warning' : undefined} testId="notice">
-          <pre className="max-h-80 overflow-auto font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">{item.text === COMPACTED_TEXT ? t('chat.noticeCompacted') : item.text || t('chat.noticeEmpty')}</pre>
+          <pre className="max-h-80 overflow-auto font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">{item.text === COMPACTED_TEXT ? t('chat.noticeCompacted') : item.text === CLEARED_TEXT ? t('chat.noticeCleared') : item.text || t('chat.noticeEmpty')}</pre>
         </Disclosure>
       )
     case 'tool': {
@@ -326,9 +329,39 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
     if (r.ok) await refreshConfig()
   }
 
+  // The `/` menu: Workhub's commands, then the agent's. Esc closes it for the draft it was open on.
+  const allCommands = useMemo(() => sessionSlashCommands(v, t), [v, t])
+  const [menuSelected, setMenuSelected] = useState(0)
+  const [menuDismissedFor, setMenuDismissedFor] = useState<string | null>(null)
+  const query = slashQuery(text)
+  const menu = useMemo(() => (query === null || menuDismissedFor === text ? [] : filterSlashCommands(allCommands, query)), [allCommands, query, menuDismissedFor, text])
+  const menuIndex = Math.min(menuSelected, Math.max(0, menu.length - 1))
+  useEffect(() => setMenuSelected(0), [query])
+  const pickCommand = (command: SlashCommandInfo) => {
+    setText(`/${command.name} `)
+    composer.current?.focus()
+  }
+
   const send = async (override = false) => {
     const value = text.trim()
     if ((!value && images.length === 0) || !open) return
+    // Workhub's own commands (`/rename`) run here and never reach the agent; any other `/text` goes as typed.
+    if (
+      images.length === 0 &&
+      runWorkhubCommand(
+        v,
+        value,
+        {
+          rename: (id, name) => window.hub.sessions.rename(id, name),
+          setModel: (id, model) => window.hub.sessions.setModel(id, model),
+          report: (kind, message) => (kind === 'error' ? pushItem(v.id, 'error', message) : pushNotice(v.id, message, value))
+        },
+        t
+      )
+    ) {
+      setText('')
+      return
+    }
     // The one-shot escape: "Send anyway" passes this prompt only; nothing stored changes.
     if (gatePrompt(gate.status, 'user', override).kind === 'confirm') {
       // Automatic failover: the held prompt goes to the same conversation in the next account.
@@ -360,6 +393,30 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
 
   // Workhub 1 keys: Return sends, Shift-Return adds a line, Esc interrupts.
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menu.length > 0 && !e.nativeEvent.isComposing) {
+      const pick = menu[menuIndex]!
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMenuSelected((menuIndex + (e.key === 'ArrowDown' ? 1 : menu.length - 1)) % menu.length)
+        return
+      }
+      if (e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault()
+        pickCommand(pick)
+        return
+      }
+      // Enter picks the entry; on a command typed in full it sends it.
+      if (e.key === 'Enter' && !e.shiftKey && text !== `/${pick.name}`) {
+        e.preventDefault()
+        pickCommand(pick)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMenuDismissedFor(text)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       void send()
@@ -524,9 +581,17 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
               ))}
             </ul>
           )}
+          {menu.length > 0 && (
+            <SlashCommandMenu sessionId={v.id} agentName={v.agentName} commands={menu} selected={menuIndex} onPick={pickCommand} onHover={setMenuSelected} />
+          )}
           <textarea
             ref={composer}
             aria-label={t('chat.prompt')}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={menu.length > 0}
+            aria-controls={menu.length > 0 ? `slash-${v.id}` : undefined}
+            aria-activedescendant={menu.length > 0 ? slashOptionId(v.id, menuIndex) : undefined}
             rows={2}
             value={text}
             disabled={!open}

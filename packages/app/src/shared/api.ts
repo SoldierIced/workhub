@@ -32,6 +32,7 @@ import type {
   SessionGroups,
   SessionOrigin,
   SessionScreen,
+  SlashCommandInfo,
   ValidationIssue,
   Workhub1SecretResult,
   WorkhubConfig
@@ -103,8 +104,12 @@ export function terminalChannel(sessionId: string, channel: 'console' | 'shell')
 /** A session as the renderer sees it. */
 export interface SessionView extends Session {
   label: string
-  /** The name the user gave the session (Rename…), kept across restarts; else it shows its agent's name. */
+  /** The name the user gave the session (Rename…, `/rename`), kept across restarts; else it shows its agent's name. */
   name?: string
+  /** The title the agent gave the conversation (Claude's, an ACP agent's `session_info_update`); a name the user gave wins. */
+  agentTitle?: string
+  /** The slash commands the agent reported (built-ins, skills, custom commands); absent until it reports them. */
+  commands?: SlashCommandInfo[]
   agentName: string
   /** The account's name, when the session runs with one. */
   accountName?: string

@@ -23,6 +23,7 @@ import { sidebarEs } from './sidebar.es'
 import { agentsEs } from './agents.es'
 import { toolViewEs } from './toolView.es'
 import { windowsEs } from './windows.es'
+import { slashCommandsEs } from './slashCommands.es'
 import { localReviewEs } from './localReview.es'
 import { unsavedEs } from './unsaved.es'
 
@@ -231,7 +232,7 @@ export const es: Record<keyof typeof en, string> = {
   'chat.placeholder': 'Pregúntale al agente…',
   'chat.placeholderStarting': 'Iniciando el agente…',
   'chat.placeholderClosed': 'Esta sesión está cerrada',
-  'chat.keys': 'Retorno envía · Mayús-Retorno agrega una línea · Esc interrumpe',
+  'chat.keys': 'Retorno envía · Mayús-Retorno agrega una línea · / comandos · Esc interrumpe',
   'chat.send': 'Enviar',
   'chat.interrupt': 'Interrumpir',
 
@@ -347,7 +348,7 @@ export const es: Record<keyof typeof en, string> = {
   'chat.imageTooMany': 'Hasta {n} imágenes por mensaje: el resto se omitió.',
   'chat.imagesUnsupported': 'Este agente no acepta imágenes.',
   'chat.removeImage': 'Quitar imagen {n}',
-  'chat.keysImages': 'Return envía · Shift-Return agrega una línea · Esc interrumpe · pega imágenes',
+  'chat.keysImages': 'Return envía · Shift-Return agrega una línea · / comandos · Esc interrumpe · pega imágenes',
   'monitor.mcpRefresh': 'Actualizar estado de MCP',
   'monitor.mcpReconnect': 'Reconectar {name}',
   'monitor.mcpEnable': 'Activar {name}',
@@ -441,6 +442,7 @@ export const es: Record<keyof typeof en, string> = {
   ...settingsHelpEs,
   ...toolViewEs,
   ...windowsEs,
+  ...slashCommandsEs,
   ...localReviewEs,
   ...unsavedEs
 }
