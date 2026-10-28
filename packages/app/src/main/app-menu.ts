@@ -46,12 +46,12 @@ const MODES = [
 ] as const
 
 /**
- * Workhub 1's keys for new sessions: the first two agents get ⌘T and ⌘L (Claude and the second
- * Claude account there), a plain shell ⌘Y. Agents beyond those have no key.
+ * Keys for the per-agent new session items: the first agent gets ⌘L, a plain shell ⌘Y. ⌘T is not
+ * here: it belongs to the generic "New Session" item, which starts the profile's preferred agent.
  */
 export function newSessionKeys(agents: readonly MenuAgent[]): Map<string, string> {
   const keys = new Map<string, string>()
-  const free = ['T', 'L']
+  const free = ['L']
   for (const a of agents) {
     if (a.agentId === 'shell') {
       if (![...keys.values()].includes('Y')) keys.set(a.key, 'Y')
@@ -73,12 +73,14 @@ export function buildAppMenuTemplate(input: AppMenuInput): MenuItemConstructorOp
   const mac = input.platform === 'darwin'
   const keys = newSessionKeys(input.agents)
 
-  const newSessions: MenuItemConstructorOptions[] = input.agents.length
-    ? input.agents.map((a) => {
-        const key = keys.get(a.key)
-        return { label: t('menu.newAgentSession', { agent: a.label }), ...(key ? { accelerator: `CmdOrCtrl+${key}` } : {}), click: () => run({ kind: 'newSession', agentKey: a.key }) }
-      })
-    : [{ label: t('menu.newSession'), accelerator: 'CmdOrCtrl+T', click: () => run({ kind: 'newSession' }) }]
+  // ⌘T is the same one-click quick session as the toolbar button (no agentKey: the renderer picks the profile's agent).
+  const newSessions: MenuItemConstructorOptions[] = [
+    { label: t('menu.newSession'), accelerator: 'CmdOrCtrl+T', click: () => run({ kind: 'newSession' }) },
+    ...input.agents.map((a): MenuItemConstructorOptions => {
+      const key = keys.get(a.key)
+      return { label: t('menu.newAgentSession', { agent: a.label }), ...(key ? { accelerator: `CmdOrCtrl+${key}` } : {}), click: () => run({ kind: 'newSession', agentKey: a.key }) }
+    })
+  ]
 
   const file: MenuItemConstructorOptions = {
     label: t('menu.file'),

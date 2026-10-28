@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, pickAgent, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember } from '@workhub/core'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, pickAgent, profileDefaultFolder, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember } from '@workhub/core'
 import type { SessionView, WorkspaceFolder } from '@shared/api'
 import { Button, TooltipProvider } from './components/atoms'
 import { Dialog, ToastProvider, useToast } from './components/molecules'
@@ -47,6 +47,7 @@ import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, sessionSnapshot, setExternalViewing, setViewing, startStore, useSessions, type SessionData } from './store'
 import { errorText } from './lib/errorText'
 import { quickSessionPlan } from './lib/quickSession'
+import { createQuickSessionGate } from './lib/quickSessionGate'
 import { abbreviateFolder } from './lib/sessionHeader'
 import { startPromptQueue } from './promptQueue'
 
@@ -246,6 +247,8 @@ function Shell() {
   const quickPlan = quickSessionPlan(profile, agents, home)
   const quick = useRef({ profile, agents, home, activeProfileId })
   quick.current = { profile, agents, home, activeProfileId }
+  // ⌘T reaches us as the native menu accelerator and as a key event; one burst starts one session.
+  const quickGate = useRef(createQuickSessionGate())
   const quickSession = useCallback(
     async (agentKey?: string) => {
       const { profile: p, agents: list, home: h, activeProfileId: profileId } = quick.current
@@ -281,6 +284,7 @@ function Shell() {
             return
           }
           case 'newSession':
+            if (!command.agentKey && !quickGate.current()) return
             return void quickSession(command.agentKey)
           case 'closeSession':
             if (current) {
@@ -304,7 +308,7 @@ function Shell() {
     const onKey = (e: KeyboardEvent) => {
       if (matchesShortcut(e, NEW_SESSION_SHORTCUT, platform)) {
         e.preventDefault()
-        void quickSession()
+        if (quickGate.current()) void quickSession()
         return
       }
       const item = reachable.find((i) => matchesShortcut(e, i.shortcut, platform))
@@ -472,7 +476,7 @@ function Shell() {
         profileId={activeProfileId}
         agents={agents}
         preferredAgents={profile?.preferredAgents}
-        initialCwd={dialog.cwd}
+        initialCwd={dialog.cwd ?? profileDefaultFolder(profile, home)}
         folders={workspaces}
         profiles={profiles}
         initialAgentKey={dialog.agentKey}
