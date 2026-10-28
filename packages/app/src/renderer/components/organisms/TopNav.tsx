@@ -31,7 +31,8 @@ function Count({ value, label }: { value: number; label: string }) {
 /**
  * The screens, in the window's top bar: icon and short label, the active one highlighted, with
  * their counts (pull requests to review, unread Slack threads) and Health's state. When the bar
- * gets too narrow for the labels it shows icons only; the tooltip names the screen and its key.
+ * gets too narrow it first tightens the spacing, then shows icons only (the active screen keeps
+ * its label), and last icons only everywhere; the tooltip names the screen and its key.
  */
 export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
   const { t, tn } = useI18n()
@@ -41,10 +42,12 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
   const { view: health } = useHealth(profileId, healthOn)
   const lists = useCachedPullRequestLists(profileId)
   const navRef = useRef<HTMLElement>(null)
-  // The width at which the labels did not fit; a new width tries them again.
-  const [fold, setFold] = useState<{ width: number; iconsOnly: boolean }>({ width: 0, iconsOnly: false })
+  // How far the bar folded at this width (0 full, 1 tight, 2 icons but the active label, 3 icons
+  // only); a new width starts again from the full bar.
+  const [fold, setFold] = useState<{ width: number; level: number }>({ width: 0, level: 0 })
   const [width, setWidth] = useState(0)
-  const iconsOnly = fold.width === width && fold.iconsOnly
+  const level = fold.width === width ? fold.level : 0
+  const iconsOnly = level >= 3
 
   useLayoutEffect(() => {
     const el = navRef.current
@@ -55,8 +58,8 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
   }, [])
   useLayoutEffect(() => {
     const el = navRef.current
-    if (!el || iconsOnly || width === 0) return
-    if (el.scrollWidth > el.clientWidth + 1) setFold({ width, iconsOnly: true })
+    if (!el || level >= 3 || width === 0) return
+    if (el.scrollWidth > el.clientWidth + 1) setFold({ width, level: level + 1 })
   })
 
   const unread = slack && slack.health !== 'off' ? slackUnreadCount(slack.threads, slack.me) : 0
@@ -87,24 +90,25 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
         const name = t(ROUTE_LABEL[item.route])
         const { badge, note } = extra(item.route)
         const tip = [`${name} (${shortcutLabel(item.shortcut, platform)})`, note].filter(Boolean).join('\n')
+        const labelled = level < 2 || (level === 2 && active)
         return (
           <button
             key={item.route}
             type="button"
             onClick={() => onNavigate(item.route)}
             aria-current={active ? 'page' : undefined}
-            aria-label={iconsOnly ? [name, note].filter(Boolean).join(', ') : undefined}
+            aria-label={labelled ? undefined : [name, note].filter(Boolean).join(', ')}
             title={tip}
             data-route={item.route}
             className={cn(
               'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md text-sm whitespace-nowrap transition-colors duration-150',
-              iconsOnly ? 'px-2' : 'px-2.5',
+              !labelled ? 'px-2' : level >= 1 ? 'px-1.5' : 'px-2.5',
               active ? 'bg-accent-soft font-medium text-text' : 'text-muted hover:bg-surface-hover hover:text-text'
             )}
           >
             <Icon className={cn('size-4 shrink-0', active ? 'text-accent' : 'text-subtle')} aria-hidden />
-            {!iconsOnly && <span>{t(topNavLabel(item.route))}</span>}
-            {badge && <span className={cn('inline-flex items-center', iconsOnly && 'pointer-events-none absolute top-0 right-0 scale-90')}>{badge}</span>}
+            {labelled && <span>{t(topNavLabel(item.route))}</span>}
+            {badge && <span className={cn('inline-flex items-center', !labelled && 'pointer-events-none absolute top-0 right-0 scale-90')}>{badge}</span>}
           </button>
         )
       })}
