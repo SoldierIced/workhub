@@ -146,6 +146,7 @@ export function factsFromHistory(messages: readonly HistoryMessage[], monitor: S
   const facts: HandoffFacts = { ...EMPTY_FACTS, pullRequests: [...(monitor.pullRequests ?? [])], tickets: [...(monitor.ticketKeys ?? [])], filesTouched: [], commands: [], todos: [], exchanges: [] }
   if (monitor.title) facts.title = monitor.title
   for (const m of messages) {
+    if (m.kind === 'notice') continue
     if (m.kind === 'tool') {
       if (m.detail?.startsWith('$ ')) facts.commands.push(m.detail.slice(2))
       else if (m.detail && /^(Edited|Wrote|Created|Modified) /.test(m.title)) facts.filesTouched.push(m.detail)
