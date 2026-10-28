@@ -55,5 +55,10 @@ export const windowsEn = {
   'history.openHint': 'Open now: double-click shows it',
   'history.profile': 'Profile',
   'history.allProfiles': 'All profiles',
+  'history.automations': 'Automations',
+  'history.hideAutomations': 'Hide automations',
+  'history.automationRuns.one': '1 session ({today} today)',
+  'history.automationRuns.other': '{count} sessions ({today} today)',
+  'history.automationLast': 'last {time}',
   'history.doubleClick': 'Double-click a session to resume it in the app. Sessions in temporary folders are not listed.'
 } as const

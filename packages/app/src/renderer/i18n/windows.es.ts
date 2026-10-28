@@ -57,5 +57,10 @@ export const windowsEs: Record<keyof typeof windowsEn, string> = {
   'history.openHint': 'Abierta ahora: doble clic la muestra',
   'history.profile': 'Perfil',
   'history.allProfiles': 'Todos los perfiles',
+  'history.automations': 'Automatizaciones',
+  'history.hideAutomations': 'Ocultar automatizaciones',
+  'history.automationRuns.one': '1 sesión ({today} hoy)',
+  'history.automationRuns.other': '{count} sesiones ({today} hoy)',
+  'history.automationLast': 'última {time}',
   'history.doubleClick': 'Doble clic en una sesión para retomarla en la app. Las sesiones en carpetas temporales no se listan.'
 }
