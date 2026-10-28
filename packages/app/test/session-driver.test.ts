@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { NO_CAPABILITIES, type SessionState } from '@workhub/core'
 import type { SessionView, StartSessionInput } from '../src/shared/api'
@@ -146,7 +147,7 @@ describe('session driver', () => {
 
   it('expands ~ in automation folders', () => {
     expect(expandHome('~', '/home/me')).toBe('/home/me')
-    expect(expandHome('~/work', '/home/me')).toBe('/home/me/work')
+    expect(expandHome('~/work', '/home/me')).toBe(join('/home/me', 'work'))
     expect(expandHome('/abs', '/home/me')).toBe('/abs')
   })
 })

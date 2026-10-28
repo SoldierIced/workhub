@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { emptyConfig, NO_CAPABILITIES, NO_MODULES, type AgentAccount, type BudgetStatus, type HandoffFacts, type Profile, type SessionOrigin, type WorkhubConfig } from '@workhub/core'
 import { claudeConfigDirOf } from '../src/main/claude-accounts'
@@ -120,7 +121,7 @@ describe('ContinuityService: account failover', () => {
   it('moves the session: plan, stop, copy, resume the same id in the other account, drop the old view', async () => {
     const { service, sessions, copySession, moved } = setup()
     const next = await service.failover('w1', { reason: 'manual' })
-    const copy = { sessionId: 'sess-1', cwd: '/work/pay', sourceConfigDir: '/home/u/.claude', targetConfigDir: '/tmp/wh-laboral' }
+    const copy = { sessionId: 'sess-1', cwd: '/work/pay', sourceConfigDir: resolve('/home/u/.claude'), targetConfigDir: resolve('/tmp/wh-laboral') }
     expect(copySession.mock.calls).toEqual([[{ ...copy, dryRun: true }], [copy]])
     expect(sessions.stopped).toEqual(['w1'])
     expect(sessions.started[0]).toMatchObject({
@@ -287,9 +288,9 @@ describe('ContinuityService: hand-off', () => {
 describe('claudeConfigDirOf', () => {
   it('resolves the account folder, then the agent and process env, then ~/.claude', () => {
     const config = makeConfig()
-    expect(claudeConfigDirOf(config, laboral, '/home/u', {})).toBe('/tmp/wh-laboral')
-    expect(claudeConfigDirOf(config, personal, '/home/u', {})).toBe('/home/u/.claude')
-    expect(claudeConfigDirOf(config, null, '/home/u', { CLAUDE_CONFIG_DIR: '/tmp/x' })).toBe('/tmp/x')
-    expect(claudeConfigDirOf(config, { ...personal, env: { CLAUDE_CONFIG_DIR: '/tmp/y' } }, '/home/u', {})).toBe('/tmp/y')
+    expect(claudeConfigDirOf(config, laboral, '/home/u', {})).toBe(resolve('/tmp/wh-laboral'))
+    expect(claudeConfigDirOf(config, personal, '/home/u', {})).toBe(resolve('/home/u/.claude'))
+    expect(claudeConfigDirOf(config, null, '/home/u', { CLAUDE_CONFIG_DIR: '/tmp/x' })).toBe(resolve('/tmp/x'))
+    expect(claudeConfigDirOf(config, { ...personal, env: { CLAUDE_CONFIG_DIR: '/tmp/y' } }, '/home/u', {})).toBe(resolve('/tmp/y'))
   })
 })

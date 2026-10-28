@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { homedir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, posix } from 'node:path'
 
 export interface CliResult {
   code: number
@@ -27,8 +27,9 @@ export class CliNotFoundError extends Error {
  * inherit the login shell's PATH). Added after the inherited PATH, so a user's own choice still wins.
  */
 export function commonCliFolders(platform: NodeJS.Platform = process.platform, home: string = homedir()): string[] {
-  if (platform === 'darwin') return ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.local', 'bin')]
-  if (platform === 'linux') return ['/usr/local/bin', '/home/linuxbrew/.linuxbrew/bin', join(home, '.local', 'bin')]
+  // POSIX layouts: joined with `/` even when asked about them from another platform.
+  if (platform === 'darwin') return ['/opt/homebrew/bin', '/usr/local/bin', posix.join(home, '.local', 'bin')]
+  if (platform === 'linux') return ['/usr/local/bin', '/home/linuxbrew/.linuxbrew/bin', posix.join(home, '.local', 'bin')]
   return []
 }
 

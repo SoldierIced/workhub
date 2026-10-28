@@ -49,7 +49,9 @@ export class LocalChanges {
   /** The repos the session touched in `folder` and their changes in `scope`. */
   async load(input: LocalReviewInput): Promise<LocalReview> {
     const folder = resolve(input.folder)
-    const own = await this.value(folder, ['rev-parse', '--show-toplevel'])
+    // git prints forward slashes on Windows: compare and report native paths.
+    const toplevel = await this.value(folder, ['rev-parse', '--show-toplevel'])
+    const own = toplevel ? resolve(toplevel) : null
     const children = (await childRepositories(folder)).filter((c) => c !== own)
     const touched = await mapLimit(children, 6, async (repo) => ((await this.isTouched(repo, input.since)) ? repo : null))
     const candidates = [...(own ? [own] : []), ...touched.filter((r): r is string => r !== null)]

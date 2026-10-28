@@ -67,7 +67,8 @@ describe('GitReview on a real repository', () => {
     const first = git(repo, 'rev-parse', 'HEAD~1')
     const wt = join(dir, 'data', 'ai-review', 'wt-1')
     await g.checkout(repo, wt, first)
-    expect(readFileSync(join(wt, 'a.txt'), 'utf8')).toBe('one\ntwo\n')
+    // Git for Windows checks files out with CRLF (core.autocrlf), so compare the lines.
+    expect(readFileSync(join(wt, 'a.txt'), 'utf8').replaceAll('\r\n', '\n')).toBe('one\ntwo\n')
     expect(existsSync(join(wt, 'b.txt'))).toBe(false)
     await g.checkout(repo, wt, head)
     expect(existsSync(join(wt, 'b.txt'))).toBe(true)
