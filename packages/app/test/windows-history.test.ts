@@ -56,10 +56,9 @@ const byLabel = (template: MenuItemConstructorOptions[], label: string) => templ
 const click = (item: MenuItemConstructorOptions | undefined) => (item?.click as (() => void) | undefined)?.()
 
 describe('application menu', () => {
-  it('gives Workhub 1 keys to new sessions: the first two agents ⌘T and ⌘L, a shell ⌘Y', () => {
+  it('gives Workhub 1 keys to new sessions: the first agent ⌘L, a shell ⌘Y (⌘T is the generic quick session)', () => {
     expect([...newSessionKeys(AGENTS)]).toEqual([
-      ['claude', 'T'],
-      ['claude:work', 'L'],
+      ['claude', 'L'],
       ['shell', 'Y']
     ])
   })
@@ -84,17 +83,20 @@ describe('application menu', () => {
   it('File: one new session per agent, open in a new window ⇧⌘N and close session ⇧⌘W', () => {
     const { template, ran } = menu()
     const file = items(byLabel(template, 'menu.file'))
+    const quick = file.filter((i) => i.accelerator === 'CmdOrCtrl+T')
+    expect(quick.map((i) => i.label)).toEqual(['menu.newSession'])
+    click(quick[0])
     const news = file.filter((i) => String(i.label).startsWith('menu.newAgentSession'))
     expect(news.map((i) => [i.label, i.accelerator])).toEqual([
-      ['menu.newAgentSession(Claude Code)', 'CmdOrCtrl+T'],
-      ['menu.newAgentSession(Claude Code - Work)', 'CmdOrCtrl+L'],
+      ['menu.newAgentSession(Claude Code)', 'CmdOrCtrl+L'],
+      ['menu.newAgentSession(Claude Code - Work)', undefined],
       ['menu.newAgentSession(Codex)', undefined],
       ['menu.newAgentSession(Shell)', 'CmdOrCtrl+Y']
     ])
     click(news[1])
     click(file.find((i) => i.label === 'menu.openInNewWindow'))
     click(file.find((i) => i.accelerator === 'CmdOrCtrl+Shift+W'))
-    expect(ran).toEqual([{ kind: 'newSession', agentKey: 'claude:work' }, { kind: 'openInWindow' }, { kind: 'closeSession' }])
+    expect(ran).toEqual([{ kind: 'newSession' }, { kind: 'newSession', agentKey: 'claude:work' }, { kind: 'openInWindow' }, { kind: 'closeSession' }])
     expect(file.find((i) => i.label === 'menu.openInNewWindow')?.accelerator).toBe('CmdOrCtrl+Shift+N')
   })
 
