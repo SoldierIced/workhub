@@ -123,6 +123,7 @@ const api: HubApi = {
   codeHost: {
     lists: (profileId, force) => ipcRenderer.invoke('codeHost:lists', profileId, force),
     view: (profileId, url) => ipcRenderer.invoke('codeHost:view', profileId, url),
+    pullRequest: (profileId, url) => ipcRenderer.invoke('codeHost:pullRequest', profileId, url),
     review: (profileId, url, action, body) => ipcRenderer.invoke('codeHost:review', profileId, url, action, body),
     comment: (profileId, url, body) => ipcRenderer.invoke('codeHost:comment', profileId, url, body),
     reply: (profileId, url, threadId, body) => ipcRenderer.invoke('codeHost:reply', profileId, url, threadId, body),

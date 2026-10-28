@@ -13,10 +13,12 @@ import {
   closePullRequest,
   postComment,
   submitReview,
+  toItem,
   type CodeHost,
   type Connection,
   type Profile,
   type PullRequest,
+  type PullRequestItem,
   type ReviewAction,
   type WorkhubConfig
 } from '@workhub/core'
@@ -25,6 +27,8 @@ import { isPullRequestWindowTab, type CodeHostActionResult, type CodeHostLists, 
 
 const exec = promisify(execFile)
 const LIST_TTL_MS = 30_000
+/** How long a pull request read by URL for the session monitor is kept. */
+const ITEM_TTL_MS = 180_000
 
 interface Resolved {
   host: CodeHost
@@ -169,6 +173,24 @@ export class CodeHostService {
     }
   }
 
+  private readonly items = new Map<string, { at: number; value: Promise<PullRequestItem | null> }>()
+
+  /**
+   * One pull request by URL as a list item (the session monitor's PRs that are in neither list):
+   * read once and kept for a few minutes, so every open monitor does not ask the host again. Null
+   * when no connected host recognizes or can read it.
+   */
+  async pullRequest(profileId: string | null, url: string): Promise<PullRequestItem | null> {
+    if (typeof url !== 'string' || !url) return null
+    const key = `${profileId ?? ''}\n${url}`
+    const hit = this.items.get(key)
+    if (hit && Date.now() - hit.at < ITEM_TTL_MS) return hit.value
+    const value = this.stateOf(profileId, url).then((pr) => (pr ? toItem(pr, Date.now(), { markStale: false }) : null))
+    if (this.items.size > 500) this.items.clear()
+    this.items.set(key, { at: Date.now(), value })
+    return value
+  }
+
   /** A pull request read again by URL (merged, closed or still open); null when it cannot be read. For the pull request event sync. */
   async stateOf(profileId: string | null, url: string): Promise<PullRequest | null> {
     const resolved = await this.resolve(profileId)
@@ -244,6 +266,7 @@ export interface CodeHostIpcOptions {
 export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, showInWorkhub, openExternal }: CodeHostIpcOptions): void {
   ipc.handle('codeHost:lists', (_e, profileId: string | null, force?: boolean) => service.lists(profileId, force === true))
   ipc.handle('codeHost:view', (_e, profileId: string | null, url: string) => service.view(profileId, url))
+  ipc.handle('codeHost:pullRequest', (_e, profileId: string | null, url: string) => service.pullRequest(profileId, url))
   ipc.handle('codeHost:review', (_e, profileId: string | null, url: string, action: ReviewAction, body: string) =>
     service.review(profileId, url, action, body)
   )

@@ -1,4 +1,4 @@
-import { sessionIdentity, threadArchiveMinutes } from '@workhub/core'
+import { sessionIdentity, sessionSlackThreads, threadArchiveMinutes } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import { useSlack } from '../../chatStore'
 import { useConfig } from '../../configStore'
@@ -6,13 +6,16 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { ThreadGroup } from '../slack/ThreadList'
 import { MonitorSection } from './MonitorSection'
 
-/** The monitor's "Slack threads": the threads this session owns; quiet ones fold into "Archived (n)". */
-export function SlackThreadsSection({ view }: { view: SessionView }) {
+/**
+ * The monitor's "Slack threads": the threads this session owns, then the open ones about its pull
+ * requests or tickets (Workhub 1's session Slack section); quiet ones fold into "Archived (n)".
+ */
+export function SlackThreadsSection({ view, prUrls = [], ticketKeys = [] }: { view: SessionView; prUrls?: readonly string[]; ticketKeys?: readonly string[] }) {
   const { t } = useI18n()
   const snap = useSlack()
   const config = useConfig()
   const identity = sessionIdentity(view)
-  const threads = snap?.threads.filter((th) => th.owner === identity) ?? []
+  const threads = snap ? sessionSlackThreads(snap.threads, identity, prUrls, ticketKeys) : []
   if (!snap || !threads.length) return null
   const profile = config?.config.profiles.find((p) => p.id === (view.profileId ?? config.config.activeProfileId))
   return (

@@ -4,8 +4,7 @@
  * `@workhub/core` folder-spend) and never throws on malformed data.
  */
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { addSpend, type SpendBuckets } from '@workhub/core'
+import { addSpend, toolWorkPaths, type SpendBuckets } from '@workhub/core'
 import { estimateCost } from '../shared/claude-tools'
 import { openAiCost } from '../shared/openai-prices'
 import { arr, num, obj, parseLine, str, toMillis, type Obj } from '../shared/reader-utils'
@@ -41,16 +40,6 @@ function rawCwd(line: string): string | undefined {
   }
 }
 
-/** A path a command or tool names: `~/x` and relative paths resolved; undefined when it is not a path. */
-function resolvePath(raw: string, cwd: string | undefined, home: string): string | undefined {
-  if (raw === '~' || raw.startsWith('~/')) return join(home, raw.slice(1))
-  if (isAbsolute(raw)) return resolve(raw)
-  if (cwd && !raw.startsWith('$') && !raw.startsWith('-')) return resolve(cwd, raw)
-  return undefined
-}
-
-const CD = /(?:\bcd|git\s+-C)\s+("?)([^\s"';&|]+)/g
-
 /** Resumable state of one Claude transcript. */
 export interface ClaudeSpendState {
   /** The last `cwd` seen; a new one moves the work there. */
@@ -80,7 +69,7 @@ export function claudeSpendLine(line: string, state: ClaudeSpendState, buckets: 
   for (const block of arr(message['content'])) {
     const b = obj(block)
     if (b?.['type'] !== 'tool_use') continue
-    const moved = workedPath(str(b['name']), obj(b['input']) ?? {}, state.cwd, home)
+    const moved = toolWorkPaths(str(b['name']), obj(b['input']) ?? {}, state.cwd, home).at(-1)
     if (moved) state.work = moved
   }
   const id = str(message['id'])
@@ -116,28 +105,6 @@ export function claudePending(state: ClaudeSpendState, costs?: CostBuckets): Spe
     addCost(costs, p.at, 'claude', p.work, p.usd, p.all ?? p.tokens)
   }
   return out
-}
-
-function workedPath(tool: string | undefined, input: Obj, cwd: string | undefined, home: string): string | undefined {
-  switch (tool) {
-    case 'Edit':
-    case 'MultiEdit':
-    case 'Write':
-    case 'NotebookEdit': {
-      const file = str(input['file_path']) ?? str(input['notebook_path'])
-      const path = file ? resolvePath(file, cwd, home) : undefined
-      return path ? dirname(path) : undefined
-    }
-    case 'Bash': {
-      const command = str(input['command'])
-      if (!command) return undefined
-      let last: string | undefined
-      for (const m of command.matchAll(CD)) last = m[2] ? resolvePath(m[2], cwd, home) : last
-      return last
-    }
-    default:
-      return undefined
-  }
 }
 
 /** Resumable state of one Codex rollout. */

@@ -1,14 +1,16 @@
 import { Brain, ExternalLink, FilePen, FileSearch, FileText, GitBranch, Globe, MoveRight, Power, PowerOff, RefreshCw, RotateCw, SquareTerminal, Ticket, Trash2, Wrench, type LucideIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
-import { Badge, IconButton, Spinner, StateDot } from '../../components/atoms'
+import { sessionWork, visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
+import { Badge, Button, IconButton, Spinner, StateDot } from '../../components/atoms'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { formatTokens } from '../../lib/home'
-import { changesTotal, contextView, requestBars, pullRequestLabel, sessionPullRequests, sessionTicketKeys, sessionTime, subagentTokens } from '../../lib/monitorView'
+import { changesTotal, contextView, requestBars, pullRequestLabel, sessionTime, subagentTokens } from '../../lib/monitorView'
 import { DEFAULT_PREFS, SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
 import { PaneResizeHandle } from '../../components/molecules/PaneResizeHandle'
+import { usePullRequestsByUrl, useTicketPreviews, useTicketProviders } from '../../lib/sessionWork'
+import { CATEGORY_TONE } from '../../lib/tickets'
 import { openSubagent } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
 import { usageWindowName } from '../../lib/usage-window'
@@ -64,7 +66,7 @@ function serverTone(s: McpServerStatus) {
   return s.state === 'running' ? 'success' : s.state === 'needs-auth' || s.state === 'loading' ? 'warning' : s.state === 'failed' ? 'danger' : 'neutral'
 }
 
-/** The session folder's uncommitted changes, read every 30 s while the session is on screen. */
+/** The uncommitted changes of the repositories the session worked in (else of its folder), read every 30 s while the session is on screen. */
 function useLocalChanges(id: string, visible: boolean): { changes: LocalChanges | null; loaded: boolean } {
   const [state, setState] = useState<{ changes: LocalChanges | null; loaded: boolean }>({ changes: null, loaded: false })
   useEffect(() => {
@@ -110,6 +112,59 @@ function PullRequestCard({ item, profileId }: { item: PullRequestItem; profileId
   )
 }
 
+/** Tickets shown before "Show n more". */
+const TICKETS_SHOWN = 6
+
+/**
+ * The session's tickets (Workhub 1's `TicketLink` with details): key, status and title from the
+ * tracker (just the key while it loads, or when the tracker does not know it), each opening the ticket's window.
+ */
+function TicketList({ keys, profileId }: { keys: string[]; profileId: string | null }) {
+  const { t } = useI18n()
+  const [all, setAll] = useState(false)
+  const shown = all ? keys : keys.slice(0, TICKETS_SHOWN)
+  const previews = useTicketPreviews(profileId, shown)
+  return (
+    <ul className={cn('-mx-1.5 flex flex-col gap-0.5', SECTION_SCROLL)} data-monitor-scroll="tickets" data-testid="monitor-tickets">
+      {shown.map((key) => {
+        const p = previews[key]
+        const detail = p?.state === 'ready' ? p.detail : null
+        return (
+          <li key={key}>
+            <button
+              type="button"
+              className="flex w-full flex-col gap-0.5 rounded-md px-1.5 py-1 text-left hover:bg-surface-hover disabled:cursor-default"
+              onClick={() => profileId && void window.hub.tickets.openWindow(profileId, key)}
+              disabled={!profileId}
+              aria-label={t('monitor.openTicket', { key })}
+              title={detail?.title ?? key}
+            >
+              <span className="flex w-full items-center gap-1.5">
+                <Ticket className="size-3 shrink-0 text-accent" aria-hidden />
+                <span className="font-mono text-xs font-medium text-accent">{key}</span>
+                {detail && (
+                  <Badge tone={CATEGORY_TONE[detail.category]} className="ml-auto shrink-0">
+                    {detail.status}
+                  </Badge>
+                )}
+                {!p && profileId && <Spinner className="ml-auto size-3 shrink-0" />}
+              </span>
+              {detail && <span className="line-clamp-2 text-xs text-muted">{detail.title}</span>}
+            </button>
+          </li>
+        )
+      })}
+      {!all && keys.length > TICKETS_SHOWN && (
+        <li>
+          <Button size="sm" variant="ghost" className="mt-0.5" onClick={() => setAll(true)}>
+            {t('monitor.moreTickets', { count: keys.length - TICKETS_SHOWN })}
+          </Button>
+        </li>
+      )}
+    </ul>
+  )
+}
+
 /**
  * The session monitor (Workhub 1's InspectorView): Slack, tickets, pull requests, then the
  * boards (time, tokens, context, requests, activity, subagents, PRs touched), MCP and local work.
@@ -129,8 +184,12 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const [dragging, setDragging] = useState<number | null>(null)
   const width = dragging ?? prefs.monitorWidth
 
-  const prs = sessionPullRequests([...(lists?.mine ?? []), ...(lists?.toReview ?? [])], m.pullRequests, changes?.repos)
-  const tickets = sessionTicketKeys(prs, m.ticketKeys)
+  const providers = useTicketProviders(profileId)
+  const listed = [...(lists?.mine ?? []), ...(lists?.toReview ?? [])]
+  const named = usePullRequestsByUrl(profileId, m.pullRequests, listed)
+  // A folder of repositories lists only the ones with changes: their branches alone would miss clean work.
+  const repos = changes && (changes.touched || !changes.nested) ? changes.repos : undefined
+  const { prs, ticketKeys: tickets } = sessionWork({ items: [...listed, ...named], mentionedPrs: m.pullRequests, repos, mentionedTickets: m.ticketKeys, providers })
   const time = sessionTime(v.startedAt, now, m.activeTimeMs, m.toolCalls)
   // Before the first state change nothing is known yet: say so rather than show 0.
   const activeKnown = m.activeTimeMs !== undefined
@@ -172,25 +231,11 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
           {m.title && <p className="mt-0.5 line-clamp-2 text-xs text-muted" title={m.title}>{m.title}</p>}
         </div>
 
-        <SlackThreadsSection view={v} />
+        <SlackThreadsSection view={v} prUrls={prs.map((p) => p.pr.url)} ticketKeys={tickets} />
 
         {tickets.length > 0 && (
           <MonitorSection id="tickets" title={tn('monitor.ticketsCount', tickets.length)}>
-            <ul className={cn('flex flex-wrap gap-1.5', SECTION_SCROLL)} data-monitor-scroll="tickets">
-              {tickets.map((key) => (
-                <li key={key}>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-md bg-sidebar px-1.5 py-0.5 font-mono text-xs text-accent hover:bg-surface-hover"
-                    onClick={() => profileId && void window.hub.tickets.openWindow(profileId, key)}
-                    disabled={!profileId}
-                  >
-                    <Ticket className="size-3" aria-hidden />
-                    {key}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <TicketList keys={tickets} profileId={profileId} />
           </MonitorSection>
         )}
 
@@ -427,11 +472,14 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
             ) : (
               changes &&
               total && (
-                <div className="flex flex-col gap-2" data-testid="monitor-local-changes">
+                <div className="flex flex-col gap-2" data-testid="monitor-local-changes" data-touched={changes.touched ? 'true' : undefined}>
+                  {changes.touched && changes.repos.length > 0 && <p className="text-2xs text-subtle">{t('monitor.touchedRepos')}</p>}
                   <div className="flex items-baseline gap-2 text-sm">
                     <span className="min-w-0 flex-1 truncate">
-                      {total.files === 0
-                        ? t(changes.nested ? 'monitor.noChangesNested' : 'monitor.noChanges')
+                      {changes.touched && changes.repos.length === 0
+                        ? t('monitor.noTouchedRepos')
+                        : total.files === 0
+                        ? t(changes.touched ? 'monitor.noChangesTouched' : changes.nested ? 'monitor.noChangesNested' : 'monitor.noChanges')
                         : changes.nested
                           ? `${tn('monitor.repos', total.repos)} · ${tn('monitor.files', total.files)}`
                           : tn('monitor.files', total.files)}
@@ -450,11 +498,14 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
                           {changes.nested && <span className="text-text">{r.name} </span>}
                           {r.branch ?? '–'}
                         </span>
-                        {changes.nested && (
-                          <span className="shrink-0 tabular-nums">
-                            {r.files} · <span className="text-success">+{r.additions}</span> <span className="text-danger">−{r.deletions}</span>
-                          </span>
-                        )}
+                        {changes.nested &&
+                          (r.files === 0 ? (
+                            <span className="shrink-0 text-subtle">{t('monitor.clean')}</span>
+                          ) : (
+                            <span className="shrink-0 tabular-nums">
+                              {r.files} · <span className="text-success">+{r.additions}</span> <span className="text-danger">−{r.deletions}</span>
+                            </span>
+                          ))}
                       </div>
                     ))}
                   </div>
