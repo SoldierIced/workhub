@@ -148,7 +148,10 @@ export function clipDiff(diff: string, maxChars: number): { text: string; trunca
 export function buildTargetReviewPrompt(input: TargetReviewPromptInput): string {
   const { target } = input
   const out: string[] = []
+  // The first line names the reviewer session in the sidebar.
   out.push(
+    `Review: ${target.repoName} · ${target.description}`,
+    '',
     `You are reviewing code changes as a senior engineer. Review ${target.description} in the repository \`${target.repoName}\`.`,
     input.inRepo
       ? `Your working folder is that repository (\`${target.repoRoot}\`). Read any file you need for context, but do not edit files, commit, push or run commands that change anything: your only output is the review.`
