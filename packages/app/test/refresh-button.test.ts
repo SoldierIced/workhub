@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { RefreshButton } from '../src/renderer/components/molecules/RefreshButton'
 import { TooltipProvider } from '../src/renderer/components/atoms'
 import { createRefreshGuard } from '../src/renderer/lib/refreshGuard'
@@ -30,6 +30,22 @@ describe('RefreshButton markup', () => {
 })
 
 describe('createRefreshGuard', () => {
+  it('stays busy for the minimum spin even when the load answers at once', async () => {
+    vi.useFakeTimers()
+    try {
+      const busy: boolean[] = []
+      const guard = createRefreshGuard(() => undefined, (b) => busy.push(b), 600)
+      const done = guard()
+      await vi.advanceTimersByTimeAsync(500)
+      expect(busy).toEqual([true])
+      await vi.advanceTimersByTimeAsync(100)
+      await done
+      expect(busy).toEqual([true, false])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   const deferred = () => {
     let resolve!: () => void
     let reject!: (e: Error) => void
