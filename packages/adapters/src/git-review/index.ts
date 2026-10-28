@@ -280,3 +280,4 @@ export function truncateDiff(text: string, maxChars: number): { text: string; tr
 }
 
 export { childRepositories, limitHunks, LocalChanges, untrackedFile, LOCAL_LINE_LIMIT, type LocalReviewInput } from './local'
+export { ReviewTargets, type TargetResolution } from './targets'
