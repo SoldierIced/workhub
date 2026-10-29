@@ -25,6 +25,7 @@ export const DEFAULT_REVIEW_BRIEF_PROMPT = [
   '4. What changed and why, per repository: the main files and the decisions taken.',
   '5. How to see the diffs: the exact commands per repository, e.g. `git -C <path> diff <base>...<branch>`, `git -C <path> diff` for uncommitted work, `gh pr diff <url>`.',
   '6. What to check: risky areas, edge cases, the tests you ran and their results, and anything you are unsure about.',
+  '7. Related work: other open pull requests in the same repositories that touch the same files or deploy config, or "none found" with the command you used to look.',
   '',
   'Do not change anything while writing the brief. Put the whole brief between a line with <review-brief> and a line with </review-brief>, so Workhub can hand it to the reviewer.'
 ].join('\n')
@@ -66,11 +67,22 @@ export function afterVerdict(verdict: ReviewVerdict | null, round: number, maxRo
   return round >= maxRounds ? 'maxRounds' : 'fixing'
 }
 
+/** What the reviewer checks beyond the brief: the brief is the author's view and can miss things. */
+const REVIEW_CHECKS = [
+  '## What to check beyond the brief',
+  'The brief is the author\'s view of the work; do not take its claims about scope as proven.',
+  '1. Other open pull requests: per repository, list the open pull requests (e.g. `gh pr list --state open`) and look at the diffs of those that touch the same files or the same deploy config (charts, pipelines, infrastructure). Report any conflict, or any change that would undo a safeguard this work relies on.',
+  '2. Automated tests: new runtime behavior (startup steps, migrations, jobs, endpoints, config) needs an automated test in the repository. Manual runs or local simulations that do not live in the repository are evidence for the review, not a replacement for the test: report the gap.',
+  '3. Necessity: for every class, file or registration added or changed, ask whether it is still needed. Compare it with the framework\'s default behavior, not only with similar code in the codebase, and report code that only repeats the default.',
+  '4. Hygiene: report it even when small, e.g. SQL `INSERT` without an explicit column list, grants or settings that a script applies but its rollback does not undo, `SELECT *` in migrations, raw SQL built by string interpolation.',
+  '5. Pull request context: if a pull request exists, read its description (rollback plan, deploy steps) and its checks (CI, static analysis) and review them as part of the change.'
+].join('\n')
+
 const ANSWER_FORMAT = [
   '## How to answer',
   '1. One short paragraph: what the change does and your overall assessment.',
   '2. Findings ranked by severity: **blocker**, **major**, **minor**, **nit**. For each: `path/to/file:line`, the problem, why it matters and a concrete fix.',
-  '3. Do not invent findings, and do not report style preferences as problems.',
+  '3. Do not invent findings. Do not report pure style preferences (naming taste, formatting a formatter would handle), but do report hygiene and maintainability issues, at least as nits.',
   '4. End your reply with exactly one verdict line, as its last line:',
   '   - `VERDICT: APPROVED` when nothing must change before merging (nits are allowed);',
   '   - `VERDICT: CHANGES_REQUESTED` when at least one finding must be fixed.'
@@ -93,6 +105,7 @@ export function buildLoopReviewerPrompt(input: LoopReviewerPromptInput): string 
     `Review: ${title || 'work of another agent'}`,
     'You are a senior engineer reviewing another agent\'s work. The author wrote the brief below for you: it names the repositories, branches, commits and pull requests to review and how to see the diffs. Read the diffs and any file you need, but do not edit files, commit, push or run commands that change anything: your only output is the review.',
     `## Review brief (from the author)\n${BRIEF_OPEN}\n${input.brief.trim()}\n${BRIEF_CLOSE}`,
+    REVIEW_CHECKS,
     ANSWER_FORMAT,
     roundLine(1, input.maxRounds)
   ].join('\n\n')
@@ -126,7 +139,8 @@ export function buildReReviewPrompt(input: { reply: string; round: number; maxRo
   return [
     'The author answered your review:',
     `<author-reply>\n${reply}\n</author-reply>`,
-    'Review again: look at the new diffs (the author says where), check that each of your previous findings is fixed or answered convincingly, and look for anything the fixes broke. Answer in the same format.',
+    'Review again: look at the new diffs (the author says where), check that each of your previous findings is fixed or answered convincingly, and look for anything the fixes broke. Then do a fresh pass over the whole change, not only over your previous findings: re-read the full diff and redo the checks below, since a pull request, its description or its checks may exist now. Answer in the same format.',
+    REVIEW_CHECKS,
     ANSWER_FORMAT,
     roundLine(input.round, input.maxRounds)
   ].join('\n\n')
