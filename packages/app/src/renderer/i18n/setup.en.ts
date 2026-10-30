@@ -155,6 +155,13 @@ export const setupEn = {
   'notify.osOff': 'Your operating system does not let Workhub show notifications.',
   'notify.osOffHint': 'Turn them on for the app in the system settings; the switches here have no effect until you do.',
   'notify.turnOn': 'Turn on',
+  'notify.testTitle': 'Test notification',
+  'notify.testHint': 'Sends one through the operating system, the way the real ones go out.',
+  'notify.test': 'Send test',
+  'notify.testBody': 'This is how Workhub notifies you. Click to come back to the app.',
+  'notify.testShown': 'The system accepted the test notification. If you did not see it, check its style for Workhub under System Settings → Notifications.',
+  'notify.testFailed': 'The system refused the notification: {error}',
+  'notify.testTimeout': 'The system did not answer. Notifications for Workhub may be off, or a Focus mode may be hiding them.',
   // Profile extras
   'profileExtra.symbol': 'Symbol',
   'profileExtra.symbolNone': 'Initial',
