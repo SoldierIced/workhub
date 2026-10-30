@@ -4,6 +4,22 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.5](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.4...v2.0.0-alpha.5) (2026-10-30)
+
+
+### Features
+
+* **ai-review:** hand the reviewer the diff as a file and let tools request a review ([d3d0be4](https://github.com/SoldierIced/workhub/commit/d3d0be49c207f2f5d62700ed7e2099b62028d483))
+* **ai-review:** make the reviewer check beyond the author's brief ([8783ae0](https://github.com/SoldierIced/workhub/commit/8783ae0a1303abb5a3244a403c2a3d314ebd7f75))
+* **flow-maps:** give flow maps their own screen with baselines, alerts, traces and a sequence view ([72a70d1](https://github.com/SoldierIced/workhub/commit/72a70d1fe74925337a58e19b6cf9af5f4c596cdb))
+* **notifications:** add a test notification to Settings ([721cdce](https://github.com/SoldierIced/workhub/commit/721cdce76be2d37890afc0c1216c9c0d4dc2017e))
+
+
+### Bug Fixes
+
+* **scripts:** detect the main module through a symlinked folder in brand.mjs ([1c516ad](https://github.com/SoldierIced/workhub/commit/1c516ade1c1f156bf892cac394c49fde25bc1a04))
+* **sidebar:** stop the session row tooltip from flickering with the hover actions ([c8c5590](https://github.com/SoldierIced/workhub/commit/c8c559063bed9dcb916badf2cfe8ece4aba630b2))
+
 ## [2.0.0-alpha.4](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.3...v2.0.0-alpha.4) (2026-10-28)
 
 
