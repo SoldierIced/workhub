@@ -111,8 +111,8 @@ describe('Claude tool helpers', () => {
   })
 
   it('finds ticket keys between underscores, as branch names write them', () => {
-    expect(ticketKeys('hotfix_TEAM-8571_same-holder', ['TEAM'])).toEqual(['TEAM-8571'])
-    expect(ticketKeys('feat/pay-3619-savings and XPAY-1', ['PAY'])).toEqual(['PAY-3619'])
+    expect(ticketKeys('hotfix_TEAM-45_duplicate-payment', ['TEAM'])).toEqual(['TEAM-45'])
+    expect(ticketKeys('feat/pay-126-savings and XPAY-1', ['PAY'])).toEqual(['PAY-126'])
   })
 
   it('tells the Jira tools that create or change a ticket from the ones that read', () => {
@@ -132,15 +132,15 @@ describe('Claude tool helpers', () => {
       parser.ingest(JSON.stringify({ type: 'assistant', message: { id: `m${n}`, content: [{ type: 'tool_use', id, name: `mcp__atlassian__${name}`, input }] } }))
       parser.ingest(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: result }] } }))
     }
-    parser.ingest(JSON.stringify({ type: 'user', message: { content: 'Fraud asked for TEAM-8571, see also PAY-1648' } }))
-    call('getJiraIssue', { issueIdOrKey: 'TEAM-8571' }, 'TEAM-8571: block same-holder Pix')
-    call('createJiraIssue', { projectKey: 'PAY', summary: 'Block same-holder Pix (TEAM-8571)', parent: 'PAY-2029' }, '{"key":"PAY-3806","parent":"PAY-2029"}')
-    call('createIssueLink', { inwardIssue: 'PAY-3806', outwardIssue: 'TEAM-8571' }, 'linked')
-    call('addCommentToJiraIssue', { issueIdOrKey: 'TEAM-8571', commentBody: 'Tracked in PAY-3806' }, 'ok')
+    parser.ingest(JSON.stringify({ type: 'user', message: { content: 'Support asked for TEAM-45, see also PAY-124' } }))
+    call('getJiraIssue', { issueIdOrKey: 'TEAM-45' }, 'TEAM-45: block duplicate payment')
+    call('createJiraIssue', { projectKey: 'PAY', summary: 'Block duplicate payment (TEAM-45)', parent: 'PAY-120' }, '{"key":"PAY-123","parent":"PAY-120"}')
+    call('createIssueLink', { inwardIssue: 'PAY-123', outwardIssue: 'TEAM-45' }, 'linked')
+    call('addCommentToJiraIssue', { issueIdOrKey: 'TEAM-45', commentBody: 'Tracked in PAY-123' }, 'ok')
     const snap = parser.snapshot()
-    expect(snap.linkedTicketKeys).toEqual(['PAY-3806', 'TEAM-8571'])
+    expect(snap.linkedTicketKeys).toEqual(['PAY-123', 'TEAM-45'])
     // The named ones stay in order of last mention.
-    expect(snap.ticketKeys).toContain('PAY-1648')
+    expect(snap.ticketKeys).toContain('PAY-124')
   })
 
   it('prices known models only', () => {

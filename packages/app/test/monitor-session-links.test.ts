@@ -57,9 +57,9 @@ describe("the monitor's Slack messages of a session", () => {
   it('keeps the read messages that link its PRs or name its tickets, newest first, from a mocked source', async () => {
     const messages = [
       chatMessage({ channelId: 'C01', ts: ts(50), user: 'ana', text: `please review <${PR}|wallet#66>` }),
-      chatMessage({ channelId: 'C01', ts: ts(40), user: 'luis', text: 'PAY-3797 is blocked on QA' }),
+      chatMessage({ channelId: 'C01', ts: ts(40), user: 'luis', text: 'PAY-125 is blocked on QA' }),
       // Lower case, as a branch name pasted in a message: the generic stored pattern misses it.
-      chatMessage({ channelId: 'C01', ts: ts(30), user: 'marta', text: 'merged feat/pay-3797-late-refund' }),
+      chatMessage({ channelId: 'C01', ts: ts(30), user: 'marta', text: 'merged feat/pay-125-late-refund' }),
       chatMessage({ channelId: 'C01', ts: ts(20), user: 'pedro', text: 'PAY-1 is unrelated' }),
       chatMessage({ channelId: 'C01', ts: ts(10), user: 'pedro', text: 'lunch?' })
     ]
@@ -69,17 +69,17 @@ describe("the monitor's Slack messages of a session", () => {
     expect(requests[0]!.channels.map((c) => c.id)).toEqual(['C01'])
 
     const snap = await service.snapshot()
-    const found = sessionSlackMessages(snap.messages, [`${PR}/files`], ['PAY-3797'])
+    const found = sessionSlackMessages(snap.messages, [`${PR}/files`], ['PAY-125'])
     expect(found.map((m) => m.user)).toEqual(['marta', 'luis', 'ana'])
     // Nothing to look for, nothing found; the limit keeps the latest.
     expect(sessionSlackMessages(snap.messages, [], [])).toEqual([])
-    expect(sessionSlackMessages(snap.messages, [PR], ['PAY-3797', 'PAY-1'], 2).map((m) => m.user)).toEqual(['pedro', 'marta'])
+    expect(sessionSlackMessages(snap.messages, [PR], ['PAY-125', 'PAY-1'], 2).map((m) => m.user)).toEqual(['pedro', 'marta'])
   })
 
   it('shows nothing when the source could not read', async () => {
     const { service } = watcher({ ok: false, failure: 'noConnector', error: 'no Slack connector', deniedTools: [] })
     await service.runNow()
-    expect(sessionSlackMessages((await service.snapshot()).messages, [PR], ['PAY-3797'])).toEqual([])
+    expect(sessionSlackMessages((await service.snapshot()).messages, [PR], ['PAY-125'])).toEqual([])
   })
 })
 
@@ -90,32 +90,32 @@ describe("the session's ticket keys", () => {
     const work = sessionWork({
       items: [],
       repos: [
-        { name: '.wt-loan-fix', root: '/w/.wt-loan-fix', branch: 'feat/pay-3619-membership-savings' },
+        { name: '.wt-loan-fix', root: '/w/.wt-loan-fix', branch: 'feat/pay-126-membership-savings' },
         { name: 'wm-api', root: '/w/wm-api', branch: 'develop' },
         // Touched, but on a branch the session never committed to or pushed.
-        { name: 'ms-payments', root: '/w/ms-payments', branch: 'hotfix_TEAM-8571_same-holder' }
+        { name: 'ms-payments', root: '/w/ms-payments', branch: 'hotfix_TEAM-45_duplicate-payment' }
       ],
       branches: [{ folder: '/w/.wt-loan-fix', pushed: true }, { folder: '/w/wm-api' }],
-      titles: ['PAY-3797: saga stuck in pending reconciliation', undefined, 'OPS-9 not this profile'],
-      mentionedTickets: ['PAY-1648', 'UTF-8'],
+      titles: ['PAY-125: order stuck in pending state', undefined, 'OPS-9 not this profile'],
+      mentionedTickets: ['PAY-124', 'UTF-8'],
       providers: jira
     })
-    expect(work.ticketKeys).toEqual(['PAY-3797', 'PAY-1648', 'PAY-3619'])
+    expect(work.ticketKeys).toEqual(['PAY-125', 'PAY-124', 'PAY-126'])
   })
 
   it('put the ticket the session created or changed first, then the typed ones, the main project before another team\'s', () => {
-    // A real case: the session worked on another team's TEAM-8571, created PAY-3806 for it and linked them.
+    // A real case: the session worked on another team's TEAM-45, created PAY-123 for it and linked them.
     const work = sessionWork({
       items: [],
-      branches: [{ name: 'feat/TEAM-8571-block-same-holder-pix', pushed: true }],
-      mentionedTickets: ['PAY-1648', 'TEAM-7828', 'PAY-3806', 'TEAM-8571'],
-      linkedTickets: ['PAY-3806', 'TEAM-8571'],
+      branches: [{ name: 'feat/TEAM-45-block-duplicate-payment', pushed: true }],
+      mentionedTickets: ['PAY-124', 'TEAM-46', 'PAY-123', 'TEAM-45'],
+      linkedTickets: ['PAY-123', 'TEAM-45'],
       providers: jira
     })
-    expect(work.ticketKeys).toEqual(['PAY-3806', 'TEAM-8571', 'PAY-1648', 'TEAM-7828'])
+    expect(work.ticketKeys).toEqual(['PAY-123', 'TEAM-45', 'PAY-124', 'TEAM-46'])
     // Without a link, the profile's first project (the tracker's key order) outranks a WT key typed later.
-    const unlinked = sessionWork({ items: [], mentionedTickets: ['PAY-3806', 'TEAM-8571'], providers: jira })
-    expect(unlinked.ticketKeys).toEqual(['PAY-3806', 'TEAM-8571'])
+    const unlinked = sessionWork({ items: [], mentionedTickets: ['PAY-123', 'TEAM-45'], providers: jira })
+    expect(unlinked.ticketKeys).toEqual(['PAY-123', 'TEAM-45'])
   })
 
   it('fall back to upper-case keys of any project without a tracker', () => {
@@ -160,7 +160,7 @@ describe('the monitor hints', () => {
   })
 
   it('say what to turn on when the Slack watcher cannot read, the profile first', () => {
-    const on = { modules: { flows: false, health: false, chatWatcher: true, automations: false } }
+    const on = { modules: { flows: false, health: false, chatWatcher: true, automations: false, flowMaps: false } }
     const off = { modules: { ...on.modules, chatWatcher: false } }
     const channels = [{ id: 'C01', name: 'reviews', purpose: '' }]
     expect(slackSetupHint(off, { enabled: true, channels })).toBe('module')
