@@ -24,7 +24,7 @@ function call(socketPath: string, method: string, path: string, body?: unknown):
 
 describe('control endpoint', () => {
   it('puts the socket in the data folder, a temp file for long paths, a pipe on Windows', () => {
-    expect(controlSocketPath('/data/wh', 'darwin')).toBe('/data/wh/control.sock')
+    expect(controlSocketPath('/data/wh', 'darwin')).toBe(join('/data/wh', 'control.sock'))
     expect(controlSocketPath(`/${'x'.repeat(120)}`, 'darwin')).toMatch(/workhub-control-[0-9a-f]{16}\.sock$/)
     expect(controlSocketPath('C:\\data', 'win32')).toMatch(/^\\\\\.\\pipe\\workhub-control-[0-9a-f]{16}$/)
     expect(controlEnv('s1', '/x.sock')).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_SOCKET: '/x.sock' })
