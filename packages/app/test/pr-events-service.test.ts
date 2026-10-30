@@ -38,7 +38,7 @@ function setup(opts: { demo?: boolean; profiles?: WorkhubConfig['profiles'] } = 
   const source: PrEventSource = { lists: async () => lists, stateOf: async (_p, url) => states[url] ?? null }
   const config: WorkhubConfig = {
     ...emptyConfig(),
-    profiles: opts.profiles ?? [{ id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } }],
+    profiles: opts.profiles ?? [{ id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }],
     activeProfileId: 'work'
   }
   let step = 0
@@ -107,7 +107,7 @@ describe('PrEventService', () => {
     const service = new PrEventService({
       source: { lists: async () => ({ state: 'ready', mine: [item(pr(1, { reviewDecision: 'changesRequested' }))], toReview: [] }), stateOf: async () => null },
       store: { load: async () => stored, save: async () => {} },
-      config: async () => ({ ...emptyConfig(), profiles: [{ id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } }] }),
+      config: async () => ({ ...emptyConfig(), profiles: [{ id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }] }),
       emit: (b) => batches.push(b)
     })
     service.rendererReady()
@@ -142,8 +142,8 @@ describe('PrEventService', () => {
 
   it('syncs only profiles with a code host, and the active one in demo mode', async () => {
     const profiles = [
-      { id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } },
-      { id: 'home', name: 'Home', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } }
+      { id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } },
+      { id: 'home', name: 'Home', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }
     ]
     const t = setup({ profiles })
     t.set({ mine: [item(pr(1))] })

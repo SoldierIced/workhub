@@ -40,7 +40,7 @@ describe('Settings → Agents directory', () => {
   const config: WorkhubConfig = {
     ...emptyConfig(),
     accounts: [personal, work],
-    profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['personal', 'work'], modules: { flows: false, health: false, chatWatcher: false, automations: false } }]
+    profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['personal', 'work'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }]
   }
 
   it('explains the four Claude entries: two accounts, each through two engines', () => {

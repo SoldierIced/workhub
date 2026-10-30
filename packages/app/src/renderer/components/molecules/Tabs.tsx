@@ -41,7 +41,7 @@ export function Tabs({ items, value, onChange, label, className, variant = 'unde
       className={cn(
         'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-base text-muted transition-colors duration-150 hover:text-text',
         fill
-          ? 'h-8 flex-auto justify-center rounded-md px-2.5 hover:bg-surface-hover data-[state=active]:bg-accent-soft data-[state=active]:font-medium data-[state=active]:text-accent'
+          ? 'h-8 min-w-0 flex-auto justify-center rounded-md px-2 hover:bg-surface-hover data-[state=active]:bg-accent-soft data-[state=active]:font-medium data-[state=active]:text-accent'
           : 'relative h-9 border-b-2 border-transparent px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset data-[state=active]:border-accent data-[state=active]:font-medium data-[state=active]:text-text'
       )}
     >
@@ -50,7 +50,7 @@ export function Tabs({ items, value, onChange, label, className, variant = 'unde
     </RTabs.Trigger>
   ))
   const list = fill ? (
-    <RTabs.List aria-label={label} className={cn('flex w-full shrink-0 flex-wrap gap-0.5 rounded-lg border border-border bg-surface p-1 shadow-sm', listClassName)}>
+    <RTabs.List aria-label={label} className={cn('no-scrollbar flex w-full shrink-0 flex-nowrap gap-0.5 overflow-x-auto rounded-lg border border-border bg-surface p-1 shadow-sm', listClassName)}>
       {triggers}
     </RTabs.List>
   ) : (

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { basename } from 'node:path'
 import {
   DemoHealthProvider,
   DEMO_HEALTH_SETTINGS,
@@ -27,6 +28,8 @@ import {
   type Connection,
   type ConnectionTest,
   type EnvironmentReading,
+  type FlowMap,
+  type FlowTraceSort,
   type HealthDetailRequest,
   type HealthEnvironment,
   type HealthProvider,
@@ -34,7 +37,8 @@ import {
   type SecretChange,
   type SecretStore
 } from '@workhub/core'
-import type { HealthDetail, HealthDetailResult, HealthEnvironmentView, HealthState, HealthView } from '../shared/health-api'
+import type { FlowMapResult, FlowMapSummary, FlowTraceLogsResult, FlowTraceResult, FlowTracesResult, HealthDetail, HealthDetailResult, HealthEnvironmentView, HealthState, HealthView } from '../shared/health-api'
+import { flowMapSummaries, readFlowMapFiles } from './flow-maps'
 
 /** The least time between two real reads of a profile or of one row's details, however often the screen asks. */
 export const HEALTH_MIN_GAP_MS = 30_000
@@ -85,7 +89,19 @@ interface Cached {
   byEnv: Map<string, EnvironmentReading>
   /** On-demand details by `<environment>|<kind>|<key>`; dropped with the figures when the setup changes. */
   details: Map<string, { at: number; run: Promise<HealthDetailResult> }>
+  /** Flow-map readings by `<environment>|<map id>|<hours>|<map hash>`, kept like the details. */
+  flowMaps: Map<string, { at: number; run: Promise<FlowMapResult> }>
+  /** Executions laid over a map by `<environment>|<map id>|<trace id>`, kept like the details. */
+  flowTraces: Map<string, { at: number; run: Promise<FlowTraceResult> }>
 }
+
+/** How many executions the list shows. */
+export const FLOW_TRACE_LIST_SIZE = 50
+/** Log lines and errors read for one execution. */
+const FLOW_TRACE_LOG_SIZE = 200
+
+/** The window of a flow-map reading: an hour to a week. */
+export const FLOW_MAP_HOURS = { min: 1, max: 24 * 7, default: 24 }
 
 type Resolved = { view: HealthView } | { profileId: string; provider: HealthProvider; environments: HealthEnvironment[]; cached: Cached; state: HealthState; connectionName?: string; refreshMinutes: number; floorMinutes: number }
 
@@ -99,6 +115,8 @@ export interface HealthServiceDeps {
   demo: boolean
   httpFor?: (tls: TlsPolicy) => HttpClient
   now?: () => number
+  /** The folder of the flow-map files; no flow maps without it. */
+  flowMapsDir?: string
 }
 
 /** Resolves the health provider of a profile, keeps what each environment last read and serves the Health screen. */
@@ -152,7 +170,7 @@ export class HealthService {
     const key = JSON.stringify([connection?.id, connection?.endpoint, connection?.settings, secretHash, environments])
     let cached = this.cache.get(profile.id)
     if (!cached || cached.key !== key) {
-      cached = { key, at: 0, byEnv: new Map(), details: new Map() }
+      cached = { key, at: 0, byEnv: new Map(), details: new Map(), flowMaps: new Map(), flowTraces: new Map() }
       this.cache.set(profile.id, cached)
     }
     const state: HealthState = this.deps.demo ? 'demo' : 'ready'
@@ -211,6 +229,105 @@ export class HealthService {
       } else if (request.kind === 'pod' && provider.podDetails) value = await provider.podDetails(env, request.pod, now)
       else if (request.kind === 'flow' && provider.flowDetails) value = await provider.flowDetails(env, request.service, request.name, now)
       return value ? { ok: true, value } : { ok: false, error: 'This health provider has no details' }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /** The flow-map files, for the lists (the screen and Settings); none without a folder. */
+  async flowMaps(_profileId: string | null): Promise<FlowMapSummary[]> {
+    if (!this.deps.flowMapsDir) return []
+    return flowMapSummaries(readFlowMapFiles(this.deps.flowMapsDir))
+  }
+
+  /**
+   * One map measured on an environment, from the cache while the reading is younger than
+   * `HEALTH_DETAIL_LIFETIME_MS`; the file is read every time, so an edited map reads again at once.
+   */
+  async flowMap(profileId: string | null, environmentId: string, mapId: string, hours: number, force = false): Promise<FlowMapResult> {
+    if (!this.deps.flowMapsDir) return { ok: false, error: 'Flow maps are not available' }
+    const file = readFlowMapFiles(this.deps.flowMapsDir).find((f) => f.map?.id === mapId || (!f.map && basename(f.file) === `${mapId}.json`))
+    if (!file) return { ok: false, error: 'This flow map is no longer in the folder' }
+    if (!file.map) return { ok: false, error: `The flow map file is invalid: ${file.error ?? 'unreadable'}` }
+    const map = file.map
+    const r = await this.resolve(profileId)
+    if ('view' in r) return { ok: false, error: 'Health is not set up for this profile' }
+    const env = r.environments.find((e) => e.id === environmentId)
+    if (!env) return { ok: false, error: 'This environment is no longer configured' }
+    if (!r.provider.flowMap) return { ok: true, map }
+    const window = Math.min(FLOW_MAP_HOURS.max, Math.max(FLOW_MAP_HOURS.min, Math.round(hours) || FLOW_MAP_HOURS.default))
+    const key = `${env.id}|${map.id}|${window}|${createHash('sha256').update(JSON.stringify(map)).digest('hex').slice(0, 12)}`
+    const now = this.now()
+    const hit = r.cached.flowMaps.get(key)
+    if (hit && now - hit.at < (force ? HEALTH_MIN_GAP_MS : HEALTH_DETAIL_LIFETIME_MS)) return hit.run
+    const provider = r.provider
+    const run: Promise<FlowMapResult> = provider
+      .flowMap!(env, map, now, window)
+      .then((reading): FlowMapResult => ({ ok: true, map, reading }))
+      .catch((error: unknown): FlowMapResult => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))
+    r.cached.flowMaps.set(key, { at: now, run })
+    void run.then((result) => {
+      if (!result.ok && r.cached.flowMaps.get(key)?.run === run) r.cached.flowMaps.delete(key)
+    })
+    return run
+  }
+
+  /** The map file and the environment a flow-map ask names, or the reason one of them is missing. */
+  private async flowMapTarget(profileId: string | null, environmentId: string, mapId: string): Promise<{ ok: true; map: FlowMap; env: HealthEnvironment; provider: HealthProvider; cached: Cached } | { ok: false; error: string }> {
+    if (!this.deps.flowMapsDir) return { ok: false, error: 'Flow maps are not available' }
+    const file = readFlowMapFiles(this.deps.flowMapsDir).find((f) => f.map?.id === mapId || (!f.map && basename(f.file) === `${mapId}.json`))
+    if (!file) return { ok: false, error: 'This flow map is no longer in the folder' }
+    if (!file.map) return { ok: false, error: `The flow map file is invalid: ${file.error ?? 'unreadable'}` }
+    const r = await this.resolve(profileId)
+    if ('view' in r) return { ok: false, error: 'Health is not set up for this profile' }
+    const env = r.environments.find((e) => e.id === environmentId)
+    if (!env) return { ok: false, error: 'This environment is no longer configured' }
+    return { ok: true, map: file.map, env, provider: r.provider, cached: r.cached }
+  }
+
+  /** Recent executions of the map's entry transaction; not cached, the list is a handful of hits and the user asks for it. */
+  async flowTraces(profileId: string | null, environmentId: string, mapId: string, hours: number, sort: FlowTraceSort): Promise<FlowTracesResult> {
+    const t = await this.flowMapTarget(profileId, environmentId, mapId)
+    if (!t.ok) return t
+    if (!t.provider.flowTraces) return { ok: false, error: 'This provider cannot list executions' }
+    const window = Math.min(FLOW_MAP_HOURS.max, Math.max(FLOW_MAP_HOURS.min, Math.round(hours) || FLOW_MAP_HOURS.default))
+    const order: FlowTraceSort = sort === 'slowest' || sort === 'failed' ? sort : 'latest'
+    try {
+      return { ok: true, traces: await t.provider.flowTraces(t.env, t.map, this.now(), window, order, FLOW_TRACE_LIST_SIZE) }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /** One execution laid over the map, kept `HEALTH_DETAIL_LIFETIME_MS`: a trace does not change once written. */
+  async flowTrace(profileId: string | null, environmentId: string, mapId: string, traceId: string): Promise<FlowTraceResult> {
+    if (typeof traceId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(traceId)) return { ok: false, error: 'This is not a trace id' }
+    const t = await this.flowMapTarget(profileId, environmentId, mapId)
+    if (!t.ok) return t
+    if (!t.provider.flowTrace) return { ok: false, error: 'This provider cannot read an execution' }
+    const key = `${t.env.id}|${t.map.id}|${traceId}|${createHash('sha256').update(JSON.stringify(t.map)).digest('hex').slice(0, 12)}`
+    const now = this.now()
+    const hit = t.cached.flowTraces.get(key)
+    if (hit && now - hit.at < HEALTH_DETAIL_LIFETIME_MS) return hit.run
+    const run: Promise<FlowTraceResult> = t.provider
+      .flowTrace(t.env, t.map, traceId)
+      .then((trace): FlowTraceResult => ({ ok: true, trace }))
+      .catch((error: unknown): FlowTraceResult => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))
+    t.cached.flowTraces.set(key, { at: now, run })
+    void run.then((result) => {
+      if (!result.ok && t.cached.flowTraces.get(key)?.run === run) t.cached.flowTraces.delete(key)
+    })
+    return run
+  }
+
+  /** The APM errors and log lines of one execution; not cached, a handful of hits the user asks for. */
+  async flowTraceLogs(profileId: string | null, environmentId: string, mapId: string, traceId: string): Promise<FlowTraceLogsResult> {
+    if (typeof traceId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(traceId)) return { ok: false, error: 'This is not a trace id' }
+    const t = await this.flowMapTarget(profileId, environmentId, mapId)
+    if (!t.ok) return t
+    if (!t.provider.flowTraceLogs) return { ok: false, error: 'This provider cannot read the logs of an execution' }
+    try {
+      return { ok: true, logs: await t.provider.flowTraceLogs(t.env, traceId, FLOW_TRACE_LOG_SIZE) }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }

@@ -17,7 +17,10 @@ export function worstHealthState(view: Pick<HealthView, 'environments'> | null |
   return [...states].sort((a, b) => STATE_ORDER.indexOf(a) - STATE_ORDER.indexOf(b))[0]!
 }
 
-/** The top bar's labels: short where the sidebar's is long ("History" for "Session history"). */
-export function topNavLabel(route: Route): MessageKey {
-  return route === 'history' ? 'topNav.history' : ROUTE_LABEL[route]
+/** The top bar's labels: short where the sidebar's is long ("History" for "Session history"); when the bar is tight, shorter still ("PRs", "Maps"). */
+export function topNavLabel(route: Route, tight = false): MessageKey {
+  if (route === 'history') return 'topNav.history'
+  if (tight && route === 'pullRequests') return 'topNav.pullRequests'
+  if (tight && route === 'flowMaps') return 'topNav.flowMaps'
+  return ROUTE_LABEL[route]
 }

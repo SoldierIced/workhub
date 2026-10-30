@@ -1,4 +1,4 @@
-import { Activity, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Ticket, Users, UserCog } from 'lucide-react'
+import { Activity, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Route as RouteIcon, Ticket, Users, UserCog } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   appOptions,
@@ -39,6 +39,7 @@ import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { AiReviewProfileFields } from './AiReviewSettings'
 import { ProfileColorField } from './ProfileColorField'
 import { HealthSettings } from './HealthSettings'
+import { FlowMapsSettings } from './FlowMapsSettings'
 import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
 import { DefaultFolderField, ProfileExtraFields, prunedFolderOptions, useProfileEnvDraft } from './ProfileExtraSettings'
@@ -63,7 +64,8 @@ const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
 const MODULE_LABEL: Record<OfferedModule, MessageKey> = {
   health: 'module.health',
   chatWatcher: 'module.chatWatcher',
-  automations: 'module.automations'
+  automations: 'module.automations',
+  flowMaps: 'module.flowMaps'
 }
 
 /** `KEY=value` per line <-> record. */
@@ -224,6 +226,7 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
           { value: 'connections', label: t('settings.connections'), icon: <Plug className="size-4" aria-hidden />, content: section(<ConnectionsSection key={focusId('connections')} snap={snap} run={run} initialId={focusId('connections')} />, t('help.tab.connections')) },
           { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings key={focusId('trackers')} snap={snap} run={run} initialId={focusId('trackers')} />) },
           { value: 'health', label: t('health.settings.tab'), icon: <Activity className="size-4" aria-hidden />, content: section(<HealthSettings snap={snap} run={run} focusSecret={focus?.tab === 'health'} />) },
+          { value: 'flowMaps', label: t('flowMaps.settings.tab'), icon: <RouteIcon className="size-4" aria-hidden />, content: section(<FlowMapsSettings snap={snap} run={run} />) },
           { value: 'slack', label: t('nav.slack'), icon: <MessageSquare className="size-4" aria-hidden />, content: section(<SlackSettings snap={snap} run={run} />) },
           { value: 'accounts', label: t('settings.accounts'), icon: <UserCog className="size-4" aria-hidden />, content: section(<AccountsSection key={focusId('accounts')} snap={snap} run={run} initialId={focusId('accounts')} />, t('help.tab.accounts')) },
           { value: 'usage', label: t('agentUsage.settings.tab'), icon: <Gauge className="size-4" aria-hidden />, content: section(<UsageSettings snap={snap} run={run} />, t('help.tab.usage')) }

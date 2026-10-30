@@ -19,7 +19,7 @@ const profile = (over: Partial<Profile> = {}): Profile => ({
   name: 'Work',
   connections: { health: 'es' },
   accountIds: [],
-  modules: { flows: false, health: true, chatWatcher: false, automations: false },
+  modules: { flows: false, health: true, chatWatcher: false, automations: false, flowMaps: false },
   health: { refreshMinutes: 15, environments: [env] },
   ...over
 })
@@ -63,7 +63,7 @@ describe('buildHealthProvider', () => {
 
 describe('HealthService', () => {
   it('says why there is nothing to show', async () => {
-    expect((await service({ profile: profile({ modules: { flows: false, health: false, chatWatcher: false, automations: false } }) }).get('work')).state).toBe('moduleOff')
+    expect((await service({ profile: profile({ modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }) }).get('work')).state).toBe('moduleOff')
     expect((await service({ connections: [], profile: profile({ connections: {} }) }).get('work')).state).toBe('noConnection')
     expect((await service({}).get('work')).state).toBe('incomplete')
     expect((await service({ secrets: { 'connection/es': 'k' }, profile: profile({ health: { refreshMinutes: 15, environments: [] } }) }).get('work')).state).toBe('noEnvironments')

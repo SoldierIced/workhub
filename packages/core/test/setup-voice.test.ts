@@ -94,7 +94,7 @@ describe('setup checks', () => {
   const base: WorkhubConfig = { version: 7, connections: [], agents: [], accounts: [], profiles: [] }
   it('profile, jira, slack, health and usage read the config', () => {
     expect(profileItem(base)).toMatchObject({ status: 'missing', fix: { kind: 'settings', tab: 'profiles' } })
-    const withFolders: WorkhubConfig = { ...base, profiles: [{ id: 'a', name: 'Acme', connections: { tracker: 'j' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false }, folders: ['~/a', '~/b'] }] }
+    const withFolders: WorkhubConfig = { ...base, profiles: [{ id: 'a', name: 'Acme', connections: { tracker: 'j' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }, folders: ['~/a', '~/b'] }] }
     expect(profileItem(withFolders)).toMatchObject({ status: 'ok', params: { names: 'Acme', count: '2' } })
 
     const jira = { id: 'j', kind: 'tracker' as const, provider: 'jira', endpoint: 'https://x.atlassian.net', secretRef: 's', settings: {} }
@@ -124,7 +124,7 @@ describe('config 7', () => {
     const parsed = parseConfig({ version: 6, options: { notifyReplied: false }, profiles: [{ id: 'p', name: 'P' }] })
     expect(parsed.version).toBe(7)
     expect(appOptions(parsed)).toMatchObject({ notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: 190, welcomeDone: false, notifyReplied: false })
-    expect(parsed.profiles[0]).toEqual({ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } })
+    expect(parsed.profiles[0]).toEqual({ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } })
   })
 
   it('keeps the new profile fields and refuses a bad variable name or speech rate', () => {

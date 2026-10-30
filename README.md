@@ -137,7 +137,7 @@ The [user guide](docs/user-guide/README.md) has one page per area:
 | [Monitor](docs/user-guide/monitor.md) | Per-session panel and Home |
 | [Review before PR](docs/user-guide/review-before-pr.md) | Agent-briefs-reviewer loop, review loop, local diff review |
 | [Pull requests](docs/user-guide/pull-requests.md), [Tickets](docs/user-guide/tickets.md) | Code host and tracker |
-| [Slack](docs/user-guide/slack.md), [Health](docs/user-guide/health.md), [Automations](docs/user-guide/automations.md) | Optional modules |
+| [Slack](docs/user-guide/slack.md), [Health](docs/user-guide/health.md), [Flow maps](docs/user-guide/flow-maps.md), [Automations](docs/user-guide/automations.md) | Optional modules |
 | [History](docs/user-guide/history.md), [Usage and budgets](docs/user-guide/usage.md) | Past sessions, plan usage and ceilings |
 | [Settings](docs/user-guide/settings.md), [Keyboard shortcuts](docs/user-guide/keyboard-shortcuts.md) | Reference |
 

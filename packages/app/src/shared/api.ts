@@ -42,6 +42,7 @@ import type { AutomationsApi, SlackApi } from './chat-api'
 import type { CodeHostApi } from './codehost-api'
 import type { ContinuityApi } from './continuity-api'
 import type { HealthApi } from './health-api'
+import type { FlowMapsApi } from './flow-maps-api'
 import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
 import type { TicketsApi } from './tickets-api'
@@ -426,6 +427,7 @@ export interface HubApi {
   tickets: TicketsApi
   updates: UpdatesApi
   health: HealthApi
+  flowMaps: FlowMapsApi
   prEvents: PrEventsApi
   links: LinksApi
   slack: SlackApi

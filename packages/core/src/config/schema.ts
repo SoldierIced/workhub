@@ -76,6 +76,8 @@ export interface AppOptions {
   notifyTickets: boolean
   /** OS notification when a Health environment degrades, becomes unreachable or recovers, a service stops reporting, a pod stops being ready or an error signal starts worsening. */
   notifyHealth: boolean
+  /** OS notification when a part of a flow map goes above its p95 or failure limit. */
+  notifyFlowMaps: boolean
   /** Health never reads Elasticsearch more often than this, even on Refresh (minutes, one of `HEALTH_FLOOR_CHOICES`). */
   healthRefreshFloorMinutes: number
   /** Closing the main window keeps the app running in the menu bar / notification area. */
@@ -113,7 +115,7 @@ export interface AppOptions {
 export const SPEECH_RATE_RANGE = [120, 300] as const
 export const DEFAULT_SPEECH_RATE = 190
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -168,7 +170,8 @@ const consoleLaunch = z.object({
   command: z.string().min(1),
   args: z.array(z.string()).default([]),
   resumeArgs: z.array(z.string()).optional(),
-  newSessionArgs: z.array(z.string()).optional()
+  newSessionArgs: z.array(z.string()).optional(),
+  modelArgs: z.array(z.string()).optional()
 })
 
 const connection = z.object({
@@ -192,6 +195,8 @@ const agent = z.object({
   modeSemantics: z.enum(['permission', 'persona', 'none']).default('none'),
   accountConfigEnv: z.string().optional(),
   console: consoleLaunch.optional(),
+  modelArgs: z.array(z.string()).optional(),
+  effortArgs: z.array(z.string()).optional(),
   transcript: z.string().optional(),
   accountsOf: id.optional(),
   builtIn: z.boolean().optional()
@@ -257,6 +262,7 @@ const aiReview = z.object({
   idleSeconds: clamped([MIN_REVIEW_IDLE_SECONDS, MAX_REVIEW_IDLE_SECONDS], AI_REVIEW.idleSeconds),
   language: z.enum(REVIEW_LANGUAGES).default(AI_REVIEW.language),
   reviewerModel: z.string().trim().max(200).default(AI_REVIEW.reviewerModel),
+  reviewerEffort: z.string().trim().max(40).default(AI_REVIEW.reviewerEffort),
   briefPrompt: z.string().max(20_000).default(AI_REVIEW.briefPrompt)
 })
 
@@ -269,7 +275,7 @@ const profile = z.object({
   accountIds: z.array(id).default([]),
   agentIds: z.array(id).optional(),
   preferredAgents: z.array(z.string().min(1)).optional(),
-  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false }),
+  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }),
   folders: z.array(z.string().min(1)).optional(),
   defaultFolder: z.string().trim().min(1).optional(),
   folderOptions: z.record(z.string().min(1), folderOptions).optional(),
@@ -396,6 +402,7 @@ export const configSchema = z.object({
       notifyAutomations: z.boolean().default(true),
       notifyTickets: z.boolean().default(true),
       notifyHealth: z.boolean().default(true),
+      notifyFlowMaps: z.boolean().default(true),
       healthRefreshFloorMinutes: z
         .number()
         .int()

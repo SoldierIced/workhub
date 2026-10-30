@@ -19,6 +19,7 @@ Start with [Getting started](user-guide/getting-started.md), or browse the [user
 | [Tickets](user-guide/tickets.md) | Jira and Linear |
 | [Slack](user-guide/slack.md) | Watched channels and followed threads |
 | [Health](user-guide/health.md) | Errors, pods and slow endpoints from Elasticsearch |
+| [Flow maps](user-guide/flow-maps.md) | Diagrams of a business flow across services (⌘7), measured from APM, with its real executions; written by you or by an agent (`skills/workhub-flow-map`) |
 | [Automations](user-guide/automations.md) | Prompts sent to a dedicated session on an event or a schedule |
 | [History](user-guide/history.md) | Past sessions, resumable |
 | [Usage and budgets](user-guide/usage.md) | Plan usage, ceilings, per-session limits, token spend |

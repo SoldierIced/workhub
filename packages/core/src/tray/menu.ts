@@ -74,9 +74,9 @@ export interface TrayState {
   canCheckForUpdates: boolean
 }
 
-export type TrayRoute = 'home' | 'sessions' | 'pullRequests' | 'tickets' | 'slack' | 'automations' | 'health' | 'settings'
+export type TrayRoute = 'home' | 'sessions' | 'pullRequests' | 'tickets' | 'slack' | 'automations' | 'health' | 'flowMaps' | 'settings'
 
-export const TRAY_ROUTES: readonly TrayRoute[] = ['home', 'sessions', 'pullRequests', 'tickets', 'slack', 'automations', 'health', 'settings']
+export const TRAY_ROUTES: readonly TrayRoute[] = ['home', 'sessions', 'pullRequests', 'tickets', 'slack', 'automations', 'health', 'flowMaps', 'settings']
 
 export type TrayAction =
   | { kind: 'open' }

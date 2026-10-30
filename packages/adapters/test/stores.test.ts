@@ -23,7 +23,7 @@ const sample: WorkhubConfig = {
       name: 'Acme',
       connections: { codeHost: 'acme-github' },
       accountIds: [],
-      modules: { flows: true, health: false, chatWatcher: false, automations: false }
+      modules: { flows: true, health: false, chatWatcher: false, automations: false, flowMaps: false }
     }
   ],
   activeProfileId: 'acme'

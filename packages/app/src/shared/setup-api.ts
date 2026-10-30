@@ -29,8 +29,13 @@ export interface SystemNotificationsStatus {
   supported: boolean
 }
 
+/** What the OS said about a test notification: shown, refused (with its reason), or nothing in time. */
+export type NotificationTestResult = { outcome: 'shown' } | { outcome: 'failed'; error: string } | { outcome: 'timeout' }
+
 export interface SystemNotificationsApi {
   status(): Promise<SystemNotificationsStatus>
   /** Opens the OS page where notifications for the app are turned on. */
   openSystemSettings(): void
+  /** Shows one notification through the OS with this body, and reports what the OS said. */
+  test(body: string): Promise<NotificationTestResult>
 }

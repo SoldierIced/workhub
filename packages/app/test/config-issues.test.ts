@@ -18,7 +18,7 @@ function config(): WorkhubConfig {
       { id: 'elastic-old', kind: 'health', provider: 'elasticsearch', settings: {} }
     ],
     accounts: [{ id: 'claude-work', agentId: 'ghost', name: 'Claude laboral' }],
-    profiles: [{ id: 'acme', name: 'Acme', connections: { health: 'elastic-acme', codeHost: 'gone' }, accountIds: [], modules: { flows: false, health: true, chatWatcher: false, automations: false } }],
+    profiles: [{ id: 'acme', name: 'Acme', connections: { health: 'elastic-acme', codeHost: 'gone' }, accountIds: [], modules: { flows: false, health: true, chatWatcher: false, automations: false, flowMaps: false } }],
     activeProfileId: 'acme'
   }
 }

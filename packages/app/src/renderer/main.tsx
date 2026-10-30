@@ -14,6 +14,7 @@ import { parseSetupHash, SetupWindow } from './screens/SetupWindows'
 import { parseFileHash, parseReviewHash } from './lib/localReview'
 import { LocalReviewWindow } from './screens/LocalReviewWindow'
 import { FileViewerWindow } from './screens/FileViewerWindow'
+import { FlowMapWindow, parseFlowMapHash } from './screens/flowMaps/FlowMapWindow'
 import { startPerfReports } from './lib/perfReport'
 import './styles.css'
 
@@ -25,7 +26,7 @@ startPerfReports()
 // Secondary windows load the same bundle and are routed by the URL hash:
 // `#tray-popover` is the menu bar popover, `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…`
 // a ticket, `#session?id=…` a session in its own window and `#subagent?session=…&id=…` a sub-agent's conversation.
-// `#review?session=…` a session's local review and `#file?path=…` the file viewer.
+// `#review?session=…` a session's local review, `#file?path=…` the file viewer and `#flow-map?…` a flow map.
 function root(hash: string): ReactElement {
   if (hash === TRAY_POPOVER_HASH) return <TrayPopover />
   const session = parseSessionWindowHash(hash)
@@ -42,6 +43,8 @@ function root(hash: string): ReactElement {
   if (review) return <LocalReviewWindow sessionId={review.sessionId} />
   const file = parseFileHash(hash)
   if (file) return <FileViewerWindow path={file.path} />
+  const flowMap = parseFlowMapHash(hash)
+  if (flowMap) return <FlowMapWindow {...flowMap} />
   return <App />
 }
 

@@ -4,6 +4,7 @@ import { aiReviewEs } from './aiReview.es'
 import { sessionsUxEs } from './sessionsUx.es'
 import { sessionMonitorEs } from './sessionMonitor.es'
 import { healthEs } from './health.es'
+import { flowMapsEs } from './flowMaps.es'
 import { healthPromptsEs } from './healthPrompts.es'
 import { prEventsEs } from './prEvents.es'
 import { slackEs } from './slack.es'
@@ -123,12 +124,15 @@ export const es: Record<keyof typeof en, string> = {
 
   'topNav.label': 'Pantallas',
   'topNav.history': 'Historial',
+  'topNav.pullRequests': 'PRs',
+  'topNav.flowMaps': 'Mapas',
   'topNav.slackUnread.one': '{count} hilo de Slack con respuestas nuevas',
   'topNav.slackUnread.other': '{count} hilos de Slack con respuestas nuevas',
   'topNav.prsToReview.one': '{count} pull request espera tu revisión',
   'topNav.prsToReview.other': '{count} pull requests esperan tu revisión',
   'topNav.health': 'Salud: {state}',
   'toolbar.newSession': 'Nueva sesión',
+  'toolbar.newSessionShort': 'Nueva',
   'toolbar.chooseAgent': 'Elegir el agente para una sesión nueva',
   'toolbar.newSessionWith': 'Nueva sesión con',
   'toolbar.newSessionIn': 'Nueva sesión de {agent} en {folder}',
@@ -428,6 +432,7 @@ export const es: Record<keyof typeof en, string> = {
   ...updatesEs,
   ...setupEs,
   ...healthEs,
+  ...flowMapsEs,
   ...healthPromptsEs,
   ...prEventsEs,
   ...linksEs,

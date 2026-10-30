@@ -28,12 +28,16 @@ describe('top bar navigation', () => {
   it('uses a short label for the session history, in both languages', () => {
     expect(topNavLabel('history')).toBe('topNav.history')
     expect(topNavLabel('slack')).toBe('nav.slack')
+    expect(topNavLabel('flowMaps')).toBe('nav.flowMaps')
+    expect(topNavLabel('flowMaps', true)).toBe('topNav.flowMaps')
+    expect(topNavLabel('pullRequests', true)).toBe('topNav.pullRequests')
+    expect(topNavLabel('slack', true)).toBe('nav.slack')
     expect(en['topNav.history']).toBe('History')
     expect(es['topNav.history']).toBe('Historial')
   })
 
   it('keeps every screen and its ⌘ key reachable while the sidebar only lists sessions', () => {
-    const modules = { flows: false, health: true, chatWatcher: true, automations: true }
+    const modules = { flows: false, health: true, chatWatcher: true, automations: true, flowMaps: false }
     expect(visibleNavItems(modules).map((i) => `${i.route}:${i.shortcut.key}`)).toEqual(['home:1', 'pullRequests:2', 'tickets:3', 'slack:4', 'automations:5', 'history:6', 'health:8'])
     expect(allNavItems(modules).map((i) => i.route)).toContain('sessions')
   })

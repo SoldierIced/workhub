@@ -12,6 +12,7 @@ On macOS the modifier is ⌘. On Windows and Linux use Ctrl in its place.
 | ⌘/Ctrl+4 | Slack (when the module is on) |
 | ⌘/Ctrl+5 | Automations (when the module is on) |
 | ⌘/Ctrl+6 | History |
+| ⌘/Ctrl+7 | Flow maps (when the module is on) |
 | ⌘/Ctrl+8 | Health (when the module is on) |
 | ⌘/Ctrl+0 | Sessions |
 | ⌘/Ctrl+, | Settings |

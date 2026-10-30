@@ -1,5 +1,5 @@
 // Types of the Health bridge (window.hub.health), shared by main, preload and renderer.
-import type { Connection, ConnectionTest, FlowDetails, HealthDetailRequest, HealthSnapshot, HealthThresholds, PodDetails, SecretChange, ServiceErrorDetails } from '@workhub/core'
+import type { Connection, ConnectionTest, FlowDetails, FlowMap, FlowMapReading, FlowTrace, FlowTraceLog, FlowTraceSort, FlowTraceSummary, HealthDetailRequest, HealthSnapshot, HealthThresholds, PodDetails, SecretChange, ServiceErrorDetails } from '@workhub/core'
 
 /**
  * - ready: a configured provider serves the profile.
@@ -46,7 +46,38 @@ export interface HealthView {
 export type HealthDetail = ServiceErrorDetails | PodDetails | FlowDetails
 export type HealthDetailResult<T extends HealthDetail = HealthDetail> = { ok: true; value: T } | { ok: false; error: string }
 
+/** One flow-map file of the data folder, as the list shows it. */
+export interface FlowMapSummary {
+  id: string
+  name: string
+  description?: string
+  /** The environment the map measures itself on, when the file names one. */
+  environmentId?: string
+  file: string
+  nodes: number
+  edges: number
+  /** The file could not be parsed: the reason. */
+  error?: string
+}
+
+/** A map with its numbers; `reading` is missing while the provider cannot measure (demo and Elastic can). */
+export type FlowMapResult = { ok: true; map: FlowMap; reading?: FlowMapReading } | { ok: false; error: string }
+
+export type FlowTracesResult = { ok: true; traces: FlowTraceSummary[] } | { ok: false; error: string }
+export type FlowTraceResult = { ok: true; trace: FlowTrace } | { ok: false; error: string }
+export type FlowTraceLogsResult = { ok: true; logs: FlowTraceLog[] } | { ok: false; error: string }
+
 export interface HealthApi {
+  /** Recent executions of a map's entry transaction on an environment (never cached: the list is cheap). */
+  flowTraces(profileId: string | null, environmentId: string, mapId: string, hours: number, sort: FlowTraceSort): Promise<FlowTracesResult>
+  /** One execution laid over the map (kept 10 minutes). */
+  flowTrace(profileId: string | null, environmentId: string, mapId: string, traceId: string): Promise<FlowTraceResult>
+  /** The APM errors and log lines of one execution, oldest first. */
+  flowTraceLogs(profileId: string | null, environmentId: string, mapId: string, traceId: string): Promise<FlowTraceLogsResult>
+  /** The flow maps of the data folder (`flow-maps/*.json`), bad files included with their error. */
+  flowMaps(profileId: string | null): Promise<FlowMapSummary[]>
+  /** One map, measured on an environment over the last `hours` (kept 10 minutes; `force` reads again). */
+  flowMap(profileId: string | null, environmentId: string, mapId: string, hours: number, force?: boolean): Promise<FlowMapResult>
   /** The last read of the profile; reads again when the refresh interval passed or `force` is set (never more than every 30 s). */
   get(profileId: string | null, force?: boolean): Promise<HealthView>
   /**

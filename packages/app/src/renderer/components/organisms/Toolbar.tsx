@@ -42,15 +42,16 @@ export function Toolbar({ nav, agents, onNewSession, onChooseSession, newSession
             onClick={() => onNewSession()}
             title={newSessionHint ? `${newSessionHint} (${shortcutLabel(NEW_SESSION_SHORTCUT, platform)})` : shortcutLabel(NEW_SESSION_SHORTCUT, platform)}
             data-testid="toolbar-new-session"
-            className="inline-flex h-8 items-center gap-1.5 rounded-l-md bg-accent pr-3 pl-2.5 text-base font-semibold text-accent-fg transition-colors duration-150 hover:bg-accent-strong"
+            aria-label={t('toolbar.newSession')}
+            className="inline-flex h-7 items-center gap-1 rounded-l-md bg-accent pr-2.5 pl-2 text-sm font-semibold text-accent-fg transition-colors duration-150 hover:bg-accent-strong"
           >
-            <Plus className="size-4" aria-hidden />
-            {t('toolbar.newSession')}
+            <Plus className="size-3.5" aria-hidden />
+            {t('toolbar.newSessionShort')}
           </button>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger
               aria-label={t('toolbar.chooseAgent')}
-              className="inline-flex h-8 items-center rounded-r-md border-l border-black/15 bg-accent px-1.5 text-accent-fg transition-colors duration-150 hover:bg-accent-strong"
+              className="inline-flex h-7 items-center rounded-r-md border-l border-black/15 bg-accent px-1 text-accent-fg transition-colors duration-150 hover:bg-accent-strong"
             >
               <ChevronDown className="size-3.5" aria-hidden />
             </DropdownMenu.Trigger>

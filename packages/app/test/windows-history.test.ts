@@ -100,11 +100,11 @@ describe('application menu', () => {
     expect(file.find((i) => i.label === 'menu.openInNewWindow')?.accelerator).toBe('CmdOrCtrl+Shift+N')
   })
 
-  it('View: ⌘1-⌘8 screens (no ⌘7: Flows was dropped), ⌘0 Sessions, ⌥⌘1-3 show as App, Console, Shell', () => {
+  it('View: ⌘1-⌘8 screens (⌘7 is Flow maps), ⌘0 Sessions, ⌥⌘1-3 show as App, Console, Shell', () => {
     const { template, ran } = menu()
     const view = items(byLabel(template, 'menu.view'))
     const keyed = view.filter((i) => i.accelerator).map((i) => i.accelerator)
-    expect(keyed.slice(0, 8)).toEqual(['CmdOrCtrl+1', 'CmdOrCtrl+2', 'CmdOrCtrl+3', 'CmdOrCtrl+4', 'CmdOrCtrl+5', 'CmdOrCtrl+6', 'CmdOrCtrl+8', 'CmdOrCtrl+0'])
+    expect(keyed.slice(0, 9)).toEqual(['CmdOrCtrl+1', 'CmdOrCtrl+2', 'CmdOrCtrl+3', 'CmdOrCtrl+4', 'CmdOrCtrl+5', 'CmdOrCtrl+6', 'CmdOrCtrl+7', 'CmdOrCtrl+8', 'CmdOrCtrl+0'])
     click(view.find((i) => i.accelerator === 'CmdOrCtrl+6'))
     click(view.find((i) => i.accelerator === 'CmdOrCtrl+Alt+2'))
     expect(ran).toEqual([{ kind: 'navigate', route: 'history' }, { kind: 'showMode', mode: 'console' }])

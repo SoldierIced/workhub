@@ -1,4 +1,5 @@
 import type { ConnectionTest } from '../tickets/types'
+import type { FlowMap, FlowMapReading, FlowTrace, FlowTraceLog, FlowTraceSort, FlowTraceSummary } from './flow-map'
 import type { FlowDetails, HealthEnvironment, HealthSignals, HealthTier, PodDetails, ServiceErrorDetails } from './types'
 
 /**
@@ -23,4 +24,12 @@ export interface HealthProvider {
   errorDetails?(env: HealthEnvironment, service: string, now: number): Promise<ServiceErrorDetails>
   podDetails?(env: HealthEnvironment, pod: string, now: number): Promise<PodDetails>
   flowDetails?(env: HealthEnvironment, service: string, name: string, now: number): Promise<FlowDetails>
+  /** The numbers of a flow map over the last `hours`: one read per measure, failures reported per key. */
+  flowMap?(env: HealthEnvironment, map: FlowMap, now: number, hours: number): Promise<FlowMapReading>
+  /** Recent executions of the flow: the entry transaction's traces over the last `hours`, sorted as asked. */
+  flowTraces?(env: HealthEnvironment, map: FlowMap, now: number, hours: number, sort: FlowTraceSort, limit: number): Promise<FlowTraceSummary[]>
+  /** One execution laid over the map (see `matchFlowTrace`). */
+  flowTrace?(env: HealthEnvironment, map: FlowMap, traceId: string): Promise<FlowTrace>
+  /** The APM errors and log lines of one execution (by `trace.id`), oldest first. */
+  flowTraceLogs?(env: HealthEnvironment, traceId: string, limit: number): Promise<FlowTraceLog[]>
 }

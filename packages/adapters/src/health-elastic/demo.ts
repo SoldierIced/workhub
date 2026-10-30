@@ -1,10 +1,22 @@
 import {
   DEFAULT_HEALTH_THRESHOLDS,
   emptySignals,
+  flowEntry,
+  flowMeasures,
+  matchFlowTrace,
   trendStats,
   type ConnectionTest,
   type ErrorGroup,
   type FlowDetails,
+  type FlowBaseline,
+  type FlowHourPoint,
+  type FlowTraceLog,
+  type FlowMap,
+  type FlowMapReading,
+  type FlowTrace,
+  type FlowTraceDoc,
+  type FlowTraceSort,
+  type FlowTraceSummary,
   type HealthEnvironment,
   type HealthProvider,
   type HealthSettings,
@@ -185,5 +197,95 @@ export class DemoHealthProvider implements HealthProvider {
       },
       fetchedAt: now
     }
+  }
+
+  /** Made-up timings per measure, stable for a key: a daily rhythm with a slow hour, so the hourly charts have a shape. */
+  async flowMap(_env: HealthEnvironment, map: FlowMap, now: number, hours: number): Promise<FlowMapReading> {
+    const reading: FlowMapReading = { at: now, windowHours: hours, edges: {}, nodes: {}, stages: {}, errors: {} }
+    const all = flowMeasures(map)
+    // One part, the first with a span or the first overall, runs about 2.5x slower than its weekly baseline.
+    const slowKey = (all.find((m) => m.measure.type === 'apm.span') ?? all[0])?.key
+    for (const m of all) {
+      const seed = [...m.key].reduce((s, c) => (s * 31 + c.charCodeAt(0)) % 9973, 7)
+      const base = 40 + (seed % 900)
+      const start = now - hours * 3_600_000
+      const hourly: FlowHourPoint[] = []
+      for (let i = 0; i < hours; i++) {
+        const at = start + i * 3_600_000
+        const hourOfDay = new Date(at).getUTCHours()
+        const traffic = 0.3 + 0.7 * Math.max(0, Math.sin(((hourOfDay - 6) / 24) * Math.PI * 2) + 0.4)
+        const spike = hourOfDay === (seed % 24) ? 2.6 : 1
+        hourly.push({ at, count: Math.round(traffic * (20 + (seed % 200))), p50Ms: Math.round(base * spike), p95Ms: Math.round(base * 2.4 * spike) })
+      }
+      const count = hourly.reduce((s, h) => s + h.count, 0)
+      const p95 = Math.round(base * 2.6)
+      const failed = Math.round((count * (seed % 7)) / 100)
+      const slow = slowKey === m.key
+      const weeklyP95 = slow ? Math.round(p95 / 2.5) : Math.round(p95 * (0.9 + (seed % 5) / 25))
+      const baseline = (factor: number, p95Ms: number): FlowBaseline => ({ count: Math.round(count * factor), p50Ms: Math.round(p95Ms / 2.6), p95Ms, errorRate: (seed % 5) / 100 })
+      const codes = m.measure.type === 'apm.transaction' ? [{ code: 'HTTP 2xx', count: count - failed - Math.round(count / 50) }, { code: 'HTTP 4xx', count: Math.round(count / 50) }, ...(failed > 0 ? [{ code: 'HTTP 5xx', count: failed }] : [])].filter((c) => c.count > 0).sort((a, b) => b.count - a.count) : undefined
+      reading[m.of][m.key] = {
+        count,
+        p50Ms: base,
+        p95Ms: p95,
+        p99Ms: Math.round(p95 * 1.3),
+        errorRate: failed / Math.max(count, 1),
+        failed,
+        perMinute: Math.round((count / (hours * 60)) * 100) / 100,
+        ...(codes ? { codes } : {}),
+        previous: baseline(0.95, Math.round(p95 * 1.05)),
+        weekly: baseline(1, weeklyP95),
+        hourly
+      }
+    }
+    return reading
+  }
+
+  /** Made-up executions: one every few minutes, a slow one now and then, a failed one in ten. */
+  async flowTraces(_env: HealthEnvironment, map: FlowMap, now: number, hours: number, sort: FlowTraceSort, limit: number): Promise<FlowTraceSummary[]> {
+    if (!flowEntry(map)) throw new Error('the map has no entry transaction: add an "entry" measure or a node with an apm.transaction measure')
+    const all: FlowTraceSummary[] = []
+    const step = Math.max(60_000, Math.round((hours * 3_600_000) / 120))
+    for (let i = 0; i < 120; i++) {
+      const at = now - i * step
+      const seed = (i * 7919) % 9973
+      all.push({ traceId: `demo-${at.toString(36)}`, at, durationMs: 300 + (seed % 1500) + (seed % 11 === 0 ? 4000 : 0), outcome: seed % 10 === 0 ? 'failure' : 'success' })
+    }
+    const picked = sort === 'failed' ? all.filter((t) => t.outcome === 'failure') : sort === 'slowest' ? [...all].sort((a, b) => b.durationMs - a.durationMs) : all
+    return picked.slice(0, limit)
+  }
+
+  /** The execution walks the map's measured parts in order, plus one call the map does not know about. */
+  async flowTrace(_env: HealthEnvironment, map: FlowMap, traceId: string): Promise<FlowTrace> {
+    const at = parseInt(traceId.replace(/^demo-/, ''), 36)
+    const start = Number.isFinite(at) ? at : Date.now()
+    const docs: FlowTraceDoc[] = []
+    let cursor = start
+    const entry = flowEntry(map)
+    if (entry) docs.push({ event: 'transaction', service: entry.service, name: entry.transaction, at: start, durationMs: 0, outcome: 'success' })
+    for (const m of flowMeasures(map)) {
+      if (m.measure.type === 'apm.transaction' && entry && m.measure.service === entry.service && m.measure.transaction === entry.transaction) continue
+      const seed = [...m.key].reduce((s, c) => (s * 31 + c.charCodeAt(0)) % 9973, 7)
+      const durationMs = 20 + (seed % 400)
+      docs.push(m.measure.type === 'apm.transaction' ? { event: 'transaction', service: m.measure.service, name: m.measure.transaction, at: cursor, durationMs, outcome: 'success' } : { event: 'span', service: m.measure.service, name: m.measure.destination, destination: m.measure.destination, at: cursor, durationMs })
+      cursor += durationMs
+    }
+    docs.push({ event: 'span', service: entry?.service ?? 'app', name: 'SELECT demo.orders', destination: 'postgresql', at: cursor, durationMs: 35 })
+    if (docs[0]) docs[0].durationMs = cursor + 35 - start
+    return matchFlowTrace(map, traceId, docs)
+  }
+
+  /** A few synthetic lines spread over the trace's span: one APM error and the rest log lines. */
+  async flowTraceLogs(_env: HealthEnvironment, traceId: string, limit: number): Promise<FlowTraceLog[]> {
+    const parsed = parseInt(traceId.replace(/^demo-/, ''), 36)
+    const start = Number.isFinite(parsed) ? parsed : Date.now()
+    const lines: FlowTraceLog[] = [
+      { at: start + 20, service: 'shop-bff', level: 'info', message: 'Checkout request received', source: 'logs' },
+      { at: start + 180, service: 'orders', level: 'info', message: 'Order created, publishing event', source: 'logs' },
+      { at: start + 420, service: 'orders', level: 'warn', message: 'Payment provider answered slowly (retry 1 of 3)', source: 'logs' },
+      { at: start + 640, service: 'orders', level: 'error', type: 'System.TimeoutException', culprit: 'Orders.Handlers.CheckoutHandler in Handle', message: 'The operation has timed out', source: 'apm.error' },
+      { at: start + 700, service: 'shop-bff', level: 'warn', message: 'Falling back to the cached quote', source: 'logs' }
+    ]
+    return lines.slice(0, limit)
   }
 }

@@ -139,8 +139,8 @@ describe('Workhub 1 import: modules and options', () => {
     })
     const acme = plan.profiles.find((p) => p.id === 'acme')
     const side = plan.profiles.find((p) => p.id === 'side')
-    expect(acme?.modules).toEqual({ flows: false, health: true, chatWatcher: true, automations: true })
-    expect(side?.modules).toEqual({ flows: false, health: false, chatWatcher: false, automations: false })
+    expect(acme?.modules).toEqual({ flows: false, health: true, chatWatcher: true, automations: true, flowMaps: false })
+    expect(side?.modules).toEqual({ flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false })
     expect(plan.notes).toContainEqual({ code: 'notSupported', path: 'chatWatcher', detail: 'slack.threads' })
   })
 

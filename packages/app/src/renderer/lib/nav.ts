@@ -9,6 +9,7 @@ export type Route =
   | 'slack'
   | 'automations'
   | 'history'
+  | 'flowMaps'
   | 'health'
   | 'sessions'
   | 'settings'
@@ -20,7 +21,7 @@ export interface NavItem {
   module?: OptionalModule
 }
 
-/** Main navigation, in Workhub 1's order and with its keys (⌘1-⌘8; ⌘7 was Flows, dropped). */
+/** Main navigation, in Workhub 1's order and with its keys (⌘1-⌘8; ⌘7, once Flows, is Flow maps). */
 export const NAV_ITEMS: readonly NavItem[] = [
   { route: 'home', shortcut: { key: '1' } },
   { route: 'pullRequests', shortcut: { key: '2' } },
@@ -28,6 +29,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { route: 'slack', shortcut: { key: '4' }, module: 'chatWatcher' },
   { route: 'automations', shortcut: { key: '5' }, module: 'automations' },
   { route: 'history', shortcut: { key: '6' } },
+  { route: 'flowMaps', shortcut: { key: '7' }, module: 'flowMaps' },
   { route: 'health', shortcut: { key: '8' }, module: 'health' }
 ]
 

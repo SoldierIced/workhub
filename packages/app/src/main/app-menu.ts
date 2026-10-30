@@ -29,7 +29,7 @@ export interface AppMenuInput {
   developer: boolean
 }
 
-/** The main navigation in Workhub 1's order and keys (⌘1-⌘8; ⌘7 was Flows, dropped); routes match the renderer's `NAV_ITEMS`. */
+/** The main navigation in Workhub 1's order and keys (⌘1-⌘8; ⌘7, once Flows, is Flow maps); routes match the renderer's `NAV_ITEMS`. */
 export const MENU_ROUTES: readonly { route: string; key: string; label: string }[] = [
   { route: 'home', key: '1', label: 'nav.home' },
   { route: 'pullRequests', key: '2', label: 'nav.pullRequests' },
@@ -37,6 +37,7 @@ export const MENU_ROUTES: readonly { route: string; key: string; label: string }
   { route: 'slack', key: '4', label: 'nav.slack' },
   { route: 'automations', key: '5', label: 'nav.automations' },
   { route: 'history', key: '6', label: 'nav.history' },
+  { route: 'flowMaps', key: '7', label: 'nav.flowMaps' },
   { route: 'health', key: '8', label: 'nav.health' }
 ]
 

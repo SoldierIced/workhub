@@ -1,4 +1,4 @@
-import { HealthConnectionError, type ConnectionTest, type FlowDetails, type HealthEnvironment, type HealthProvider, type HealthSignal, type HealthSignals, type HealthTier, type PodDetails, type PodIssue, type ServiceErrorDetails } from '@workhub/core'
+import { flowEntry, flowMeasures, HealthConnectionError, matchFlowTrace, type FlowTrace, type FlowTraceLog, type FlowTraceSort, type FlowTraceSummary, type ConnectionTest, type FlowDetails, type FlowMap, type FlowMapReading, type HealthEnvironment, type HealthProvider, type HealthSignal, type HealthSignals, type HealthTier, type PodDetails, type PodIssue, type ServiceErrorDetails } from '@workhub/core'
 import { ElasticClient, ElasticError, toConnectionError } from './client'
 import * as q from './queries'
 
@@ -197,5 +197,48 @@ export class ElasticHealthProvider implements HealthProvider {
     out.comparison = c.value
     out.comparisonError = c.error
     return out
+  }
+
+  /** Every measure of the map at once; a measure that fails is reported under its key, the rest still read. */
+  async flowMap(env: HealthEnvironment, map: FlowMap, now: number, hours: number): Promise<FlowMapReading> {
+    const reading: FlowMapReading = { at: now, windowHours: hours, edges: {}, nodes: {}, stages: {}, errors: {} }
+    if (!q.readsTraces(env)) {
+      for (const m of flowMeasures(map)) reading.errors[m.key] = 'the environment has no traces index or APM environment'
+      return reading
+    }
+    await Promise.all(
+      flowMeasures(map).map(async (m) => {
+        const r = await this.part(async () => q.parseFlowMeasure(await this.ask(q.flowMeasure(env, m.measure, now, hours)), m.measure, hours))
+        if (r.value) reading[m.of][m.key] = r.value
+        else reading.errors[m.key] = r.error ?? 'unknown failure'
+      })
+    )
+    return reading
+  }
+
+  async flowTraces(env: HealthEnvironment, map: FlowMap, now: number, hours: number, sort: FlowTraceSort, limit: number): Promise<FlowTraceSummary[]> {
+    const entry = flowEntry(map)
+    if (!entry) throw new Error('the map has no entry transaction: add an "entry" measure or a node with an apm.transaction measure')
+    if (!q.readsTraces(env)) throw new Error('the environment has no traces index or APM environment')
+    return q.parseFlowTraces(await this.ask(q.flowTraces(env, entry, now, hours, sort, limit)))
+  }
+
+  async flowTrace(env: HealthEnvironment, map: FlowMap, traceId: string): Promise<FlowTrace> {
+    if (!q.readsTraces(env)) throw new Error('the environment has no traces index or APM environment')
+    const docs = q.parseFlowTraceDocs(await this.ask(q.flowTraceDocs(env, traceId)))
+    if (docs.length === 0) throw new Error(`trace ${traceId} was not found in the traces index`)
+    return matchFlowTrace(map, traceId, docs)
+  }
+
+  /** APM errors and container log lines of one execution, oldest first; a source that fails is skipped unless both do. */
+  async flowTraceLogs(env: HealthEnvironment, traceId: string, limit: number): Promise<FlowTraceLog[]> {
+    const sources: Promise<{ value?: FlowTraceLog[]; error?: string }>[] = []
+    if (q.readsErrors(env)) sources.push(this.part(async () => q.parseFlowTraceErrors(await this.ask(q.flowTraceErrors(env, traceId, limit)))))
+    if (q.kubernetesSuffix(env)) sources.push(this.part(async () => q.parseFlowTraceContainerLogs(await this.ask(q.flowTraceContainerLogs(env, traceId, limit, Date.now())))))
+    if (sources.length === 0) throw new Error('the environment has no errors index and no Kubernetes index suffix to read logs from')
+    const results = await Promise.all(sources)
+    const failures = results.flatMap((r) => (r.error ? [r.error] : []))
+    if (failures.length === results.length) throw new Error(`could not read the logs of trace ${traceId}: ${failures.join('; ')}`)
+    return results.flatMap((r) => r.value ?? []).sort((a, b) => a.at - b.at).slice(0, limit)
   }
 }

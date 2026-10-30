@@ -1,4 +1,4 @@
-import type { HealthAlert, TrayText } from '@workhub/core'
+import type { FlowAlert, HealthAlert, TrayText } from '@workhub/core'
 // The renderer's dictionaries are plain data; the main process words the tray menu and its own
 // notifications (tickets, Health) with them, in the language the renderer reports.
 import { DICTIONARIES, translate, translatePlural, type Locale, type MessageKey, type PluralKey } from '../renderer/i18n/translate'
@@ -37,5 +37,18 @@ export function healthAlertWords(alert: HealthAlert, t: TrayText['t']): { title:
     }
     default:
       return { title: t(`notify.health.${alert.kind}`, { environment }), body: t(`notify.health.${alert.kind}Body`) }
+  }
+}
+
+const formatMs = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`)
+const formatRate = (rate: number): string => `${(rate * 100).toFixed(1)}%`
+
+/** The title and body of a flow-map alert (a part above its p95 or failure limit), in the tray's language. */
+export function flowAlertWords(alert: FlowAlert, t: TrayText['t']): { title: string; body: string } {
+  const format = alert.kind === 'flowSlow' ? formatMs : formatRate
+  const base = alert.kind === 'flowSlow' ? 'notify.flow.slow' : 'notify.flow.errors'
+  return {
+    title: t(base, { part: alert.label, map: alert.mapName, environment: alert.environmentName }),
+    body: t(`${base}Body`, { value: format(alert.value), limit: format(alert.threshold) })
   }
 }

@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -46,7 +46,10 @@ import {
   startOfLocalDay,
   usageAccountKey,
   validateConfig,
+  type FlowAlert,
   type HealthAlert,
+  moduleScreens,
+  type FlowTraceSort,
   type HealthDetailRequest,
   type CreditSpend,
   type Result,
@@ -74,11 +77,12 @@ import type { PullRequestWindowTab } from '../shared/codehost-api'
 import { Notifier } from './notifier'
 import { TrayService } from './tray'
 import { TrayPopover } from './tray-popover'
-import { healthAlertWords, isLocale, trayText } from './tray-text'
+import { flowAlertWords, healthAlertWords, isLocale, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
 import { profileWorkspaces } from './workspaces'
 import { NotificationPermissionCheck } from './notification-permission'
-import { HealthWatcher, TicketWatcher } from './watchers'
+import { testNotification } from './notification-test'
+import { FlowAlertWatcher, HealthWatcher, TicketWatcher } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
@@ -102,6 +106,9 @@ import { OwnerStarts } from './owner-starts'
 import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
 import { LocalReviewService, registerLocalReviewIpc } from './local-review'
+import { controlEnv, controlSocketPath, startControlServer } from './control-server'
+import { FLOW_MAPS_FOLDER, saveFlowMap } from './flow-maps'
+import { registerFlowMapsIpc } from './flow-maps-ipc'
 import { registerFileViewerIpc } from './file-viewer'
 import { SlackWatcherService } from './slack-watcher'
 import { StateFile } from './state-file'
@@ -174,7 +181,7 @@ const prEvents = new PrEventService({
   demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1' ? { advance: () => ++demoPrStep } : undefined
 })
 // WORKHUB_DEMO_HEALTH=1 serves synthetic environments, so Health can be shown without a cluster.
-const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1' })
+const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1', flowMapsDir: join(dataDir, FLOW_MAPS_FOLDER) })
 // WORKHUB_DEMO_TICKETS=1 serves synthetic tickets, so the UI can be shown without credentials.
 const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1')
 
@@ -322,8 +329,11 @@ const tokenSpend = new TokenSpendService({
 const apiSpend = new ApiSpendService({ config: () => configuration.current(), home: homedir(), costs: (include) => tokenSpend.costs(include), ledger: costLedger })
 // The names the user gave sessions, by identity (Rename…).
 const sessionNames = new SessionNames(new StateFile(join(dataDir, 'session-names.json'), 300))
+// Tools an agent runs can ask Workhub for things (today: open "Review changes") over this socket.
+const controlSocket = controlSocketPath(dataDir)
 const sessions = new SessionManager({
   config: configuration,
+  sessionEnv: (sessionId) => controlEnv(sessionId, controlSocket),
   names: sessionNames,
   profileEnv: async (profileId, cwd) => {
     const config = await configuration.current()
@@ -866,6 +876,10 @@ function registerIpc(): void {
     await saveProfileEnv(profileId, clean, removed.filter((n) => typeof n === 'string'), secrets)
   })
   ipc.handle('systemNotifications:status', async () => ({ supported: await notificationPermission.allowed() }))
+  ipc.handle('systemNotifications:test', (_e, body: unknown) => {
+    if (!Notification.isSupported()) return { outcome: 'failed', error: 'notifications are not supported here' }
+    return testNotification(() => notificationPermission.observe(new Notification({ title: app.getName(), body: String(typeof body === 'string' ? body : '').slice(0, 200) })), showMain)
+  })
   ipc.on('systemNotifications:openSettings', () => {
     const target =
       process.platform === 'darwin' ? 'x-apple.systempreferences:com.apple.Notifications-Settings.extension' : process.platform === 'win32' ? 'ms-settings:notifications' : null
@@ -946,6 +960,28 @@ function registerIpc(): void {
   registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification })
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
   ipc.handle('health:details', (_e, profileId: string | null, environmentId: string, request: HealthDetailRequest, force?: boolean) => health.details(profileId, environmentId, request, force === true))
+  ipc.handle('health:flowMaps', (_e, profileId: string | null) => health.flowMaps(profileId))
+  ipc.handle('health:flowMap', (_e, profileId: string | null, environmentId: string, mapId: string, hours: number, force?: boolean) => health.flowMap(profileId, environmentId, mapId, hours, force === true))
+  ipc.handle('health:flowTraces', (_e, profileId: string | null, environmentId: string, mapId: string, hours: number, sort: FlowTraceSort) => health.flowTraces(profileId, environmentId, mapId, hours, sort))
+  ipc.handle('health:flowTrace', (_e, profileId: string | null, environmentId: string, mapId: string, traceId: string) => health.flowTrace(profileId, environmentId, mapId, traceId))
+  ipc.handle('health:flowTraceLogs', (_e, profileId: string | null, environmentId: string, mapId: string, traceId: string) => health.flowTraceLogs(profileId, environmentId, mapId, traceId))
+  registerFlowMapsIpc(ipc, {
+    dir: join(dataDir, FLOW_MAPS_FOLDER),
+    pickFiles: async () => {
+      const r = await dialog.showOpenDialog(win!, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'JSON', extensions: ['json'] }], defaultPath: homedir() })
+      return r.canceled ? [] : r.filePaths
+    },
+    showItemInFolder: (path) => shell.showItemInFolder(path),
+    createWindow: (hash, title) => createAuxWindow(hash, title, { width: 1320, height: 900, minWidth: 760, minHeight: 520 }),
+    mainWindow: () => win,
+    writeImage: async (dataUrl) => {
+      const image = nativeImage.createFromDataURL(dataUrl)
+      if (image.isEmpty()) return false
+      // Electron 45's clipboard is the W3C-shaped one: items of MIME-typed blobs.
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(image.toPNG())], { type: 'image/png' }) })])
+      return true
+    }
+  })
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   registerAiReviewIpc(ipc, aiReview)
   registerAgentReviewIpc(ipc, agentReview)
@@ -1082,6 +1118,30 @@ const healthWatcher = new HealthWatcher({
   })()
 })
 
+function flowAlertNotification(alert: FlowAlert): void {
+  void notifier.show('flowMaps', flowAlertWords(alert, trayText(trayLocale).t), () => navigate('flowMaps'), { mapId: alert.mapId, environmentId: alert.environmentId })
+}
+
+const flowAlertWatcher = new FlowAlertWatcher({
+  activeProfileId: async () => (await configuration.current()).activeProfileId ?? null,
+  enabled: async (profileId) => {
+    const profile = (await configuration.current()).profiles.find((p) => p.id === profileId)
+    const screens = profile ? moduleScreens(profile.modules) : []
+    return screens.includes('flowMaps') && screens.includes('health')
+  },
+  environments: async (profileId) => {
+    const view = await health.get(profileId)
+    return view.state === 'ready' ? view.environments.map((e) => ({ id: e.id, name: e.name })) : []
+  },
+  maps: (profileId) => health.flowMaps(profileId),
+  read: (profileId, environmentId, mapId, hours) => health.flowMap(profileId, environmentId, mapId, hours),
+  alert: flowAlertNotification,
+  cooldowns: (() => {
+    const file = new StateFile<{ firedAt: Record<string, number> }>(join(dataDir, 'flow-alerts.json'), 500)
+    return { load: () => file.load({ firedAt: {} }).firedAt ?? {}, save: (firedAt) => file.save({ firedAt }) }
+  })()
+})
+
 const ticketWatcher = new TicketWatcher({
   activeProfileId: async () => (await configuration.current()).activeProfileId ?? null,
   enabled: async () => appOptions(await configuration.current()).notifyTickets,
@@ -1195,10 +1255,12 @@ function openPullRequestWindow(profileId: string | null, url: string, tab?: Pull
 /** One review window per session; opening an open one brings it to the front. */
 const reviewWindows = new Map<string, BrowserWindow>()
 
-function openLocalReviewWindow(sessionId: string): void {
+function openLocalReviewWindow(sessionId: string, reload = false): void {
   const open = reviewWindows.get(sessionId)
   if (open && !open.isDestroyed()) {
     if (open.isMinimized()) open.restore()
+    // Drafts live in the main process, so a reload only refreshes the diff.
+    if (reload) open.webContents.reload()
     open.focus()
     return
   }
@@ -1425,7 +1487,20 @@ async function fillDefaultFoldersOnStart(): Promise<void> {
   if (changed) send('config:changed')
 }
 
+let controlServer: import('node:http').Server | null = null
 void app.whenReady().then(async () => {
+  controlServer = await startControlServer(controlSocket, {
+    openReview: (sessionId, repos) => {
+      const v = sessions.list().find((s) => s.id === sessionId)
+      if (!v) return { ok: false, status: 404, error: 'unknown session' }
+      if (v.readOnly) return { ok: false, status: 403, error: 'a reviewer session cannot open a review' }
+      localReview.request(sessionId, repos)
+      openLocalReviewWindow(sessionId, true)
+      return { ok: true }
+    },
+    saveFlowMap: (map) => saveFlowMap(join(dataDir, FLOW_MAPS_FOLDER), map),
+    log: (m) => diagnostics.log.warn(m)
+  })
   if (!firstInstance) return
   try {
     await configuration.load()
@@ -1457,6 +1532,7 @@ void app.whenReady().then(async () => {
   void automations.start()
   aiReview.start()
   healthWatcher.start()
+  flowAlertWatcher.start()
   ticketWatcher.start()
   // First run: no profile yet and the welcome was not finished.
   const first = await configuration.current()
@@ -1496,7 +1572,9 @@ app.on('before-quit', (event) => {
   automations.stop()
   aiReview.stop()
   localReview.stop()
+  controlServer?.close()
   healthWatcher.stop()
+  flowAlertWatcher.stop()
   ticketWatcher.stop()
   sessionNames.flush()
   void sessions.stopAll().finally(() => app.quit())

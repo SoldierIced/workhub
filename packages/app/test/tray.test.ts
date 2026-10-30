@@ -7,8 +7,8 @@ vi.mock('electron', () => ({ Menu: {}, nativeImage: {}, Tray: class {} }))
 
 import { menuTemplate, trayIconFiles } from '../src/main/tray'
 import { Notifier, RECENT_NOTIFICATIONS, type NotificationLike } from '../src/main/notifier'
-import { healthAlertWords, trayText } from '../src/main/tray-text'
-import { HealthWatcher, TicketWatcher, TICKET_INTERVAL_MS } from '../src/main/watchers'
+import { flowAlertWords, healthAlertWords, trayText } from '../src/main/tray-text'
+import { FlowAlertWatcher, FLOW_ALERT_FIRST_DELAY_MS, FLOW_ALERT_INTERVAL_MS, HealthWatcher, TicketWatcher, TICKET_INTERVAL_MS } from '../src/main/watchers'
 import { traySessions } from '../src/renderer/lib/useTraySync'
 import { trayEn } from '../src/renderer/i18n/tray.en'
 import { trayEs } from '../src/renderer/i18n/tray.es'
@@ -296,5 +296,115 @@ describe('tray sessions from the renderer', () => {
   it('names a session after what it was asked once there is a prompt, like its sidebar row', () => {
     const asked = { view: { id: 'a', agentName: 'Claude', cwd: '/Users/x/api/', state: 'ready', identity: 'a' }, items: [{ id: 1, kind: 'user', text: 'Fix the login bug\nmore' }] } as unknown as SessionData
     expect(traySessions([asked], { groups: [], top: [] })[0]?.title).toBe('Fix the login bug')
+  })
+})
+
+describe('flow alert words', () => {
+  const base = { mapId: 'checkout', mapName: 'Checkout', environmentId: 'prod', environmentName: 'Prod', part: { of: 'nodes' as const, key: 'orders' }, label: 'Orders', windowHours: 1 }
+  it('words a slow part with seconds from one second up', () => {
+    const { t } = trayText('en')
+    expect(flowAlertWords({ ...base, kind: 'flowSlow', value: 2400, threshold: 800 }, t)).toEqual({ title: '«Orders» is slow in Checkout · Prod', body: 'p95 2.4 s over the last hour, limit 800 ms' })
+  })
+  it('words a failing part with percentages, in Spanish too', () => {
+    const alert = { ...base, kind: 'flowErrors' as const, value: 0.0731, threshold: 0.05 }
+    expect(flowAlertWords(alert, trayText('en').t)).toEqual({ title: '«Orders» is failing in Checkout · Prod', body: '7.3% of calls failed over the last hour, limit 5.0%' })
+    expect(flowAlertWords(alert, trayText('es').t).title).toBe('«Orders» está fallando en Checkout · Prod')
+  })
+})
+
+describe('flow alert watcher', () => {
+  const summary = (id: string, extra: object = {}) => ({ id, name: id, file: `${id}.json`, nodes: 1, edges: 0, ...extra })
+  const timing = (p95Ms: number, errorRate = 0) => ({ count: 10, p95Ms, errorRate, failed: errorRate > 0 ? 1 : 0 })
+  const mapOf = (id: string, alerts: object | undefined) => ({ id, name: id, nodes: [{ id: 'orders', label: 'Orders', measure: { kind: 'service', service: 'orders' } }], edges: [], stages: [], alerts }) as never
+  const readingOf = (p95Ms: number) => ({ windowHours: 1, nodes: { orders: timing(p95Ms) }, edges: {}, stages: {}, errors: {}, at: 0 }) as never
+  const limits = { p95Ms: 500, parts: {} }
+  function setup(over: Record<string, unknown> = {}) {
+    let now = 5_000_000
+    let saved: Record<string, number> = {}
+    const alerts: string[] = []
+    const read = vi.fn(async (_p: string, _e: string, mapId: string) => ({ ok: true as const, map: mapOf(mapId, limits), reading: readingOf(900) }))
+    const deps = {
+      activeProfileId: async () => 'p',
+      enabled: async () => true,
+      environments: async () => [{ id: 'prod', name: 'Prod' }, { id: 'dev', name: 'Dev' }],
+      maps: async () => [summary('checkout')],
+      read,
+      alert: (a: { mapId: string; environmentId: string; kind: string }) => alerts.push(`${a.mapId}:${a.environmentId}:${a.kind}`),
+      cooldowns: { load: () => saved, save: (v: Record<string, number>) => (saved = v) },
+      now: () => now,
+      ...over
+    }
+    return { deps, alerts, read, advance: (ms: number) => (now += ms) }
+  }
+
+  it('reads every environment of a map without one, over the last hour, and applies the thresholds', async () => {
+    const { deps, alerts, read } = setup()
+    await new FlowAlertWatcher(deps).tick()
+    expect(read).toHaveBeenCalledWith('p', 'prod', 'checkout', 1)
+    expect(read).toHaveBeenCalledWith('p', 'dev', 'checkout', 1)
+    expect(alerts).toEqual(['checkout:prod:flowSlow', 'checkout:dev:flowSlow'])
+  })
+
+  it('reads only the environment a map names, skips broken maps and maps without limits', async () => {
+    const { deps, alerts, read } = setup({
+      maps: async () => [summary('a', { environmentId: 'dev' }), summary('broken', { error: 'bad json' }), summary('quiet')],
+      read: vi.fn(async (_p: string, _e: string, id: string) => ({ ok: true as const, map: mapOf(id, id === 'quiet' ? undefined : limits), reading: readingOf(900) }))
+    })
+    void read
+    await new FlowAlertWatcher(deps).tick()
+    expect(alerts).toEqual(['a:dev:flowSlow'])
+    expect((deps.read as ReturnType<typeof vi.fn>).mock.calls.map((c) => `${c[2]}:${c[1]}`)).toEqual(['a:dev', 'quiet:prod', 'quiet:dev'])
+  })
+
+  it('announces a part once an hour, across restarts', async () => {
+    const { deps, alerts, advance } = setup({ environments: async () => [{ id: 'prod', name: 'Prod' }] })
+    await new FlowAlertWatcher(deps).tick()
+    advance(FLOW_ALERT_INTERVAL_MS)
+    await new FlowAlertWatcher(deps).tick()
+    expect(alerts).toHaveLength(1)
+    advance(60 * 60_000)
+    await new FlowAlertWatcher(deps).tick()
+    expect(alerts).toHaveLength(2)
+  })
+
+  it('reads nothing while the modules are off, there is no profile or no live environment', async () => {
+    for (const over of [{ enabled: async () => false }, { activeProfileId: async () => null }, { environments: async () => [] }]) {
+      const { deps, read } = setup(over)
+      await new FlowAlertWatcher(deps).tick()
+      expect(read).not.toHaveBeenCalled()
+    }
+  })
+
+  it('keeps going when one read fails', async () => {
+    const { deps, alerts } = setup({
+      maps: async () => [summary('bad'), summary('good')],
+      environments: async () => [{ id: 'prod', name: 'Prod' }],
+      read: async (_p: string, _e: string, id: string) => {
+        if (id === 'bad') throw new Error('apm down')
+        return { ok: true as const, map: mapOf(id, limits), reading: readingOf(900) }
+      }
+    })
+    await new FlowAlertWatcher(deps).tick()
+    expect(alerts).toEqual(['good:prod:flowSlow'])
+  })
+
+  it('runs its first tick after 30 s, then every 5 minutes', async () => {
+    vi.useFakeTimers()
+    try {
+      const { deps, read } = setup({ environments: async () => [{ id: 'prod', name: 'Prod' }] })
+      const w = new FlowAlertWatcher(deps)
+      w.start()
+      await vi.advanceTimersByTimeAsync(FLOW_ALERT_FIRST_DELAY_MS - 1)
+      expect(read).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(read).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(FLOW_ALERT_INTERVAL_MS)
+      expect(read).toHaveBeenCalledTimes(2)
+      w.stop()
+      await vi.advanceTimersByTimeAsync(FLOW_ALERT_INTERVAL_MS)
+      expect(read).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

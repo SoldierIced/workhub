@@ -17,8 +17,13 @@ describe('navigation', () => {
   })
 
   it('keeps Workhub 1 keys and adds Sessions and Settings', () => {
-    const all = allNavItems({ flows: true, health: true, chatWatcher: true, automations: true })
+    const all = allNavItems({ flows: true, health: true, chatWatcher: true, automations: true, flowMaps: false })
     expect(all.map((i) => i.shortcut.key)).toEqual(['1', '2', '3', '4', '5', '6', '8', '0', ','])
+  })
+
+  it('shows Flow maps on ⌘7, next to Health, only while its module is on', () => {
+    expect(visibleNavItems({ ...NO_MODULES, flowMaps: true }).map((i) => [i.route, i.shortcut.key])).toEqual([['home', '1'], ['pullRequests', '2'], ['tickets', '3'], ['history', '6'], ['flowMaps', '7']])
+    expect(visibleNavItems({ ...NO_MODULES, flowMaps: true, health: true }).map((i) => i.route).slice(-2)).toEqual(['flowMaps', 'health'])
   })
 })
 

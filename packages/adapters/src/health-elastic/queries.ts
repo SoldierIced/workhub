@@ -2,6 +2,15 @@ import {
   median,
   trendStats,
   type ErrorGroup,
+  type FlowBaseline,
+  type FlowCodeCount,
+  type FlowHourPoint,
+  type FlowMeasure,
+  type FlowTiming,
+  type FlowTraceDoc,
+  type FlowTraceLog,
+  type FlowTraceSort,
+  type FlowTraceSummary,
   type HealthEnvironment,
   type K8sEvent,
   type LogLine,
@@ -643,4 +652,166 @@ export function parseWindowComparison(errors: Json, transactions: Json, newTypes
   }
   const since = comparisonWindows(now, hours).current[0]
   return { service, transaction, windowHours: hours, previous: stats('previous'), current: stats('current'), newErrorTypes: parseNewErrorTypes(newTypes, since) }
+}
+
+// Flow maps ------------------------------------------------------------------------------------
+
+/**
+ * One measure of a flow map in ONE request over the last 7 days, split by filter aggregations:
+ * `current` (the last `hours`: percentiles up to p99, failures, an hourly histogram and, for
+ * transactions, the results), `previous` (the `hours` before that) and `weekly` (all 7 days), the
+ * last two as baselines. Transactions are entry points (`transaction.name`), spans are the
+ * outgoing calls of a service to a destination (`span.destination.service.resource`); both carry
+ * `event.outcome`.
+ */
+export function flowMeasure(env: HealthEnvironment, measure: FlowMeasure, now: number, hours: number): EsRequest {
+  const span = hours * 3_600_000
+  const from = now - span
+  const week = now - 7 * 86_400_000
+  const duration = measure.type === 'apm.transaction' ? 'transaction.duration.us' : 'span.duration.us'
+  const what = measure.type === 'apm.transaction' ? [es.term('processor.event', 'transaction'), es.term('transaction.name', measure.transaction)] : [es.term('processor.event', 'span'), es.term('span.destination.service.resource', measure.destination)]
+  const query = es.filter([es.between(week, now), es.terms('service.environment', apmEnvironmentValues(env)), es.term('service.name', measure.service), ...what])
+  const latency = { percentiles: { field: duration, percents: [50, 95] } }
+  const failed = { filter: es.term('event.outcome', 'failure') }
+  const current: Record<string, unknown> = {
+    latency: { percentiles: { field: duration, percents: [50, 95, 99] } },
+    failed,
+    hourly: { date_histogram: { field: '@timestamp', fixed_interval: '1h', min_doc_count: 0, extended_bounds: { min: from, max: now } }, aggs: { latency } }
+  }
+  if (measure.type === 'apm.transaction') current.codes = { terms: { field: 'transaction.result', size: 6 } }
+  const aggs = {
+    current: { filter: es.between(from, now), aggs: current },
+    previous: { filter: es.between(from - span, from), aggs: { latency, failed } },
+    weekly: { filter: es.between(week, now), aggs: { latency, failed } }
+  }
+  return { index: env.apm.traces, body: es.aggregations(query, aggs) }
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100
+
+function parseFlowBaseline(bucket: Json): FlowBaseline {
+  const count = num(at(bucket, 'doc_count')) ?? 0
+  const p95 = percentileMs(at(bucket, 'latency'), 95) ?? 0
+  return { count, p50Ms: percentileMs(at(bucket, 'latency'), 50) ?? p95, p95Ms: p95, errorRate: (num(at(bucket, 'failed', 'doc_count')) ?? 0) / Math.max(count, 1) }
+}
+
+/** The timing of one measure over `hours`; `count` is the total hits of the window (summed from the hours). */
+export function parseFlowMeasure(response: Json, measure: FlowMeasure, hours = 24): FlowTiming {
+  const current = at(response, 'aggregations', 'current')
+  const hourly: FlowHourPoint[] = list(at(current, 'hourly', 'buckets')).map((b) => {
+    const count = num(at(b, 'doc_count')) ?? 0
+    return { at: num(at(b, 'key')) ?? 0, count, p50Ms: percentileMs(at(b, 'latency'), 50) ?? 0, p95Ms: percentileMs(at(b, 'latency'), 95) ?? 0 }
+  })
+  const count = hourly.reduce((s, h) => s + h.count, 0)
+  const p95 = percentileMs(at(current, 'latency'), 95) ?? 0
+  const failed = num(at(current, 'failed', 'doc_count')) ?? 0
+  const timing: FlowTiming = { count, p50Ms: percentileMs(at(current, 'latency'), 50) ?? p95, p95Ms: p95, errorRate: failed / Math.max(count, 1), failed, perMinute: round2(count / Math.max(hours * 60, 1)), hourly }
+  const p99 = percentileMs(at(current, 'latency'), 99)
+  if (p99 !== undefined) timing.p99Ms = p99
+  if (measure.type === 'apm.transaction') {
+    const codes: FlowCodeCount[] = list(at(current, 'codes', 'buckets')).flatMap((b) => {
+      const code = str(at(b, 'key'))
+      const n = num(at(b, 'doc_count')) ?? 0
+      return code && n > 0 ? [{ code, count: n }] : []
+    })
+    if (codes.length > 0) timing.codes = codes.sort((a, b) => b.count - a.count)
+  }
+  if (at(response, 'aggregations', 'previous') !== undefined) timing.previous = parseFlowBaseline(at(response, 'aggregations', 'previous'))
+  if (at(response, 'aggregations', 'weekly') !== undefined) timing.weekly = parseFlowBaseline(at(response, 'aggregations', 'weekly'))
+  return timing
+}
+
+const TS_FIELD = { field: '@timestamp', format: 'epoch_millis' }
+
+/** The APM errors of one trace, oldest first (needs the errors index). */
+export function flowTraceErrors(env: HealthEnvironment, traceId: string, limit: number): EsRequest {
+  const query = es.filter([es.term('trace.id', traceId), es.terms('service.environment', apmEnvironmentValues(env))])
+  return { index: env.apm.errors, body: { size: limit, track_total_hits: false, query, sort: [{ '@timestamp': 'asc' }], _source: false, fields: [TS_FIELD, 'service.name', 'error.exception.type', 'error.exception.message', 'error.log.message', 'error.culprit', 'error.grouping_name'] } }
+}
+
+export function parseFlowTraceErrors(response: Json): FlowTraceLog[] {
+  return list(at(response, 'hits', 'hits')).flatMap((hit): FlowTraceLog[] => {
+    const at_ = Number(field(hit, '@timestamp'))
+    if (!Number.isFinite(at_)) return []
+    const type = str(field(hit, 'error.exception.type'))
+    const message = clip(str(field(hit, 'error.exception.message')) ?? str(field(hit, 'error.log.message')) ?? str(field(hit, 'error.grouping_name')) ?? type ?? 'error', 400) ?? 'error'
+    const culprit = str(field(hit, 'error.culprit'))
+    return [{ at: at_, service: str(field(hit, 'service.name')) ?? 'unknown', level: 'error', message, ...(type ? { type } : {}), ...(culprit ? { culprit } : {}), source: 'apm.error' }]
+  })
+}
+
+/**
+ * Container log lines that mention a trace id. The line is an ECS JSON document serialized inside
+ * `message` and `trace.id` is not indexed there, so the id is matched as a phrase in the text.
+ */
+export function flowTraceContainerLogs(env: HealthEnvironment, traceId: string, limit: number, now: number): EsRequest {
+  const query = es.filter([es.between(now - 7 * 86_400_000, now + 3_600_000), { match_phrase: { message: traceId } }])
+  return { index: k8sIndex('containerLogs', env), body: { size: limit, track_total_hits: false, query, sort: [{ '@timestamp': 'asc' }], _source: false, fields: [TS_FIELD, 'message', 'kubernetes.container.name', 'log.level'] } }
+}
+
+export function parseFlowTraceContainerLogs(response: Json): FlowTraceLog[] {
+  return list(at(response, 'hits', 'hits')).flatMap((hit): FlowTraceLog[] => {
+    const at_ = Number(field(hit, '@timestamp'))
+    const raw = str(field(hit, 'message'))
+    if (!Number.isFinite(at_) || raw === undefined) return []
+    const container = str(field(hit, 'kubernetes.container.name'))
+    let doc: Json
+    try {
+      doc = JSON.parse(raw)
+    } catch {
+      doc = undefined
+    }
+    const isDoc = doc !== null && typeof doc === 'object' && !Array.isArray(doc)
+    const level = (isDoc ? str(at(doc, 'log', 'level')) : undefined) ?? str(field(hit, 'log.level'))
+    const text = isDoc ? str(at(doc, 'message')) ?? str(at(doc, 'err', 'message')) ?? raw : raw
+    const service = (isDoc ? str(at(doc, 'service', 'name')) : undefined) ?? container ?? 'unknown'
+    return [{ at: at_, service, ...(level ? { level } : {}), message: clip(text, 400) ?? '', source: 'logs' }]
+  })
+}
+
+/**
+ * Recent executions of a flow: the transactions of its entry point over the last `hours`, newest,
+ * slowest or failed-only (newest) first. A handful of hits, no aggregation.
+ */
+export function flowTraces(env: HealthEnvironment, entry: Extract<FlowMeasure, { type: 'apm.transaction' }>, now: number, hours: number, sort: FlowTraceSort, limit: number): EsRequest {
+  const from = now - hours * 3_600_000
+  const clauses = [es.between(from, now), es.terms('service.environment', apmEnvironmentValues(env)), es.term('service.name', entry.service), es.term('processor.event', 'transaction'), es.term('transaction.name', entry.transaction)]
+  if (sort === 'failed') clauses.push(es.term('event.outcome', 'failure'))
+  const order = sort === 'slowest' ? [{ 'transaction.duration.us': 'desc' }] : [{ '@timestamp': 'desc' }]
+  return { index: env.apm.traces, body: { size: limit, track_total_hits: false, query: es.filter(clauses), sort: order, _source: false, fields: ['trace.id', 'transaction.duration.us', 'event.outcome', TS_FIELD] } }
+}
+
+export function parseFlowTraces(response: Json): FlowTraceSummary[] {
+  const seen = new Set<string>()
+  return list(at(response, 'hits', 'hits')).flatMap((hit): FlowTraceSummary[] => {
+    const traceId = str(field(hit, 'trace.id'))
+    const at_ = Number(field(hit, '@timestamp'))
+    if (!traceId || seen.has(traceId) || !Number.isFinite(at_)) return []
+    seen.add(traceId)
+    const outcome = str(field(hit, 'event.outcome'))
+    return [{ traceId, at: at_, durationMs: (num(field(hit, 'transaction.duration.us')) ?? 0) / 1000, outcome: outcome === 'failure' ? 'failure' : outcome === 'success' ? 'success' : 'unknown' }]
+  })
+}
+
+/** Every transaction and span of one trace, oldest first, with only the fields matching needs. */
+export function flowTraceDocs(env: HealthEnvironment, traceId: string, limit = 2000): EsRequest {
+  const query = es.filter([es.term('trace.id', traceId), es.terms('processor.event', ['transaction', 'span'])])
+  return {
+    index: env.apm.traces,
+    body: { size: limit, track_total_hits: false, query, sort: [{ '@timestamp': 'asc' }], _source: false, fields: ['processor.event', 'service.name', 'transaction.name', 'transaction.duration.us', 'span.name', 'span.duration.us', 'span.destination.service.resource', 'event.outcome', TS_FIELD] }
+  }
+}
+
+export function parseFlowTraceDocs(response: Json): FlowTraceDoc[] {
+  return list(at(response, 'hits', 'hits')).flatMap((hit): FlowTraceDoc[] => {
+    const event = str(field(hit, 'processor.event'))
+    const service = str(field(hit, 'service.name'))
+    const at_ = Number(field(hit, '@timestamp'))
+    if ((event !== 'transaction' && event !== 'span') || !service || !Number.isFinite(at_)) return []
+    const name = str(field(hit, event === 'transaction' ? 'transaction.name' : 'span.name')) ?? ''
+    const durationMs = (num(field(hit, event === 'transaction' ? 'transaction.duration.us' : 'span.duration.us')) ?? 0) / 1000
+    const destination = event === 'span' ? str(field(hit, 'span.destination.service.resource')) : undefined
+    const outcome = str(field(hit, 'event.outcome'))
+    return [{ event, service, name, ...(destination ? { destination } : {}), at: at_, durationMs, ...(outcome ? { outcome } : {}) }]
+  })
 }

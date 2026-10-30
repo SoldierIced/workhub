@@ -3,7 +3,7 @@ import { fillDefaultFolders, parseConfig, planWorkhub1Import, profileDefaultFold
 import { config } from './fixtures'
 
 const HOME = '/Users/ana'
-const profile = (patch: Partial<Profile> = {}): Profile => ({ id: 'acme', name: 'Acme', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false }, ...patch })
+const profile = (patch: Partial<Profile> = {}): Profile => ({ id: 'acme', name: 'Acme', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }, ...patch })
 
 describe('profileDefaultFolder', () => {
   it('is the default folder, home expanded, even outside the profile folders', () => {

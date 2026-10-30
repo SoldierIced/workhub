@@ -16,7 +16,8 @@ const KINDS = [
   ['notifySlack', 'settings.notifySlack', 'settings.notifySlackHint'],
   ['notifyAutomations', 'settings.notifyAutomations', 'settings.notifyAutomationsHint'],
   ['notifyTickets', 'settings.notifyTickets', 'settings.notifyTicketsHint'],
-  ['notifyHealth', 'settings.notifyHealth', 'settings.notifyHealthHint']
+  ['notifyHealth', 'settings.notifyHealth', 'settings.notifyHealthHint'],
+  ['notifyFlowMaps', 'settings.notifyFlowMaps', 'settings.notifyFlowMapsHint']
 ] as const satisfies readonly (readonly [string, MessageKey, MessageKey])[]
 
 /** Settings → General: the switches of the notifications that are not about one session, and the pause. */

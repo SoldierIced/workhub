@@ -37,6 +37,7 @@ import { AutomationsScreen } from './screens/AutomationsScreen'
 import { SlackScreen } from './screens/SlackScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
 import { HealthScreen } from './screens/HealthScreen'
+import { FlowMapsScreen } from './screens/flowMaps/FlowMapsScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
@@ -368,6 +369,11 @@ function Shell() {
     }
   }
 
+  // A flow map window asked for a Claude session about its map.
+  const investigateRef = useRef(investigate)
+  investigateRef.current = investigate
+  useEffect(() => window.hub.flowMaps.onAsk((draft, folder) => void investigateRef.current(draft, folder)), [])
+
   // A pull request or ticket window (or screen) asked for a session: open it, or start one with a drafted, unsent prompt.
   const linkDeps = useRef<Pick<IntentDeps, 'agents' | 'profile' | 'sessions' | 'locale'>>({ agents, profile, sessions, locale })
   linkDeps.current = { agents, profile, sessions, locale }
@@ -471,6 +477,8 @@ function Shell() {
                 />
               ) : route === 'health' ? (
                 <HealthScreen profile={profile} projectFolders={projectFolders} onOpenSettings={openSettings} onInvestigate={investigate} />
+              ) : route === 'flowMaps' ? (
+                <FlowMapsScreen profile={profile} onOpenSettings={openSettings} onInvestigate={investigate} />
               ) : route === 'tickets' ? (
                 <TicketsScreen profile={profile} sessions={sessions} onOpenSettings={openSettings} />
               ) : route === 'slack' ? (

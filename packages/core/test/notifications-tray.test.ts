@@ -43,6 +43,8 @@ describe('notification policy', () => {
     expect(shouldNotify('slack', options({ notifySlack: false }), now)).toBe(false)
     expect(shouldNotify('tickets', options({ notifyTickets: false }), now)).toBe(false)
     expect(shouldNotify('health', options({ notifyHealth: false }), now)).toBe(false)
+    expect(shouldNotify('flowMaps', options({ notifyFlowMaps: false }), now)).toBe(false)
+    expect(shouldNotify('flowMaps', options({ notifyHealth: false }), now)).toBe(true)
     expect(shouldNotify('automations', options({ notifyAutomations: false }), now)).toBe(false)
     expect(shouldNotify('replied', options({ notifyReplied: false }), now)).toBe(false)
     expect(shouldNotify('aiReview', options({ notifyNeedsAnswer: false }), now)).toBe(false)
@@ -70,6 +72,7 @@ describe('notification policy', () => {
 
   it('recognizes kinds', () => {
     expect(isNotificationKind('health')).toBe(true)
+    expect(isNotificationKind('flowMaps')).toBe(true)
     expect(isNotificationKind('nope')).toBe(false)
     expect(isNotificationKind(3)).toBe(false)
   })

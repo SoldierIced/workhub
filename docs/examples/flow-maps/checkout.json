@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "id": "checkout",
+  "name": "Checkout",
+  "description": "A card payment from the shop app to the acquirer, then fulfilment through the order queue.",
+  "phases": [
+    {
+      "label": "Checkout · sync",
+      "fromColumn": 0,
+      "toColumn": 2
+    },
+    {
+      "label": "Fulfilment · async",
+      "fromColumn": 3,
+      "toColumn": 4
+    }
+  ],
+  "lanes": [
+    {
+      "id": "app",
+      "label": "01 / App"
+    },
+    {
+      "id": "core",
+      "label": "02 / Core services"
+    },
+    {
+      "id": "ex",
+      "label": "EX / External and queues",
+      "kind": "exception"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "bff",
+      "lane": "app",
+      "label": "shop-bff",
+      "subtitle": "POST /checkout",
+      "kind": "app",
+      "measure": {
+        "type": "apm.transaction",
+        "service": "shop-bff",
+        "transaction": "POST /checkout"
+      }
+    },
+    {
+      "id": "orders",
+      "lane": "core",
+      "label": "orders",
+      "subtitle": "place order",
+      "kind": "orchestrator",
+      "measure": {
+        "type": "apm.transaction",
+        "service": "orders",
+        "transaction": "POST /orders"
+      }
+    },
+    {
+      "id": "payments",
+      "lane": "core",
+      "label": "payments",
+      "subtitle": "authorize card",
+      "measure": {
+        "type": "apm.transaction",
+        "service": "payments",
+        "transaction": "POST /payments/authorize"
+      }
+    },
+    {
+      "id": "acquirer",
+      "lane": "ex",
+      "label": "Acquirer",
+      "subtitle": "card network",
+      "kind": "external"
+    },
+    {
+      "id": "events",
+      "lane": "ex",
+      "label": "order-events",
+      "subtitle": "topic",
+      "kind": "queue"
+    },
+    {
+      "id": "fulfilment",
+      "lane": "core",
+      "label": "fulfilment",
+      "subtitle": "consumer",
+      "kind": "worker",
+      "measure": {
+        "type": "apm.transaction",
+        "service": "fulfilment",
+        "transaction": "consume order-events"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "bff",
+      "to": "orders",
+      "emphasis": true,
+      "measure": {
+        "type": "apm.span",
+        "service": "shop-bff",
+        "destination": "orders:8080"
+      }
+    },
+    {
+      "from": "orders",
+      "to": "payments",
+      "measure": {
+        "type": "apm.span",
+        "service": "orders",
+        "destination": "payments:8080"
+      }
+    },
+    {
+      "from": "payments",
+      "to": "acquirer",
+      "label": "authorize",
+      "measure": {
+        "type": "apm.span",
+        "service": "payments",
+        "destination": "api.acquirer.example"
+      }
+    },
+    {
+      "from": "acquirer",
+      "to": "payments",
+      "label": "webhook",
+      "kind": "async"
+    },
+    {
+      "from": "orders",
+      "to": "events",
+      "label": "publish",
+      "kind": "async",
+      "measure": {
+        "type": "apm.span",
+        "service": "orders",
+        "destination": "sns"
+      }
+    },
+    {
+      "from": "events",
+      "to": "fulfilment",
+      "label": "queue wait",
+      "kind": "wait"
+    }
+  ],
+  "stages": [
+    {
+      "id": "placed",
+      "label": "Placed"
+    },
+    {
+      "id": "paid",
+      "label": "Paid"
+    },
+    {
+      "id": "shipped",
+      "label": "Shipped"
+    }
+  ],
+  "stagesLane": "core",
+  "alerts": {
+    "p95Ms": 3000,
+    "errorRate": 0.05,
+    "parts": {
+      "orders": {
+        "p95Ms": 1500
+      }
+    }
+  }
+}

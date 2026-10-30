@@ -3,7 +3,7 @@ import type { HealthSettings } from '../health/types'
 import type { ConnectionKind } from './connection'
 
 /** Optional modules (PLAN section 4): each one adds its screens only when enabled in a profile. */
-export const OPTIONAL_MODULES = ['flows', 'health', 'chatWatcher', 'automations'] as const
+export const OPTIONAL_MODULES = ['flows', 'health', 'chatWatcher', 'automations', 'flowMaps'] as const
 export type OptionalModule = (typeof OPTIONAL_MODULES)[number]
 export type ModuleToggles = Record<OptionalModule, boolean>
 
@@ -16,7 +16,7 @@ export type OfferedModule = Exclude<OptionalModule, (typeof RETIRED_MODULES)[num
 /** The optional modules a profile can turn on today (Settings → Profiles → Modules). */
 export const OFFERED_MODULES: readonly OfferedModule[] = OPTIONAL_MODULES.filter((m): m is OfferedModule => !(RETIRED_MODULES as readonly string[]).includes(m))
 
-export const NO_MODULES: ModuleToggles = { flows: false, health: false, chatWatcher: false, automations: false }
+export const NO_MODULES: ModuleToggles = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }
 
 /**
  * A work context: which connection serves each kind, which agent accounts it uses and which

@@ -3,6 +3,7 @@ import { aiReviewEn } from './aiReview.en'
 import { sessionsUxEn } from './sessionsUx.en'
 import { sessionMonitorEn } from './sessionMonitor.en'
 import { healthEn } from './health.en'
+import { flowMapsEn } from './flowMaps.en'
 import { healthPromptsEn } from './healthPrompts.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
@@ -124,12 +125,15 @@ export const en = {
 
   'topNav.label': 'Screens',
   'topNav.history': 'History',
+  'topNav.pullRequests': 'PRs',
+  'topNav.flowMaps': 'Maps',
   'topNav.slackUnread.one': '{count} Slack thread with new replies',
   'topNav.slackUnread.other': '{count} Slack threads with new replies',
   'topNav.prsToReview.one': '{count} pull request waiting for your review',
   'topNav.prsToReview.other': '{count} pull requests waiting for your review',
   'topNav.health': 'Health: {state}',
   'toolbar.newSession': 'New session',
+  'toolbar.newSessionShort': 'New',
   'toolbar.chooseAgent': 'Choose the agent for a new session',
   'toolbar.newSessionWith': 'New session with',
   'toolbar.newSessionIn': 'New {agent} session in {folder}',
@@ -429,6 +433,7 @@ export const en = {
   ...updatesEn,
   ...setupEn,
   ...healthEn,
+  ...flowMapsEn,
   ...healthPromptsEn,
   ...prEventsEn,
   ...linksEn,

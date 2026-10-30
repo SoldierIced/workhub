@@ -101,13 +101,14 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
             title={tip}
             data-route={item.route}
             className={cn(
-              'relative inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md text-sm whitespace-nowrap transition-colors duration-150',
+              'relative inline-flex h-8 shrink-0 items-center rounded-md text-sm whitespace-nowrap transition-colors duration-150',
+              level >= 1 ? 'gap-1' : 'gap-1.5',
               !labelled ? 'px-2' : level >= 1 ? 'px-1.5' : 'px-2.5',
               active ? 'bg-accent-soft font-medium text-text' : 'text-muted hover:bg-surface-hover hover:text-text'
             )}
           >
             <Icon className={cn('size-4 shrink-0', active ? 'text-accent' : 'text-subtle')} aria-hidden />
-            {labelled && <span>{t(topNavLabel(item.route))}</span>}
+            {labelled && <span>{t(topNavLabel(item.route, level >= 1))}</span>}
             {badge && <span className={cn('inline-flex items-center', !labelled && 'pointer-events-none absolute top-0 right-0 scale-90')}>{badge}</span>}
           </button>
         )

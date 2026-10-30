@@ -143,7 +143,22 @@ const api: HubApi = {
   health: {
     get: (profileId, force) => ipcRenderer.invoke('health:get', profileId, force),
     details: (profileId, environmentId, request, force) => ipcRenderer.invoke('health:details', profileId, environmentId, request, force),
+    flowMaps: (profileId) => ipcRenderer.invoke('health:flowMaps', profileId),
+    flowMap: (profileId, environmentId, mapId, hours, force) => ipcRenderer.invoke('health:flowMap', profileId, environmentId, mapId, hours, force),
+    flowTraces: (profileId, environmentId, mapId, hours, sort) => ipcRenderer.invoke('health:flowTraces', profileId, environmentId, mapId, hours, sort),
+    flowTrace: (profileId, environmentId, mapId, traceId) => ipcRenderer.invoke('health:flowTrace', profileId, environmentId, mapId, traceId),
+    flowTraceLogs: (profileId, environmentId, mapId, traceId) => ipcRenderer.invoke('health:flowTraceLogs', profileId, environmentId, mapId, traceId),
     test: (connection, secret, indexToProbe) => ipcRenderer.invoke('health:test', connection, secret, indexToProbe)
+  },
+  flowMaps: {
+    folder: () => ipcRenderer.invoke('flowMaps:folder'),
+    reveal: () => ipcRenderer.send('flowMaps:reveal'),
+    importFiles: () => ipcRenderer.invoke('flowMaps:import'),
+    remove: (id) => ipcRenderer.invoke('flowMaps:remove', id),
+    openWindow: (profileId, environmentId, mapId) => ipcRenderer.send('flowMaps:openWindow', profileId, environmentId, mapId),
+    copyImage: (dataUrl) => ipcRenderer.invoke('flowMaps:copyImage', dataUrl),
+    ask: (draft, folder) => ipcRenderer.send('flowMaps:ask', draft, folder),
+    onAsk: (cb) => subscribe<[string, string | undefined]>('flowMaps:askInMain', cb)
   },
   prEvents: {
     ready: () => ipcRenderer.send('prEvents:ready'),
@@ -190,6 +205,7 @@ const api: HubApi = {
     opinion: (reviewId, text) => ipcRenderer.invoke('aiReview:opinion', reviewId, text),
     stop: (reviewId) => ipcRenderer.invoke('aiReview:stop', reviewId),
     dismissHold: (devIdentity) => ipcRenderer.invoke('aiReview:dismissHold', devIdentity),
+    setSessionAuto: (sessionId, on) => ipcRenderer.invoke('aiReview:setSessionAuto', sessionId, on),
     loopOptions: (sessionId) => ipcRenderer.invoke('agentReview:options', sessionId),
     startLoop: (sessionId, request) => ipcRenderer.invoke('agentReview:start', sessionId, request),
     loops: () => ipcRenderer.invoke('agentReview:loops'),
@@ -219,7 +235,8 @@ const api: HubApi = {
   },
   systemNotifications: {
     status: () => ipcRenderer.invoke('systemNotifications:status'),
-    openSystemSettings: () => ipcRenderer.send('systemNotifications:openSettings')
+    openSystemSettings: () => ipcRenderer.send('systemNotifications:openSettings'),
+    test: (body) => ipcRenderer.invoke('systemNotifications:test', body)
   },
   localReview: {
     load: (sessionId, scope) => ipcRenderer.invoke('localReview:load', sessionId, scope),

@@ -5,7 +5,7 @@ import { buildTracker, TicketService } from '../src/main/tickets-service'
 
 const jira: Connection = { id: 'work-jira', kind: 'tracker', provider: 'jira', endpoint: 'https://acme.example.com', secretRef: 'connection/work-jira', settings: { email: 'dana@example.com', projectKeys: 'ABC, WEB', ignoredStatuses: 'Blocked' } }
 const linear: Connection = { id: 'lin', kind: 'tracker', provider: 'linear', secretRef: 'connection/lin', settings: {} }
-const profile = (tracker?: string): Profile => ({ id: 'work', name: 'Work', connections: tracker ? { tracker } : {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } })
+const profile = (tracker?: string): Profile => ({ id: 'work', name: 'Work', connections: tracker ? { tracker } : {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } })
 
 function service(opts: { connections?: Connection[]; tracker?: string; secrets?: Record<string, string>; demo?: boolean; http?: HttpClient }) {
   const config: WorkhubConfig = { ...emptyConfig(), connections: opts.connections ?? [], profiles: [profile(opts.tracker)], activeProfileId: 'work' }

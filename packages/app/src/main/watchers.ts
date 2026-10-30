@@ -1,5 +1,5 @@
-import { admitHealthAlerts, healthAlerts, ticketChanges, worstHealth, type HealthAlert, type HealthBaseline, type HealthState, type KnownTickets, type Ticket, type TicketChange } from '@workhub/core'
-import type { HealthView } from '../shared/health-api'
+import { admitFlowAlerts, admitHealthAlerts, flowAlertsOf, hasFlowAlerts, type FlowAlert, healthAlerts, ticketChanges, worstHealth, type HealthAlert, type HealthBaseline, type HealthState, type KnownTickets, type Ticket, type TicketChange } from '@workhub/core'
+import type { FlowMapResult, FlowMapSummary, HealthView } from '../shared/health-api'
 import type { TicketsResult } from '../shared/tickets-api'
 
 /** How often the watchers look; Health itself only reads again once its refresh interval passed. */
@@ -83,6 +83,100 @@ export class HealthWatcher {
       if (JSON.stringify(this.last) !== before) this.deps.changed()
     } catch {
       // Health reports its own failures as states; anything else waits for the next tick.
+    }
+  }
+}
+
+/** Flow-map alerts are checked this often: every map with limits costs APM queries. */
+export const FLOW_ALERT_INTERVAL_MS = 5 * 60_000
+/** The first check waits this long after launch so startup is not slowed. */
+export const FLOW_ALERT_FIRST_DELAY_MS = 30_000
+
+export interface FlowAlertWatcherDeps {
+  activeProfileId: () => Promise<string | null>
+  /** Whether the profile has both the Flow maps and Health modules on. */
+  enabled: (profileId: string) => Promise<boolean>
+  /** The environments that can be measured: empty unless Health is set up and live. */
+  environments: (profileId: string) => Promise<{ id: string; name: string }[]>
+  maps: (profileId: string) => Promise<FlowMapSummary[]>
+  /** One map measured over `hours` (HealthService caches readings for a while). */
+  read: (profileId: string, environmentId: string, mapId: string, hours: number) => Promise<FlowMapResult>
+  alert: (alert: FlowAlert) => void
+  cooldowns?: { load(): Record<string, number>; save(firedAt: Record<string, number>): void }
+  now?: () => number
+  intervalMs?: number
+}
+
+/**
+ * Reads the flow maps that ask for alerts over the last hour and announces the parts above their
+ * limits, each at most once an hour (kept across launches). A failing map never stops the others.
+ */
+export class FlowAlertWatcher {
+  private timer: ReturnType<typeof setInterval> | null = null
+  private first: ReturnType<typeof setTimeout> | null = null
+  private firedAt: Record<string, number>
+  private running = false
+
+  constructor(private readonly deps: FlowAlertWatcherDeps) {
+    this.firedAt = deps.cooldowns?.load() ?? {}
+  }
+
+  start(): void {
+    if (this.timer || this.first) return
+    const every = this.deps.intervalMs ?? FLOW_ALERT_INTERVAL_MS
+    this.first = setTimeout(() => {
+      this.first = null
+      void this.tick()
+      this.timer = setInterval(() => void this.tick(), every)
+      this.timer.unref?.()
+    }, FLOW_ALERT_FIRST_DELAY_MS)
+    this.first.unref?.()
+  }
+
+  stop(): void {
+    if (this.first) clearTimeout(this.first)
+    if (this.timer) clearInterval(this.timer)
+    this.first = null
+    this.timer = null
+  }
+
+  async tick(): Promise<void> {
+    if (this.running) return
+    this.running = true
+    try {
+      const profileId = await this.deps.activeProfileId()
+      if (!profileId || !(await this.deps.enabled(profileId))) return
+      const environments = await this.deps.environments(profileId)
+      if (environments.length === 0) return
+      const maps = await this.deps.maps(profileId)
+      const found: FlowAlert[] = []
+      for (const summary of maps) {
+        if (summary.error) continue
+        const targets = summary.environmentId ? environments.filter((e) => e.id === summary.environmentId) : environments
+        for (const env of targets) {
+          try {
+            const result = await this.deps.read(profileId, env.id, summary.id, 1)
+            if (!result.ok || !result.reading || !hasFlowAlerts(result.map)) continue
+            found.push(...flowAlertsOf(result.map, result.reading, env))
+          } catch {
+            // This map in this environment waits for the next tick.
+          }
+        }
+      }
+      const { admitted, firedAt } = admitFlowAlerts(found, this.firedAt, (this.deps.now ?? Date.now)())
+      this.firedAt = firedAt
+      this.deps.cooldowns?.save(firedAt)
+      for (const a of admitted) {
+        try {
+          this.deps.alert(a)
+        } catch {
+          // A failed notification does not hide the next one.
+        }
+      }
+    } catch {
+      // Anything unexpected waits for the next tick.
+    } finally {
+      this.running = false
     }
   }
 }
