@@ -7,6 +7,9 @@
  * When it replaces Workhub 1, set productName to 'Workhub' and keep the appId stable from then on:
  * it keys the app's settings, keychain items and (on Windows) upgrade identity.
  */
+import { realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 export const BRAND = {
   productName: 'Workhub 2',
   appId: 'io.github.soldiericed.workhub2',
@@ -16,8 +19,17 @@ export const BRAND = {
   repo: { owner: 'SoldierIced', name: 'workhub' }
 }
 
-// `node scripts/brand.mjs productName` prints one field, for the shell scripts.
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+// `node scripts/brand.mjs productName` prints one field, for the shell scripts. Node resolves the
+// main module to its real path, so the comparison does too: invoked through a symlinked folder the
+// two paths would otherwise differ and the script would print nothing.
+const invokedAsMain = (() => {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+  } catch {
+    return false
+  }
+})()
+if (invokedAsMain) {
   const key = process.argv[2]
   const value = key === 'repo' ? `${BRAND.repo.owner}/${BRAND.repo.name}` : BRAND[key]
   if (typeof value !== 'string') {
