@@ -1,6 +1,6 @@
 {
   "name": "@workhub/app",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-alpha.5",
   "private": true,
   "description": "Workhub 2 Electron shell: main process, preload bridge and React renderer.",
   "homepage": "https://github.com/SoldierIced/workhub",
