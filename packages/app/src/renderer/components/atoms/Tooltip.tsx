@@ -2,9 +2,19 @@ import { Tooltip as RTooltip } from 'radix-ui'
 import type { ReactElement, ReactNode } from 'react'
 import { cn } from '../../lib/cn'
 
-/** Wrap the app once; tooltips then share one delay. */
+/**
+ * Wrap the app once; tooltips then share one delay. The bubble is never hoverable: it closes as
+ * soon as the pointer leaves its trigger. A hoverable bubble kept itself open while the pointer sat
+ * on it, which looped on the session rows (the hover shows the row's actions, the name button
+ * shrinks, the bubble anchored to it jumps under the pointer, the row loses its hover and grows
+ * back, and so on).
+ */
 export function TooltipProvider({ children }: { children: ReactNode }) {
-  return <RTooltip.Provider delayDuration={400}>{children}</RTooltip.Provider>
+  return (
+    <RTooltip.Provider delayDuration={400} disableHoverableContent>
+      {children}
+    </RTooltip.Provider>
+  )
 }
 
 /**
