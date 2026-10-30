@@ -67,26 +67,68 @@ export function afterVerdict(verdict: ReviewVerdict | null, round: number, maxRo
   return round >= maxRounds ? 'maxRounds' : 'fixing'
 }
 
-/** What the reviewer checks beyond the brief: the brief is the author's view and can miss things. */
-const REVIEW_CHECKS = [
-  '## What to check beyond the brief',
-  'The brief is the author\'s view of the work; do not take its claims about scope as proven.',
-  '1. Other open pull requests: per repository, list the open pull requests (e.g. `gh pr list --state open`) and look at the diffs of those that touch the same files or the same deploy config (charts, pipelines, infrastructure). Report any conflict, or any change that would undo a safeguard this work relies on.',
-  '2. Automated tests: new runtime behavior (startup steps, migrations, jobs, endpoints, config) needs an automated test in the repository. Manual runs or local simulations that do not live in the repository are evidence for the review, not a replacement for the test: report the gap.',
-  '3. Necessity: for every class, file or registration added or changed, ask whether it is still needed. Compare it with the framework\'s default behavior, not only with similar code in the codebase, and report code that only repeats the default.',
-  '4. Hygiene: report it even when small, e.g. SQL `INSERT` without an explicit column list, grants or settings that a script applies but its rollback does not undo, `SELECT *` in migrations, raw SQL built by string interpolation.',
-  '5. Pull request context: if a pull request exists, read its description (rollback plan, deploy steps) and its checks (CI, static analysis) and review them as part of the change.'
+/**
+ * The reviewer's role: the one pass the change gets. The brief is the author's view: useful to
+ * find things, never proof. Each item below comes from a finding a later human or agent review
+ * made that the loop's reviewer had missed (defects in pre-existing code the change now runs,
+ * the real database role, safeguards that do not cover every call, "not covered" items that are
+ * reachable, code that repeats a framework default, SQL hygiene).
+ */
+const REVIEW_ROLE = [
+  'You are a senior engineer doing the ONE review this change gets before people see it. The goal: after your pass, no other reviewer (human or agent, reading the full repository with the pull request open) finds anything you did not report. Be exhaustive on substance in this single pass; do not pad with style.',
+  'Read the diffs and any file you need, and run only commands that change nothing (git log/diff/show, rg, gh pr list/view/diff). Do not edit files, commit, push, comment or post anywhere: your only output is the review.'
 ].join('\n')
 
-const ANSWER_FORMAT = [
-  '## How to answer',
-  '1. One short paragraph: what the change does and your overall assessment.',
-  '2. Findings ranked by severity: **blocker**, **major**, **minor**, **nit**. For each: `path/to/file:line`, the problem, why it matters and a concrete fix.',
-  '3. Do not invent findings. Do not report pure style preferences (naming taste, formatting a formatter would handle), but do report hygiene and maintainability issues, at least as nits.',
-  '4. End your reply with exactly one verdict line, as its last line:',
-  '   - `VERDICT: APPROVED` when nothing must change before merging (nits are allowed);',
-  '   - `VERDICT: CHANGES_REQUESTED` when at least one finding must be fixed.'
+const BRIEF_NOTE = 'The author wrote this for you. It is the author\'s view: useful for orientation, but none of its claims (scope, "not covered", "verified", test results, simulation results) count as proven. Re-derive what matters from the code, and say where the brief does not match it.'
+
+const REVIEW_METHOD = [
+  '## How to review (do all of it, in this order)',
+  '1. **Read the full diff**, then every changed file in full, not only the hunks.',
+  '2. **Trace the new runtime path end to end.** For each new behavior (a startup step, a migration run, a job, an endpoint, a config switch), list every piece of code it executes at runtime, including pre-existing code the diff does not touch: existing migrations in the order they run, the DI registrations involved, the startup order in the host, the chart or deploy config that decides when the process counts as ready. Read all of it. A defect in pre-existing code that the new behavior now reaches is a finding against this change, not "out of scope".',
+  '3. **Run it in your head under the real identity.** Determine who runs the code in each environment (database role, service account, superuser or not, owner or not) and check every statement, DDL and privilege against that identity. Evidence produced under another identity (tests or simulations run as superuser or as the owner) does not prove it works under the real one: say so and report what is unproven.',
+  '4. **Check every safeguard for coverage and ordering.** For each timeout, lock, probe, retry, try/finally, cancellation token or rollout strategy added: which calls does it cover, which calls on the same path happen before it is set or after it is reset, and what happens on the failure path (an exception before the safeguard, a pooled connection returned with a changed setting, defaults left in place).',
+  '5. **Re-examine the author\'s "not covered", "left on purpose", "unrelated" and "inferred" items one by one.** If the new behavior makes the item reachable, or the change depends on the inference, it is a finding with a severity, not a note.',
+  '6. **Tests.** New runtime behavior (startup steps, migrations, jobs, endpoints, config) needs an automated test in the repository that fails when it breaks. For each existing or new test, state what it would NOT catch (privileges, data shape, ordering, timing). Manual runs and local simulations that do not live in the repository are evidence for the review, not a replacement.',
+  '7. **Necessity.** For every class, file, registration or option added or changed, compare it with the framework\'s default behavior (not only with similar code in the codebase) and report what only repeats the default.',
+  '8. **Deploy and rollback.** Read the chart, pipeline and any one-off script as part of the change: what the rollout does while old and new instances overlap, what a failed start does to the service, and whether every action a script performs (grants, ownership, default privileges, memberships) has a matching, documented rollback.',
+  '9. **Hygiene, as nits at least:** SQL `INSERT` without an explicit column list, `SELECT *`, raw SQL built by interpolation, obsolete APIs, comments that no longer match the code, tokens or parameters that can never fire.',
+  '10. **Related work.** Per repository, list the open pull requests (e.g. `gh pr list --state open`) and read the diffs of those that touch the same files or the same deploy config (charts, pipelines, infrastructure). Report any conflict, or any change that would undo a safeguard this work relies on. If you cannot list them, name the files or deploy config another in-flight change could conflict with, so the author checks.',
+  '11. **Pull request context.** If a pull request exists, read its description (rollback plan, deploy steps) and its checks (CI, static analysis) and review them as part of the change.'
 ].join('\n')
+
+/** Answered item by item: a reviewer that must write "OK, file X" for each one looks where it would otherwise skim. */
+const REVIEW_CHECKLIST = [
+  '## Checklist (answer every item explicitly in a section "## Checklist", one line each: OK / FINDING n / N/A, with the file you looked at)',
+  'C1. Every added or changed class, factory, service registration or option: does it differ from what the framework does by default? Name the default you compared with.',
+  'C2. Every SQL `INSERT`: explicit column list?',
+  'C3. Every `SELECT *`, raw SQL by interpolation, obsolete API, misleading comment, token or parameter that can never fire?',
+  'C4. Every grant, membership, ownership change, default privilege or setting a script applies: is its reversal in the documented rollback?',
+  'C5. Every safeguard (timeout, lock, probe, retry, try/finally, cancellation): which calls on the same path are outside it?',
+  'C6. Every pre-existing file the new runtime path executes (migrations in order, startup, DI): read and checked under the real identity?',
+  'C7. Every item the author lists as not covered, inferred, unrelated or left on purpose: reachable now? severity assigned?',
+  'C8. New runtime behavior: automated test in the repository? what would it not catch?',
+  'C9. Other open pull requests that touch the same files or deploy config: listed and read, or the conflict-prone files named?',
+  'A checklist item answered OK without naming the file or default you compared is a miss.'
+].join('\n')
+
+const ANSWER_LANGUAGE: Record<string, string> = {
+  en: 'Write in English.',
+  es: 'Write in Spanish (rioplatense, neutral and professional). File paths, identifiers, the checklist ids and the verdict line stay as they are.'
+}
+
+const answerFormat = (language: string) =>
+  [
+    '## How to answer',
+    ANSWER_LANGUAGE[language] ?? ANSWER_LANGUAGE.en,
+    '1. One short paragraph: what the change does and your overall assessment.',
+    '2. **Evidence**: the files you read in full (paths), the files you only skimmed, and what you could not verify and why. "I did not check X" is a valid and useful line.',
+    '3. Findings ranked by severity: **blocker**, **major**, **minor**, **nit**. For each: `path/to/file:line`, the problem, why it matters (what breaks, when, for whom) and a concrete fix. Severity is about consequence, not about whether the author already mentioned it: a documented risk that can take the service down is still a major.',
+    '4. The checklist section, one line per item.',
+    '5. Do not invent findings and do not report pure taste (naming, formatting a formatter would handle). Do not downgrade a finding because it lives in pre-existing code that the change now executes.',
+    '6. End your reply with exactly one verdict line, as its last line:',
+    '   - `VERDICT: APPROVED` when nothing must change before merging (nits are allowed);',
+    '   - `VERDICT: CHANGES_REQUESTED` when at least one finding must be fixed.'
+  ].join('\n')
 
 const roundLine = (round: number, maxRounds: number) =>
   round >= maxRounds ? `This is round ${round} of ${maxRounds}, the last one: there is no re-review after it.` : `This is round ${round} of at most ${maxRounds}: your findings go to the author, who fixes them and answers, and you then review again.`
@@ -96,17 +138,20 @@ export interface LoopReviewerPromptInput {
   /** The reviewed session's name, for the first line (it names the reviewer session in the sidebar). */
   sessionTitle?: string
   maxRounds: number
+  /** Language of the review text (`en` when unset); paths, ids and the verdict line stay in English. */
+  language?: string
 }
 
-/** The reviewer's first prompt: its role, the author's brief and the answer format with the verdict line. */
+/** The reviewer's first prompt: its role, the author's brief, the method and checklist, and the answer format with the verdict line. */
 export function buildLoopReviewerPrompt(input: LoopReviewerPromptInput): string {
   const title = input.sessionTitle?.trim().split('\n')[0]?.slice(0, 120)
   return [
     `Review: ${title || 'work of another agent'}`,
-    'You are a senior engineer reviewing another agent\'s work. The author wrote the brief below for you: it names the repositories, branches, commits and pull requests to review and how to see the diffs. Read the diffs and any file you need, but do not edit files, commit, push or run commands that change anything: your only output is the review.',
-    `## Review brief (from the author)\n${BRIEF_OPEN}\n${input.brief.trim()}\n${BRIEF_CLOSE}`,
-    REVIEW_CHECKS,
-    ANSWER_FORMAT,
+    REVIEW_ROLE,
+    `## Review brief (from the author)\n${BRIEF_NOTE}\n${BRIEF_OPEN}\n${input.brief.trim()}\n${BRIEF_CLOSE}`,
+    REVIEW_METHOD,
+    REVIEW_CHECKLIST,
+    answerFormat(input.language ?? 'en'),
     roundLine(1, input.maxRounds)
   ].join('\n\n')
 }
@@ -134,14 +179,15 @@ export function buildAuthorFinalPrompt(input: { review: string; reviewer: string
 }
 
 /** The author's answer as the reviewer gets it: review again, same format, same verdict line. */
-export function buildReReviewPrompt(input: { reply: string; round: number; maxRounds: number }): string {
+export function buildReReviewPrompt(input: { reply: string; round: number; maxRounds: number; language?: string }): string {
   const reply = input.reply.trim() || '(the author replied with no text)'
   return [
     'The author answered your review:',
     `<author-reply>\n${reply}\n</author-reply>`,
-    'Review again: look at the new diffs (the author says where), check that each of your previous findings is fixed or answered convincingly, and look for anything the fixes broke. Then do a fresh pass over the whole change, not only over your previous findings: re-read the full diff and redo the checks below, since a pull request, its description or its checks may exist now. Answer in the same format.',
-    REVIEW_CHECKS,
-    ANSWER_FORMAT,
+    'Review again: look at the new diffs (the author says where), check that each of your previous findings is fixed or answered convincingly, and look for anything the fixes broke. Then do a fresh pass over the whole change, not only over your previous findings: re-read the full diff and redo the method and checklist below, since a pull request, its description or its checks may exist now. The author\'s answer is a claim like the brief was: verify it in the code. Answer in the same format.',
+    REVIEW_METHOD,
+    REVIEW_CHECKLIST,
+    answerFormat(input.language ?? 'en'),
     roundLine(input.round, input.maxRounds)
   ].join('\n\n')
 }

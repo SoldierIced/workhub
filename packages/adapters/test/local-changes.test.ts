@@ -86,6 +86,14 @@ describe('LocalChanges on real repositories', () => {
     expect(all.repos.map((r) => r.name)).toEqual(['svc-a'])
   })
 
+  it('reviews only the repos asked for by path, outside the folder, with the base they name', async () => {
+    const review = await changes.load({ folder, scope: 'branch', since: Date.now() + 60_000, extraRepos: [{ path: join(repo, 'src-missing', '..'), base: 'origin/main' }] })
+    // svc-a has changes in the folder, but the request names only app: the folder is not scanned.
+    expect(review.repos.map((r) => r.name)).toEqual(['app'])
+    expect(review.scannedRepos).toBe(1)
+    expect(review.repos.find((r) => r.name === 'app')).toMatchObject({ root: repo, base: 'main' })
+  })
+
   it('reports a folder with no repository', async () => {
     const empty = join(dir, 'empty')
     mkdirSync(empty)

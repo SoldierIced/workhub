@@ -33,6 +33,13 @@ export interface LocalReviewInput {
   scope: LocalReviewScope
   /** When the session started: repos inside the folder count as touched with a commit since then. */
   since?: number
+  /**
+   * Repos asked for by name (a tool the agent ran, through Workhub's control endpoint), reviewed
+   * even outside the folder or untouched since the session started; `base` overrides the branch
+   * compared with (`origin/main` or `main`). When present they are the whole review: the folder's
+   * other repos are not scanned, since a container folder often holds unrelated uncommitted work.
+   */
+  extraRepos?: { path: string; base?: string }[]
   /** The branch's pull request, when one is known (its base is preferred as the branch to compare with). */
   pullRequestOf?: (repo: { name: string; remoteName?: string; branch: string }) => { number: number; url: string; base: string } | undefined
 }
@@ -52,15 +59,22 @@ export class LocalChanges {
     // git prints forward slashes on Windows: compare and report native paths.
     const toplevel = await this.value(folder, ['rev-parse', '--show-toplevel'])
     const own = toplevel ? resolve(toplevel) : null
-    const children = (await childRepositories(folder)).filter((c) => c !== own)
+    const asked = new Map<string, string | undefined>()
+    for (const extra of input.extraRepos ?? []) {
+      const top = await this.value(resolve(extra.path), ['rev-parse', '--show-toplevel'])
+      if (top) asked.set(resolve(top), extra.base?.replace(/^origin\//, ''))
+    }
+    // Repos asked for by name replace the folder scan: only those are reviewed.
+    const children = asked.size ? [] : (await childRepositories(folder)).filter((c) => c !== own)
     const touched = await mapLimit(children, 6, async (repo) => ((await this.isTouched(repo, input.since)) ? repo : null))
-    const candidates = [...(own ? [own] : []), ...touched.filter((r): r is string => r !== null)]
-    const repos = await mapLimit(candidates, 4, (repo) => this.loadRepo(repo, folder, input).catch(() => null))
+    const found = [...(own ? [own] : []), ...touched.filter((r): r is string => r !== null)]
+    const candidates = asked.size ? [...asked.keys()] : found
+    const repos = await mapLimit(candidates, 4, (repo) => this.loadRepo(repo, folder, input, asked.get(repo)).catch(() => null))
     return {
       folder,
       scope: input.scope,
       repos: repos.filter((r): r is LocalReviewRepo => r !== null && r.files.length > 0),
-      scannedRepos: (own ? 1 : 0) + children.length
+      scannedRepos: asked.size || (own ? 1 : 0) + children.length
     }
   }
 
@@ -89,7 +103,7 @@ export class LocalChanges {
     return null
   }
 
-  async loadRepo(repo: string, folder: string, input: LocalReviewInput): Promise<LocalReviewRepo | null> {
+  async loadRepo(repo: string, folder: string, input: LocalReviewInput, baseHint?: string): Promise<LocalReviewRepo | null> {
     const [branchValue, head, remote] = await Promise.all([
       this.value(repo, ['rev-parse', '--abbrev-ref', 'HEAD']),
       this.value(repo, ['rev-parse', '--verify', '--quiet', 'HEAD']),
@@ -106,7 +120,7 @@ export class LocalChanges {
     if (input.scope === 'branch') {
       if (!head) note = 'noCommits'
       else {
-        const found = await this.baseBranch(repo, pr?.base)
+        const found = await this.baseBranch(repo, baseHint ?? pr?.base)
         const mergeBase = found ? await this.value(repo, ['merge-base', found, 'HEAD']) : null
         if (found && mergeBase) {
           revision = mergeBase

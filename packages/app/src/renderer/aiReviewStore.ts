@@ -31,6 +31,20 @@ export function useAiReviews(): AiReviewSnapshot | null {
   )
 }
 
+/** The review a reviewer session worked for, and the round it ran: links the reviewer chat back to the dev session. */
+export function reviewOfReviewer(snap: AiReviewSnapshot | null, sessionId: string): { review: AiReviewView; round: number } | undefined {
+  for (const review of snap?.reviews ?? []) {
+    const round = review.rounds.find((r) => r.reviewerSessionId === sessionId)
+    if (round) return { review, round: round.n }
+  }
+  return undefined
+}
+
+/** Whether the user turned automatic review off in this session's chat. */
+export function autoOffForSession(snap: AiReviewSnapshot | null, view: Pick<SessionView, 'id' | 'identity' | 'agentSessionId'>): boolean {
+  return snap?.autoOff?.includes(sessionIdentity(view)) ?? false
+}
+
 /** The session's review on screen: the live one first, else the most recently updated of its branches. */
 export function reviewForSession(snap: AiReviewSnapshot | null, view: Pick<SessionView, 'id' | 'identity' | 'agentSessionId'>): AiReviewView | undefined {
   if (!snap) return undefined

@@ -5,9 +5,10 @@ import type { SessionView } from '@shared/api'
 import type { AiReviewStartBlocker, AiReviewView, ReviewLoopPhase, ReviewLoopView } from '@shared/ai-review-api'
 import { Badge, Button, Select, Spinner, Textarea, type Tone } from '../../components/atoms'
 import { useToast } from '../../components/molecules'
-import { useAiReviews, holdForSession, loopForSession, reviewForSession, useReviewLoops } from '../../aiReviewStore'
+import { useAiReviews, autoOffForSession, holdForSession, reviewOfReviewer, loopForSession, reviewForSession, useReviewLoops } from '../../aiReviewStore'
 import { AgentReviewDialog } from './AgentReviewDialog'
 import { useConfig } from '../../configStore'
+import { useSessions } from '../../store'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { ESCALATION_TEXT } from '../../lib/useAiReviewNotices'
@@ -75,6 +76,7 @@ export function AiReviewButton({ view, compact }: { view: SessionView; compact?:
   const reviewing = review?.status === 'reviewing' || (loop !== undefined && !LOOP_ENDED.includes(loop.phase))
   return (
     <>
+      <AutoReviewToggle view={view} compact={compact} />
       <Button
         size="sm"
         variant="ghost"
@@ -93,6 +95,38 @@ export function AiReviewButton({ view, compact }: { view: SessionView; compact?:
   )
 }
 
+/**
+ * The chat's "Auto review" check: on by default and remembered per session. Shown only when the
+ * profile runs automatic reviews; off keeps them from starting here, manual reviews still run.
+ */
+function AutoReviewToggle({ view, compact }: { view: SessionView; compact?: boolean }) {
+  const { t } = useI18n()
+  const toast = useToast()
+  const snap = useAiReviews()
+  const config = useConfig()
+  const [pending, setPending] = useState(false)
+  if (view.readOnly || !config) return null
+  const settings = aiReviewSettings(config.config.profiles.find((p) => p.id === (view.profileId ?? config.config.activeProfileId)))
+  if (!settings.enabled || !settings.auto) return null
+  const on = !autoOffForSession(snap, view)
+  const toggle = async (next: boolean) => {
+    setPending(true)
+    try {
+      await window.hub.aiReview.setSessionAuto(view.id, next)
+    } catch (e) {
+      toast(errorText(e), 'danger')
+    } finally {
+      setPending(false)
+    }
+  }
+  return (
+    <label className="flex shrink-0 cursor-pointer items-center gap-1 text-xs text-muted select-none hover:text-text" title={compact ? `${t('aiReview.autoToggle')}\n${t('aiReview.autoToggleHint')}` : t('aiReview.autoToggleHint')} data-testid="ai-review-auto-toggle">
+      <input type="checkbox" checked={on} disabled={pending} aria-label={compact ? t('aiReview.autoToggle') : undefined} onChange={(e) => void toggle(e.target.checked)} />
+      {!compact && t('aiReview.autoToggle')}
+    </label>
+  )
+}
+
 const LOOP_ENDED: ReviewLoopPhase[] = ['approved', 'maxRounds', 'stopped', 'failed']
 const LOOP_TONE: Record<ReviewLoopPhase, Tone> = { briefing: 'info', starting: 'info', reviewing: 'info', fixing: 'warning', approved: 'success', maxRounds: 'danger', stopped: 'neutral', failed: 'danger' }
 
@@ -106,7 +140,7 @@ export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sess
   return (
     <div className="flex flex-col gap-1.5 rounded-md border border-border bg-surface px-2 py-1.5 text-sm" data-testid="review-loop">
       <div className="flex items-center gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-xs text-muted">{t('agentReview.loop.title', { reviewer: loop.reviewerLabel })}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted">{t('agentReview.loop.title', { reviewer: [loop.reviewerLabel, loop.reviewerModel].filter(Boolean).join(' · ') })}</span>
         <Badge tone={LOOP_TONE[loop.phase]} data-testid="review-loop-phase">
           {!ended && <Spinner className="mr-1 size-2.5" />}
           {t(`agentReview.phase.${loop.phase}`)}
@@ -142,14 +176,31 @@ export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sess
 
 function FindingRow({ review, f, selected, onSelect }: { review: AiReviewView; f: ReviewFinding; selected: boolean; onSelect: (on: boolean) => void }) {
   const { t } = useI18n()
+  const toast = useToast()
   const setStatus = useAsyncAction((status: FindingStatus) => window.hub.aiReview.setFindingStatus(review.id, [f.id], status))
+  const [asking, setAsking] = useState(false)
+  const [change, setChange] = useState('')
+  const done = f.status === 'fixed'
+  // "Request changes" on a fixed finding: it opens again and the note goes to the dev session (and to the reviewer next round).
+  const requestChanges = useAsyncAction(async () => {
+    await window.hub.aiReview.setFindingStatus(review.id, [f.id], 'open')
+    await window.hub.aiReview.opinion(review.id, `${f.id} (${f.title}): ${change.trim()}`)
+    setChange('')
+    setAsking(false)
+    toast(t('aiReview.opinionSent'))
+  })
   return (
-    <li className="flex flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-sm" data-testid={`ai-finding-${f.id}`}>
+    <li className={`flex flex-col gap-1 rounded-md border border-border px-2 py-1.5 text-sm ${done ? 'bg-success-soft/40' : 'bg-surface'}`} data-testid={`ai-finding-${f.id}`} data-status={f.status}>
       <div className="flex items-start gap-1.5">
         <input type="checkbox" className="mt-1" aria-label={t('aiReview.select', { id: f.id })} checked={selected} onChange={(e) => onSelect(e.target.checked)} />
-        <span className="min-w-0 flex-1 break-words">
+        <span className={`min-w-0 flex-1 break-words ${done ? 'text-muted line-through decoration-subtle' : ''}`}>
           <span className="font-mono text-xs text-subtle">{f.id}</span> {f.title}
         </span>
+        {done && (
+          <Badge tone="success" className="shrink-0" data-testid={`ai-finding-done-${f.id}`}>
+            {t(f.fixedBy === 'dev' ? 'aiReview.doneByAgent' : f.fixedBy === 'reviewer' ? 'aiReview.doneVerified' : 'aiReview.done')}
+          </Badge>
+        )}
       </div>
       {f.file && (
         <div className="truncate font-mono text-xs text-subtle" title={f.file}>
@@ -160,6 +211,25 @@ function FindingRow({ review, f, selected, onSelect }: { review: AiReviewView; f
       {f.why && <p className="text-xs text-muted">{f.why}</p>}
       {f.fix && <p className="text-xs">{f.fix}</p>}
       {f.disputeReason && <p className="text-xs text-warning">{t('aiReview.disputeReason', { reason: f.disputeReason })}</p>}
+      {f.fixNote && <p className="text-xs text-success break-words">{t('aiReview.fixNote', { note: f.fixNote })}</p>}
+      {done && !asking && (
+        <Button size="sm" variant="ghost" className="self-start" data-testid={`ai-finding-request-${f.id}`} onClick={() => setAsking(true)}>
+          {t('aiReview.requestChanges')}
+        </Button>
+      )}
+      {asking && (
+        <div className="flex flex-col gap-1">
+          <Textarea rows={2} autoFocus aria-label={t('aiReview.requestChangesLabel', { id: f.id })} placeholder={t('aiReview.requestChangesHint')} value={change} onChange={(e) => setChange(e.target.value)} />
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="primary" disabled={!change.trim() || requestChanges.pending} onClick={() => requestChanges.run()}>
+              {t('aiReview.opinionSend')}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
+              {t('aiReview.cancel')}
+            </Button>
+          </div>
+        </div>
+      )}
       <Select
         aria-label={t('aiReview.findingStatus', { id: f.id })}
         value={f.status}
@@ -188,6 +258,9 @@ export function AiReviewSection({ view }: { view: SessionView }) {
   const { run } = useStartReview(view)
   const [selected, setSelected] = useState<string[]>([])
   const [opinion, setOpinion] = useState('')
+  const sessions = useSessions()
+  const reviewedBy = reviewOfReviewer(snap, view.id)
+  if (reviewedBy && !review) return <ReviewerOfCard review={reviewedBy.review} round={reviewedBy.round} hasDev={Boolean(reviewedBy.review.devSessionId && sessions[reviewedBy.review.devSessionId])} />
   if (!review && !hold && !loop) return null
   const profile = config?.config.profiles.find((p) => p.id === (review?.profileId ?? view.profileId ?? config.config.activeProfileId))
   const settings = aiReviewSettings(profile)
@@ -231,7 +304,15 @@ export function AiReviewSection({ view }: { view: SessionView }) {
                 {t('aiReview.branch', { branch: review.branch, base: review.baseRef })}
               </div>
               {round && <div>{t('aiReview.round', { n: cycleRound(review, round.n), max: roundLimit(review, settings) })}</div>}
+              {round?.reviewerLabel && (
+                <div data-testid="ai-review-reviewer">{t('aiReview.reviewedBy', { reviewer: [round.reviewerLabel, round.reviewerModel].filter(Boolean).join(' · ') })}</div>
+              )}
             </div>
+            {round?.reviewerSessionId && sessions[round.reviewerSessionId] && (
+              <Button size="sm" variant="ghost" className="self-start" data-testid="ai-review-open-reviewer" onClick={() => requestOpen(round.reviewerSessionId!)}>
+                {t('agentReview.openReviewer')}
+              </Button>
+            )}
             {review.status === 'paused' && review.escalation && (
               <div role="alert" className="rounded-md bg-danger-soft px-2 py-1.5 text-danger" data-testid="ai-review-escalation">
                 {t(ESCALATION_TEXT[review.escalation.reason])}
@@ -257,7 +338,7 @@ export function AiReviewSection({ view }: { view: SessionView }) {
             )}
             {review.findings.length === 0 && round?.parsed && <p className="text-xs text-subtle">{t('aiReview.noFindings')}</p>}
             {REVIEW_SEVERITIES.map((sev) => {
-              const list = review.findings.filter((f) => f.severity === sev)
+              const list = review.findings.filter((f) => f.severity === sev).sort((a, b) => Number(a.status === 'fixed') - Number(b.status === 'fixed'))
               if (!list.length) return null
               const open = list.filter((f) => f.status === 'open').length
               return (
@@ -324,12 +405,31 @@ export function AiReviewSection({ view }: { view: SessionView }) {
   )
 }
 
+/** In a reviewer's own chat: which branch and round it reviewed, and the way back to the dev session. */
+function ReviewerOfCard({ review, round, hasDev }: { review: AiReviewView; round: number; hasDev: boolean }) {
+  const { t } = useI18n()
+  return (
+    <div className="mt-4 flex flex-col gap-1.5 border-t border-border pt-3 text-sm" data-testid="ai-review-reviewer-of">
+      <div className="text-sm text-muted">{t('aiReview.panel')}</div>
+      <div className="truncate font-mono text-xs text-subtle" title={review.branch}>
+        {t('aiReview.branch', { branch: review.branch, base: review.baseRef })}
+      </div>
+      <div className="text-xs text-subtle">{t('aiReview.reviewerOf', { n: cycleRound(review, round) })}</div>
+      {hasDev && (
+        <Button size="sm" variant="ghost" className="self-start" onClick={() => requestOpen(review.devSessionId!)}>
+          {t('agentReview.openAuthor')}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 /** The Review panel on its own, for sessions without a monitor (terminal agents). */
 export function AiReviewAside({ view }: { view: SessionView }) {
   const { t } = useI18n()
   const snap = useAiReviews()
   const loop = loopForSession(useReviewLoops(), view.id)
-  if (!reviewForSession(snap, view) && !holdForSession(snap, view) && !loop) return null
+  if (!reviewForSession(snap, view) && !holdForSession(snap, view) && !loop && !reviewOfReviewer(snap, view.id)) return null
   return (
     <aside aria-label={t('aiReview.panel')} className="w-72 shrink-0 overflow-y-auto border-l border-border bg-sidebar px-4 py-1">
       <AiReviewSection view={view} />

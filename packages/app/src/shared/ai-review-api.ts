@@ -19,6 +19,8 @@ export interface AiReviewHold {
 export interface AiReviewSnapshot {
   reviews: AiReviewView[]
   holds: AiReviewHold[]
+  /** Dev session identities with automatic review turned off in their chat. */
+  autoOff: string[]
 }
 
 /** Something the user should hear about: the loop paused for them, or the branch is ready. */
@@ -81,6 +83,8 @@ export interface ReviewLoopView {
   authorSessionId: string
   reviewerSessionId?: string
   reviewerLabel: string
+  /** The model the reviewer runs with, once it started and reported one. */
+  reviewerModel?: string
   /** The review round in progress (1-based); 0 while the author writes the brief. */
   round: number
   maxRounds: number
@@ -104,6 +108,8 @@ export interface AiReviewApi {
   opinion(reviewId: string, text: string): Promise<void>
   stop(reviewId: string): Promise<void>
   dismissHold(devIdentity: string): Promise<void>
+  /** Turns automatic review on or off for one session (kept across restarts); the profile setting still applies. */
+  setSessionAuto(sessionId: string, on: boolean): Promise<void>
   /** "Review with another agent": the reviewers, brief prompt and round limit for a session; null for an unknown session. */
   loopOptions(sessionId: string): Promise<AgentReviewOptions | null>
   /** Sends the brief prompt to the session's agent, then runs the loop with the reviewer it starts. */

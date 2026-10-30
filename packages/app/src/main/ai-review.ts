@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import {
   addOpinion,
@@ -52,6 +53,8 @@ export interface AiReviewDeps {
     start(input: StartSessionInput, internal?: { env?: Record<string, string> }): Promise<SessionView>
     prompt(id: string, text: string): Promise<string>
     stop(id: string): Promise<void>
+    /** Names a session in the sidebar (the reviewer: branch and round). */
+    rename?(id: string, name: string | null): void
     respondPermission(id: string, requestId: string, optionId: string | null): void
   }
   driver: {
@@ -81,11 +84,13 @@ export interface AiReviewDeps {
   /** How long a reviewer may take to start, and to answer. */
   startTimeoutMs?: number
   replyTimeoutMs?: number
-  /** Diff size cut, in characters. */
+  /** Size cut of the diff file the reviewer reads, in characters. */
   maxDiffChars?: number
 }
 
 const PROBE_EVERY_MS = 30_000
+/** Where, inside the reviewer's checkout, the diff of the round is written for it to read (never put in the prompt). */
+export const REVIEW_DIFF_FILE = '.workhub-review/changes.diff'
 const HOLD_RETRY_MS = 5 * 60_000
 const isLive = (v: SessionView) => v.state !== 'stopped' && v.state !== 'error'
 
@@ -123,7 +128,7 @@ export class AiReviewService {
     // A round that was running when the app quit cannot be picked up again: close it as failed.
     const reviews: AiReviewState['reviews'] = {}
     for (const [id, r] of Object.entries(loaded.reviews ?? {})) reviews[id] = r.status === 'reviewing' ? completeRound(r, { raw: '', parsed: null, error: 'interrupted: Workhub was closed during the review' }, aiReviewSettings(null), this.now()) : r
-    this.state = { reviews }
+    this.state = { reviews, ...(loaded.autoOff ? { autoOff: loaded.autoOff } : {}) }
   }
 
   private now(): number {
@@ -189,7 +194,7 @@ export class AiReviewService {
       const devSessionId = devOf(h.devIdentity)
       return devSessionId ? { ...h, devSessionId } : h
     })
-    return { reviews, holds }
+    return { reviews, holds, autoOff: Object.keys(this.state.autoOff ?? {}) }
   }
 
   private changed(): void {
@@ -204,7 +209,7 @@ export class AiReviewService {
   /** Stores a review and tells the user when it paused for them or became ready. */
   private put(next: BranchReview, devSessionId?: string): void {
     const prev = this.state.reviews[next.id]
-    this.state = { reviews: { ...this.state.reviews, [next.id]: next } }
+    this.state = { ...this.state, reviews: { ...this.state.reviews, [next.id]: next } }
     this.deps.state.save(this.state)
     this.changed()
     if (prev?.status === next.status) return
@@ -250,7 +255,7 @@ export class AiReviewService {
     const settings = aiReviewSettings(profile)
     const identity = sessionIdentity(view)
     const since = this.idleSince.get(view.id)
-    const base = { settings, isReviewerSession: this.isReviewerSession(view), state: view.state, idleMs: since === undefined ? null : this.now() - since, review: undefined, anyRunning: this.running.size > 0 }
+    const base = { settings, isReviewerSession: this.isReviewerSession(view), state: view.state, idleMs: since === undefined ? null : this.now() - since, review: undefined, anyRunning: this.running.size > 0, sessionAutoOff: this.state.autoOff?.[identity] === true }
     // Everything that needs no git first, so idle sessions cost nothing until the debounce passed.
     const pre = decideAutoReview({ ...base, repo: { branch: '\0pending', headSha: '', base: settings.baseBranch, baseRef: settings.baseBranch, ahead: 1, dirty: false } })
     if (!pre.start) return
@@ -328,8 +333,10 @@ export class AiReviewService {
       await git.checkout(repo.root, path, round.sha)
       const mergeBase = (await git.mergeBase(repo.root, baseRef, round.sha)) ?? baseRef
       const fromSha = round.fromSha && (await git.isAncestor(repo.root, round.fromSha, round.sha)) ? round.fromSha : undefined
-      const maxChars = this.deps.maxDiffChars ?? 150_000
+      const maxChars = this.deps.maxDiffChars ?? 2_000_000
       const [commits, diffStat, diff] = await Promise.all([git.commits(repo.root, mergeBase, round.sha), git.diffStat(repo.root, mergeBase, round.sha), git.diff(repo.root, fromSha ?? mergeBase, round.sha, maxChars)])
+      await mkdir(join(path, '.workhub-review'), { recursive: true })
+      await writeFile(join(path, REVIEW_DIFF_FILE), diff.text.endsWith('\n') ? diff.text : `${diff.text}\n`, 'utf8')
       const prompt = buildReviewPrompt({
         language: settings.language,
         round: cycleRound(review, round.n),
@@ -342,7 +349,7 @@ export class AiReviewService {
         ...(fromSha ? { fromSha } : {}),
         commits,
         diffStat,
-        diff: diff.text,
+        diffFile: REVIEW_DIFF_FILE,
         diffTruncated: diff.truncated,
         ...(await this.ticketOf(config, dev, review)),
         checklist: settings.checklist,
@@ -353,11 +360,17 @@ export class AiReviewService {
       // The reviewer cannot push: every remote gets an invalid push URL through the session's environment (nothing is written to the repository).
       const env = pushBlockEnv(await git.remotes(repo.root).catch(() => []), process.env)
       const model = settings.reviewerModel.trim()
-      const started = await this.deps.sessions.start({ profileId: dev.profileId, agentKey: reviewerKey, cwd: path, mode: 'app', readOnly: true, cols: 120, rows: 32, ...(model ? { model } : {}) }, { env })
+      const effort = settings.reviewerEffort.trim()
+      const started = await this.deps.sessions.start({ profileId: dev.profileId, agentKey: reviewerKey, cwd: path, mode: 'app', readOnly: true, cols: 120, rows: 32, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, { env })
       reviewerId = started.id
       this.reviewers.set(started.id, { reviewId: review.id, text: '' })
-      this.put(attachReviewer(this.state.reviews[review.id] ?? review, started.id, this.now()), dev.id)
+      const label = [started.agentName, started.accountName].filter(Boolean).join(' · ')
+      this.put(attachReviewer(this.state.reviews[review.id] ?? review, started.id, this.now(), { label, ...(model ? { model } : {}) }), dev.id)
+      this.deps.sessions.rename?.(started.id, `${settings.language === 'es' ? 'Revisión' : 'Review'} ${review.branch} · ${settings.language === 'es' ? 'ronda' : 'round'} ${cycleRound(review, round.n)}`)
       await this.waitReady(started.id)
+      const ready = this.deps.sessions.list().find((v) => v.id === started.id)
+      const runningModel = ready?.models?.find((m) => m.id === ready.currentModelId)?.name ?? ready?.currentModelId
+      if (runningModel && runningModel !== model) this.noteRound(review.id, { reviewerModel: runningModel }, dev.id)
       if (model && this.deps.sessions.list().find((v) => v.id === started.id)?.modelIgnored) this.noteRound(review.id, { modelNote: `reviewer model "${model}" not applied: the agent does not offer it, so it runs with its default model` }, dev.id)
       this.deps.showPrompt(started.id, prompt)
       const stopReason = await withTimeout(this.deps.sessions.prompt(started.id, prompt), this.deps.replyTimeoutMs ?? 30 * 60_000, 'the reviewer did not answer in time')
@@ -371,8 +384,8 @@ export class AiReviewService {
     }
     if (reviewerId) {
       this.reviewers.delete(reviewerId)
+      // Stopped, not forgotten: its chat stays in the sidebar, linked from the dev session's Review panel.
       await this.deps.sessions.stop(reviewerId).catch(() => undefined)
-      await this.deps.driver.forget(reviewerId).catch(() => undefined)
     }
     await this.deps.git.remove(repo.root, path).catch(() => undefined)
     const current = this.state.reviews[review.id]
@@ -487,6 +500,19 @@ export class AiReviewService {
     this.holds.delete(devIdentity)
     this.changed()
   }
+
+  /** The chat's "Auto review" check: off keeps automatic rounds from starting for this session; manual ones still run. */
+  setSessionAuto(sessionId: string, on: boolean): void {
+    const view = this.deps.sessions.list().find((v) => v.id === sessionId)
+    if (!view) return
+    const identity = sessionIdentity(view)
+    const { [identity]: _, ...rest } = this.state.autoOff ?? {}
+    const autoOff: Record<string, true> = on ? rest : { ...rest, [identity]: true }
+    this.state = { ...this.state, autoOff }
+    if (!on) this.holds.delete(identity)
+    this.deps.state.save(this.state)
+    this.changed()
+  }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
@@ -526,4 +552,5 @@ export function registerAiReviewIpc(ipc: IpcRegistrar, service: AiReviewService)
   ipc.handle('aiReview:opinion', (_e, reviewId: string, text: unknown) => service.opinion(String(reviewId), String(text ?? '').slice(0, 20_000)))
   ipc.handle('aiReview:stop', (_e, reviewId: string) => service.stopReview(String(reviewId)))
   ipc.handle('aiReview:dismissHold', (_e, devIdentity: string) => service.dismissHold(String(devIdentity)))
+  ipc.handle('aiReview:setSessionAuto', (_e, sessionId: string, on: unknown) => service.setSessionAuto(String(sessionId), on === true))
 }

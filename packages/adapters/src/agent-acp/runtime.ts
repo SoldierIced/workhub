@@ -16,7 +16,7 @@ import {
   type RequestPermissionResponse,
   type Stream
 } from '@agentclientprotocol/sdk'
-import { readOnlyModeId, readSlashCommand, uniqueSlashCommands } from '@workhub/core'
+import { launchArgs, readOnlyModeId, readSlashCommand, uniqueSlashCommands } from '@workhub/core'
 import type {
   AgentCapabilities,
   AgentDefinition,
@@ -122,7 +122,8 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       }
       file = found
     }
-    const plan = planSpawn(file, req.agent.args)
+    // Agents that take the model or effort on their command line (Kiro) get them at launch; ACP has no effort setting.
+    const plan = planSpawn(file, launchArgs(req.agent, { model: req.model, effort: req.effort }))
     const child = spawn(plan.command, plan.args, {
       cwd: req.cwd,
       env,
@@ -232,7 +233,8 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       }
       const currentModeId = session.currentModeId
       // A model asked for: ACP's session model selection, when the agent reports models and takes it.
-      const modelIgnored = req.model ? !(await this.selectModel(session, req.model, spawnFailed)) : false
+      // An agent launched with the model on its command line already runs it, whatever it lists.
+      const modelIgnored = req.model ? !(await this.selectModel(session, req.model, spawnFailed)) && !req.agent.modelArgs?.length : false
       const started: StartedSession = {
         agentSessionId: created.sessionId,
         agentName: init.agentInfo?.title ?? init.agentInfo?.name ?? req.agent.name,

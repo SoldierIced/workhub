@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -52,8 +52,9 @@ function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boo
   const notices: AiReviewNotice[] = []
   const permissions: [string, string | null][] = []
   const stopped: string[] = []
+  const renamed: [string, string | null][] = []
   let head = 'sha1'
-  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } }], activeProfileId: 'p' }
+  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }], activeProfileId: 'p' }
   let service!: AiReviewService
   const emit = (e: AgentEvent) => service.onEvent(e)
   const change = (id: string, state: SessionState) => {
@@ -83,6 +84,7 @@ function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boo
         return 'end_turn'
       },
       stop: async (id) => void stopped.push(id),
+      rename: (id, name) => void renamed.push([id, name]),
       respondPermission: (_id, _req, option) => void permissions.push([_req, option])
     },
     driver: {
@@ -125,6 +127,7 @@ function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boo
     notices,
     permissions,
     stopped,
+    renamed,
     change,
     emit,
     deps,
@@ -162,6 +165,58 @@ describe('AiReviewService', () => {
     t.advance(120_000)
     await t.service.tick()
     expect(t.started).toHaveLength(1)
+  })
+
+  it('skips automatic rounds for a session whose chat turned auto review off, keeps it across restarts, and still runs manual ones', async () => {
+    const t = setup()
+    t.service.setSessionAuto('dev', false)
+    expect(t.service.snapshot().autoOff).toEqual(['ident-dev'])
+    t.change('dev', 'busy')
+    t.change('dev', 'ready')
+    t.advance(61_000)
+    await t.service.tick()
+    expect(t.started).toHaveLength(0)
+    t.deps.state.flush()
+    expect(new AiReviewService(t.deps).snapshot().autoOff).toEqual(['ident-dev'])
+    expect(await t.service.startManual('dev')).toMatchObject({ ok: true })
+    await t.settle()
+    t.service.setSessionAuto('dev', true)
+    expect(t.service.snapshot().autoOff).toEqual([])
+  })
+
+  it('keeps the reviewer chat (stopped, named, linked from the round) and says who reviewed', async () => {
+    const t = setup()
+    expect(await t.service.startManual('dev')).toMatchObject({ ok: true })
+    await t.settle()
+    expect(t.stopped).toEqual(['rev1'])
+    expect(t.views.some((v) => v.id === 'rev1')).toBe(true)
+    expect(t.renamed).toEqual([['rev1', 'Review feat/x · round 1']])
+    const round = t.service.snapshot().reviews[0]!.rounds[0]!
+    expect(round).toMatchObject({ reviewerSessionId: 'rev1', reviewerLabel: 'Claude' })
+    expect(t.delivered[0]![1]).toContain('Reviewed by Claude.')
+  })
+
+  it('writes the diff into the reviewer checkout and points the prompt at it instead of pasting it', async () => {
+    const t = setup()
+    let written = ''
+    t.deps.sessions.prompt = async (id) => {
+      written = readFileSync(join(t.deps.workDir, 'worktrees', 'ident-dev_feat_x', '.workhub-review', 'changes.diff'), 'utf8')
+      return 'end_turn'
+    }
+    expect(await t.service.startManual('dev')).toMatchObject({ ok: true })
+    await vi.waitFor(() => expect(written).toBe('+x\n'))
+  })
+
+  it('marks a finding done when the dev agent replies FIXED, without dropping it', async () => {
+    const t = setup()
+    expect(await t.service.startManual('dev')).toMatchObject({ ok: true })
+    await t.settle()
+    t.change('dev', 'busy')
+    t.emit({ sessionId: 'dev', type: 'message', role: 'agent', text: 'Committed.\nFIXED F1: guarded the empty list' })
+    t.change('dev', 'ready')
+    const review = t.service.snapshot().reviews[0]!
+    expect(review.findings).toHaveLength(1)
+    expect(review.findings[0]).toMatchObject({ status: 'fixed', fixedBy: 'dev', fixNote: 'guarded the empty list' })
   })
 
   it('pauses and tells the user when the dev agent disputes a finding', async () => {

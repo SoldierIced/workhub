@@ -31,11 +31,14 @@ export interface AutoTriggerInput {
   review: BranchReview | undefined
   /** Some review is running already (one at a time). */
   anyRunning: boolean
+  /** The user turned automatic review off for this session in its chat. */
+  sessionAutoOff?: boolean
 }
 
 export type SkipReason =
   | 'disabled'
   | 'manualOnly'
+  | 'sessionOff'
   | 'reviewer'
   | 'notIdle'
   | 'debounce'
@@ -70,6 +73,7 @@ export function decideAutoReview(input: AutoTriggerInput): TriggerDecision {
   const { settings, review, repo } = input
   if (!settings.enabled) return skip('disabled')
   if (!settings.auto) return skip('manualOnly')
+  if (input.sessionAutoOff) return skip('sessionOff')
   if (input.isReviewerSession) return skip('reviewer')
   if (input.state !== 'ready' || input.idleMs === null) return skip('notIdle')
   if (input.idleMs < settings.idleSeconds * 1000) return skip('debounce')

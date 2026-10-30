@@ -1,4 +1,4 @@
-import { parseDisputes } from './parser'
+import { parseDisputes, parseFixes } from './parser'
 import { formatDevMessage, formatOpinionMessage, formatRawDevMessage } from './prompt'
 import {
   BLOCKING_SEVERITIES,
@@ -115,8 +115,8 @@ export function startRound(prev: BranchReview | undefined, input: StartRoundInpu
 }
 
 /** Records the reviewer session that runs the current round. */
-export function attachReviewer(review: BranchReview, sessionId: string, now: number): BranchReview {
-  return patchLastRound(review, { reviewerSessionId: sessionId }, now)
+export function attachReviewer(review: BranchReview, sessionId: string, now: number, who: { label?: string; model?: string } = {}): BranchReview {
+  return patchLastRound(review, { reviewerSessionId: sessionId, ...(who.label ? { reviewerLabel: who.label } : {}), ...(who.model ? { reviewerModel: who.model } : {}) }, now)
 }
 
 function patchLastRound(review: BranchReview, patch: Partial<BranchReview['rounds'][number]>, now: number): BranchReview {
@@ -137,10 +137,16 @@ export function mergeFindings(findings: readonly ReviewFinding[], parsed: Parsed
     if (!f || f.status === 'dismissed') continue
     if (verdict.note) f.note = verdict.note
     if (verdict.status === 'fixed') {
-      if (f.status !== 'disputed') f.status = 'fixed'
+      if (f.status !== 'disputed') {
+        f.status = 'fixed'
+        f.fixedBy = 'reviewer'
+      }
     } else {
       if (f.sent) f.reopenCount += 1
-      if (f.status === 'fixed') f.status = 'open'
+      if (f.status === 'fixed') {
+        f.status = 'open'
+        delete f.fixedBy
+      }
     }
   }
   let next = out.reduce((max, f) => Math.max(max, Number(f.id.slice(1)) || 0), 0)
@@ -151,6 +157,7 @@ export function mergeFindings(findings: readonly ReviewFinding[], parsed: Parsed
       // Reported again: a "fixed" one is back; anything else is a duplicate of a known finding.
       if (same.status === 'fixed') {
         same.status = 'open'
+        delete same.fixedBy
         if (same.sent) same.reopenCount += 1
       }
       continue
@@ -227,7 +234,9 @@ function settle(review: BranchReview, settings: AiReviewSettings, now: number): 
   const unsent = review.findings.some((f) => f.status === 'open' && !f.sent)
   if (ready && !unsent) return { ...rest, status: 'ready', updatedAt: now }
   const round = cycleRound(review, review.rounds[review.rounds.length - 1]?.n ?? 1)
-  const message = formatDevMessage({ language: settings.language, branch: review.branch, base: review.base, round, maxRounds: roundLimit(review, settings), findings: review.findings })
+  const last = review.rounds[review.rounds.length - 1]
+  const reviewer = last?.reviewerLabel ? [last.reviewerLabel, last.reviewerModel].filter(Boolean).join(' · ') : undefined
+  const message = formatDevMessage({ language: settings.language, branch: review.branch, base: review.base, round, maxRounds: roundLimit(review, settings), findings: review.findings, ...(reviewer ? { reviewer } : {}) })
   const carried = review.findings.filter((f) => f.status === 'open').map((f) => f.id)
   return { ...rest, status: ready ? 'ready' : 'awaitingFixes', pendingDelivery: queue(review.pendingDelivery, message), pendingFindingIds: [...new Set([...(review.pendingFindingIds ?? []), ...carried])], updatedAt: now }
 }
@@ -244,16 +253,25 @@ export function markDelivered(review: BranchReview, now: number): BranchReview {
   return { ...rest, findings: review.findings.map((f) => (carried.includes(f.id) ? { ...f, sent: true } : f)), awaitingDevReply: true, updatedAt: now }
 }
 
-/** The dev agent's reply after the findings: `DISPUTE F<n>: <reason>` lines pause the loop for the user. */
+/**
+ * The dev agent's reply after the findings: `FIXED F<n>: <what changed>` lines mark findings done
+ * (kept in the list, verified by the reviewer next round); `DISPUTE F<n>: <reason>` lines pause
+ * the loop for the user.
+ */
 export function applyDevReply(review: BranchReview, text: string, now: number): BranchReview {
   if (!review.awaitingDevReply) return review
-  const disputes = parseDisputes(text).filter((d) => review.findings.some((f) => f.id === d.id && f.status === 'open'))
+  const isOpen = (id: string) => review.findings.some((f) => f.id === id && f.status === 'open')
+  const disputes = parseDisputes(text).filter((d) => isOpen(d.id))
+  const fixes = parseFixes(text).filter((x) => isOpen(x.id) && !disputes.some((d) => d.id === x.id))
   const next: BranchReview = { ...review, awaitingDevReply: false, updatedAt: now }
-  if (!disputes.length) return next
+  if (!disputes.length && !fixes.length) return next
   next.findings = review.findings.map((f) => {
     const d = disputes.find((x) => x.id === f.id)
-    return d ? { ...f, status: 'disputed', disputeReason: d.reason } : f
+    if (d) return { ...f, status: 'disputed', disputeReason: d.reason }
+    const fix = fixes.find((x) => x.id === f.id)
+    return fix ? { ...f, status: 'fixed', fixedBy: 'dev', ...(fix.note ? { fixNote: fix.note } : {}) } : f
   })
+  if (!disputes.length) return next
   return review.status === 'paused' ? next : pause(next, [{ reason: 'disputed', detail: disputes.map((d) => `${d.id}: ${d.reason}`).join('; ') }], now)
 }
 
@@ -280,7 +298,11 @@ export function continueReview(review: BranchReview, settings: AiReviewSettings,
 
 /** The user marks a finding. Outside a pause, the review becomes ready once nothing blocking is open. */
 export function setFindingStatus(review: BranchReview, ids: readonly string[], status: FindingStatus, now: number): BranchReview {
-  const findings = review.findings.map((f) => (ids.includes(f.id) ? { ...f, status } : f))
+  const findings = review.findings.map((f): ReviewFinding => {
+    if (!ids.includes(f.id)) return f
+    const { fixedBy: _was, ...rest } = f
+    return status === 'fixed' ? { ...rest, status, fixedBy: 'user' } : { ...rest, status }
+  })
   const next: BranchReview = { ...review, findings, updatedAt: now }
   if (review.status === 'awaitingFixes' && !blockingOpen(next).length) {
     const { pendingDelivery: _dropped, pendingFindingIds: _carried, ...rest } = next
@@ -302,7 +324,7 @@ export function stopReview(review: BranchReview, now: number): BranchReview {
   return { ...rest, status: 'stopped', awaitingDevReply: false, updatedAt: now }
 }
 
-/** Findings the next round must verify: everything still open or disputed. */
+/** Findings the next round must verify: everything still open or disputed, and what the dev agent says it fixed. */
 export function findingsToVerify(review: Pick<BranchReview, 'findings'>): ReviewFinding[] {
-  return review.findings.filter((f) => f.status === 'open' || f.status === 'disputed')
+  return review.findings.filter((f) => f.status === 'open' || f.status === 'disputed' || (f.status === 'fixed' && f.fixedBy === 'dev'))
 }

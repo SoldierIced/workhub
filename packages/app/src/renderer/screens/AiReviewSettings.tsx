@@ -42,6 +42,9 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
         <Field label={t('aiReview.settings.reviewerModel')} hint={t('aiReview.settings.reviewerModelHint')}>
           <Input value={s.reviewerModel} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerModel: e.target.value })} onBlur={() => set({ reviewerModel: s.reviewerModel.trim() })} />
         </Field>
+        <Field label={t('aiReview.settings.reviewerEffort')} hint={t('aiReview.settings.reviewerEffortHint')}>
+          <Input value={s.reviewerEffort} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerEffort: e.target.value })} onBlur={() => set({ reviewerEffort: s.reviewerEffort.trim() })} />
+        </Field>
         <Field label={t('aiReview.settings.baseBranch')} hint={t('aiReview.settings.baseBranchHint')}>
           <Input value={s.baseBranch} spellCheck={false} placeholder="develop" onChange={(e) => set({ baseBranch: e.target.value })} onBlur={() => set({ baseBranch: s.baseBranch.trim() || 'develop' })} />
         </Field>

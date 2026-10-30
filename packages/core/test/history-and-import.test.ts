@@ -5,6 +5,7 @@ import {
   BUILTIN_AGENTS,
   CONFIG_VERSION,
   consoleCommand,
+  launchArgs,
   groupHistory,
   parseConfig,
   planWorkhub1Import,
@@ -53,6 +54,32 @@ describe('consoleCommand', () => {
     expect(consoleCommand(launch, 'abc', false)).toEqual({ command: 'claude', args: ['--session-id', 'abc'] })
     expect(consoleCommand(launch, 'abc', true)).toEqual({ command: 'claude', args: ['--resume', 'abc'] })
     expect(consoleCommand(launch, undefined, true)).toEqual({ command: 'claude', args: [] })
+  })
+
+  it('passes the session model after the session args, and skips none or `default`', () => {
+    expect(consoleCommand(launch, 'abc', false, 'opus')).toEqual({ command: 'claude', args: ['--session-id', 'abc', '--model', 'opus'] })
+    expect(consoleCommand(launch, 'abc', true, 'claude-opus-4-6')).toEqual({ command: 'claude', args: ['--resume', 'abc', '--model', 'claude-opus-4-6'] })
+    expect(consoleCommand(launch, 'abc', true, 'default')).toEqual({ command: 'claude', args: ['--resume', 'abc'] })
+    expect(consoleCommand(launch, 'abc', true, undefined)).toEqual({ command: 'claude', args: ['--resume', 'abc'] })
+    expect(consoleCommand(launch, 'abc', true, '')).toEqual({ command: 'claude', args: ['--resume', 'abc'] })
+  })
+
+  it('adds no model args to a console launch without modelArgs', () => {
+    expect(consoleCommand({ command: 'tool', args: ['x'] }, 'abc', false, 'opus')).toEqual({ command: 'tool', args: ['x'] })
+  })
+})
+
+describe('launchArgs', () => {
+  const kiro = BUILTIN_AGENTS.find((a) => a.id === 'kiro')!
+  it('passes the model and effort to an agent that takes them on its command line', () => {
+    expect(launchArgs(kiro, { model: 'claude-opus-5.5', effort: 'xhigh' })).toEqual(['acp', '--model', 'claude-opus-5.5', '--effort', 'xhigh'])
+    expect(launchArgs(kiro, { effort: 'high' })).toEqual(['acp', '--effort', 'high'])
+    expect(launchArgs(kiro, { model: 'default' })).toEqual(['acp'])
+    expect(launchArgs(kiro, {})).toEqual(['acp'])
+  })
+
+  it('adds nothing to an agent without modelArgs or effortArgs', () => {
+    expect(launchArgs({ args: ['serve'] }, { model: 'm', effort: 'high' })).toEqual(['serve'])
   })
 })
 

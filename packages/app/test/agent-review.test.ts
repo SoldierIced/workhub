@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONFIG_VERSION, NO_CAPABILITIES, type BudgetStatus, type SessionOrigin, type SessionState, type WorkhubConfig } from '@workhub/core'
+import { aiReviewSettings, CONFIG_VERSION, NO_CAPABILITIES, type BudgetStatus, type SessionOrigin, type SessionState, type WorkhubConfig } from '@workhub/core'
 import type { SessionView, StartSessionInput } from '../src/shared/api'
 import type { ReviewLoopView } from '../src/shared/ai-review-api'
 import { AgentReviewService, validAgentReviewRequest, type AgentReviewDeps } from '../src/main/agent-review'
@@ -51,7 +51,7 @@ function setup(script: { author?: Step[]; reviewer?: Step[]; installed?: Record<
   const placed: [string, string][] = []
   const emitted: ReviewLoopView[][] = []
   const hanging = new Map<string, (stopReason: string) => void>()
-  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false } }], activeProfileId: 'p' }
+  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }], activeProfileId: 'p' }
   const setState = (id: string, state: SessionState) => {
     const i = views.findIndex((v) => v.id === id)
     views[i] = { ...views[i]!, state }
@@ -140,6 +140,18 @@ describe('AgentReviewService', () => {
     expect(Object.values(s.started[0]?.env ?? {})).toEqual(expect.arrayContaining(['remote.origin.pushurl', 'remote.upstream.pushurl']))
     expect(s.placed).toEqual([['ident-rev1', 'ident-dev']])
     expect(s.emitted.at(-1)?.[0]?.phase).toBe('approved')
+  })
+
+  it('starts the reviewer with the profile reviewer model and effort, asks in its language and shows the model on the loop', async () => {
+    const s = setup({ author: [BRIEF], reviewer: [APPROVED] })
+    const config = await s.service['deps'].config()
+    config.profiles[0]!.aiReview = { ...aiReviewSettings(undefined), reviewerModel: 'claude-opus-5.5', reviewerEffort: 'xhigh', language: 'es' }
+    expect(await s.service.start('dev', request)).toMatchObject({ ok: true })
+    await until(() => ended(s.loop()))
+    expect(s.started[0]?.input).toMatchObject({ agentKey: 'kiro', model: 'claude-opus-5.5', effort: 'xhigh', readOnly: true })
+    expect(s.prompts[1]![1]).toContain('Write in Spanish')
+    // The reviewer reported no model list, so the loop shows the one asked for.
+    expect(s.loop()).toMatchObject({ phase: 'approved', reviewerModel: 'claude-opus-5.5' })
   })
 
   it('relays changes to the author and its answer back to the reviewer until it approves', async () => {

@@ -14,6 +14,8 @@ import {
   manualBlocker,
   markDelivered,
   parseDisputes,
+  parseFixes,
+  findingsToVerify,
   parseReviewReply,
   pickReviewer,
   pushBlockEnv,
@@ -54,7 +56,7 @@ const start = (prev?: BranchReview, sha = 'sha1', trigger: 'auto' | 'manual' = '
 
 describe('AI review settings', () => {
   it('defaults to on and automatic, and the schema fills missing fields without a version bump', () => {
-    expect(aiReviewSettings(undefined)).toMatchObject({ enabled: true, auto: true, maxRounds: 3, idleSeconds: 60, baseBranch: 'develop', reviewerAgent: null, reviewerModel: '' })
+    expect(aiReviewSettings(undefined)).toMatchObject({ enabled: true, auto: true, maxRounds: 3, idleSeconds: 60, baseBranch: 'develop', reviewerAgent: null, reviewerModel: '', reviewerEffort: '' })
     const parsedConfig = configSchema.parse({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', aiReview: { maxRounds: 99, idleSeconds: 1 } }] })
     expect(parsedConfig.profiles[0]?.aiReview).toEqual({ ...DEFAULT_AI_REVIEW_SETTINGS, maxRounds: 10, idleSeconds: 10 })
     expect(configSchema.parse({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P' }] }).profiles[0]?.aiReview).toBeUndefined()
@@ -121,6 +123,14 @@ describe('parseReviewReply', () => {
     ])
     expect(parseDisputes('I dispute nothing')).toEqual([])
   })
+
+  it('reads fixed lines', () => {
+    expect(parseFixes('All done.\n- FIXED F1: guarded the empty list\n**FIXED f2**\nFIXED F1: again')).toEqual([
+      { id: 'F1', note: 'guarded the empty list' },
+      { id: 'F2', note: '' }
+    ])
+    expect(parseFixes('I fixed nothing')).toEqual([])
+  })
 })
 
 describe('decideAutoReview', () => {
@@ -134,6 +144,7 @@ describe('decideAutoReview', () => {
   it.each<[Partial<AutoTriggerInput>, string]>([
     [{ settings: { ...settings, enabled: false } }, 'disabled'],
     [{ settings: { ...settings, auto: false } }, 'manualOnly'],
+    [{ sessionAutoOff: true }, 'sessionOff'],
     [{ isReviewerSession: true }, 'reviewer'],
     [{ state: 'busy' }, 'notIdle'],
     [{ idleMs: null }, 'notIdle'],
@@ -254,6 +265,20 @@ describe('review rounds', () => {
     expect(r).toMatchObject({ status: 'paused', escalation: { reason: 'reopened' } })
   })
 
+  it('marks findings the dev agent fixed as done, keeps them, and has the reviewer verify them', () => {
+    let r = markDelivered(completeRound(start(), { raw: 'x', parsed: parsed({ findings: [finding('major', 'a'), finding('minor', 'b')] }) }, settings, 1), 2)
+    r = applyDevReply(r, 'FIXED F1: added the guard\nFIXED F9: unknown', 3)
+    expect(r.status).toBe('awaitingFixes')
+    expect(r.findings).toHaveLength(2)
+    expect(r.findings[0]).toMatchObject({ status: 'fixed', fixedBy: 'dev', fixNote: 'added the guard' })
+    expect(findingsToVerify(r).map((f) => f.id)).toEqual(['F1', 'F2'])
+    // The reviewer disagrees: it opens again, the note stays.
+    r = start(r, 'sha3')
+    r = completeRound(r, { raw: 'x', parsed: parsed({ previous: [{ id: 'F1', status: 'open' }] }) }, { ...settings, maxRounds: 9 }, 4)
+    expect(r.findings[0]).toMatchObject({ status: 'open', fixNote: 'added the guard' })
+    expect(r.findings[0]?.fixedBy).toBeUndefined()
+  })
+
   it('pauses when the dev agent disputes a finding', () => {
     let r = markDelivered(completeRound(start(), { raw: 'x', parsed: parsed({ findings: [finding('major', 'a'), finding('minor', 'b')] }) }, settings, 1), 2)
     r = applyDevReply(r, 'DISPUTE F1: required by the API contract\nDISPUTE F9: unknown', 3)
@@ -329,7 +354,7 @@ describe('prompt and message', () => {
     mergeBase: '1234567890abcdef',
     commits: ['abc1234 feat: add x'],
     diffStat: ' src/a.ts | 2 +-',
-    diff: 'diff --git a/src/a.ts b/src/a.ts\n+x',
+    diffFile: '.workhub-review/changes.diff',
     diffTruncated: false,
     ticket: { key: 'ABC-1', title: 'Add x' },
     checklist: '- No console.log\n\n2) Feature flags documented',
@@ -338,10 +363,18 @@ describe('prompt and message', () => {
     userNotes: []
   }
 
+  it('tells the reviewer what the author says it fixed, and asks for Spanish in Spanish', () => {
+    const fixed = { id: 'F1', severity: 'major' as const, title: 'a', file: 'src/a.ts', line: 3, why: '', fix: '', status: 'fixed' as const, fixedBy: 'dev' as const, fixNote: 'added the guard', round: 1, reopenCount: 0, sent: true }
+    expect(buildReviewPrompt({ ...base, fromSha: 'sha1', previous: [fixed] })).toContain('- F1 [major] a (src/a.ts:3) — author says fixed: added the guard')
+    expect(buildReviewPrompt({ ...base, language: 'es' })).toContain('Responde todo en español')
+  })
+
   it('builds round 1 with every required part', () => {
     const p = buildReviewPrompt(base)
-    for (const part of ['feat/x', 'develop', 'round 1 of at most 3', 'ABC-1 "Add x"', 'abc1234 feat: add x', 'src/a.ts | 2 +-', '```diff', 'End-to-end flow', 'Security', 'Concurrency', '- No console.log', '- Feature flags documented', '"escalate"', 'read-only checkout', 'abcdef123456']) expect(p).toContain(part)
+    for (const part of ['feat/x', 'develop', 'round 1 of at most 3', 'ABC-1 "Add x"', 'abc1234 feat: add x', 'src/a.ts | 2 +-', '`.workhub-review/changes.diff`', 'End-to-end flow', 'Security', 'Concurrency', '- No console.log', '- Feature flags documented', '"escalate"', 'read-only checkout', 'abcdef123456', 'Write everything in English']) expect(p).toContain(part)
     expect(p).not.toContain('Previous findings')
+    // The diff is read from the folder, never sent in the prompt.
+    expect(p).not.toContain('```diff')
     expect(p.trimEnd().endsWith('```')).toBe(true)
   })
 

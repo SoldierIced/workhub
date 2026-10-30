@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import {
   ActiveClock,
   accountAgent,
@@ -10,6 +11,7 @@ import {
   hasSessionControls,
   isTerminalControl,
   knownAgents,
+  owningProfile,
   launchEnvironment,
   resolveEffectiveAgents,
   sessionScreens,
@@ -84,6 +86,8 @@ export interface SessionManagerDeps {
   config: ConfigurationService
   /** Environment variables the session's profile adds (Settings → Profiles); applied before the internal ones. */
   profileEnv?: (profileId: string | null, cwd: string) => Promise<Record<string, string>>
+  /** Environment Workhub itself gives a session (its id and the control endpoint); none for reviewers. */
+  sessionEnv?: (sessionId: string) => Record<string, string>
   runtimes: Partial<Record<AgentAdapterKind, AgentRuntime>>
   /** Runs consoles and shells. */
   terminal: AgentRuntime
@@ -174,8 +178,12 @@ export class SessionManager {
    * `internal` is for the main process only (never the renderer's IPC input): extra environment
    * for the agent process, e.g. the AI review's push block.
    */
-  async start(input: StartSessionInput, internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean } = {}): Promise<SessionView> {
+  async start(asked: StartSessionInput, internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean } = {}): Promise<SessionView> {
     const config = await this.deps.config.current()
+    // A session belongs to the profile that owns its folder (its AI review, links and environment
+    // follow it), whatever profile was active when it was opened, as long as that profile offers the agent.
+    const owner = asked.readOnly ? undefined : owningProfile(asked.cwd, config.profiles, homedir())
+    const input: StartSessionInput = owner && owner.id !== asked.profileId && resolveChoice(config, owner.id, asked.agentKey) ? { ...asked, profileId: owner.id } : asked
     const choice = resolveChoice(config, input.profileId, input.agentKey)
     if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
     const { account } = choice
@@ -230,7 +238,7 @@ export class SessionManager {
       view,
       agent,
       account,
-      env: { ...launchEnvironment(agent, account), ...((await this.deps.profileEnv?.(input.profileId, input.cwd)) ?? {}), ...(internal.env ?? {}) },
+      env: { ...launchEnvironment(agent, account), ...((await this.deps.profileEnv?.(input.profileId, input.cwd)) ?? {}), ...(input.readOnly ? {} : (this.deps.sessionEnv?.(view.id) ?? {})), ...(internal.env ?? {}) },
       runtime,
       engine,
       switching: false,
@@ -254,7 +262,7 @@ export class SessionManager {
     // prompted has none): otherwise the same session id starts fresh, as Workhub 1 does.
     const starting = async () => {
       const resume = internal.restored ? await this.hasTranscript(session).catch(() => false) : Boolean(input.resumeAgentSessionId)
-      return engine === 'app' ? this.startChat(session, { resume, model, effort: input.effort, modeId, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows)
+      return engine === 'app' ? this.startChat(session, { resume, model, effort: input.effort, modeId, cols: input.cols, rows: input.rows }) : this.startConsole(session, input.cols, input.rows, model)
     }
     void starting().catch(
       (err: unknown) => this.update(view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) })
@@ -606,11 +614,15 @@ export class SessionManager {
     void this.moveIdentity(previous, agentSessionId)
   }
 
-  private async startConsole(s: ManagedSession, cols?: number, rows?: number): Promise<void> {
+  private async startConsole(s: ManagedSession, cols?: number, rows?: number, model?: string): Promise<void> {
+    // A session created straight in the console has no model on its view yet: keep it there, so the
+    // chat (and the next console) starts on the same one.
+    if (model && !s.view.currentModelId) this.update(s.view.id, { currentModelId: model })
+    const modelId = model ?? s.view.currentModelId
     const launch =
       s.agent.adapter === 'terminal'
         ? { command: s.agent.command, args: s.agent.args }
-        : consoleCommand(s.agent.console!, s.view.agentSessionId, await this.hasTranscript(s))
+        : consoleCommand(s.agent.console!, s.view.agentSessionId, await this.hasTranscript(s), modelId)
     const agent: AgentDefinition = { ...s.agent, adapter: 'terminal', command: launch.command, args: launch.args }
     const channel = terminalChannel(s.view.id, 'console')
     const size = this.sizes.get(channel)

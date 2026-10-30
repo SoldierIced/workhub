@@ -62,6 +62,8 @@ export class LocalReviewService {
   private readonly pending = new Map<string, { message: string; queuedAt: number }>()
   /** The repo roots each session's last load returned: the only folders files are opened from. */
   private readonly roots = new Map<string, Set<string>>()
+  /** Repos a tool in the session asked to review (control endpoint), added to the ones found in its folder. */
+  private readonly asked = new Map<string, { path: string; base?: string }[]>()
   private timer: ReturnType<typeof setInterval> | null = null
   private readonly now: () => number
 
@@ -78,6 +80,11 @@ export class LocalReviewService {
     return { id: v.id, label: v.label, agentName: v.agentName, cwd: v.cwd, ...(blocker ? { blocker } : {}) }
   }
 
+  /** A tool in the session asked for a review of these repos: the next loads include them. */
+  request(sessionId: string, repos: { path: string; base?: string }[]): void {
+    if (repos.length) this.asked.set(sessionId, repos)
+  }
+
   async load(sessionId: string, scope: LocalReviewScope): Promise<LocalReviewLoad> {
     const v = this.view(sessionId)
     if (!v) return { ok: false, reason: 'unknownSession' }
@@ -87,6 +94,7 @@ export class LocalReviewService {
         folder: v.cwd,
         scope,
         since: v.startedAt,
+        ...(this.asked.get(sessionId)?.length ? { extraRepos: this.asked.get(sessionId) } : {}),
         pullRequestOf: ({ name, remoteName, branch }) => {
           const repo = (remoteName ?? name).toLowerCase()
           const hit = prs.find((p) => p.pr.branch === branch && p.pr.repo.toLowerCase() === repo && p.pr.state === 'open')

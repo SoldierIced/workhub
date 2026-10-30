@@ -126,7 +126,7 @@ describe('monitor view', () => {
   })
 
   it('lists module screens enabled in the profile, never a retired one (Flows)', () => {
-    expect(moduleScreens({ flows: true, health: false, chatWatcher: true, automations: false })).toEqual(['chatWatcher'])
+    expect(moduleScreens({ flows: true, health: false, chatWatcher: true, automations: false, flowMaps: false })).toEqual(['chatWatcher'])
     expect(moduleScreens(undefined)).toEqual([])
   })
 

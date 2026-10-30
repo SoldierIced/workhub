@@ -139,6 +139,22 @@ describe('SessionManager', () => {
     expect(manager.remove(view.id)).toBe(false)
   })
 
+  it('puts a session in the profile that owns its folder, whatever profile was active', async () => {
+    const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }
+    const config: WorkhubConfig = {
+      ...emptyConfig(),
+      profiles: [
+        { id: 'work', name: 'Work', connections: {}, accountIds: [], modules: mods, folders: ['/w'] },
+        { id: 'home', name: 'Home', connections: {}, accountIds: [], modules: mods, folders: ['/p'] }
+      ],
+      activeProfileId: 'work'
+    }
+    const { manager } = setup(config)
+    expect((await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/p/bot' })).profileId).toBe('home')
+    expect((await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/elsewhere' })).profileId).toBe('work')
+    expect((await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/p/bot', readOnly: true })).profileId).toBe('work')
+  })
+
   it('starts native Claude in the app with a preassigned session id and offers app, terminal and shell', async () => {
     const { manager, native, last } = setup()
     const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', model: 'haiku' })
@@ -184,6 +200,22 @@ describe('SessionManager', () => {
     const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', mode: 'console' })
     await flush()
     expect(terminal.started[0]!.agent).toMatchObject({ command: 'claude', args: ['--session-id', view.agentSessionId] })
+  })
+
+  it('starts a console-first session on the picked model, and keeps it on the view', async () => {
+    const { manager, terminal, last } = setup()
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', mode: 'console', model: 'opus' })
+    await flush()
+    expect(terminal.started[0]!.agent.args).toEqual(['--session-id', view.agentSessionId, '--model', 'opus'])
+    expect(last(view.id).currentModelId).toBe('opus')
+  })
+
+  it('hands a chat session over to the console on the model picked in the chat', async () => {
+    const { manager, terminal } = setup(emptyConfig(), true)
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', model: 'haiku' })
+    await flush()
+    await manager.setMode(view.id, 'console')
+    expect(terminal.started[0]!.agent.args).toEqual(['--resume', view.agentSessionId, '--model', 'haiku'])
   })
 
   it('runs the shell next to the agent and goes back to the agent when the shell exits', async () => {
@@ -363,7 +395,7 @@ describe('session helpers', () => {
   it('resolves an account key the profile does not offer from the config', () => {
     const profiled: WorkhubConfig = {
       ...config,
-      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false } }],
+      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }],
       activeProfileId: 'p'
     }
     expect(resolveChoice(profiled, 'p', 'claude:work')).toMatchObject({ account: { id: 'work' }, label: 'Claude Code · Work' })

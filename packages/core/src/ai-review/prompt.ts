@@ -17,8 +17,12 @@ export interface ReviewPromptInput {
   /** `<short sha> <subject>`, oldest first. */
   commits: string[]
   diffStat: string
-  diff: string
-  /** The diff was cut at a size limit; the reviewer must read the files themselves. */
+  /**
+   * Path, relative to the reviewer's folder, of the file holding the diff. The diff is never put
+   * in the prompt: the reviewer reads it (and the code around it) from the folder.
+   */
+  diffFile: string
+  /** The diff file was cut at a size limit; the reviewer must read the files themselves. */
   diffTruncated: boolean
   ticket?: { key: string; title?: string }
   checklist: string
@@ -51,6 +55,8 @@ interface PromptStrings {
   severities: string
   scope: string
   output: string
+  /** The language the whole reply must be written in. */
+  language: string
 }
 
 /** The reviewer prompt per language; English is the default. Placeholders are `{name}`. */
@@ -68,9 +74,9 @@ export const REVIEW_PROMPT_STRINGS: Record<ReviewLanguage, PromptStrings> = {
     noTicket: 'No ticket is linked: infer the intent from the commits and the code.',
     commits: 'Commits on the branch:',
     stat: 'Files changed:',
-    diff: 'Diff (`git diff {mergeBase}..{headSha}`):',
-    diffDelta: 'Diff since your last review (`git diff {fromSha}..{headSha}`):',
-    truncated: 'The diff above was cut at a size limit. Read the remaining changed files from the folder.',
+    diff: 'The changes to review are in `{diffFile}`, in this folder: the output of `git diff {mergeBase}..{headSha}`. Read it first, then read the changed files and the code around them here for context. That file is not part of the branch: do not review it.',
+    diffDelta: 'The changes since your last review are in `{diffFile}`, in this folder: the output of `git diff {fromSha}..{headSha}`. Read it first, then read the changed files and the code around them here for context. That file is not part of the branch: do not review it.',
+    truncated: 'That diff file was cut at a size limit. Read the remaining changed files (listed above) from the folder.',
     uncommitted:
       'The author also has uncommitted changes in these files, which are NOT part of this review. Mention them in the summary if they look like they belong in the branch:',
     previous: 'Previous findings to verify (put each in `previous` with `fixed` or `open`):',
@@ -94,7 +100,8 @@ export const REVIEW_PROMPT_STRINGS: Record<ReviewLanguage, PromptStrings> = {
     scope:
       'Scope: judge whether what you ask for is proportionate to the size and intent of this change. If you would ask for a redesign, a large refactor or work outside the ticket, or if you and the author keep disagreeing on design, set `escalate.needed` to true with the reason, so the user decides. Mark such items as `minor` unless they are real defects.',
     output:
-      'Write a short human summary first, then end your reply with exactly one fenced ```json block with this shape (no comments inside):'
+      'Write a short human summary first, then end your reply with exactly one fenced ```json block with this shape (no comments inside):',
+    language: 'Write everything in English: the summary and the text of every finding and note.'
   },
   es: {
     intro:
@@ -109,9 +116,9 @@ export const REVIEW_PROMPT_STRINGS: Record<ReviewLanguage, PromptStrings> = {
     noTicket: 'No hay ticket vinculado: deduce la intención a partir de los commits y del código.',
     commits: 'Commits de la rama:',
     stat: 'Archivos cambiados:',
-    diff: 'Diff (`git diff {mergeBase}..{headSha}`):',
-    diffDelta: 'Diff desde tu última revisión (`git diff {fromSha}..{headSha}`):',
-    truncated: 'El diff de arriba se cortó por tamaño. Lee los demás archivos cambiados desde la carpeta.',
+    diff: 'Los cambios a revisar están en `{diffFile}`, en esta carpeta: la salida de `git diff {mergeBase}..{headSha}`. Léelo primero y después lee aquí los archivos cambiados y el código que los rodea para tener contexto. Ese archivo no forma parte de la rama: no lo revises.',
+    diffDelta: 'Los cambios desde tu última revisión están en `{diffFile}`, en esta carpeta: la salida de `git diff {fromSha}..{headSha}`. Léelo primero y después lee aquí los archivos cambiados y el código que los rodea para tener contexto. Ese archivo no forma parte de la rama: no lo revises.',
+    truncated: 'Ese archivo de diff se cortó por tamaño. Lee los demás archivos cambiados (listados arriba) desde la carpeta.',
     uncommitted:
       'El autor también tiene cambios sin commit en estos archivos, que NO forman parte de esta revisión. Menciónalos en el resumen si parece que pertenecen a la rama:',
     previous: 'Hallazgos anteriores a verificar (pon cada uno en `previous` con `fixed` u `open`):',
@@ -135,7 +142,8 @@ export const REVIEW_PROMPT_STRINGS: Record<ReviewLanguage, PromptStrings> = {
     scope:
       'Alcance: evalúa si lo que pides es proporcionado al tamaño y la intención de este cambio. Si pedirías un rediseño, una refactorización grande o trabajo fuera del ticket, o si tú y el autor siguen en desacuerdo sobre el diseño, pon `escalate.needed` en true con el motivo, para que decida el usuario. Marca esos puntos como `minor` salvo que sean defectos reales.',
     output:
-      'Escribe primero un resumen breve para personas y termina tu respuesta con exactamente un bloque ```json con esta forma (sin comentarios dentro):'
+      'Escribe primero un resumen breve para personas y termina tu respuesta con exactamente un bloque ```json con esta forma (sin comentarios dentro):',
+    language: 'Responde todo en español: el resumen y los textos de cada hallazgo (`title`, `why`, `fix`) y de cada `note`. Los nombres de los campos y los valores de `severity`, `status` y `assessment` quedan en inglés.'
   }
 }
 
@@ -165,7 +173,8 @@ export function checklistItems(text: string): string[] {
 function findingLine(f: ReviewFinding): string {
   const where = f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : ''
   const dispute = f.status === 'disputed' && f.disputeReason ? ` — author disputes: ${f.disputeReason}` : ''
-  return `- ${f.id} [${f.severity}] ${f.title}${where}${dispute}`
+  const fixed = f.status === 'fixed' && f.fixedBy === 'dev' ? ` — author says fixed${f.fixNote ? `: ${f.fixNote}` : ''}` : ''
+  return `- ${f.id} [${f.severity}] ${f.title}${where}${dispute}${fixed}`
 }
 
 /** The reviewer prompt for one round. Pure: the caller gathers the git facts. */
@@ -180,6 +189,7 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
     headSha: short(input.headSha),
     mergeBase: short(input.mergeBase),
     fromSha: short(input.fromSha),
+    diffFile: input.diffFile,
     key: input.ticket?.key ?? '',
     title: input.ticket?.title ?? ''
   }
@@ -198,8 +208,9 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
   if (input.commits.length) parts.push([s.commits, ...input.commits.map((c) => `- ${c}`)].join('\n'))
   if (input.diffStat.trim()) parts.push(`${s.stat}\n\`\`\`\n${input.diffStat.trim()}\n\`\`\``)
   if (input.uncommitted.length) parts.push([s.uncommitted, ...input.uncommitted.slice(0, 50).map((f) => `- ${f}`)].join('\n'))
-  parts.push(`${fill(delta ? s.diffDelta : s.diff, p)}\n\`\`\`diff\n${input.diff.trimEnd()}\n\`\`\``)
+  parts.push(fill(delta ? s.diffDelta : s.diff, p))
   if (input.diffTruncated) parts.push(s.truncated)
+  parts.push(s.language)
   parts.push(`${s.output}\n\`\`\`json\n${REVIEW_JSON_SCHEMA}\n\`\`\``)
   return parts.join('\n\n')
 }
@@ -207,6 +218,7 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
 interface MessageStrings {
   header: string
   headerRound: string
+  reviewer: string
   blocking: string
   other: string
   where: string
@@ -223,13 +235,14 @@ export const DEV_MESSAGE_STRINGS: Record<ReviewLanguage, MessageStrings> = {
   en: {
     header: 'Code review of branch `{branch}` (round {round} of {maxRounds}), before the pull request to `{base}`. {count} to fix.',
     headerRound: 'Still open from earlier rounds: {stillOpen}.',
+    reviewer: 'Reviewed by {reviewer}.',
     blocking: 'Blockers and majors (fix these first):',
     other: 'Minors and nits:',
     where: 'Where',
     why: 'Why',
     fix: 'Fix',
     instructions:
-      'Fix them, run the tests, and commit (do not open the pull request yet). The reviewer checks the new commits in the next round. If you disagree with a finding, do not change it: reply with one line per finding, `DISPUTE F<n>: <reason>`.',
+      'Fix them, run the tests, and commit (do not open the pull request yet). The reviewer checks the new commits in the next round. For each finding you fixed, end your reply with one line `FIXED F<n>: <what you changed>`. If you disagree with a finding, do not change it: reply with one line per finding, `DISPUTE F<n>: <reason>`.',
     raw: 'The reviewer\'s reply could not be read as structured findings; here it is as it came:',
     opinion: 'A note from the user about this review:',
     severity: { blocker: 'blocker', major: 'major', minor: 'minor', nit: 'nit' }
@@ -237,13 +250,14 @@ export const DEV_MESSAGE_STRINGS: Record<ReviewLanguage, MessageStrings> = {
   es: {
     header: 'Revisión de código de la rama `{branch}` (ronda {round} de {maxRounds}), antes del pull request hacia `{base}`. {count} por corregir.',
     headerRound: 'Siguen abiertos de rondas anteriores: {stillOpen}.',
+    reviewer: 'Revisó: {reviewer}.',
     blocking: 'Bloqueantes y mayores (corrige estos primero):',
     other: 'Menores y detalles:',
     where: 'Dónde',
     why: 'Por qué',
     fix: 'Corrección',
     instructions:
-      'Corrígelos, ejecuta las pruebas y haz commit (no abras el pull request todavía). El revisor verifica los commits nuevos en la próxima ronda. Si no estás de acuerdo con un hallazgo, no lo cambies: responde con una línea por hallazgo, `DISPUTE F<n>: <motivo>`.',
+      'Corrígelos, ejecuta las pruebas y haz commit (no abras el pull request todavía). El revisor verifica los commits nuevos en la próxima ronda. Por cada hallazgo que corregiste, termina tu respuesta con una línea `FIXED F<n>: <qué cambiaste>`. Si no estás de acuerdo con un hallazgo, no lo cambies: responde con una línea por hallazgo, `DISPUTE F<n>: <motivo>`.',
     raw: 'La respuesta del revisor no se pudo leer como hallazgos estructurados; esta es tal como llegó:',
     opinion: 'Una nota del usuario sobre esta revisión:',
     severity: { blocker: 'bloqueante', major: 'mayor', minor: 'menor', nit: 'detalle' }
@@ -264,6 +278,8 @@ export interface DevMessageInput {
   round: number
   maxRounds: number
   findings: readonly ReviewFinding[]
+  /** Who reviewed (agent, account, model), shown under the header. */
+  reviewer?: string
 }
 
 /** One clear message with every open finding: blockers and majors first, then minors and nits. */
@@ -272,6 +288,7 @@ export function formatDevMessage(input: DevMessageInput): string {
   const open = sortedOpenFindings(input.findings)
   const lines: string[] = [fill(s.header, { branch: input.branch, base: input.base, round: input.round, maxRounds: input.maxRounds, count: open.length })]
   const carried = open.filter((f) => f.round < input.round).map((f) => f.id)
+  if (input.reviewer) lines.push(fill(s.reviewer, { reviewer: input.reviewer }))
   if (carried.length) lines.push(fill(s.headerRound, { stillOpen: carried.join(', ') }))
   const block = (title: string, list: ReviewFinding[]) => {
     if (!list.length) return

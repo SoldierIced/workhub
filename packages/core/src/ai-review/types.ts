@@ -37,6 +37,8 @@ export interface AiReviewSettings {
   language: ReviewLanguage
   /** Model the reviewer starts with; empty: the agent's default. */
   reviewerModel: string
+  /** Reasoning effort the reviewer starts with (e.g. `high`, `xhigh`); empty: the agent's default. Ignored by agents without the setting. */
+  reviewerEffort: string
   /** "Review with another agent": what the author is asked to write the brief; empty: `DEFAULT_REVIEW_BRIEF_PROMPT`. */
   briefPrompt: string
 }
@@ -59,6 +61,10 @@ export interface ReviewFinding {
   sent: boolean
   /** The dev agent's reason, when it disputes the finding. */
   disputeReason?: string
+  /** Who marked it fixed: the dev agent (`FIXED F<n>`, still to be verified), the reviewer or the user. */
+  fixedBy?: 'dev' | 'reviewer' | 'user'
+  /** What the dev agent says it changed for it; kept when the finding is reopened. */
+  fixNote?: string
   /** The reviewer's last note when verifying it. */
   note?: string
 }
@@ -89,6 +95,10 @@ export interface ReviewRound {
   endedAt?: number
   reviewerAgentKey: string
   reviewerSessionId?: string
+  /** Who reviewed, as the user knows them: agent name and account. */
+  reviewerLabel?: string
+  /** The model the reviewer ran with, when known. */
+  reviewerModel?: string
   /** Set when the base could not be fetched before the round: `base not refreshed: <reason>`. */
   baseNote?: string
   /** Set when the reviewer ran without the asked model, with the reason. */
@@ -162,6 +172,8 @@ export interface BranchReview {
 
 export interface AiReviewState {
   reviews: Record<string, BranchReview>
+  /** Dev session identities whose automatic review the user turned off in the chat; absent: on. */
+  autoOff?: Record<string, true>
 }
 
 export const EMPTY_AI_REVIEW_STATE: AiReviewState = { reviews: {} }

@@ -1,11 +1,12 @@
 import { NO_CAPABILITIES, type AgentDefinition, type ConsoleLaunch } from './agent'
 
-/** `claude` itself, for the console view: a fixed session id, resumed once it has a transcript. */
+/** `claude` itself, for the console view: a fixed session id, resumed once it has a transcript, on the session's model. */
 const CLAUDE_CONSOLE: ConsoleLaunch = {
   command: 'claude',
   args: [],
   resumeArgs: ['--resume', '{sessionId}'],
-  newSessionArgs: ['--session-id', '{sessionId}']
+  newSessionArgs: ['--session-id', '{sessionId}'],
+  modelArgs: ['--model', '{model}']
 }
 
 /**
@@ -89,6 +90,9 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
       permissionRequests: true
     },
     modeSemantics: 'persona',
+    // `kiro-cli acp` takes the first session's model and effort on its command line; ACP has no effort setting.
+    modelArgs: ['--model', '{model}'],
+    effortArgs: ['--effort', '{effort}'],
     transcript: 'kiro',
     builtIn: true
   },

@@ -147,6 +147,16 @@ function normalize(value: unknown): ParsedReview | null {
   }
 }
 
+/** One `FIXED F3: what changed` line per finding the dev agent says it fixed (case-insensitive, bullets allowed). */
+export function parseFixes(text: string): { id: string; note: string }[] {
+  const out = new Map<string, string>()
+  for (const m of text.matchAll(/^[\s>*\-•]*\**FIXED\**\s+\**(F\d+)\**\s*(?:[:\-–—]\s*(.*))?$/gim)) {
+    const id = (m[1] ?? '').toUpperCase()
+    if (id && !out.has(id)) out.set(id, (m[2] ?? '').trim())
+  }
+  return [...out].map(([id, note]) => ({ id, note }))
+}
+
 /** One `DISPUTE F3: reason` line per finding the dev agent disagrees with (case-insensitive, bullets allowed). */
 export function parseDisputes(text: string): { id: string; reason: string }[] {
   const out = new Map<string, string>()

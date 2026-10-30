@@ -19,5 +19,6 @@ export const DEFAULT_AI_REVIEW_SETTINGS: AiReviewSettings = {
   idleSeconds: 60,
   language: 'en',
   reviewerModel: '',
+  reviewerEffort: '',
   briefPrompt: ''
 }

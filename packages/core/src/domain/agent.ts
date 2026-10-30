@@ -85,9 +85,16 @@ export interface AgentDefinition {
   accountConfigEnv?: string
   /**
    * The agent's own terminal UI, for the console view of a session (Workhub 1's console mode).
-   * `{sessionId}` in the args is replaced with the agent's session id.
+   * `{sessionId}` in the args is replaced with the agent's session id, `{model}` in `modelArgs`
+   * with the model picked for the session.
    */
   console?: ConsoleLaunch
+  /**
+   * Args that pick the first session's model or reasoning effort when the agent is launched (ACP
+   * agents), e.g. `--model {model}` and `--effort {effort}`; each is added only when one is set.
+   */
+  modelArgs?: string[]
+  effortArgs?: string[]
   /** Id of the transcript reader that fills the monitor of this agent's sessions, e.g. `claude`. */
   transcript?: string
   /** Another agent whose accounts this one uses (Claude over ACP uses the native Claude accounts). */
@@ -103,12 +110,34 @@ export interface ConsoleLaunch {
   resumeArgs?: string[]
   /** Args that start a new session with an id chosen by Workhub, e.g. `--session-id {sessionId}`. */
   newSessionArgs?: string[]
+  /** Args that pick the session's model, e.g. `--model {model}`; added only when a model is set. */
+  modelArgs?: string[]
 }
 
-/** The command line of an agent's console view: resume when the session has history, else start it with its id. */
-export function consoleCommand(launch: ConsoleLaunch, agentSessionId: string | undefined, hasHistory: boolean): { command: string; args: string[] } {
+/**
+ * The command line of an agent's console view: resume when the session has history, else start it
+ * with its id. A model picked for the session is passed through `modelArgs`; none, or the literal
+ * `default` (the agent's own choice), adds nothing.
+ */
+export function consoleCommand(
+  launch: ConsoleLaunch,
+  agentSessionId: string | undefined,
+  hasHistory: boolean,
+  modelId?: string
+): { command: string; args: string[] } {
   const extra = !agentSessionId ? [] : hasHistory ? (launch.resumeArgs ?? []) : (launch.newSessionArgs ?? [])
-  return { command: launch.command, args: [...launch.args, ...extra.map((a) => a.replaceAll('{sessionId}', agentSessionId ?? ''))] }
+  const model = modelId && modelId !== 'default' ? (launch.modelArgs ?? []).map((a) => a.replaceAll('{model}', modelId)) : []
+  return { command: launch.command, args: [...launch.args, ...extra.map((a) => a.replaceAll('{sessionId}', agentSessionId ?? '')), ...model] }
+}
+
+/**
+ * The args an agent is launched with: its own, then the model and effort asked for through its
+ * `modelArgs` / `effortArgs`. A missing value, or the literal `default` model, adds nothing.
+ */
+export function launchArgs(agent: Pick<AgentDefinition, 'args' | 'modelArgs' | 'effortArgs'>, wanted: { model?: string; effort?: string }): string[] {
+  const model = wanted.model && wanted.model !== 'default' ? (agent.modelArgs ?? []).map((a) => a.replaceAll('{model}', wanted.model!)) : []
+  const effort = wanted.effort ? (agent.effortArgs ?? []).map((a) => a.replaceAll('{effort}', wanted.effort!)) : []
+  return [...agent.args, ...model, ...effort]
 }
 
 /** One account of an agent. An agent can have any number of accounts (not a fixed pair). */

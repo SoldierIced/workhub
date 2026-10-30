@@ -26,6 +26,7 @@ import {
   resolveEffectiveAgents,
   sessionIdentity,
   type AgentEvent,
+  type AiReviewSettings,
   type BudgetStatus,
   type EffectiveAgent,
   type SessionOrigin,
@@ -182,22 +183,23 @@ export class AgentReviewService {
     }
     this.loops.set(run.view.id, run)
     this.changed()
-    void this.run(run, config, view, reviewer, request.prompt)
+    void this.run(run, config, view, reviewer, request.prompt, aiReviewSettings(profile))
     return { ok: true, loopId: run.view.id }
   }
 
-  private async run(run: LoopRun, config: WorkhubConfig, author: SessionView, reviewer: EffectiveAgent, briefPrompt: string): Promise<void> {
+  private async run(run: LoopRun, config: WorkhubConfig, author: SessionView, reviewer: EffectiveAgent, briefPrompt: string, settings: AiReviewSettings): Promise<void> {
     const authorKey = effectiveAgentKey(author.agentId, author.accountId)
+    const language = settings.language
     try {
       const reply = await this.turn(run, config, author.id, authorKey, briefPrompt, 'authorClosed')
       const brief = extractReviewBrief(reply)
       if (!brief) throw new LoopEnd({ failure: 'noBrief' })
 
       this.set(run, { phase: 'starting' })
-      const reviewerId = await this.startReviewer(run, author, reviewer)
+      const reviewerId = await this.startReviewer(run, author, reviewer, settings)
       this.set(run, { phase: 'reviewing', round: 1 })
       const title = author.name ?? this.titles.get(author.id)
-      let review = await this.turn(run, config, reviewerId, reviewer.key, buildLoopReviewerPrompt({ brief, ...(title ? { sessionTitle: title } : {}), maxRounds: run.view.maxRounds }), 'reviewerClosed')
+      let review = await this.turn(run, config, reviewerId, reviewer.key, buildLoopReviewerPrompt({ brief, ...(title ? { sessionTitle: title } : {}), maxRounds: run.view.maxRounds, language }), 'reviewerClosed')
       for (;;) {
         if (!review.trim()) throw new LoopEnd({ failure: 'emptyReview' })
         const { round, maxRounds } = run.view
@@ -212,7 +214,7 @@ export class AgentReviewService {
         this.set(run, { phase: 'fixing' })
         const answer = await this.turn(run, config, author.id, authorKey, buildAuthorFixPrompt({ review, reviewer: reviewer.label, round, maxRounds }), 'authorClosed')
         this.set(run, { phase: 'reviewing', round: round + 1 })
-        review = await this.turn(run, config, reviewerId, reviewer.key, buildReReviewPrompt({ reply: answer, round: round + 1, maxRounds }), 'reviewerClosed')
+        review = await this.turn(run, config, reviewerId, reviewer.key, buildReReviewPrompt({ reply: answer, round: round + 1, maxRounds, language }), 'reviewerClosed')
       }
     } catch (e) {
       if (isEnded(run.view)) return // stopped by the user meanwhile
@@ -223,15 +225,20 @@ export class AgentReviewService {
     }
   }
 
-  /** Starts the reviewer read-only next to the author and waits until it takes prompts. */
-  private async startReviewer(run: LoopRun, author: SessionView, reviewer: EffectiveAgent): Promise<string> {
+  /**
+   * Starts the reviewer read-only next to the author, with the profile's reviewer model and effort
+   * when set, and waits until it takes prompts.
+   */
+  private async startReviewer(run: LoopRun, author: SessionView, reviewer: EffectiveAgent, settings: AiReviewSettings): Promise<string> {
     // The reviewer cannot push: every remote gets an invalid push URL through its environment.
     const remotes = await this.deps.remotes(author.cwd).catch(() => [])
     const env = pushBlockEnv([...new Set(['origin', ...remotes])], process.env)
     const origin: SessionOrigin = { kind: 'review', fromLabel: author.name ?? author.label, fromIdentity: sessionIdentity(author) }
+    const model = settings.reviewerModel.trim()
+    const effort = settings.reviewerEffort.trim()
     let started: SessionView
     try {
-      started = await this.deps.sessions.start({ profileId: author.profileId, agentKey: reviewer.key, cwd: author.cwd, mode: 'app', readOnly: true, cols: 120, rows: 32 }, { env, origin })
+      started = await this.deps.sessions.start({ profileId: author.profileId, agentKey: reviewer.key, cwd: author.cwd, mode: 'app', readOnly: true, cols: 120, rows: 32, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, { env, origin })
     } catch (e) {
       throw new LoopEnd({ failure: 'reviewerStart', detail: e instanceof Error ? e.message : String(e) })
     }
@@ -244,7 +251,12 @@ export class AgentReviewService {
     for (;;) {
       if (isEnded(run.view)) throw new LoopEnd({ stoppedBy: 'user' })
       const v = this.view(started.id)
-      if (v?.state === 'ready') return started.id
+      if (v?.state === 'ready') {
+        // The model it runs with, as the agent reports it (its name when listed); the one asked for otherwise.
+        const running = v.models?.find((m) => m.id === v.currentModelId)?.name ?? v.currentModelId ?? (v.modelIgnored ? undefined : model)
+        if (running) this.set(run, { reviewerModel: running })
+        return started.id
+      }
       if (!v || !isLive(v)) throw new LoopEnd({ failure: 'reviewerStart', detail: v?.error ?? 'the reviewer session stopped while starting' })
       if (this.now() > until) throw new LoopEnd({ failure: 'reviewerStart', detail: 'the reviewer session did not start in time' })
       await sleep(this.deps.pollMs ?? 200)

@@ -23,7 +23,7 @@ const config: WorkhubConfig = {
     { id: 'personal', agentId: 'claude', name: 'Personal' },
     { id: 'work', agentId: 'claude', name: 'Work' }
   ],
-  profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['personal', 'work'], modules: { flows: false, health: false, chatWatcher: false, automations: false } }],
+  profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['personal', 'work'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }],
   activeProfileId: 'p'
 }
 const agents = resolveEffectiveAgents(config, 'p')
@@ -74,10 +74,21 @@ describe('loop prompts', () => {
     expect(briefPromptOf({ briefPrompt: 'Mine' })).toBe('Mine')
   })
 
-  it('gives the reviewer the brief, read-only rules, severities with file:line and the verdict line', () => {
+  it('gives the reviewer the brief, read-only rules, the method and checklist, severities with file:line and the verdict line', () => {
     const p = buildLoopReviewerPrompt({ brief: 'Repos: /work/pay', sessionTitle: 'Refunds in pay\nmore', maxRounds: 3 })
     expect(p.split('\n')[0]).toBe('Review: Refunds in pay')
-    for (const part of ['Repos: /work/pay', 'do not edit files', 'file:line', 'VERDICT: APPROVED', 'VERDICT: CHANGES_REQUESTED', 'round 1 of at most 3']) expect(p).toContain(part)
+    for (const part of ['Repos: /work/pay', 'Do not edit files', 'count as proven', 'pre-existing code', 'real identity', '## Checklist', 'C9.', '**Evidence**', 'Write in English.', 'file:line', 'VERDICT: APPROVED', 'VERDICT: CHANGES_REQUESTED', 'round 1 of at most 3'])
+      expect(p).toContain(part)
+    // The brief goes after the note that it is the author's claim.
+    expect(p.indexOf('count as proven')).toBeLessThan(p.indexOf('Repos: /work/pay'))
+  })
+
+  it('asks for the review in the profile language, keeping the verdict line', () => {
+    const es = buildLoopReviewerPrompt({ brief: 'b', maxRounds: 1, language: 'es' })
+    expect(es).toContain('Write in Spanish')
+    expect(es).toContain('VERDICT: CHANGES_REQUESTED')
+    expect(buildLoopReviewerPrompt({ brief: 'b', maxRounds: 1, language: 'xx' })).toContain('Write in English.')
+    expect(buildReReviewPrompt({ reply: 'done', round: 2, maxRounds: 3, language: 'es' })).toContain('Write in Spanish')
   })
 
   it('wraps the findings for the author and the answer for the re-review, naming the last round', () => {
@@ -87,6 +98,8 @@ describe('loop prompts', () => {
     const again = buildReReviewPrompt({ reply: 'Fixed a.ts:1 in abc123', round: 2, maxRounds: 2 })
     expect(again).toContain('<author-reply>\nFixed a.ts:1 in abc123\n</author-reply>')
     expect(again).toContain('round 2 of 2, the last one')
+    // Every round redoes the whole method, not only the previous findings.
+    expect(again).toContain('## Checklist')
     expect(buildReReviewPrompt({ reply: ' ', round: 2, maxRounds: 3 })).toContain('(the author replied with no text)')
   })
 })
