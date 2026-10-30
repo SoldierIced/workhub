@@ -43,7 +43,8 @@ describe('control endpoint', () => {
     const dir = mkdtempSync(join(tmpdir(), 'wh-ctl-'))
     dirs.push(dir)
     const opened: [string, ReviewRequestRepo[]][] = []
-    const socket = join(dir, 'c.sock')
+    // A socket file next to the maps, or a named pipe on Windows.
+    const socket = controlSocketPath(dir)
     const server = await startControlServer(socket, {
       openReview: (id, repos) => (id === 's1' ? (opened.push([id, repos]), { ok: true }) : { ok: false, status: 404, error: 'unknown session' })
     })

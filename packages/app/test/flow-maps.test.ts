@@ -1,9 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { startControlServer } from '../src/main/control-server'
+import { controlSocketPath, startControlServer } from '../src/main/control-server'
 import { flowMapSummaries, readFlowMapFiles, saveFlowMap } from '../src/main/flow-maps'
 
 const dirs: string[] = []
@@ -26,7 +26,7 @@ describe('flow-map files', () => {
     writeFileSync(join(dir, 'refs.json'), JSON.stringify({ ...checkout, id: 'refs', edges: [{ from: 'bff', to: 'nowhere' }] }))
     writeFileSync(join(dir, 'notes.txt'), 'ignored')
     const files = readFlowMapFiles(dir)
-    expect(files.map((f) => [f.file.split('/').pop(), Boolean(f.map)])).toEqual([['broken.json', false], ['checkout.json', true], ['refs.json', false]])
+    expect(files.map((f) => [basename(f.file), Boolean(f.map)])).toEqual([['broken.json', false], ['checkout.json', true], ['refs.json', false]])
     const summaries = flowMapSummaries(files)
     expect(summaries[1]).toMatchObject({ id: 'checkout', name: 'Checkout', nodes: 6, edges: 6 })
     expect(summaries[0]).toMatchObject({ id: 'broken', error: expect.stringContaining('JSON') })
@@ -45,7 +45,8 @@ describe('flow-map files', () => {
 
   it('takes a map over the control endpoint', async () => {
     const dir = tmp()
-    const socket = join(dir, 'c.sock')
+    // A socket file next to the maps, or a named pipe on Windows.
+    const socket = controlSocketPath(dir)
     const stored: unknown[] = []
     const server = await startControlServer(socket, {
       openReview: () => ({ ok: true }),
