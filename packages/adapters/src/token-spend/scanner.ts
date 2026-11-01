@@ -16,7 +16,8 @@ import { isCompressed, readRollout } from '../transcript-codex/files'
 import { claudePending, claudeSpendLine, codexSpendLine, emptyCosts, kiroSpendFile, type ClaudeSpendState, type CodexSpendState, type CostBuckets } from './parsers'
 
 // 2: entries also keep what the spend cost (`costs`), so older caches are read again.
-export const SPEND_CACHE_VERSION = 2
+// 3: entries also keep the cache reads (`reads`), which the fresh buckets leave out.
+export const SPEND_CACHE_VERSION = 3
 
 export interface SpendFileEntry {
   size: number
@@ -25,6 +26,8 @@ export interface SpendFileEntry {
   offset: number
   state?: ClaudeSpendState | CodexSpendState
   buckets: SpendBuckets
+  /** Cache-read tokens in the same keys as `buckets`: they weigh little on a plan, so they are kept apart. */
+  reads?: SpendBuckets
   /** What the committed spend cost at list prices (see `CostBuckets`). */
   costs?: CostBuckets
 }
@@ -140,6 +143,7 @@ export class TokenSpendScanner {
       if (!info?.isFile() || info.mtimeMs < since) continue
       const entry = await this.read(path, kind, info.size, info.mtimeMs, this.cache.files[path])
       entry.buckets = pruneSpend(entry.buckets, sinceDay)
+      if (entry.reads) entry.reads = pruneSpend(entry.reads, sinceDay)
       if (entry.costs) entry.costs = { usd: pruneSpend(entry.costs.usd, sinceDay), unpriced: pruneSpend(entry.costs.unpriced, sinceDay) }
       next[path] = entry
     }
@@ -151,29 +155,31 @@ export class TokenSpendScanner {
     if (prev && prev.size === size && prev.mtimeMs === mtimeMs) return prev
     if (kind === 'kiro' || kind === 'codex-zst') {
       const buckets: SpendBuckets = {}
+      const reads: SpendBuckets = {}
       if (kind === 'kiro') {
         const handle = await open(path, 'r').catch(() => null)
         const text = handle ? await handle.readFile('utf8').catch(() => '').finally(() => handle.close()) : ''
-        kiroSpendFile(text, buckets)
+        kiroSpendFile(text, buckets, reads)
       } else {
         const state: CodexSpendState = {}
         const costs = emptyCosts()
-        for (const line of (await readRollout(path)).split('\n')) if (line.trim()) codexSpendLine(line, state, buckets, costs)
+        for (const line of (await readRollout(path)).split('\n')) if (line.trim()) codexSpendLine(line, state, buckets, costs, reads)
         await tick()
-        return { size, mtimeMs, offset: 0, state, buckets, costs }
+        return { size, mtimeMs, offset: 0, state, buckets, reads, costs }
       }
       await tick()
-      return { size, mtimeMs, offset: 0, buckets }
+      return { size, mtimeMs, offset: 0, buckets, reads }
     }
     // An append-only file resumes; one that shrank was rewritten and is read from the start.
     const resume = prev && prev.offset <= size && prev.size <= size
     const buckets: SpendBuckets = resume ? { ...prev.buckets } : {}
+    const reads: SpendBuckets = resume ? { ...prev.reads } : {}
     const costs: CostBuckets = resume && prev.costs ? structuredClone(prev.costs) : emptyCosts()
     const state = resume ? structuredClone(prev.state ?? {}) : {}
     const offset = await readLinesFrom(path, resume ? prev.offset : 0, size, (line) =>
-      kind === 'claude' ? claudeSpendLine(line, state as ClaudeSpendState, buckets, undefined, costs) : codexSpendLine(line, state as CodexSpendState, buckets, costs)
+      kind === 'claude' ? claudeSpendLine(line, state as ClaudeSpendState, buckets, undefined, costs, reads) : codexSpendLine(line, state as CodexSpendState, buckets, costs, reads)
     )
-    return { size, mtimeMs, offset, state, buckets, costs }
+    return { size, mtimeMs, offset, state, buckets, reads, costs }
   }
 
   /**
@@ -193,6 +199,21 @@ export class TokenSpendScanner {
         mergeSpend(out.tokens, pruneSpend(claudePending(state, pending), sinceDay))
         mergeSpend(out.usd, pruneSpend(pending.usd, sinceDay))
         mergeSpend(out.unpriced, pruneSpend(pending.unpriced, sinceDay))
+      }
+    }
+    return out
+  }
+
+  /** Cache-read tokens of the days from `sinceDay` on, from the cache alone (the pending Claude message counts). */
+  cacheReads(sinceDay: string): SpendBuckets {
+    const out: SpendBuckets = {}
+    for (const entry of Object.values(this.cache.files)) {
+      if (entry.reads) mergeSpend(out, pruneSpend(entry.reads, sinceDay))
+      const state = entry.state as ClaudeSpendState | undefined
+      if (state?.pending) {
+        const pending: SpendBuckets = {}
+        claudePending(state, undefined, pending)
+        mergeSpend(out, pruneSpend(pending, sinceDay))
       }
     }
     return out

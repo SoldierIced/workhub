@@ -47,12 +47,19 @@ export function TokenSpendCard({ spend, apiSpend = [], onOpenSettings }: { spend
               .map(([agent, n]) => `${AGENT_NAME[agent] ? t(AGENT_NAME[agent]!) : agent} ${formatTokens(n ?? 0)}`)
               .join(' · ')
             return (
-              <li key={`${f.root ? 'root' : 'dir'}:${f.path}`} className="grid grid-cols-[9.5rem_1fr_3.25rem] items-center gap-2.5 text-sm" title={`${f.path}\n${split}`}>
+              <li key={`${f.root ? 'root' : 'dir'}:${f.path}`} className="grid grid-cols-[9.5rem_1fr_4.5rem] items-center gap-2.5 text-sm" title={`${f.path}\n${split}`}>
                 <span className="truncate">{name}</span>
                 <span className="h-2.5 overflow-hidden rounded-full bg-surface-hover" aria-hidden>
                   <span className="brand-gradient block h-full rounded-full" style={{ width: `${Math.max(2, (f.tokens / top) * 100)}%` }} />
                 </span>
-                <span className="text-right text-xs tabular-nums text-muted">{formatTokens(f.tokens)}</span>
+                <span className="text-right text-xs tabular-nums text-muted">
+                  {formatTokens(f.tokens)}
+                  {f.cacheRead > 0 && (
+                    <span className="block text-[10px] text-subtle" data-testid="token-spend-cache">
+                      {t('home.tokensByFolderCache', { value: formatTokens(f.cacheRead) })}
+                    </span>
+                  )}
+                </span>
               </li>
             )
           })}
