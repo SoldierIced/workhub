@@ -34,7 +34,7 @@ In the dialog:
 | **Reviewer** | An agent of this profile with a chat. The default is an installed agent of a different kind than the session's own, in the profile's agent order. |
 | **Max rounds** | Reviews before the loop stops while the reviewer still requests changes. Default 3. |
 | **Send** | Starts the loop. |
-| **Review loop instead** | Starts the automatic branch review described below. |
+| **Review loop instead** | Starts a round of the branch review loop described below. |
 
 While it runs, both chats show a card with the phase (**Writing the brief**, **Starting the
 reviewer**, **Waiting on the reviewer**, **Waiting on the author**), the round, **Stop loop**, and

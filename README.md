@@ -42,7 +42,7 @@ current status.
 - **Review before PR**: the session's agent writes a brief of everything it touched, another agent
   reviews it read-only, and the two loop over the findings until approval or the round limit. The
   base prompt is editable per profile.
-- An automatic review loop for a branch on a read-only checkout, local diff review (comment on
+- A review loop for a branch on a read-only checkout (automatic start optional), local diff review (comment on
   lines and send the comments to the agent), and a file viewer window for files the agent read or
   edited.
 
