@@ -20,6 +20,8 @@ import { refreshConfig } from '../../configStore'
 import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useNow, useSessionCeilings, useUsageSettings } from '../../lib/usage'
 import { BudgetNotice } from './BudgetNotice'
+import { IdleContextNotice } from './IdleContextNotice'
+import { idleContext, lastActivityAt } from '../../lib/idle-context'
 import { SessionControls } from './SessionControls'
 import type { ContinuityOptions } from '@shared/continuity-api'
 import { dismissOffer, originText, useContinuityActions, useContinuityOffer } from '../../lib/continuity'
@@ -351,6 +353,11 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
     if (gate.status.action !== 'block') setNeedsConfirm(false)
   }, [gate.status.action])
 
+  // Idle past the prompt cache's lifetime: the next message resends the whole context. Dismissed until the conversation moves again.
+  const lastAt = useMemo(() => lastActivityAt(data.items), [data.items])
+  const [idleDismissedAt, setIdleDismissedAt] = useState<number | undefined>(undefined)
+  const idle = v.state === 'busy' || v.state === 'starting' || idleDismissedAt === lastAt ? undefined : idleContext(lastAt, now, data.monitor.context)
+
   // Continuing elsewhere when the account ran out: the agent's limit (an offer from main) or the gate's ceiling.
   const offer = useContinuityOffer(v.id)
   const { failover, handoff } = useContinuityActions()
@@ -608,6 +615,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
           onClick={focusFromBox}
           data-testid="composer"
         >
+          {idle && <IdleContextNotice idle={idle} now={now} onDismiss={() => setIdleDismissedAt(lastAt)} />}
           <BudgetNotice
             status={gate.status}
             account={accountLabel(usageSettings.accountsOf(v.agentId), reads.find((r) => r.key === gate.key)?.name ?? v.accountName ?? '')}

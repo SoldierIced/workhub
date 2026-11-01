@@ -21,7 +21,10 @@ describe('ClaudeTranscriptReader', () => {
     // Main conversation (one entry per message id, the sidechain left out) plus the subagent.
     expect(snap?.tokens).toEqual({ input: 325, output: 205, cacheRead: 8100, cacheWrite: 500, total: 9130 })
     expect(snap?.cost?.amount).toBeCloseTo(0.00587, 8)
-    expect(snap?.context).toEqual({ used: 2605, size: 200_000, percent: (2605 / 200_000) * 100 })
+    expect(snap?.context).toMatchObject({ used: 2605, size: 200_000, percent: (2605 / 200_000) * 100 })
+    // Resending the 2605-token context: all written to the cache again, or all read from it.
+    expect(snap?.context?.coldCost?.amount).toBeCloseTo((2605 * 2 * 2) / 1e6, 10)
+    expect(snap?.context?.warmCost?.amount).toBeCloseTo((2605 * 0.2) / 1e6, 10)
     // Two turns: 30 s and 4 s; the local /model command is not a turn.
     expect(snap?.activeTimeMs).toBe(34_000)
   })

@@ -28,6 +28,17 @@ function parseLine(line: string): Obj | undefined {
   }
 }
 
+const MINUTE = 60_000
+
+/** The cache lifetime a request wrote: 1 hour or 5 minutes; undefined when it wrote nothing (it only read). */
+function cacheTtlOf(message: Obj): number | undefined {
+  const c = obj(obj(message['usage'])?.['cache_creation'])
+  if (!c) return undefined
+  if ((int(c['ephemeral_1h_input_tokens']) ?? 0) > 0) return 60 * MINUTE
+  if ((int(c['ephemeral_5m_input_tokens']) ?? 0) > 0) return 5 * MINUTE
+  return undefined
+}
+
 function usageOf(message: Obj): TokenUsage | undefined {
   const u = obj(message['usage'])
   if (!u) return undefined
@@ -92,6 +103,13 @@ export class ClaudeTranscriptParser {
   private model: string | undefined
   private readonly usage = new Map<string, TokenUsage>()
   private contextTokens = 0
+  /**
+   * The prompt cache: the lifetime its writes asked for, and when the last request that used it was
+   * sent (the entry before its reply). Each use renews the lifetime from the request's start.
+   */
+  private cacheTtlMs: number | undefined
+  private cacheUsedAt: number | undefined
+  private lastSentAt: number | undefined
   private readonly steps: ToolCallSummary[] = []
   private customTitle: string | undefined
   private aiTitle: string | undefined
@@ -150,6 +168,10 @@ export class ClaudeTranscriptParser {
       const id = str(message['id'])
       const usage = usageOf(message)
       if (id && usage) {
+        if (!this.usage.has(id)) {
+          this.cacheUsedAt = this.lastSentAt ?? at
+          this.cacheTtlMs = cacheTtlOf(message) ?? this.cacheTtlMs
+        }
         // A streamed message repeats its usage on every block it writes.
         this.usage.set(id, usage)
         if (!this.turnMessages.includes(id)) this.turnMessages.push(id)
@@ -173,6 +195,8 @@ export class ClaudeTranscriptParser {
       this.touchTurn(at)
       return
     }
+    // A prompt or tool result: the next request goes out now.
+    this.lastSentAt = at
 
     // A prompt typed by the user (plain text, no tool results) starts a new turn.
     const isPrompt =
@@ -233,6 +257,15 @@ export class ClaudeTranscriptParser {
       if (cost) snap.cost = cost
       const size = contextWindow(this.model, this.contextTokens)
       snap.context = { used: this.contextTokens, size, percent: (this.contextTokens / size) * 100 }
+      // Expired, the whole context is written again: 1.25x the input price for a 5-minute cache, 2x for 1 hour.
+      const base = estimateCost(this.model, { input: this.contextTokens }, true)
+      const warm = estimateCost(this.model, { cacheRead: this.contextTokens }, true)
+      if (base) snap.context.coldCost = { ...base, amount: base.amount * (this.cacheTtlMs === 5 * MINUTE ? 1.25 : 2) }
+      if (warm) snap.context.warmCost = warm
+      if (this.cacheTtlMs !== undefined && this.cacheUsedAt !== undefined) {
+        snap.context.cacheTtlMs = this.cacheTtlMs
+        snap.context.cacheExpiresAt = this.cacheUsedAt + this.cacheTtlMs
+      }
     }
     const replyKeys = [...this.replyKeys]
     // The ones it acted on, then the ones only named (a PR acted on and named is listed once, as acted on).

@@ -23,6 +23,16 @@ export interface ContextUsage {
   size?: number
   /** 0-100. */
   percent?: number
+  /**
+   * List-price cost of the next request's prompt when the prompt cache has expired (the whole
+   * context written to the cache again), and when it is still warm (read from the cache).
+   */
+  coldCost?: Money
+  warmCost?: Money
+  /** The prompt cache's lifetime as the agent's requests asked for it (Claude: 5 minutes or 1 hour), in ms. */
+  cacheTtlMs?: number
+  /** When the prompt cache expires (epoch ms): the last request that used it was sent, plus its lifetime. */
+  cacheExpiresAt?: number
 }
 
 export interface ToolCallSummary {
