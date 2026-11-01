@@ -12,7 +12,7 @@ import type { AutomationDefinition } from '../automations/types'
 import { DEFAULT_AI_REVIEW_SETTINGS as AI_REVIEW, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS } from '../ai-review/defaults'
 import { REVIEW_LANGUAGES, REVIEWER_SESSION_MODES } from '../ai-review/types'
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
-import { MILESTONE_MARGIN_RANGE } from '../milestones'
+import { AGENT_MILESTONE_MODES, MILESTONE_MARGIN_RANGE } from '../milestones'
 import { INBOX_LIMITS } from '../inbox/types'
 import { DEFAULT_PLANNER_REFRESH_MINUTES, DEFAULT_REMINDER_LEAD_MINUTES, MAX_LEAD_MINUTES, MAX_PLANNER_REFRESH_MINUTES, MIN_PLANNER_REFRESH_MINUTES } from '../calendar/types'
 
@@ -355,7 +355,9 @@ const planner = z.object({
   milestoneMargin: z
     .number()
     .transform((n) => Math.min(MILESTONE_MARGIN_RANGE[1], Math.max(MILESTONE_MARGIN_RANGE[0], Math.round(n))))
-    .optional()
+    .optional(),
+  // Unset means DEFAULT_AGENT_MILESTONE_MODE (`ask`).
+  agentMilestones: z.enum(AGENT_MILESTONE_MODES).optional()
 })
 
 const folderOptions = z.object({ onlyGitRepos: z.boolean().optional(), subfoldersAreProjects: z.boolean().optional() })

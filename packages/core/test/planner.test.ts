@@ -33,7 +33,11 @@ import {
   withTicket,
   type InboxItem,
   type MetricAlert,
-  type Milestone
+  type Milestone,
+  type MilestoneProposal,
+  applyMilestoneProposal,
+  DEFAULT_AGENT_MILESTONE_MODE,
+  patchMilestone
 } from '@workhub/core'
 
 const DAY = 86_400_000
@@ -291,5 +295,35 @@ describe('metric alert → inbox', () => {
     expect(proposal.detail).toContain('Value: 90 (baseline 40, +125 %)')
     expect(proposal.detail).toContain('Period: 2026-10-29 to 2026-10-30')
     expect(proposal.link).toBe('https://dash.example.com/orders')
+  })
+})
+
+describe('milestone changes by agents', () => {
+  const beta: Milestone = { id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual', progress: 30 }, notes: 'old' }
+  const launch: Milestone = { id: 'ga', name: 'GA', start: '2026-11-01', end: '2026-11-30', source: { kind: 'tracker', query: 'labels = launch' } }
+
+  it('patches the fields of the milestone source and checks the result', () => {
+    expect(patchMilestone(beta, { progress: 55.4, notes: null, link: 'https://example.com/plan' })).toEqual({ ...{ id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11' }, source: { kind: 'manual', progress: 55 }, link: 'https://example.com/plan' })
+    expect(patchMilestone(launch, { query: ' labels = beta ', end: '2026-12-15' })).toMatchObject({ end: '2026-12-15', source: { kind: 'tracker', query: 'labels = beta' } })
+    expect(patchMilestone(beta, { query: 'x' })).toMatch(/typed by hand/)
+    expect(patchMilestone(launch, { progress: 10 })).toMatch(/counted from a tracker/)
+    expect(patchMilestone(beta, { end: '2026-10-01' })).toMatch(/order/)
+  })
+
+  it('applies a proposal only while the milestone is as the agent saw it', () => {
+    const p = (over: Partial<MilestoneProposal>): MilestoneProposal => ({ id: 'p1', action: 'update', milestoneId: 'beta', source: {}, createdAt: 0, ...over })
+    expect(applyMilestoneProposal([beta], p({ action: 'create', milestoneId: 'ga', milestone: launch }))).toEqual([beta, launch])
+    expect(applyMilestoneProposal([beta, launch], p({ action: 'create', milestoneId: 'ga', milestone: launch }))).toMatch(/already exists/)
+    expect(applyMilestoneProposal([beta], p({ milestone: { ...beta, name: 'Beta 2' }, before: beta }))).toEqual([{ ...beta, name: 'Beta 2' }])
+    expect(applyMilestoneProposal([{ ...beta, name: 'Edited' }], p({ milestone: { ...beta, name: 'Beta 2' }, before: beta }))).toMatch(/changed since/)
+    expect(applyMilestoneProposal([beta], p({ action: 'delete', before: beta }))).toEqual([])
+    expect(applyMilestoneProposal([], p({ action: 'delete', before: beta }))).toMatch(/no longer exists/)
+  })
+
+  it('asks by default and keeps the setting through the schema', () => {
+    expect(DEFAULT_AGENT_MILESTONE_MODE).toBe('ask')
+    const parsed = parseConfig({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', planner: { agentMilestones: 'allow' } }] })
+    expect(parsed.profiles[0]!.planner?.agentMilestones).toBe('allow')
+    expect(() => parseConfig({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', planner: { agentMilestones: 'always' } }] })).toThrow()
   })
 })

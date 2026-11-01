@@ -1,4 +1,5 @@
 import type { InboxSettings } from '../inbox/types'
+import type { AgentMilestoneMode } from '../milestones'
 
 /**
  * The Plan module (optional, per profile): calendar events read from private ICS addresses,
@@ -97,6 +98,8 @@ export interface PlannerSettings {
   inbox?: InboxSettings
   /** A milestone is at risk when its progress is this many points behind the time gone (default 10). */
   milestoneMargin?: number
+  /** Whether an agent's milestone changes wait for the user (`ask`, the default) or apply at once (`allow`). */
+  agentMilestones?: AgentMilestoneMode
 }
 
 export const DEFAULT_PLANNER_REFRESH_MINUTES = 15

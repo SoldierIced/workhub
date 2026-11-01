@@ -185,6 +185,8 @@ describe('GET /v1/milestones and /v1/people', () => {
       ok: true,
       enabled: true,
       today: '2026-11-06',
+      agentChanges: 'ask',
+      pending: [],
       milestones: [{ id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', status: 'atRisk', progress: 30, elapsed: 50, source: 'manual' }]
     })
     expect((await control.milestones(q('session=s2'))).body).toMatchObject({ enabled: false, milestones: [] })
@@ -196,6 +198,78 @@ describe('GET /v1/milestones and /v1/people', () => {
     expect(body).toEqual({ ok: true, enabled: true, people: [{ id: 'ana', name: 'Ana Costa', emails: ['ana@example.com'], handles: { github: 'ana-gh' } }] })
     expect(JSON.stringify(body)).not.toContain('private notes')
     expect((await control.people(q('profile=home'))).body).toMatchObject({ enabled: false, people: [] })
+  })
+})
+
+describe('milestone changes by agents', () => {
+  const beta = { id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual' as const, progress: 30 } }
+  const allowing = () => {
+    const p = profile()
+    return [{ ...p, planner: { ...p.planner!, agentMilestones: 'allow' as const } }, profile('home', false)]
+  }
+
+  it('keeps every change as a proposal by default, and applies it only when the user does', async () => {
+    const { planner, control, changed } = setup()
+    await planner.saveMilestone('work', beta)
+    changed.length = 0
+    const created = await control.changeMilestone(null, 'POST', { session: 's1', name: 'GA', start: '2026-11-10', end: '2026-11-30', progress: 0, reason: 'From the planning call' }, q())
+    expect(created).toMatchObject({ status: 202, body: { ok: true, applied: false, pending: true } })
+    const updated = await control.changeMilestone('beta', 'PATCH', { session: 's1', progress: 60 }, q())
+    expect(updated.status).toBe(202)
+    expect((await control.changeMilestone('beta', 'DELETE', { session: 's1' }, q())).status).toBe(202)
+    expect(changed).toEqual(['work', 'work', 'work'])
+    let view = await planner.view('work')
+    expect(view.milestones.map((r) => r.milestone)).toEqual([beta])
+    expect(view.proposals.map((p) => [p.action, p.milestoneId, p.source.label])).toEqual([
+      ['create', expect.any(String), 'From the planning call'],
+      ['update', 'beta', undefined],
+      ['delete', 'beta', undefined]
+    ])
+    expect(view.proposals[0]!.source.session).toBe('s1')
+    expect((await control.milestones(q())).body).toMatchObject({ agentChanges: 'ask', pending: [{ action: 'create', name: 'GA' }, { action: 'update', name: 'Beta' }, { action: 'delete', name: 'Beta' }] })
+
+    expect(await planner.resolveProposal('work', view.proposals[1]!.id, true)).toEqual({ ok: true })
+    view = await planner.view('work')
+    expect(view.milestones[0]!.milestone.source).toEqual({ kind: 'manual', progress: 60 })
+    // The delete was asked about Beta at 30 %: it changed since, so it no longer applies.
+    const del = view.proposals.find((p) => p.action === 'delete')!
+    expect(await planner.resolveProposal('work', del.id, true)).toMatchObject({ ok: false, error: expect.stringMatching(/changed since/) })
+    expect(await planner.resolveProposal('work', del.id, false)).toEqual({ ok: true })
+    const create = view.proposals.find((p) => p.action === 'create')!
+    expect(await planner.resolveProposal('work', create.id, true)).toEqual({ ok: true })
+    view = await planner.view('work')
+    expect(view.milestones.map((r) => r.milestone.name).sort()).toEqual(['Beta', 'GA'])
+    expect(view.proposals).toEqual([])
+    expect(await planner.resolveProposal('work', create.id, true)).toMatchObject({ ok: false })
+  })
+
+  it('applies changes at once when the profile allows it', async () => {
+    const { planner, control } = setup(allowing())
+    await planner.saveMilestone('work', beta)
+    const created = await control.changeMilestone(null, 'POST', { session: 's1', name: 'GA', start: '2026-11-10', end: '2026-11-30', query: 'labels = launch' }, q())
+    expect(created).toMatchObject({ status: 200, body: { ok: true, applied: true } })
+    expect((await control.changeMilestone('beta', 'PATCH', { progress: 100, notes: 'Shipped' }, q('session=s1'))).body).toMatchObject({ applied: true })
+    let view = await planner.view('work')
+    expect(view.proposals).toEqual([])
+    expect(view.milestones.find((r) => r.milestone.id === 'beta')).toMatchObject({ status: 'done', milestone: { notes: 'Shipped' } })
+    expect(view.milestones.find((r) => r.milestone.name === 'GA')!.milestone.source).toEqual({ kind: 'tracker', query: 'labels = launch' })
+    expect((await control.changeMilestone('beta', 'DELETE', {}, q('session=s1'))).body).toMatchObject({ applied: true })
+    view = await planner.view('work')
+    expect(view.milestones.map((r) => r.milestone.name)).toEqual(['GA'])
+  })
+
+  it('refuses bad bodies, unknown milestones, wrong fields for the source and Plan off', async () => {
+    const { planner, control } = setup()
+    await planner.saveMilestone('work', beta)
+    expect((await control.changeMilestone(null, 'POST', { name: 'GA', start: '2026-11-30', end: '2026-11-01', progress: 0 }, q())).body).toMatchObject({ error: expect.stringMatching(/order/) })
+    expect((await control.changeMilestone(null, 'POST', { name: 'GA', start: '2026-11-01', end: '2026-11-30', progress: 0, query: 'x' }, q())).status).toBe(400)
+    expect((await control.changeMilestone('nope', 'PATCH', { progress: 10 }, q())).status).toBe(404)
+    expect((await control.changeMilestone('beta', 'PATCH', { query: 'labels = x' }, q())).body).toMatchObject({ error: expect.stringMatching(/typed by hand/) })
+    expect((await control.changeMilestone('beta', 'PATCH', { progress: 140 }, q())).status).toBe(400)
+    expect((await control.changeMilestone('beta', 'PATCH', {}, q())).status).toBe(400)
+    expect((await control.changeMilestone('bad id!', 'PATCH', { progress: 1 }, q())).status).toBe(400)
+    expect((await control.changeMilestone(null, 'POST', { name: 'GA', start: '2026-11-01', end: '2026-11-30', progress: 0 }, q('session=s2'))).status).toBe(409)
+    expect((await planner.view('work')).proposals).toEqual([])
   })
 })
 
@@ -228,7 +302,10 @@ describe('Plan endpoints over the control socket', () => {
       expect(await call('PATCH', '/v1/inbox/id1', { session: 's1', status: 'done' })).toMatchObject({ status: 200, json: { item: { status: 'done' } } })
       expect(await call('GET', '/v1/milestones')).toMatchObject({ status: 200, json: { milestones: [] } })
       expect(await call('GET', '/v1/people')).toMatchObject({ status: 200, json: { people: [{ id: 'ana' }] } })
-      expect((await call('POST', '/v1/milestones')).status).toBe(405)
+      expect((await call('PUT', '/v1/milestones')).status).toBe(405)
+      expect((await call('GET', '/v1/milestones/x')).status).toBe(405)
+      expect(await call('POST', '/v1/milestones', { session: 's1', name: 'GA', start: '2026-11-01', end: '2026-11-30', progress: 0 })).toMatchObject({ status: 202, json: { pending: true } })
+      expect((await call('POST', '/v1/milestones', { session: 's1', name: 'GA' })).status).toBe(400)
       expect((await call('GET', '/v1/inbox/id1')).status).toBe(405)
       expect((await call('DELETE', '/v1/inbox')).status).toBe(405)
       // No POST handler wired: the inbox does not take proposals here.

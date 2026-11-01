@@ -175,6 +175,27 @@ export async function handleControl(deps: ControlDeps, req: IncomingMessage, res
     }
     return reply(res, await deps.plan.updateItem(id, body, url.searchParams))
   }
+  const milestone = url.pathname === '/v1/milestones' ? null : /^\/v1\/milestones\/([^/]{1,200})$/.exec(url.pathname)
+  if ((url.pathname === '/v1/milestones' && req.method === 'POST') || milestone) {
+    if (!deps.plan) return send(res, 404, { ok: false, error: 'Plan is not available' })
+    const method = req.method
+    if (milestone ? method !== 'PATCH' && method !== 'DELETE' : method !== 'POST') return send(res, 405, { ok: false, error: milestone ? 'use PATCH or DELETE' : 'use GET or POST' })
+    let body: unknown
+    try {
+      body = await readJson(req)
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e instanceof Error ? e.message : 'bad body' })
+    }
+    let id: string | null = null
+    if (milestone) {
+      try {
+        id = decodeURIComponent(milestone[1]!)
+      } catch {
+        return send(res, 400, { ok: false, error: 'bad milestone id' })
+      }
+    }
+    return reply(res, await deps.plan.changeMilestone(id, method as 'POST' | 'PATCH' | 'DELETE', body, url.searchParams))
+  }
   const read = Object.hasOwn(PLAN_READS, url.pathname) ? PLAN_READS[url.pathname] : undefined
   if (read) {
     if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'use GET' })

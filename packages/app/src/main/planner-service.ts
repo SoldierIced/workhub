@@ -2,16 +2,19 @@ import { randomUUID } from 'node:crypto'
 import {
   alertInboxProposal,
   applyInboxAction,
+  applyMilestoneProposal,
   bulkEditInbox,
   cleanupInbox,
   countByCategory,
   countsKey,
+  DEFAULT_AGENT_MILESTONE_MODE,
   DEFAULT_INBOX_ISSUE_TYPE,
   DEFAULT_MILESTONE_MARGIN,
   findDuplicate,
   inboxSettings,
   INBOX_LIMITS,
   localDay,
+  MAX_MILESTONE_PROPOSALS,
   MAX_SEARCH_RESULTS,
   MILESTONE_LIMITS,
   milestoneStatus,
@@ -31,6 +34,7 @@ import {
   type MetricAlert,
   type Milestone,
   type MilestoneCounts,
+  type MilestoneProposal,
   type Profile,
   type TicketTracker
 } from '@workhub/core'
@@ -48,13 +52,15 @@ export interface PlannerProfileState {
   /** Why the last count of a milestone failed, by id. */
   errors: Record<string, string>
   inbox: InboxItem[]
+  /** Milestone changes agents asked for, waiting for the user (`agentMilestones: 'ask'`). */
+  proposals: MilestoneProposal[]
 }
 
 export interface PlannerState {
   profiles: Record<string, PlannerProfileState>
 }
 
-const EMPTY_PROFILE: PlannerProfileState = { milestones: [], counts: {}, errors: {}, inbox: [] }
+const EMPTY_PROFILE: PlannerProfileState = { milestones: [], counts: {}, errors: {}, inbox: [], proposals: [] }
 
 export type TrackerLookup = (profileId: string, connectionId?: string) => Promise<{ tracker: TicketTracker } | { error: string }>
 
@@ -77,6 +83,8 @@ export const PLANNER_ERRORS = {
   noCreate: 'This tracker cannot create issues',
   noSearch: 'This tracker cannot search',
   tooMany: 'Too many milestones',
+  unknownMilestone: 'The milestone does not exist',
+  unknownProposal: 'The proposal no longer exists',
   tooLong: `The note would make the detail longer than ${INBOX_LIMITS.detail} characters`
 } as const
 
@@ -104,7 +112,8 @@ function cleanState(raw: PlannerState, now: number): PlannerState {
       milestones: Array.isArray(p.milestones) ? p.milestones : [],
       counts: p.counts && typeof p.counts === 'object' ? p.counts : {},
       errors: p.errors && typeof p.errors === 'object' ? p.errors : {},
-      inbox: Array.isArray(p.inbox) ? cleanupInbox(p.inbox, now) : []
+      inbox: Array.isArray(p.inbox) ? cleanupInbox(p.inbox, now) : [],
+      proposals: Array.isArray(p.proposals) ? p.proposals : []
     }
   }
   return { profiles }
@@ -184,7 +193,7 @@ export class PlannerService {
     const profile = await this.profile(profileId)
     const today = localDay(this.now())
     const enabled = profile !== undefined && planner(profile)
-    if (!profile || !enabled) return { enabled: false, milestones: [], inbox: [], tracker: { search: false, create: false }, today }
+    if (!profile || !enabled) return { enabled: false, milestones: [], inbox: [], proposals: [], agentMilestones: DEFAULT_AGENT_MILESTONE_MODE, tracker: { search: false, create: false }, today }
     const settings = plannerSettings(profile)
     const margin = settings.milestoneMargin ?? DEFAULT_MILESTONE_MARGIN
     const p = this.of(profileId)
@@ -196,7 +205,7 @@ export class PlannerService {
     })
     const found = await this.deps.tracker(profileId, inboxSettings(settings).trackerConnectionId || undefined)
     const tracker = 'error' in found ? { search: false, create: false, error: found.error } : { search: Boolean(found.tracker.capabilities.search && found.tracker.searchByQuery), create: Boolean(found.tracker.capabilities.create && found.tracker.createIssue) }
-    return { enabled, milestones: sortMilestones(rows), inbox: p.inbox, tracker, today }
+    return { enabled, milestones: sortMilestones(rows), inbox: p.inbox, proposals: p.proposals, agentMilestones: settings.agentMilestones ?? DEFAULT_AGENT_MILESTONE_MODE, tracker, today }
   }
 
   // Milestones
@@ -218,9 +227,72 @@ export class PlannerService {
     return this.serial(async () => {
       const p = this.of(profileId)
       if (!p.milestones.some((m) => m.id === id)) return { ok: true }
-      const { [id]: _c, ...counts } = p.counts
-      const { [id]: _e, ...errors } = p.errors
-      this.put(profileId, { milestones: p.milestones.filter((m) => m.id !== id), counts, errors })
+      await this.setMilestones(profileId, p.milestones.filter((m) => m.id !== id))
+      return { ok: true }
+    })
+  }
+
+  /** Stores a new milestone list, drops the counts of the ones gone, and counts `countId` when it is a tracker one. */
+  private async setMilestones(profileId: string, milestones: Milestone[], countId?: string): Promise<void> {
+    const p = this.of(profileId)
+    const kept = new Set(milestones.map((m) => m.id))
+    const counts = Object.fromEntries(Object.entries(p.counts).filter(([id]) => kept.has(id)))
+    const errors = Object.fromEntries(Object.entries(p.errors).filter(([id]) => kept.has(id)))
+    this.put(profileId, { milestones, counts, errors })
+    if (countId && milestones.find((m) => m.id === countId)?.source.kind === 'tracker') await this.count(profileId, false, countId)
+  }
+
+  /**
+   * A milestone change asked by an agent (control endpoint). With `agentMilestones: 'allow'` it is
+   * applied now; otherwise it waits as a proposal for the user. `change.milestone` is the milestone
+   * as it would be saved (create and update), already checked.
+   */
+  agentMilestone(
+    profileId: string,
+    change: { action: MilestoneProposal['action']; milestoneId: string; milestone?: Milestone },
+    source: MilestoneProposal['source']
+  ): Promise<{ ok: true; applied: true; milestone?: Milestone } | { ok: true; applied: false; proposal: MilestoneProposal } | { ok: false; error: string; reason: 'moduleOff' | 'unknown' | 'conflict' }> {
+    return this.serial(async () => {
+      const profile = await this.profile(profileId)
+      if (!profile || !planner(profile)) return { ok: false, error: PLANNER_ERRORS.moduleOff, reason: 'moduleOff' }
+      const p = this.of(profileId)
+      const before = p.milestones.find((m) => m.id === change.milestoneId)
+      if (change.action !== 'create' && !before) return { ok: false, error: PLANNER_ERRORS.unknownMilestone, reason: 'unknown' }
+      const proposal: MilestoneProposal = {
+        id: this.newId(),
+        action: change.action,
+        milestoneId: change.milestoneId,
+        ...(change.milestone ? { milestone: change.milestone } : {}),
+        ...(before ? { before } : {}),
+        source,
+        createdAt: this.now()
+      }
+      if ((plannerSettings(profile).agentMilestones ?? DEFAULT_AGENT_MILESTONE_MODE) === 'allow') {
+        const next = applyMilestoneProposal(p.milestones, proposal)
+        if (typeof next === 'string') return { ok: false, error: next, reason: 'conflict' }
+        await this.setMilestones(profileId, next, change.action === 'delete' ? undefined : change.milestoneId)
+        return { ok: true, applied: true, ...(change.milestone ? { milestone: change.milestone } : {}) }
+      }
+      this.put(profileId, { proposals: [...p.proposals, proposal].slice(-MAX_MILESTONE_PROPOSALS) })
+      return { ok: true, applied: false, proposal }
+    })
+  }
+
+  /** The user applies (`accept`) or rejects an agent's milestone proposal; either way it leaves the list. */
+  resolveProposal(profileId: string, proposalId: string, accept: boolean): Promise<PlannerResult> {
+    return this.serial(async () => {
+      const p = this.of(profileId)
+      const proposal = p.proposals.find((x) => x.id === proposalId)
+      if (!proposal) return { ok: false, error: PLANNER_ERRORS.unknownProposal }
+      const proposals = p.proposals.filter((x) => x.id !== proposalId)
+      if (!accept) {
+        this.put(profileId, { proposals })
+        return { ok: true }
+      }
+      const next = applyMilestoneProposal(p.milestones, proposal)
+      if (typeof next === 'string') return { ok: false, error: `Cannot apply: ${next}` }
+      this.put(profileId, { proposals })
+      await this.setMilestones(profileId, next, proposal.action === 'delete' ? undefined : proposal.milestoneId)
       return { ok: true }
     })
   }

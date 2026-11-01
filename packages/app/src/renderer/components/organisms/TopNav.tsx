@@ -68,7 +68,8 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
   const unread = slack && slack.health !== 'off' ? slackUnreadCount(slack.threads, slack.me) : 0
   const toReview = lists?.toReview.length ?? 0
   const healthState = healthOn ? worstHealthState(health) : null
-  const pendingInbox = planOn ? (planner?.inbox.filter((i) => i.status === 'pending').length ?? 0) : 0
+  // Inbox items and agents' milestone proposals both wait for the user's approval.
+  const pendingInbox = planOn ? (planner?.inbox.filter((i) => i.status === 'pending').length ?? 0) + (planner?.proposals?.length ?? 0) : 0
 
   const extra = (r: Route): { badge: ReactNode; note?: string } => {
     if (r === 'slack' && unread > 0) {

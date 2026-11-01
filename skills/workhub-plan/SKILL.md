@@ -42,6 +42,9 @@ user the reason and that it is turned on in **Settings → Plan**.
 | `W -X POST http://workhub/v1/inbox -H 'content-type: application/json' -d @-` | Proposes items (pending, waiting for the user's approval). Answer: `added` (new ids) and `duplicates` (ids of open items with the same title, which were not added). |
 | `W -X PATCH "http://workhub/v1/inbox/<id>" -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","status":"done"}'` | Changes one item: `status` (`local`, `done`, `discarded`, `pending`), `due` (`YYYY-MM-DD` or null), `area`, `criticality` (or null), `note` (appended to the detail, at most 2000 characters). Answer: the item. |
 | `W "http://workhub/v1/milestones?$S"` | Milestones: `name`, `start`, `end`, `status` (`late`, `atRisk`, `onTrack`, `notStarted`, `done`), `progress` and `elapsed` (0–100), `counts` for tracker milestones, `error` when the last count failed. |
+| `W -X POST http://workhub/v1/milestones -H 'content-type: application/json' -d @-` | Creates a milestone: `{"session","name","start","end","progress"}` (typed, 0–100) or `"query"` instead of `progress` (counted from the tracker); optional `notes`, `link`, `reason` (a short why, shown to the user). |
+| `W -X PATCH "http://workhub/v1/milestones/<id>" -H 'content-type: application/json' -d @-` | Changes `name`, `start`, `end`, `progress` (typed ones), `query` (counted ones), `notes`, `link` (null clears). Include `session` and `reason`. |
+| `W -X DELETE "http://workhub/v1/milestones/<id>?$S"` | Deletes a milestone. |
 | `W "http://workhub/v1/people?$S"` | People: `name`, `emails`, `handles`. Use it to match meeting attendees and to fill `people`. |
 
 A proposal body (at most 20 items):
@@ -68,6 +71,10 @@ A proposal body (at most 20 items):
 - **Close what you finished.** When you finish work that is a `local` task in the inbox, mark it
   `done` (add a short `note` with the branch or PR when useful). Only touch items the work is
   about; ask before discarding anything.
+- **Milestone changes may wait for the user.** A `202` answer with `pending: true` means the
+  change is a proposal on the Plan screen, not applied: tell the user it waits for them to apply
+  it, and do not send it again. `200` with `applied: true` means it is saved. Change or delete a
+  milestone only when the user asks or the work clearly finished it; always send a short `reason`.
 - **Keep it short.** One line titles, a detail of a few sentences, no logs or diffs. Ask for
   `limit` and `q` instead of reading the whole inbox.
 - **Never print or post secrets**: no tokens, passwords, customer data or private links in
@@ -82,5 +89,7 @@ A proposal body (at most 20 items):
   `people` and look for open items that involve them (`inbox?q=<name>`), then write a short
   brief: who is coming, what is open with them, what to ask.
 - **"Log this decision."** POST one item with `"kind": "decision"` and the reasoning in `detail`.
+- **"Mark the beta at 60 %."** `PATCH milestones/<id>` with `progress` and a `reason`; report
+  whether it was applied or waits for approval.
 - **"How is the beta going?"** Call `milestones`; give status, progress against time gone and,
   for a counted one, done over total.

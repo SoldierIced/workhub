@@ -1,5 +1,5 @@
 // Types of the Plan work bridge (window.hub.planner): milestones and the inbox, shared by main, preload and renderer.
-import type { InboxAction, InboxBulkPatch, InboxItem, InboxKind, InboxProposal, Milestone, MilestoneCounts, MilestoneStatusKind } from '@workhub/core'
+import type { AgentMilestoneMode, InboxAction, InboxBulkPatch, InboxItem, InboxKind, InboxProposal, Milestone, MilestoneCounts, MilestoneProposal, MilestoneStatusKind } from '@workhub/core'
 
 export interface MilestoneView {
   milestone: Milestone
@@ -20,6 +20,10 @@ export interface PlannerView {
   /** Sorted by status severity, then end date. */
   milestones: MilestoneView[]
   inbox: InboxItem[]
+  /** Milestone changes agents asked for, oldest first, waiting for the user. */
+  proposals: MilestoneProposal[]
+  /** Whether agents' milestone changes wait for the user (`ask`) or apply at once (`allow`). */
+  agentMilestones: AgentMilestoneMode
   /** What the profile's tracker (the inbox's, else the profile's) can do; the UI hides the rest. */
   tracker: { search: boolean; create: boolean; error?: string }
   /** The local day the statuses were computed for (`YYYY-MM-DD`). */
@@ -44,6 +48,8 @@ export interface PlannerApi {
   /** Adds or replaces a milestone (by id); a tracker milestone is counted again at once. */
   saveMilestone(profileId: string, milestone: Milestone): Promise<PlannerResult>
   deleteMilestone(profileId: string, id: string): Promise<PlannerResult>
+  /** Applies (`accept`) or rejects an agent's milestone proposal. */
+  resolveProposal(profileId: string, proposalId: string, accept: boolean): Promise<PlannerResult>
   /** Counts the tracker milestones again now. */
   refreshMilestones(profileId: string): Promise<PlannerView>
   /** A pending item added by hand; `force` adds it even when an open item has the same title. */

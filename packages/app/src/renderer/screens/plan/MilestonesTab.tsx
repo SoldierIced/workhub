@@ -1,6 +1,6 @@
-import { ExternalLink, Flag, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Bot, Check, ExternalLink, Flag, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
-import type { Connection } from '@workhub/core'
+import type { Connection, Milestone, MilestoneProposal } from '@workhub/core'
 import type { MilestoneView } from '@shared/planner-api'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, Field, RefreshButton, useToast } from '../../components/molecules'
@@ -107,6 +107,71 @@ function MilestoneEditor({ initial, takenIds, trackers, canSearch, onSave, onCan
   )
 }
 
+/** One line of what a milestone is: its dates and its progress (typed or counted). */
+function milestoneLine(m: Milestone, short: (day: string) => string, t: ReturnType<typeof useI18n>['t']): string {
+  const progress = m.source.kind === 'manual' ? t('planner.proposal.progress', { progress: m.source.progress }) : t('planner.proposal.query', { query: m.source.query })
+  return `${t('planner.milestone.dates', { start: short(m.start), end: short(m.end) })} · ${progress}`
+}
+
+const PROPOSAL_TITLE: Record<MilestoneProposal['action'], MessageKey> = {
+  create: 'planner.proposal.create',
+  update: 'planner.proposal.update',
+  delete: 'planner.proposal.delete'
+}
+
+/** Milestone changes agents asked for, waiting for the user to apply or reject them. */
+function ProposalsCard({ profileId, proposals, short }: { profileId: string; proposals: MilestoneProposal[]; short: (day: string) => string }) {
+  const { t, locale } = useI18n()
+  const toast = useToast()
+  const [busy, setBusy] = useState<string | null>(null)
+  const resolve = async (id: string, accept: boolean) => {
+    setBusy(id)
+    try {
+      const r = await window.hub.planner.resolveProposal(profileId, id, accept)
+      if (!r.ok) toast(r.error, 'danger')
+    } catch (e) {
+      toast(errorText(e), 'danger')
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <Card data-testid="milestone-proposals">
+      <CardHeader title={t('planner.proposals.title', { count: proposals.length })} />
+      <CardBody>
+        <p className="mb-2 text-sm text-muted">{t('planner.proposals.hint')}</p>
+        <ul className="flex flex-col gap-2">
+          {proposals.map((p) => {
+            const name = p.milestone?.name ?? p.before?.name ?? p.milestoneId
+            return (
+              <li key={p.id} className="flex flex-wrap items-start gap-3 rounded-md border border-border px-3 py-2" data-testid="milestone-proposal">
+                <Bot className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="font-medium">{t(PROPOSAL_TITLE[p.action], { name })}</p>
+                  {p.before && p.action === 'update' && <p className="text-xs text-subtle line-through">{milestoneLine(p.before, short, t)}</p>}
+                  {p.milestone && <p className="text-xs text-muted">{milestoneLine(p.milestone, short, t)}</p>}
+                  <p className="text-xs text-subtle">
+                    {p.source.label ? `${p.source.label} · ` : ''}
+                    {relativeTime(p.createdAt, Date.now(), locale)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button size="sm" variant="primary" icon={<Check className="size-3.5" aria-hidden />} disabled={busy === p.id} onClick={() => void resolve(p.id, true)}>
+                    {t('planner.proposals.apply')}
+                  </Button>
+                  <Button size="sm" variant="ghost" icon={<X className="size-3.5" aria-hidden />} disabled={busy === p.id} onClick={() => void resolve(p.id, false)}>
+                    {t('planner.proposals.reject')}
+                  </Button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      </CardBody>
+    </Card>
+  )
+}
+
 /** Milestones: periods of work with their progress against time, worst first. */
 export function MilestonesTab({ profile }: PlanTabContext) {
   const { t, formatDate, locale } = useI18n()
@@ -148,6 +213,7 @@ export function MilestonesTab({ profile }: PlanTabContext) {
           {t('planner.milestones.add')}
         </Button>
       </div>
+      {(view?.proposals.length ?? 0) > 0 && <ProposalsCard profileId={profile.id} proposals={view!.proposals} short={short} />}
       {editing && (
         <Card>
           <CardHeader title={editing.id ? t('planner.milestone.editTitle') : t('planner.milestone.newTitle')} />

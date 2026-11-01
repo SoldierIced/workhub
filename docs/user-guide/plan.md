@@ -219,6 +219,8 @@ Items come from:
 - **Issue type for tasks** and **for bugs** (Jira only; empty uses `Task` and `Bug`).
 - **Issue description**: a template with `{title}`, `{detail}`, `{source}` and `{link}`.
 - **At-risk margin** for milestones.
+- **Milestone changes by agents**: **Ask me first** (default) keeps every milestone an agent
+  creates, changes or deletes as a proposal; **Apply at once** applies it without asking.
 
 The issue gets the item's title, the description from the template and the priority of its
 criticality level. If the tracker refuses (a wrong project or issue type, no permission), the
@@ -238,8 +240,18 @@ off in the profile, the answers are empty and say why.
 | `GET /v1/inbox` | Items, open ones first. Filters: `status` (`open`, the default, is pending and kept items; or `pending`, `local`, `done`, `discarded`, `ticket`, `all`), `kind`, `area`, `q` (words in the title or detail) and `limit` (50 by default, at most 200). Details are shortened to 1000 characters; `total` counts every match. |
 | `POST /v1/inbox` | Proposes pending items (see [Inbox](#inbox)). `added` lists the new ids, `duplicates` the ids of the open items they repeat. |
 | `PATCH /v1/inbox/:id` | Changes one item: `status` (`local` keeps it, `done`, `discarded`, `pending` brings a discarded one back), `due` (`YYYY-MM-DD`, or `null` to clear), `area`, `criticality`, and `note`, appended to the detail (at most 2000 characters). Answers with the item. |
-| `GET /v1/milestones` | Milestones with their status, progress and share of time gone, and the counts of tracker milestones. |
+| `GET /v1/milestones` | Milestones with their status, progress and share of time gone, and the counts of tracker milestones. `agentChanges` says whether changes wait for you (`ask`) or apply at once (`allow`); `pending` lists the proposals not applied yet. |
+| `POST /v1/milestones` | Creates a milestone: `name`, `start` and `end` (`YYYY-MM-DD`), and either `progress` (0–100, typed by hand) or `query` (a tracker query, with an optional `connectionId`); `notes`, `link` and a short `reason` are optional. |
+| `PATCH /v1/milestones/:id` | Changes `name`, `start`, `end`, `progress` (a typed milestone) or `query` (a counted one), `notes` or `link` (`null` clears them). |
+| `DELETE /v1/milestones/:id` | Deletes a milestone. |
 | `GET /v1/people` | Your people's names, emails and handles, to match attendees. Notes are not shared. |
+
+Milestone changes follow **Settings → Plan → Inbox → Milestone changes by agents**. With **Ask me
+first** (the default) a change answers `202` with `pending: true` and waits under **Proposed by
+agents** on the Milestones tab, showing what would change; **Apply** saves it, **Reject** drops
+it. A proposal over a milestone you edited after the agent asked cannot be applied, so an old
+proposal never undoes your edit. With **Apply at once** the change answers `200` with
+`applied: true`.
 
 ```sh
 curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/inbox?session=$WORKHUB_SESSION&status=local&q=rollout"

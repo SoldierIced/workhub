@@ -76,6 +76,7 @@ export function registerPlannerIpc(ipc: IpcRegistrar, service: PlannerService, e
     const m = parseMilestone(milestone)
     return isId(profileId) && m ? service.saveMilestone(profileId, m) : { ok: false, error: 'The milestone is not valid' }
   })
+  ipc.handle('planner:resolveProposal', (_e, profileId: unknown, id: unknown, accept: unknown) => (isId(profileId) && isId(id) && typeof accept === 'boolean' ? service.resolveProposal(profileId, id, accept) : BAD))
   ipc.handle('planner:deleteMilestone', (_e, profileId: unknown, id: unknown) => (isId(profileId) && isId(id) ? service.deleteMilestone(profileId, id) : BAD))
   ipc.handle('planner:refreshMilestones', (_e, profileId: unknown) => {
     if (!isId(profileId)) throw new Error('bad request')

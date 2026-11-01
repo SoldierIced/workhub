@@ -115,3 +115,82 @@ export function parseMilestone(value: unknown): Milestone | null {
 export function countsKey(m: Pick<Milestone, 'source'>): string | null {
   return m.source.kind === 'tracker' ? `${m.source.connectionId ?? ''}|${m.source.query}` : null
 }
+
+/**
+ * What happens when an agent creates, changes or deletes a milestone through the control endpoint:
+ * `ask` (default) keeps the change as a proposal until the user applies it on the Plan screen;
+ * `allow` applies it at once.
+ */
+export const AGENT_MILESTONE_MODES = ['ask', 'allow'] as const
+export type AgentMilestoneMode = (typeof AGENT_MILESTONE_MODES)[number]
+export const DEFAULT_AGENT_MILESTONE_MODE: AgentMilestoneMode = 'ask'
+
+/** Proposals kept per profile; the oldest go first past this. */
+export const MAX_MILESTONE_PROPOSALS = 50
+
+/** A milestone change an agent asked for, waiting for the user. */
+export interface MilestoneProposal {
+  id: string
+  action: 'create' | 'update' | 'delete'
+  milestoneId: string
+  /** The milestone as it would be saved (create and update). */
+  milestone?: Milestone
+  /** The milestone when the change was asked (update and delete), to show what changes. */
+  before?: Milestone
+  /** The session that asked (`$WORKHUB_SESSION`) and a short label of why. */
+  source: { session?: string; label?: string }
+  /** Epoch ms. */
+  createdAt: number
+}
+
+/** Fields an agent may change on a milestone; a progress applies to a manual one, a query to a tracker one. */
+export interface MilestonePatch {
+  name?: string
+  start?: string
+  end?: string
+  progress?: number
+  query?: string
+  notes?: string | null
+  link?: string | null
+}
+
+/** The milestone with a patch applied; a string says why it cannot be (the result is checked as a whole). */
+export function patchMilestone(m: Milestone, patch: MilestonePatch): Milestone | string {
+  if (patch.progress !== undefined && m.source.kind !== 'manual') return '"progress" applies to a milestone typed by hand; this one is counted from a tracker query'
+  if (patch.query !== undefined && m.source.kind !== 'tracker') return '"query" applies to a milestone counted from a tracker; this one is typed by hand'
+  const source: MilestoneSource =
+    m.source.kind === 'manual'
+      ? { kind: 'manual', progress: patch.progress !== undefined ? Math.round(patch.progress) : m.source.progress }
+      : { ...m.source, ...(patch.query !== undefined ? { query: patch.query.trim() } : {}) }
+  const { notes: _n, link: _l, ...rest } = m
+  const notes = patch.notes === undefined ? m.notes : patch.notes?.trim() || undefined
+  const link = patch.link === undefined ? m.link : patch.link?.trim() || undefined
+  const next: Milestone = {
+    ...rest,
+    ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+    ...(patch.start !== undefined ? { start: patch.start.trim() } : {}),
+    ...(patch.end !== undefined ? { end: patch.end.trim() } : {}),
+    source,
+    ...(notes ? { notes } : {}),
+    ...(link ? { link } : {})
+  }
+  const problems = milestoneProblems(next)
+  return problems.length === 0 ? next : `not a valid milestone: ${problems.join(', ')}`
+}
+
+/** The list with a proposal applied; a string says why it no longer applies (the milestone changed or went). */
+export function applyMilestoneProposal(milestones: readonly Milestone[], p: MilestoneProposal): Milestone[] | string {
+  const current = milestones.find((m) => m.id === p.milestoneId)
+  if (p.action === 'create') {
+    if (!p.milestone) return 'the proposal has no milestone'
+    if (current) return 'a milestone with that id already exists'
+    if (milestones.length >= MILESTONE_LIMITS.items) return 'too many milestones'
+    return [...milestones, p.milestone]
+  }
+  if (!current) return 'the milestone no longer exists'
+  // Applying over a milestone the user edited since would silently undo their edit.
+  if (p.before && JSON.stringify(current) !== JSON.stringify(p.before)) return 'the milestone changed since the agent asked'
+  if (p.action === 'delete') return milestones.filter((m) => m.id !== p.milestoneId)
+  if (!p.milestone) return 'the proposal has no milestone'
+  return milestones.map((m) => (m.id === p.milestoneId ? p.milestone! : m))
+}

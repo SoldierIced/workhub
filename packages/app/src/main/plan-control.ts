@@ -5,7 +5,8 @@
  * human action in the UI. Every answer is short and capped; no secret (calendar addresses, notes)
  * leaves through it.
  */
-import { INBOX_KINDS, INBOX_LIMITS, INBOX_STATUSES, filterInbox, isDay, isOpenItem, moduleScreens, plannerSettings, type InboxItem, type Profile } from '@workhub/core'
+import { INBOX_KINDS, INBOX_LIMITS, INBOX_STATUSES, MILESTONE_LIMITS, filterInbox, isDay, isOpenItem, milestoneProblems, moduleScreens, patchMilestone, plannerSettings, type InboxItem, type Milestone, type MilestonePatch, type MilestoneProposal, type Profile } from '@workhub/core'
+import { randomUUID } from 'node:crypto'
 import type { PlanView } from '../shared/plan-api'
 import type { ControlReply } from './control-server'
 import type { InboxUpdate, PlannerService } from './planner-service'
@@ -183,8 +184,58 @@ export function parseInboxUpdate(body: unknown): InboxUpdate | string {
   return out
 }
 
+/** The body of `POST /v1/milestones` as a milestone (without its id); a string says what is wrong. */
+export function parseMilestoneCreate(body: unknown): Omit<Milestone, 'id'> | string {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'the body must be a JSON object'
+  const v = body as Record<string, unknown>
+  const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '')
+  const hasProgress = v['progress'] !== undefined
+  const hasQuery = v['query'] !== undefined
+  if (hasProgress === hasQuery) return 'send either "progress" (0-100, typed by hand) or "query" (a tracker query to count)'
+  if (hasProgress && (typeof v['progress'] !== 'number' || !Number.isFinite(v['progress']))) return '"progress" must be a number from 0 to 100'
+  if (hasQuery && typeof v['query'] !== 'string') return '"query" must be a string'
+  const source: Milestone['source'] = hasProgress ? { kind: 'manual', progress: Math.round(v['progress'] as number) } : { kind: 'tracker', query: str(v['query']), ...(str(v['connectionId']) ? { connectionId: str(v['connectionId']) } : {}) }
+  const m: Milestone = { id: 'new', name: str(v['name']), start: str(v['start']), end: str(v['end']), source, ...(str(v['notes']) ? { notes: str(v['notes']) } : {}), ...(str(v['link']) ? { link: str(v['link']) } : {}) }
+  const problems = milestoneProblems(m)
+  if (problems.length > 0) return `not a valid milestone: ${problems.join(', ')} (name up to ${MILESTONE_LIMITS.name} characters, start and end as YYYY-MM-DD with start <= end, progress 0-100, link http(s))`
+  const { id: _id, ...rest } = m
+  return rest
+}
+
+/** The body of `PATCH /v1/milestones/:id`; a string says what is wrong. */
+export function parseMilestonePatch(body: unknown): MilestonePatch | string {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'the body must be a JSON object'
+  const v = body as Record<string, unknown>
+  const out: MilestonePatch = {}
+  for (const key of ['name', 'start', 'end', 'query'] as const) {
+    if (v[key] === undefined) continue
+    if (typeof v[key] !== 'string') return `"${key}" must be a string`
+    out[key] = v[key] as string
+  }
+  for (const key of ['notes', 'link'] as const) {
+    if (v[key] === undefined) continue
+    if (v[key] !== null && typeof v[key] !== 'string') return `"${key}" must be a string or null`
+    out[key] = v[key] as string | null
+  }
+  if (v['progress'] !== undefined) {
+    if (typeof v['progress'] !== 'number' || !Number.isFinite(v['progress'])) return '"progress" must be a number from 0 to 100'
+    out.progress = v['progress']
+  }
+  if (Object.keys(out).length === 0) return 'nothing to change: send name, start, end, progress, query, notes or link'
+  return out
+}
+
+/** The source of an agent's change: its session and an optional short label (`reason`). */
+function changeSource(session: string | null, body: unknown): MilestoneProposal['source'] {
+  const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
+  const label = typeof b['reason'] === 'string' ? b['reason'].trim().slice(0, 200) : ''
+  return { ...(session ? { session } : {}), ...(label ? { label } : {}) }
+}
+
 export interface PlanControlDeps extends ControlProfileDeps {
-  planner: Pick<PlannerService, 'view' | 'updateItem'>
+  planner: Pick<PlannerService, 'view' | 'updateItem' | 'agentMilestone'>
+  /** A new milestone id. */
+  newId?: () => string
   /** The profile's agenda with its briefs (the Plan screen's view). */
   agenda: (profileId: string) => Promise<PlanView>
   profile: (profileId: string) => Promise<Profile | undefined>
@@ -242,6 +293,8 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
           ok: true,
           enabled: true,
           today: view.today,
+          agentChanges: view.agentMilestones,
+          pending: view.proposals.map((p) => ({ proposalId: p.id, action: p.action, id: p.milestoneId, ...(p.milestone ? { name: p.milestone.name } : p.before ? { name: p.before.name } : {}), createdAt: iso(p.createdAt) })),
           milestones: view.milestones.map((row) => ({
             id: row.milestone.id,
             name: row.milestone.name,
@@ -257,6 +310,35 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
           }))
         }
       }
+    },
+    async changeMilestone(id, method, body, params) {
+      if (id !== null && !/^[\w.:-]{1,64}$/.test(id)) return fail(400, 'bad milestone id')
+      const who = await resolveControlProfile(deps, askOf(params, body))
+      if (!who.ok) return fail(who.status, who.error)
+      const view = await deps.planner.view(who.profileId)
+      if (!view.enabled) return fail(409, STATE_REASON.moduleOff!)
+      let change: Parameters<PlanControlDeps['planner']['agentMilestone']>[1]
+      if (method === 'POST') {
+        const created = parseMilestoneCreate(body)
+        if (typeof created === 'string') return fail(400, created)
+        const milestoneId = (deps.newId ?? randomUUID)()
+        change = { action: 'create', milestoneId, milestone: { id: milestoneId, ...created } }
+      } else {
+        const current = view.milestones.find((r) => r.milestone.id === id)?.milestone
+        if (!current) return fail(404, 'unknown milestone')
+        if (method === 'DELETE') change = { action: 'delete', milestoneId: current.id }
+        else {
+          const patch = parseMilestonePatch(body)
+          if (typeof patch === 'string') return fail(400, patch)
+          const next = patchMilestone(current, patch)
+          if (typeof next === 'string') return fail(400, next)
+          change = { action: 'update', milestoneId: current.id, milestone: next }
+        }
+      }
+      const r = await deps.planner.agentMilestone(who.profileId, change, changeSource(who.session, body))
+      if (!r.ok) return fail(r.reason === 'unknown' ? 404 : 409, r.error)
+      if (r.applied) return { status: 200, body: { ok: true, applied: true, id: change.milestoneId } }
+      return { status: 202, body: { ok: true, applied: false, pending: true, proposalId: r.proposal.id, id: change.milestoneId, note: 'The user must apply this change on the Plan screen (Milestones); it is not applied yet.' } }
     },
     async people(params) {
       const who = await resolveControlProfile(deps, askOf(params))
@@ -280,6 +362,8 @@ export interface PlanControl {
   updateItem(id: string, body: unknown, params: URLSearchParams): Promise<ControlReply>
   /** `GET /v1/milestones`. */
   milestones(params: URLSearchParams): Promise<ControlReply>
+  /** `POST /v1/milestones` (id null), `PATCH` or `DELETE /v1/milestones/:id`: applied or proposed, per the profile's setting. */
+  changeMilestone(id: string | null, method: 'POST' | 'PATCH' | 'DELETE', body: unknown, params: URLSearchParams): Promise<ControlReply>
   /** `GET /v1/people`. */
   people(params: URLSearchParams): Promise<ControlReply>
 }

@@ -2,8 +2,8 @@
 export const plannerEn = {
   'planner.tab.inbox': 'Inbox',
   'planner.tab.milestones': 'Milestones',
-  'topNav.inboxPending.one': '{count} inbox item waiting for approval',
-  'topNav.inboxPending.other': '{count} inbox items waiting for approval',
+  'topNav.inboxPending.one': '{count} item waiting for approval (inbox or milestones)',
+  'topNav.inboxPending.other': '{count} items waiting for approval (inbox or milestones)',
   'metricAlerts.action.sendToInbox': 'Send to inbox',
   'metricAlerts.action.sendToInboxHint': "Adds a pending bug with this alert's details to Plan's inbox. Nothing reaches the tracker until you approve it.",
   'metricAlerts.sentToInbox': 'Sent to the inbox, waiting for approval',
@@ -156,5 +156,18 @@ export const plannerEn = {
   'planner.settings.issueTypeHint': 'Jira only; empty uses Task and Bug.',
   'planner.settings.descriptionTemplate': 'Issue description',
   'planner.settings.margin': 'At-risk margin (points)',
-  'planner.settings.marginHint': 'A milestone is at risk when its progress is this far behind the share of time gone.'
+  'planner.settings.marginHint': 'A milestone is at risk when its progress is this far behind the share of time gone.',
+  'planner.settings.agentMilestones': 'Milestone changes by agents',
+  'planner.settings.agentMilestonesHint': 'Agents can create, change and delete milestones through Workhub. "Ask me first" keeps each change as a proposal on the Milestones tab until you apply it.',
+  'planner.settings.agentMilestones.ask': 'Ask me first',
+  'planner.settings.agentMilestones.allow': 'Apply at once',
+  'planner.proposals.title': 'Proposed by agents ({count})',
+  'planner.proposals.hint': 'Nothing changes until you apply it. A change to a milestone you edited since the agent asked cannot be applied; reject it.',
+  'planner.proposals.apply': 'Apply',
+  'planner.proposals.reject': 'Reject',
+  'planner.proposal.create': 'New milestone: {name}',
+  'planner.proposal.update': 'Change {name}',
+  'planner.proposal.delete': 'Delete {name}',
+  'planner.proposal.progress': '{progress}% done',
+  'planner.proposal.query': 'counted from {query}'
 }

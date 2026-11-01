@@ -172,6 +172,7 @@ const api: HubApi = {
     get: (profileId) => ipcRenderer.invoke('planner:get', profileId),
     saveMilestone: (profileId, milestone) => ipcRenderer.invoke('planner:saveMilestone', profileId, milestone),
     deleteMilestone: (profileId, id) => ipcRenderer.invoke('planner:deleteMilestone', profileId, id),
+    resolveProposal: (profileId, id, accept) => ipcRenderer.invoke('planner:resolveProposal', profileId, id, accept),
     refreshMilestones: (profileId) => ipcRenderer.invoke('planner:refreshMilestones', profileId),
     addItem: (profileId, proposal, force) => ipcRenderer.invoke('planner:addItem', profileId, proposal, force),
     editItem: (profileId, id, edit) => ipcRenderer.invoke('planner:editItem', profileId, id, edit),

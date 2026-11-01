@@ -4,9 +4,11 @@ import {
   BRIEF_PLACEHOLDERS,
   DEFAULT_BRIEF_TEMPLATE,
   DEFAULT_INBOX_DESCRIPTION_TEMPLATE,
+  DEFAULT_AGENT_MILESTONE_MODE,
   DEFAULT_MILESTONE_MARGIN,
   INBOX_TEMPLATE_PLACEHOLDERS,
   ISSUE_PRIORITIES,
+  type AgentMilestoneMode,
   type IssuePriority,
   isValidRuleRegex,
   MAX_LEAD_MINUTES,
@@ -60,6 +62,7 @@ interface PlannerForm {
   briefTemplate: string
   people: PersonForm[]
   inbox: InboxSettingsForm
+  agentMilestones: AgentMilestoneMode
 }
 
 function plannerForm(profile: Profile | undefined): PlannerForm {
@@ -71,7 +74,8 @@ function plannerForm(profile: Profile | undefined): PlannerForm {
     rules: s.rules.map(ruleToForm),
     briefTemplate: s.briefTemplate,
     people: s.people.map(personToForm),
-    inbox: inboxSettingsToForm(s, s.milestoneMargin ?? DEFAULT_MILESTONE_MARGIN)
+    inbox: inboxSettingsToForm(s, s.milestoneMargin ?? DEFAULT_MILESTONE_MARGIN),
+    agentMilestones: s.agentMilestones ?? DEFAULT_AGENT_MILESTONE_MODE
   }
 }
 
@@ -129,7 +133,8 @@ export function PlanSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) 
       briefTemplate: form.briefTemplate,
       people: form.people.map(formToPerson),
       inbox: formToInboxSettings(form.inbox),
-      milestoneMargin: Math.min(100, Math.max(0, Math.round(form.inbox.margin) || 0))
+      milestoneMargin: Math.min(100, Math.max(0, Math.round(form.inbox.margin) || 0)),
+      agentMilestones: form.agentMilestones
     }
     if (!(await saveProfile((p) => ({ ...p, planner })))) return { ok: false }
     setBaseline(form)
@@ -393,6 +398,16 @@ export function PlanSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) 
           <p className="col-span-2 -mt-2 text-xs text-subtle">{t('plan.settings.placeholders', { list: INBOX_TEMPLATE_PLACEHOLDERS.map((p) => `{${p}}`).join(' ') })}</p>
           <Field label={t('planner.settings.margin')} hint={t('planner.settings.marginHint')}>
             <Input type="number" min={0} max={100} value={form.inbox.margin} onChange={(e) => setInbox({ margin: Number(e.target.value) })} />
+          </Field>
+          <Field label={t('planner.settings.agentMilestones')} hint={t('planner.settings.agentMilestonesHint')}>
+            <Select
+              value={form.agentMilestones}
+              onChange={(v) => setForm((f) => ({ ...f, agentMilestones: v as AgentMilestoneMode }))}
+              options={[
+                { value: 'ask', label: t('planner.settings.agentMilestones.ask') },
+                { value: 'allow', label: t('planner.settings.agentMilestones.allow') }
+              ]}
+            />
           </Field>
         </CardBody>
       </Card>

@@ -3,8 +3,8 @@ import type { plannerEn } from './planner.en'
 export const plannerEs: Record<keyof typeof plannerEn, string> = {
   'planner.tab.inbox': 'Bandeja',
   'planner.tab.milestones': 'Hitos',
-  'topNav.inboxPending.one': '{count} elemento de la bandeja espera aprobación',
-  'topNav.inboxPending.other': '{count} elementos de la bandeja esperan aprobación',
+  'topNav.inboxPending.one': '{count} elemento espera aprobación (bandeja o hitos)',
+  'topNav.inboxPending.other': '{count} elementos esperan aprobación (bandeja o hitos)',
   'metricAlerts.action.sendToInbox': 'Enviar a la bandeja',
   'metricAlerts.action.sendToInboxHint': 'Agrega un bug pendiente con los datos de esta alerta a la bandeja de Plan. Nada llega al gestor de tickets hasta que lo apruebes.',
   'metricAlerts.sentToInbox': 'Enviada a la bandeja, espera aprobación',
@@ -157,5 +157,18 @@ export const plannerEs: Record<keyof typeof plannerEn, string> = {
   'planner.settings.issueTypeHint': 'Solo Jira; vacío usa Task y Bug.',
   'planner.settings.descriptionTemplate': 'Descripción del issue',
   'planner.settings.margin': 'Margen de riesgo (puntos)',
-  'planner.settings.marginHint': 'Un hito está en riesgo cuando su avance queda así de atrás de la parte del tiempo transcurrido.'
+  'planner.settings.marginHint': 'Un hito está en riesgo cuando su avance queda así de atrás de la parte del tiempo transcurrido.',
+  'planner.settings.agentMilestones': 'Cambios de hitos por agentes',
+  'planner.settings.agentMilestonesHint': 'Los agentes pueden crear, cambiar y borrar hitos desde Workhub. "Preguntarme antes" deja cada cambio como propuesta en la pestaña Hitos hasta que lo apliques.',
+  'planner.settings.agentMilestones.ask': 'Preguntarme antes',
+  'planner.settings.agentMilestones.allow': 'Aplicar directamente',
+  'planner.proposals.title': 'Propuestos por agentes ({count})',
+  'planner.proposals.hint': 'Nada cambia hasta que lo apliques. Si editaste el hito después de que el agente lo pidiera, el cambio no se puede aplicar: rechazalo.',
+  'planner.proposals.apply': 'Aplicar',
+  'planner.proposals.reject': 'Rechazar',
+  'planner.proposal.create': 'Hito nuevo: {name}',
+  'planner.proposal.update': 'Cambiar {name}',
+  'planner.proposal.delete': 'Borrar {name}',
+  'planner.proposal.progress': '{progress}% hecho',
+  'planner.proposal.query': 'contado desde {query}'
 }
