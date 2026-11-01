@@ -70,6 +70,10 @@ Versions and the [CHANGELOG](CHANGELOG.md) come from the Conventional Commits on
    `packages/app/package.json`, `package-lock.json` and the manifest, and adds the new
    `CHANGELOG.md` entry. While the project is in alpha the next version is the next pre-release
    number (`2.0.0-alpha.1` → `2.0.0-alpha.2`), whatever the commit types.
+   The `ci` run on that pull request waits for approval (`action_required`), because a bot
+   opened it, and the required checks block the merge until it passes. Approve it under the
+   pull request's **Checks** tab, or with
+   `gh api -X POST repos/<owner>/<repo>/actions/runs/<run-id>/approve`.
 2. **Cut the release.** Merge the release pull request. The run on that merge tags it
    (`v<version>`), creates a **draft** GitHub release with the changelog entry as its notes, and
    calls `.github/workflows/release.yml`, which builds the macOS, Windows and Linux installers and

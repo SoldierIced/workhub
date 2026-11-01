@@ -59,6 +59,10 @@ stays in the current view.
 - Permission requests appear in the conversation; answer them there.
 - If the session's account is past a usage ceiling, sending asks for confirmation (**Send
   anyway**), or offers to continue in another account. See [Usage and budgets](usage.md).
+- If the conversation's prompt cache has expired, a notice above the input says how long the
+  session has been idle, how many tokens of context the next message sends again at full price,
+  and, for Claude, the estimated cost against a warm cache. It only informs; close it with **×**.
+  See [Usage and budgets](usage.md#reviving-an-idle-conversation).
 
 ## Header and More
 

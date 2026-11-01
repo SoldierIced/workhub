@@ -52,4 +52,25 @@ Codex and Kiro in the profile's folders over the last 7 days. It excludes cache 
 re-reads of context that would dwarf everything else. The session monitor lists cache reads
 separately as **Context re-read from cache**.
 
+## Reviving an idle conversation
+
+Agents cache the conversation's prompt so each message re-reads it cheaply. The cache lasts a few
+minutes (Claude: 5 minutes or 1 hour, renewed by every request). Once it expires, the next message
+sends the whole context again at full price: for Claude, 1.25x (5-minute cache) or 2x (1-hour
+cache) the input price, against 0.1x or less for a cache read.
+
+The composer warns before that happens:
+
+- **Claude**: Workhub reads the cache lifetime each request asked for from the session's
+  transcript, so the notice shows only once the cache has really expired, with the estimated
+  cost at list prices next to what a warm cache would cost.
+- **Codex and Kiro** report the context size but no cache lifetime: the notice shows after 5
+  minutes without activity and says the cache has likely expired, with the context size only.
+  Agents that do not report the context size (OpenCode) show no notice.
+
+It shows when the context is at least 20k tokens and, when the cost is known, when a cold resend
+costs at least $0.05, so a cheap model's large context does not raise it. It never holds a
+message; on a plan subscription the cost is in plan usage rather than money, in the same
+proportion.
+
 Next: [Settings](settings.md).
