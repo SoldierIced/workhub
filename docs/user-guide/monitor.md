@@ -13,7 +13,7 @@ reported by the agent**; a missing or unreadable transcript never breaks the ses
 | Section | Contents |
 |---|---|
 | Session time | **Alive** (since it started) and **Active** (share of the session the agent was working, split into thinking, tools and idle time). |
-| Tokens | For **This chat** or **all turns**: **Input**, **Output**, **Cache write**, **Context re-read from cache**, the part from subagents, and **New tokens per request** with a count of requests this turn. |
+| Tokens | For **This chat** or **all turns**: **Spent (fresh)** (input + cache write + output, what weighs on your plan) and, apart, **Cache reads** (they cost much less), then the detail rows **Input**, **Output**, **Cache write**, **Context re-read from cache**, the part from subagents, and **New tokens per request** with a count of requests this turn. |
 | Cost / Credits | The cost reported by the agent, or Kiro credits per turn. |
 | Context window | How full the agent's context is. |
 | Plan usage | The plan windows of the session's account, when usage reading is on. See [Usage and budgets](usage.md). |
@@ -46,9 +46,10 @@ The monitor also holds **Usage limit for this session**, a ceiling for this one 
 - **Plan usage**: the highest usage window across the accounts that report one.
 - **Environments**: the Health state of each environment, when the Health module is on.
 - **Token spend by folder**: tokens of Claude, Codex and Kiro in this profile's folders over the last
-  7 days, read from their transcripts in the background. It counts fresh tokens (input, cache writes
-  and output) and leaves out cache reads, which would dwarf everything else. A session counts for
-  the folder its edits and commands worked in.
+  7 days, read from their transcripts in the background. The bar and main number are fresh tokens
+  (input, cache writes and output); a smaller "+ cache" figure shows the cache reads apart, because
+  they are most of the volume but cost much less. A session counts for the folder its edits and
+  commands worked in.
 
 A card that depends on something not configured says so and links to **Settings**.
 

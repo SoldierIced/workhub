@@ -47,7 +47,7 @@ export interface ClaudeSpendState {
   /** Where the session works now: its cwd, or what its last edit or `cd` touched. */
   work?: string
   /** The message being streamed: its usage is repeated per block and the last copy counts. */
-  pending?: { id: string; at: number; work: string; tokens: number; usd?: number; all?: number }
+  pending?: { id: string; at: number; work: string; tokens: number; usd?: number; all?: number; cacheRead?: number }
 }
 
 /**
@@ -55,7 +55,7 @@ export interface ClaudeSpendState {
  * message was written: Workhub 1's rule, so a session started at a container folder counts for the
  * repository its edits and `cd`s touched. Reading files does not move the session.
  */
-export function claudeSpendLine(line: string, state: ClaudeSpendState, buckets: SpendBuckets, home = homedir(), costs?: CostBuckets): void {
+export function claudeSpendLine(line: string, state: ClaudeSpendState, buckets: SpendBuckets, home = homedir(), costs?: CostBuckets, reads?: SpendBuckets): void {
   const cwd = rawCwd(line)
   if (cwd && cwd !== state.cwd) {
     state.cwd = cwd
@@ -82,26 +82,28 @@ export function claudeSpendLine(line: string, state: ClaudeSpendState, buckets: 
   const output = num(usage['output_tokens']) ?? 0
   const tokens = input + cacheWrite + output
   const usd = estimateCost(str(message['model']), { input, cacheWrite, cacheRead, output }, true)?.amount
-  if (state.pending && state.pending.id !== id) commitClaude(state, buckets, costs)
-  state.pending = { id, at, work: state.work, tokens, all: tokens + cacheRead, ...(usd !== undefined ? { usd } : {}) }
+  if (state.pending && state.pending.id !== id) commitClaude(state, buckets, costs, reads)
+  state.pending = { id, at, work: state.work, tokens, all: tokens + cacheRead, cacheRead, ...(usd !== undefined ? { usd } : {}) }
 }
 
 /** Counts the message being streamed; called when the next one starts. */
-export function commitClaude(state: ClaudeSpendState, buckets: SpendBuckets, costs?: CostBuckets): void {
+export function commitClaude(state: ClaudeSpendState, buckets: SpendBuckets, costs?: CostBuckets, reads?: SpendBuckets): void {
   const p = state.pending
   if (p) {
     addSpend(buckets, p.at, 'claude', p.work, p.tokens)
+    if (reads) addSpend(reads, p.at, 'claude', p.work, p.cacheRead ?? 0)
     addCost(costs, p.at, 'claude', p.work, p.usd, p.all ?? p.tokens)
   }
   state.pending = undefined
 }
 
-/** The pending message as buckets of its own, so a scan can show it before it is committed. */
-export function claudePending(state: ClaudeSpendState, costs?: CostBuckets): SpendBuckets {
+/** The pending message as buckets of its own (`reads`: its cache reads), so a scan can show it before it is committed. */
+export function claudePending(state: ClaudeSpendState, costs?: CostBuckets, reads?: SpendBuckets): SpendBuckets {
   const out: SpendBuckets = {}
   const p = state.pending
   if (p) {
     addSpend(out, p.at, 'claude', p.work, p.tokens)
+    if (reads) addSpend(reads, p.at, 'claude', p.work, p.cacheRead ?? 0)
     addCost(costs, p.at, 'claude', p.work, p.usd, p.all ?? p.tokens)
   }
   return out
@@ -127,7 +129,7 @@ export interface CodexSpendState {
  * lines, which then win) carry the session's running totals, so the spend is the growth of the
  * fresh total since the previous one: a repeated total adds nothing.
  */
-export function codexSpendLine(line: string, state: CodexSpendState, buckets: SpendBuckets, costs?: CostBuckets): void {
+export function codexSpendLine(line: string, state: CodexSpendState, buckets: SpendBuckets, costs?: CostBuckets, reads?: SpendBuckets): void {
   if (!line.includes('session_meta') && !line.includes('turn_context') && !line.includes('token_count') && !line.includes('token_usage_record')) return
   const entry = parseLine(line)
   const payload = obj(entry?.['payload'])
@@ -167,6 +169,8 @@ export function codexSpendLine(line: string, state: CodexSpendState, buckets: Sp
   addSpend(buckets, at, 'codex', state.cwd, delta)
   const last = !restarted && state.parts ? state.parts : { input: 0, cached: 0, output: 0 }
   state.parts = { input, cached, output }
+  // Cached input is not part of the fresh total, so it grows (or restarts) on its own.
+  if (reads) addSpend(reads, at, 'codex', state.cwd, Math.max(0, cached - last.cached))
   if (at !== undefined && state.cwd && delta > 0) {
     const grown = { input: Math.max(0, input - cached - (last.input - last.cached)), cached: Math.max(0, cached - last.cached), output: Math.max(0, output - last.output) }
     addCost(costs, at, 'codex', state.cwd, openAiCost(state.model, grown, num(request?.['input_tokens'])), grown.input + grown.cached + grown.output)
@@ -178,7 +182,7 @@ export function codexSpendLine(line: string, state: CodexSpendState, buckets: Sp
  * and output, at the turn's end (the file's update time when a turn has none), in the session's
  * cwd. Kiro's chat sessions record credits but no tokens, so they add nothing here.
  */
-export function kiroSpendFile(text: string, buckets: SpendBuckets): void {
+export function kiroSpendFile(text: string, buckets: SpendBuckets, reads?: SpendBuckets): void {
   let raw: Obj | undefined
   try {
     raw = obj(JSON.parse(text))
@@ -192,6 +196,8 @@ export function kiroSpendFile(text: string, buckets: SpendBuckets): void {
     const turn = obj(t)
     if (!turn) continue
     const tokens = (num(turn['input_token_count']) ?? 0) + (num(turn['cache_write_input_token_count']) ?? 0) + (num(turn['output_token_count']) ?? 0)
-    addSpend(buckets, toMillis(turn['end_timestamp']) ?? fallback, 'kiro', cwd, tokens)
+    const at = toMillis(turn['end_timestamp']) ?? fallback
+    addSpend(buckets, at, 'kiro', cwd, tokens)
+    if (reads) addSpend(reads, at, 'kiro', cwd, num(turn['cache_read_input_token_count']) ?? 0)
   }
 }

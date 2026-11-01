@@ -59,7 +59,7 @@ describe('TokenSpendService', () => {
     const project = join(root, '.claude', 'projects', 'p')
     mkdirSync(project, { recursive: true })
     const line = (cwd: string, id: string, tokens: number) =>
-      JSON.stringify({ type: 'assistant', cwd, timestamp: new Date().toISOString(), message: { id, usage: { input_tokens: tokens, output_tokens: 0 } } })
+      JSON.stringify({ type: 'assistant', cwd, timestamp: new Date().toISOString(), message: { id, usage: { input_tokens: tokens, output_tokens: 0, cache_read_input_tokens: tokens * 100 } } })
     writeFileSync(join(project, 'a.jsonl'), [line(join(work, 'api'), 'm1', 10), line(join(work, 'web'), 'm2', 30), line(join(root, 'repo', 'src'), 'm3', 5)].join('\n') + '\n')
 
     const config: WorkhubConfig = { ...emptyConfig(), profiles: [profile('one', [work], { folderOptions: { [work]: { subfoldersAreProjects: true } } }), profile('two', [join(root, 'repo')])], activeProfileId: 'one' }
@@ -80,15 +80,15 @@ describe('TokenSpendService', () => {
     expect(store.saves).toBe(1)
     const one = await svc.forProfile(null)
     expect(one.hasFolders).toBe(true)
-    expect(one.entries.map((e) => [e.name, e.tokens])).toEqual([
-      ['web', 30],
-      ['api', 10]
+    expect(one.entries.map((e) => [e.name, e.tokens, e.cacheRead])).toEqual([
+      ['web', 30, 3000],
+      ['api', 10, 1000]
     ])
-    expect((await svc.forProfile('two')).entries.map((e) => [e.name, e.tokens])).toEqual([['repo', 5]])
+    expect((await svc.forProfile('two')).entries.map((e) => [e.name, e.tokens, e.cacheRead])).toEqual([['repo', 5, 500]])
 
     // A new run starts from the persisted cache, before its first scan.
     const again = new TokenSpendService({ config: async () => config, store, sources: async () => ({ claudeDirs: [], codexHomes: [], kiroDirs: [] }), emit: () => {} })
-    expect((await again.forProfile('one')).entries.map((e) => e.tokens)).toEqual([30, 10])
+    expect((await again.forProfile('one')).entries.map((e) => [e.tokens, e.cacheRead])).toEqual([[30, 3000], [10, 1000]])
   })
 
   it('says when a profile has no folders', async () => {

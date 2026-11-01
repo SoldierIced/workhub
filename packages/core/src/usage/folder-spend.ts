@@ -3,8 +3,9 @@
  * (Workhub 1's "Claude by folder" card, extended to Codex and Kiro). Pure: the caller reads the
  * transcripts and the folders.
  *
- * A bucket is the fresh tokens (input + cache write + output; cache reads are left out, as in
- * Workhub 1) one agent spent on one local day while working in one path.
+ * A bucket is the fresh tokens (input + cache write + output) one agent spent on one local day
+ * while working in one path. Cache reads are kept in a second set of buckets with the same keys:
+ * they are most of the volume but weigh little on a plan, so they are shown apart.
  */
 import { isThrowawayFolder } from '../usecases/history'
 import { localDayKey, startOfLocalDay } from './credits'
@@ -65,7 +66,10 @@ export interface FolderSpendEntry {
   path: string
   /** True for work at the top of a folder that is split into child folders ("acme (root)"). */
   root: boolean
+  /** Fresh tokens: what weighs on the plan, and what the entries are sorted by. */
   tokens: number
+  /** Cache-read tokens, shown apart from the fresh ones. */
+  cacheRead: number
   byAgent: Partial<Record<SpendAgent, number>>
 }
 
@@ -149,14 +153,21 @@ export function folderSpend(
     children?: Readonly<Record<string, readonly string[]>>
     owns?: (path: string) => boolean
     aliases?: Readonly<Record<string, string>>
+    /** Cache-read tokens, keyed like `buckets`. */
+    cacheReads?: SpendBuckets
   }
 ): FolderSpendEntry[] {
   const byPath = new Map<string, FolderSpendEntry>()
   const placeOf = new Map<string, ReturnType<typeof attributeFolder>>()
   const { owns } = options
-  for (const [key, tokens] of Object.entries(buckets)) {
+  const reads = options.cacheReads ?? {}
+  // A bucket may hold only cache reads (a turn answered from the cache alone).
+  const keys = new Set([...Object.keys(buckets), ...Object.keys(reads)])
+  for (const key of keys) {
+    const tokens = buckets[key] ?? 0
+    const cacheRead = reads[key] ?? 0
     const parsed = parseSpendKey(key)
-    if (!parsed || parsed.day < options.sinceDay || !(tokens > 0)) continue
+    if (!parsed || parsed.day < options.sinceDay || !(tokens > 0 || cacheRead > 0)) continue
     let place = placeOf.get(parsed.path)
     if (place === undefined) {
       let path = parsed.path
@@ -175,11 +186,12 @@ export function folderSpend(
     const id = `${place.root ? 'root' : 'dir'}:${place.path}`
     let entry = byPath.get(id)
     if (!entry) {
-      entry = { ...place, tokens: 0, byAgent: {} }
+      entry = { ...place, tokens: 0, cacheRead: 0, byAgent: {} }
       byPath.set(id, entry)
     }
     entry.tokens += tokens
-    entry.byAgent[parsed.agent] = (entry.byAgent[parsed.agent] ?? 0) + tokens
+    entry.cacheRead += cacheRead
+    if (tokens > 0) entry.byAgent[parsed.agent] = (entry.byAgent[parsed.agent] ?? 0) + tokens
   }
   const entries = [...byPath.values()]
   distinguishNames(entries)

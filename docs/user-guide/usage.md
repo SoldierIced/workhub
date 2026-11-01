@@ -48,8 +48,10 @@ limits** removes it. Usage reading must be on for the agent to set one.
 ## Token spend
 
 Home's **Token spend by folder** counts fresh tokens (input, cache writes and output) of Claude,
-Codex and Kiro in the profile's folders over the last 7 days. It excludes cache reads, which are
-re-reads of context that would dwarf everything else. The session monitor lists cache reads
-separately as **Context re-read from cache**.
+Codex and Kiro in the profile's folders over the last 7 days: the bar and main number are what
+weighs on your plan. Cache reads, which are re-reads of context and would dwarf everything else but
+cost much less, appear apart on each row as "+ cache". The session monitor splits the same way:
+**Spent (fresh)** and **Cache reads** are separate boxes, and the detail rows keep **Context re-read
+from cache**.
 
 Next: [Settings](settings.md).

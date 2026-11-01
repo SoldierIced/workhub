@@ -11,6 +11,19 @@ export interface TokenUsage {
   total?: number
 }
 
+/**
+ * The tokens that really weigh on a plan: input + cache write + output. Cache reads are left out
+ * (they are most of the volume but cost much less). Agents that report only a total give that
+ * total minus the cache reads; undefined when nothing was reported.
+ */
+export function freshTokens(usage: TokenUsage | undefined): number | undefined {
+  if (!usage) return undefined
+  const { input, cacheWrite, output, cacheRead, total } = usage
+  if (input !== undefined || cacheWrite !== undefined || output !== undefined) return (input ?? 0) + (cacheWrite ?? 0) + (output ?? 0)
+  if (total === undefined) return undefined
+  return Math.max(0, total - (cacheRead ?? 0))
+}
+
 export interface Money {
   amount: number
   currency: string

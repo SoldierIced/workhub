@@ -71,10 +71,20 @@ describe('folderSpend', () => {
     addSpend(b, at('2026-10-01T10:00:00'), 'claude', '/w/acme/web', 999)
     const out = folderSpend(b, ['/w/acme', '/w/repo'], { sinceDay: day('2026-10-21T12:00:00'), children: { '/w/acme': ['api', 'web'] } })
     expect(out).toEqual([
-      { name: 'repo', path: '/w/repo', root: false, tokens: 200, byAgent: { kiro: 200 } },
-      { name: 'api', path: '/w/acme/api', root: false, tokens: 150, byAgent: { claude: 100, codex: 50 } },
-      { name: 'acme', path: '/w/acme', root: true, tokens: 30, byAgent: { claude: 30 } }
+      { name: 'repo', path: '/w/repo', root: false, tokens: 200, cacheRead: 0, byAgent: { kiro: 200 } },
+      { name: 'api', path: '/w/acme/api', root: false, tokens: 150, cacheRead: 0, byAgent: { claude: 100, codex: 50 } },
+      { name: 'acme', path: '/w/acme', root: true, tokens: 30, cacheRead: 0, byAgent: { claude: 30 } }
     ])
+    // Cache reads follow the same keys and folders, never change the order, and a cache-only
+    // bucket still shows its folder.
+    const reads: SpendBuckets = {}
+    addSpend(reads, at('2026-10-27T10:00:00'), 'claude', '/w/acme/api', 9000)
+    addSpend(reads, at('2026-10-26T10:00:00'), 'codex', '/w/acme/api/src', 500)
+    addSpend(reads, at('2026-10-26T10:00:00'), 'claude', '/w/acme/web', 7)
+    addSpend(reads, at('2026-10-01T10:00:00'), 'claude', '/w/acme/web', 999)
+    const withReads = folderSpend(b, ['/w/acme', '/w/repo'], { sinceDay: day('2026-10-21T12:00:00'), children: { '/w/acme': ['api', 'web'] }, cacheReads: reads })
+    expect(withReads.map((e) => [e.name, e.tokens, e.cacheRead])).toEqual([['repo', 200, 0], ['api', 150, 9500], ['acme', 30, 0], ['web', 0, 7]])
+    expect(withReads.find((e) => e.name === 'web')?.byAgent).toEqual({})
     expect(folderSpend(b, [], { sinceDay: '2026-10-21' })).toEqual([])
   })
 
@@ -86,8 +96,8 @@ describe('folderSpend', () => {
     const aliases = { '/elsewhere/api-fix': '/w/acme/api', '/elsewhere/repo-wt': '/w/repo', '/elsewhere/unrelated': '/far/away' }
     const out = folderSpend(b, ['/w/acme', '/w/repo'], { sinceDay: day('2026-10-21T12:00:00'), children: { '/w/acme': ['api'] }, aliases })
     expect(out).toEqual([
-      { name: 'api', path: '/w/acme/api', root: false, tokens: 40, byAgent: { claude: 40 } },
-      { name: 'repo', path: '/w/repo', root: false, tokens: 10, byAgent: { codex: 10 } }
+      { name: 'api', path: '/w/acme/api', root: false, tokens: 40, cacheRead: 0, byAgent: { claude: 40 } },
+      { name: 'repo', path: '/w/repo', root: false, tokens: 10, cacheRead: 0, byAgent: { codex: 10 } }
     ])
     expect(aliasPath('/elsewhere/api-fix/src/a', aliases)).toBe('/w/acme/api/src/a')
     expect(aliasPath('/elsewhere/api-fixed', aliases)).toBe('/elsewhere/api-fixed')
@@ -98,7 +108,7 @@ describe('folderSpend', () => {
     addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/w/p/workhub2-chat/packages', 70)
     addSpend(b, at('2026-10-27T10:00:00'), 'claude', '/w/p/workhub2', 30)
     const out = folderSpend(b, ['/w/p'], { sinceDay: day('2026-10-21T12:00:00'), children: { '/w/p': ['workhub2', 'workhub2-chat'] }, aliases: { '/w/p/workhub2-chat': '/w/p/workhub2' } })
-    expect(out).toEqual([{ name: 'workhub2', path: '/w/p/workhub2', root: false, tokens: 100, byAgent: { claude: 100 } }])
+    expect(out).toEqual([{ name: 'workhub2', path: '/w/p/workhub2', root: false, tokens: 100, cacheRead: 0, byAgent: { claude: 100 } }])
   })
 
   it('tells two folders of the same name apart by their parent', () => {
