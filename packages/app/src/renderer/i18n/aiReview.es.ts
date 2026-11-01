@@ -29,7 +29,7 @@ export const aiReviewEs: Record<keyof typeof aiReviewEn, string> = {
   'agentReview.roundsHelp': 'Revisiones antes de que el ciclo se detenga si el revisor sigue pidiendo cambios.',
   'agentReview.start': 'Enviar',
   'agentReview.loop': 'Usar el ciclo de revisión',
-  'agentReview.loopHint': 'El ciclo de revisión automático: revisa la rama de esta sesión y le envía los hallazgos.',
+  'agentReview.loopHint': 'El ciclo de revisión de la rama: revisa la rama de esta sesión y le envía los hallazgos.',
   'agentReview.started': 'Revisión iniciada: esta sesión escribe el brief para {reviewer}',
   'agentReview.error.unknownSession': 'La sesión ya no existe.',
   'agentReview.error.reviewerSession': 'Esta es una sesión revisora: revisa la sesión a la que pertenece.',

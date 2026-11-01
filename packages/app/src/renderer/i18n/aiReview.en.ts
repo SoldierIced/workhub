@@ -27,7 +27,7 @@ export const aiReviewEn = {
   'agentReview.roundsHelp': 'Reviews before the loop stops when the reviewer still requests changes.',
   'agentReview.start': 'Send',
   'agentReview.loop': 'Review loop instead',
-  'agentReview.loopHint': 'The automatic review loop: reviews this session\'s own branch and sends the findings back to it.',
+  'agentReview.loopHint': 'The branch review loop: reviews this session\'s own branch and sends the findings back to it.',
   'agentReview.started': 'Review started: this session writes the brief for {reviewer}',
   'agentReview.error.unknownSession': 'The session is gone.',
   'agentReview.error.reviewerSession': 'This is a reviewer session: review the session it belongs to.',
