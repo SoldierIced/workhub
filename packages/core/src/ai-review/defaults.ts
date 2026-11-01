@@ -23,5 +23,6 @@ export const DEFAULT_AI_REVIEW_SETTINGS: AiReviewSettings = {
   language: 'en',
   reviewerModel: '',
   reviewerEffort: '',
+  reviewerSession: 'same',
   briefPrompt: ''
 }

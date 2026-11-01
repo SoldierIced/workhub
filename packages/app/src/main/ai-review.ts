@@ -99,6 +99,15 @@ interface ReviewerRun {
   text: string
 }
 
+/** A reviewer session kept between rounds (`reviewerSession: 'same'`), with what it was started with. */
+interface KeptReviewer {
+  sessionId: string
+  agentKey: string
+  model: string
+  effort: string
+  label: string
+}
+
 /**
  * The AI review loop in the main process: watches dev sessions, starts reviewer sessions on a
  * separate checkout, reads their reply, sends the findings to the dev session and pauses for the
@@ -122,6 +131,8 @@ export class AiReviewService {
   /** Dev session id → its reply text since findings were delivered. */
   private readonly devReplies = new Map<string, string>()
   private readonly holds = new Map<string, AiReviewHold>()
+  /** Review id → the reviewer session kept for its next round (only with `reviewerSession: 'same'`). */
+  private readonly kept = new Map<string, KeptReviewer>()
 
   constructor(private readonly deps: AiReviewDeps) {
     const loaded = deps.state.load(EMPTY_AI_REVIEW_STATE)
@@ -323,6 +334,7 @@ export class AiReviewService {
     const settings = aiReviewSettings(this.profileOf(config, dev.profileId))
     const round = review.rounds[review.rounds.length - 1]!
     const path = this.worktreePath(review.id)
+    const reuse = settings.reviewerSession === 'same'
     let reviewerId: string | undefined
     let raw = ''
     let error: string | undefined
@@ -361,38 +373,72 @@ export class AiReviewService {
       const env = pushBlockEnv(await git.remotes(repo.root).catch(() => []), process.env)
       const model = settings.reviewerModel.trim()
       const effort = settings.reviewerEffort.trim()
-      const started = await this.deps.sessions.start({ profileId: dev.profileId, agentKey: reviewerKey, cwd: path, mode: 'app', readOnly: true, cols: 120, rows: 32, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, { env })
-      reviewerId = started.id
-      this.reviewers.set(started.id, { reviewId: review.id, text: '' })
-      const label = [started.agentName, started.accountName].filter(Boolean).join(' · ')
-      this.put(attachReviewer(this.state.reviews[review.id] ?? review, started.id, this.now(), { label, ...(model ? { model } : {}) }), dev.id)
-      this.deps.sessions.rename?.(started.id, `${settings.language === 'es' ? 'Revisión' : 'Review'} ${review.branch} · ${settings.language === 'es' ? 'ronda' : 'round'} ${cycleRound(review, round.n)}`)
-      await this.waitReady(started.id)
-      const ready = this.deps.sessions.list().find((v) => v.id === started.id)
+      const wanted = { agentKey: reviewerKey, model, effort }
+      const reused = reuse ? this.reusableReviewer(review.id, wanted) : undefined
+      if (!reused) await this.releaseReviewer(review.id)
+      let sessionId: string
+      let label: string
+      if (reused) {
+        sessionId = reused.sessionId
+        label = reused.label
+      } else {
+        const started = await this.deps.sessions.start({ profileId: dev.profileId, agentKey: reviewerKey, cwd: path, mode: 'app', readOnly: true, cols: 120, rows: 32, ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, { env })
+        sessionId = started.id
+        label = [started.agentName, started.accountName].filter(Boolean).join(' · ')
+      }
+      reviewerId = sessionId
+      this.reviewers.set(sessionId, { reviewId: review.id, text: '' })
+      this.put(attachReviewer(this.state.reviews[review.id] ?? review, sessionId, this.now(), { label, ...(model ? { model } : {}) }), dev.id)
+      this.deps.sessions.rename?.(sessionId, `${settings.language === 'es' ? 'Revisión' : 'Review'} ${review.branch} · ${settings.language === 'es' ? 'ronda' : 'round'} ${cycleRound(review, round.n)}`)
+      if (!reused) {
+        await this.waitReady(sessionId)
+        if (reuse) this.kept.set(review.id, { sessionId, ...wanted, label })
+      }
+      const ready = this.deps.sessions.list().find((v) => v.id === sessionId)
       const runningModel = ready?.models?.find((m) => m.id === ready.currentModelId)?.name ?? ready?.currentModelId
       if (runningModel && runningModel !== model) this.noteRound(review.id, { reviewerModel: runningModel }, dev.id)
-      if (model && this.deps.sessions.list().find((v) => v.id === started.id)?.modelIgnored) this.noteRound(review.id, { modelNote: `reviewer model "${model}" not applied: the agent does not offer it, so it runs with its default model` }, dev.id)
-      this.deps.showPrompt(started.id, prompt)
-      const stopReason = await withTimeout(this.deps.sessions.prompt(started.id, prompt), this.deps.replyTimeoutMs ?? 30 * 60_000, 'the reviewer did not answer in time')
-      this.deps.showTurnEnd?.(started.id, stopReason)
-      raw = this.reviewers.get(started.id)?.text ?? ''
+      if (model && ready?.modelIgnored) this.noteRound(review.id, { modelNote: `reviewer model "${model}" not applied: the agent does not offer it, so it runs with its default model` }, dev.id)
+      this.deps.showPrompt(sessionId, prompt)
+      const stopReason = await withTimeout(this.deps.sessions.prompt(sessionId, prompt), this.deps.replyTimeoutMs ?? 30 * 60_000, 'the reviewer did not answer in time')
+      this.deps.showTurnEnd?.(sessionId, stopReason)
+      raw = this.reviewers.get(sessionId)?.text ?? ''
       if (stopReason === 'cancelled') error = 'the reviewer turn was cancelled'
       else if (!raw.trim()) error = 'the reviewer gave an empty reply'
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
       if (reviewerId) raw = this.reviewers.get(reviewerId)?.text ?? raw
     }
-    if (reviewerId) {
-      this.reviewers.delete(reviewerId)
-      // Stopped, not forgotten: its chat stays in the sidebar, linked from the dev session's Review panel.
-      await this.deps.sessions.stop(reviewerId).catch(() => undefined)
-    }
-    await this.deps.git.remove(repo.root, path).catch(() => undefined)
+    if (reviewerId) this.reviewers.delete(reviewerId)
     const current = this.state.reviews[review.id]
-    if (!current || current.status !== 'reviewing') return // stopped by the user meanwhile
-    const parsed = error ? null : parseReviewReply(raw)
-    this.put(completeRound(current, { raw, parsed, ...(error ? { error } : {}) }, settings, this.now()), dev.id)
+    const next = current && current.status === 'reviewing' ? completeRound(current, { raw, parsed: error ? null : parseReviewReply(raw), ...(error ? { error } : {}) }, settings, this.now()) : undefined
+    // `same`: the reviewer and its checkout wait for the next round, unless the round failed or the review ended.
+    const keep = reuse && !error && next !== undefined && next.status !== 'failed' && next.status !== 'stopped' && reviewerId !== undefined && this.kept.get(review.id)?.sessionId === reviewerId
+    if (!keep) {
+      if (reviewerId && this.kept.get(review.id)?.sessionId === reviewerId) this.kept.delete(review.id)
+      // Stopped, not forgotten: its chat stays in the sidebar, linked from the dev session's Review panel.
+      if (reviewerId) await this.deps.sessions.stop(reviewerId).catch(() => undefined)
+      await this.deps.git.remove(repo.root, path).catch(() => undefined)
+    }
+    if (!next) return // stopped by the user meanwhile
+    this.put(next, dev.id)
     await this.deliverPending()
+  }
+
+  /** The reviewer kept for this review, when it is still open, idle and started with the same agent, model and effort. */
+  private reusableReviewer(reviewId: string, wanted: { agentKey: string; model: string; effort: string }): KeptReviewer | undefined {
+    const kept = this.kept.get(reviewId)
+    if (!kept || kept.agentKey !== wanted.agentKey || kept.model !== wanted.model || kept.effort !== wanted.effort) return undefined
+    const view = this.deps.sessions.list().find((v) => v.id === kept.sessionId)
+    return view && view.state === 'ready' ? kept : undefined
+  }
+
+  /** Stops the reviewer kept for a review, if any (its chat stays in the sidebar). */
+  private async releaseReviewer(reviewId: string): Promise<void> {
+    const kept = this.kept.get(reviewId)
+    if (!kept) return
+    this.kept.delete(reviewId)
+    if (this.reviewers.has(kept.sessionId)) return // a round is using it; that round stops it
+    await this.deps.sessions.stop(kept.sessionId).catch(() => undefined)
   }
 
   /** Fetches the base; returns the ref to diff against (re-resolved, since the fetch may have created `origin/<base>`). */
@@ -493,6 +539,11 @@ export class AiReviewService {
     const r = this.state.reviews[reviewId]
     const reviewer = r?.rounds.at(-1)?.reviewerSessionId
     if (r?.status === 'reviewing' && reviewer && this.reviewers.has(reviewer)) await this.deps.sessions.stop(reviewer).catch(() => undefined)
+    // A reviewer kept between rounds goes too, with its checkout.
+    if (this.kept.has(reviewId) && !this.running.has(reviewId)) {
+      await this.releaseReviewer(reviewId)
+      if (r) await this.deps.git.remove(r.repoRoot, this.worktreePath(reviewId)).catch(() => undefined)
+    }
     await this.update(reviewId, (x) => stopReview(x, this.now()))
   }
 

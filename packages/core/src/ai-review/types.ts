@@ -17,6 +17,14 @@ export type FindingStatus = (typeof FINDING_STATUSES)[number]
 export const REVIEW_LANGUAGES = ['en', 'es'] as const
 export type ReviewLanguage = (typeof REVIEW_LANGUAGES)[number]
 
+/**
+ * Who reviews each round of a branch review: `same` keeps one reviewer session (and its checkout)
+ * for the whole review, so later rounds continue its conversation; `new` starts a fresh reviewer
+ * with an empty context every round.
+ */
+export const REVIEWER_SESSION_MODES = ['same', 'new'] as const
+export type ReviewerSessionMode = (typeof REVIEWER_SESSION_MODES)[number]
+
 /** Per-profile settings (`profile.aiReview`); see `aiReviewSettings` for the defaults. */
 export interface AiReviewSettings {
   /** The module runs for this profile (manual and automatic reviews). */
@@ -39,6 +47,8 @@ export interface AiReviewSettings {
   reviewerModel: string
   /** Reasoning effort the reviewer starts with (e.g. `high`, `xhigh`); empty: the agent's default. Ignored by agents without the setting. */
   reviewerEffort: string
+  /** One reviewer session for every round of a review (`same`) or a fresh one per round (`new`). */
+  reviewerSession: ReviewerSessionMode
   /** "Review with another agent": what the author is asked to write the brief; empty: `DEFAULT_REVIEW_BRIEF_PROMPT`. */
   briefPrompt: string
 }

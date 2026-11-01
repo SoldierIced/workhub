@@ -40,7 +40,7 @@ function view(id: string, state: SessionState, over: Partial<SessionView> = {}):
 
 const REPLY = (findings: unknown[], extra: Record<string, unknown> = {}) => `Review done.\n\n\`\`\`json\n${JSON.stringify({ summary: 's', scope: { assessment: 'proportionate' }, findings, previous: [], escalate: { needed: false, reason: '' }, ...extra })}\n\`\`\``
 
-function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boolean } = {}) {
+function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boolean; reviewerSession?: 'same' | 'new' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'workhub-ai-review-'))
   dirs.push(dir)
   let now = 1_000_000
@@ -56,7 +56,8 @@ function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boo
   let head = 'sha1'
   const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }], activeProfileId: 'p' }
   // Automatic review is opt-in (off by default); these tests drive the automatic trigger.
-  config.profiles[0]!.aiReview = { ...aiReviewSettings(null), auto: true }
+  // `reviewerSession` defaults to `same`; most tests check one reviewer per round (`new`) and opt in when they need it.
+  config.profiles[0]!.aiReview = { ...aiReviewSettings(null), auto: true, reviewerSession: opts.reviewerSession ?? 'new' }
   let service!: AiReviewService
   const emit = (e: AgentEvent) => service.onEvent(e)
   const change = (id: string, state: SessionState) => {
@@ -361,5 +362,71 @@ describe('AiReviewService', () => {
     expect(review).toMatchObject({ status: 'ready', cycleStart: 1, lastReviewedSha: 'sha2' })
     expect(t.prompts[1]![1]).toContain('Round 1: the author pushed new commits')
     expect(t.prompts[1]![1]).toContain('sha1')
+  })
+
+  describe('with the same reviewer for every round', () => {
+    const roundOne = async (t: ReturnType<typeof setup>) => {
+      t.change('dev', 'busy')
+      t.change('dev', 'ready')
+      t.advance(61_000)
+      await t.service.tick()
+      await t.settle()
+    }
+    const roundTwo = async (t: ReturnType<typeof setup>) => {
+      t.setHead('sha2')
+      t.setReply(REPLY([], { previous: [{ id: 'F1', status: 'fixed' }] }))
+      t.change('dev', 'busy')
+      t.change('dev', 'ready')
+      t.advance(61_000)
+      await t.service.tick()
+      await vi.waitFor(() => expect(t.prompts).toHaveLength(2))
+      await t.settle()
+    }
+
+    it('prompts the reviewer of round 1 again in round 2, keeps its checkout, and lets it go when the review is stopped', async () => {
+      const t = setup({ reviewerSession: 'same' })
+      const remove = vi.spyOn(t.deps.git, 'remove')
+      await roundOne(t)
+      expect(t.stopped).toEqual([])
+      expect(remove).not.toHaveBeenCalled()
+      await roundTwo(t)
+      expect(t.started).toHaveLength(1)
+      expect(t.prompts.map(([id]) => id)).toEqual(['rev1', 'rev1'])
+      expect(t.prompts[1]![1]).toContain('F1 [blocker]')
+      expect(t.service.snapshot().reviews[0]).toMatchObject({ status: 'ready' })
+      expect(t.service.snapshot().reviews[0]!.rounds.map((r) => r.reviewerSessionId)).toEqual(['rev1', 'rev1'])
+      expect(t.stopped).toEqual([])
+      await t.service.stopReview(t.service.snapshot().reviews[0]!.id)
+      expect(t.stopped).toEqual(['rev1'])
+      expect(remove).toHaveBeenCalledTimes(1)
+    })
+
+    it('starts a new reviewer when the kept one was closed', async () => {
+      const t = setup({ reviewerSession: 'same' })
+      await roundOne(t)
+      t.change('rev1', 'stopped')
+      await roundTwo(t)
+      expect(t.started).toHaveLength(2)
+      expect(t.prompts.map(([id]) => id)).toEqual(['rev1', 'rev2'])
+    })
+
+    it('replaces the kept reviewer when the reviewer model changed between rounds', async () => {
+      const t = setup({ reviewerSession: 'same' })
+      await roundOne(t)
+      t.config.profiles[0]!.aiReview = { ...t.config.profiles[0]!.aiReview!, reviewerModel: 'other-model' }
+      await roundTwo(t)
+      expect(t.started).toHaveLength(2)
+      expect(t.started[1]).toMatchObject({ model: 'other-model' })
+      expect(t.stopped).toContain('rev1')
+    })
+
+    it('stops the reviewer and drops the checkout when a round fails', async () => {
+      const t = setup({ reviewerSession: 'same', reply: '' })
+      const remove = vi.spyOn(t.deps.git, 'remove')
+      await roundOne(t)
+      expect(t.service.snapshot().reviews[0]).toMatchObject({ status: 'failed' })
+      expect(t.stopped).toEqual(['rev1'])
+      expect(remove).toHaveBeenCalledTimes(1)
+    })
   })
 })

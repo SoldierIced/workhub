@@ -9,7 +9,7 @@ import { DEFAULT_PR_EVENT_TOGGLES, PR_EVENT_KINDS, type PrEventToggles } from '.
 import type { ChatWatcherSettings } from '../chat/types'
 import type { AutomationDefinition } from '../automations/types'
 import { DEFAULT_AI_REVIEW_SETTINGS as AI_REVIEW, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS } from '../ai-review/defaults'
-import { REVIEW_LANGUAGES } from '../ai-review/types'
+import { REVIEW_LANGUAGES, REVIEWER_SESSION_MODES } from '../ai-review/types'
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
 
 /**
@@ -263,6 +263,7 @@ const aiReview = z.object({
   language: z.enum(REVIEW_LANGUAGES).default(AI_REVIEW.language),
   reviewerModel: z.string().trim().max(200).default(AI_REVIEW.reviewerModel),
   reviewerEffort: z.string().trim().max(40).default(AI_REVIEW.reviewerEffort),
+  reviewerSession: z.enum(REVIEWER_SESSION_MODES).default(AI_REVIEW.reviewerSession),
   briefPrompt: z.string().max(20_000).default(AI_REVIEW.briefPrompt)
 })
 
