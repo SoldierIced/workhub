@@ -55,6 +55,8 @@ function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boo
   const renamed: [string, string | null][] = []
   let head = 'sha1'
   const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }], activeProfileId: 'p' }
+  // Automatic review is opt-in (off by default); these tests drive the automatic trigger.
+  config.profiles[0]!.aiReview = { ...aiReviewSettings(null), auto: true }
   let service!: AiReviewService
   const emit = (e: AgentEvent) => service.onEvent(e)
   const change = (id: string, state: SessionState) => {

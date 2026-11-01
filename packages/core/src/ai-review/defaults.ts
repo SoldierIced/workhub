@@ -6,12 +6,13 @@ export const MIN_REVIEW_IDLE_SECONDS = 10
 export const MAX_REVIEW_IDLE_SECONDS = 3600
 
 /**
- * On by default, automatic by default (owner decision, 2026-10-27): the point is that a branch is
- * reviewed before it reaches the team, without anyone having to remember to ask.
+ * On by default, manual by default (owner decision, 2026-11-01): a review round runs two agent
+ * sessions and spends tokens, so it starts only when the user sends the branch to review. The
+ * automatic trigger stays available as an opt-in switch in Settings.
  */
 export const DEFAULT_AI_REVIEW_SETTINGS: AiReviewSettings = {
   enabled: true,
-  auto: true,
+  auto: false,
   reviewerAgent: null,
   baseBranch: 'develop',
   maxRounds: 3,
