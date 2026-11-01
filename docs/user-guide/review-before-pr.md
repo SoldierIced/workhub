@@ -75,10 +75,15 @@ finding opens it again and sends your note to the dev session (and to the review
 Set **Language of the review prompt and messages** to **Español** to get the reviewer's summary and
 findings in Spanish.
 
-Each chat has an **Auto review** check in its header, next to **Review before PR**. It is on by
-default; turn it off to keep automatic reviews from starting for that session (manual ones still
-run). Workhub remembers the choice per session, across restarts. The check shows only when the
-profile has **AI review** and **Start automatically** on.
+Reviews are manual by default: a round starts only when you send the branch to review. Automatic
+reviews are opt-in per profile with **Start automatically** (see the settings below). Profiles that
+never saved their AI review settings follow this default too, so after updating they stop starting
+reviews on their own until you turn the switch on.
+
+When the profile has **AI review** and **Start automatically** on, each chat shows an **Auto
+review** check in its header, next to **Review before PR**. The check starts on; turn it off to keep
+automatic reviews from starting for that session (manual ones still run). Workhub remembers the
+choice per session, across restarts.
 
 Its panel (**AI review**) shows **Round n of max**, a status (**Reviewing**, **Waiting for
 fixes**, **Needs you**, **Ready for PR**, **Failed**, **Stopped**), the reviewer's summary and its
@@ -95,7 +100,7 @@ Settings are per profile, in **Settings → Profiles → AI review**:
 | Setting | Meaning |
 |---|---|
 | **AI review** | On by default. |
-| **Start automatically when a dev session goes idle with new commits** | On by default. |
+| **Start automatically when a dev session goes idle with new commits** | Off by default; turn it on to review branches without asking. |
 | **Reviewer agent**, **Reviewer model** | Empty uses the first agent in the order and its default model. The model id is the agent's own (Kiro: `claude-opus-5.5`, say). |
 | **Reviewer effort** | Optional reasoning effort for the reviewer (`high`, `xhigh`, …). Agents without the setting ignore it. A large model at high effort finds far more in one pass and takes longer (15–20 minutes on a mid-sized change). |
 | **Base branch** | The pull request target (default `develop`). If it does not exist, the repository's default branch is used. It is fetched before every round. |

@@ -55,7 +55,7 @@ const start = (prev?: BranchReview, sha = 'sha1', trigger: 'auto' | 'manual' = '
   startRound(prev, { devIdentity: 'dev-1', profileId: 'acme', repoRoot: '/r', branch: 'feat/x', base: 'develop', baseRef: 'origin/develop', sha, trigger, reviewerAgentKey: 'kiro', uncommitted: false, now: 1 }, settings)
 
 describe('AI review settings', () => {
-  it('defaults to on and automatic, and the schema fills missing fields without a version bump', () => {
+  it('defaults to on and manual, and the schema fills missing fields without a version bump', () => {
     expect(aiReviewSettings(undefined)).toMatchObject({ enabled: true, auto: false, maxRounds: 3, idleSeconds: 60, baseBranch: 'develop', reviewerAgent: null, reviewerModel: '', reviewerEffort: '' })
     const parsedConfig = configSchema.parse({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', aiReview: { maxRounds: 99, idleSeconds: 1 } }] })
     expect(parsedConfig.profiles[0]?.aiReview).toEqual({ ...DEFAULT_AI_REVIEW_SETTINGS, maxRounds: 10, idleSeconds: 10 })
@@ -144,6 +144,7 @@ describe('decideAutoReview', () => {
   it.each<[Partial<AutoTriggerInput>, string]>([
     [{ settings: { ...settings, enabled: false } }, 'disabled'],
     [{ settings: { ...settings, auto: false } }, 'manualOnly'],
+    [{ settings: DEFAULT_AI_REVIEW_SETTINGS }, 'manualOnly'],
     [{ sessionAutoOff: true }, 'sessionOff'],
     [{ isReviewerSession: true }, 'reviewer'],
     [{ state: 'busy' }, 'notIdle'],
