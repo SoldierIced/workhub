@@ -52,8 +52,9 @@ Workhub sends the whole reply to the reviewer.
 ## The older review loop
 
 The **review loop** reviews a branch of a git repository on a read-only checkout kept under the data
-folder, and sends the findings to the dev session. It can run on its own: when a dev session stays
-idle on a branch with commits ahead of its base, the reviewer starts. It never starts on
+folder, and sends the findings to the dev session. With **Start automatically** on, it runs on its
+own: when a dev session stays idle on a branch with commits ahead of its base, the reviewer starts;
+otherwise it starts when you send the branch to review. It never starts on
 `main`, `master`, `develop`, `development`, `trunk` or the base branch, and uncommitted changes are
 not reviewed. It runs for up to **Rounds before asking you** (default 3), then pauses for you.
 
