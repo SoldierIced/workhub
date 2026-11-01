@@ -45,6 +45,8 @@ describe('notification policy', () => {
     expect(shouldNotify('health', options({ notifyHealth: false }), now)).toBe(false)
     expect(shouldNotify('flowMaps', options({ notifyFlowMaps: false }), now)).toBe(false)
     expect(shouldNotify('flowMaps', options({ notifyHealth: false }), now)).toBe(true)
+    expect(shouldNotify('metricAlert', options({ notifyMetricAlerts: false }), now)).toBe(false)
+    expect(shouldNotify('metricAlert', options({ notifyHealth: false }), now)).toBe(true)
     expect(shouldNotify('automations', options({ notifyAutomations: false }), now)).toBe(false)
     expect(shouldNotify('replied', options({ notifyReplied: false }), now)).toBe(false)
     expect(shouldNotify('aiReview', options({ notifyNeedsAnswer: false }), now)).toBe(false)

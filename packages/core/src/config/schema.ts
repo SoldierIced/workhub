@@ -4,6 +4,7 @@ import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { CONNECTION_KINDS, type Connection } from '../domain/connection'
 import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
 import type { SessionGroups } from '../domain/session-groups'
+import { ALERT_SEVERITIES, METRIC_ALERT_THRESHOLD_RANGES, DEFAULT_METRIC_ALERT_THRESHOLDS, DEFAULT_BUSINESS_DAYS, type AlertThresholds } from '../alerts/types'
 import { DEFAULT_HEALTH_FLOOR_MINUTES, DEFAULT_HEALTH_REFRESH_MINUTES, DEFAULT_HEALTH_THRESHOLDS, HEALTH_FLOOR_CHOICES, HEALTH_THRESHOLD_RANGES, MAX_HEALTH_REFRESH_MINUTES, MIN_HEALTH_REFRESH_MINUTES, type HealthThresholds } from '../health/types'
 import { DEFAULT_PR_EVENT_TOGGLES, PR_EVENT_KINDS, type PrEventToggles } from '../pr-events/types'
 import type { ChatWatcherSettings } from '../chat/types'
@@ -11,12 +12,15 @@ import type { AutomationDefinition } from '../automations/types'
 import { DEFAULT_AI_REVIEW_SETTINGS as AI_REVIEW, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS } from '../ai-review/defaults'
 import { REVIEW_LANGUAGES, REVIEWER_SESSION_MODES } from '../ai-review/types'
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
+import { MILESTONE_MARGIN_RANGE } from '../milestones'
+import { INBOX_LIMITS } from '../inbox/types'
+import { DEFAULT_PLANNER_REFRESH_MINUTES, DEFAULT_REMINDER_LEAD_MINUTES, MAX_LEAD_MINUTES, MAX_PLANNER_REFRESH_MINUTES, MIN_PLANNER_REFRESH_MINUTES } from '../calendar/types'
 
 /**
  * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
  * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
  */
-export const CONFIG_VERSION = 7
+export const CONFIG_VERSION = 8
 
 export interface WorkhubConfig {
   version: typeof CONFIG_VERSION
@@ -78,6 +82,10 @@ export interface AppOptions {
   notifyHealth: boolean
   /** OS notification when a part of a flow map goes above its p95 or failure limit. */
   notifyFlowMaps: boolean
+  /** OS notification before a meeting (Plan reminders and reminder rules). */
+  notifyMeetings: boolean
+  /** OS notification when a metric alert opens or escalates at or above the profile's minimum severity (Health → Alerts). */
+  notifyMetricAlerts: boolean
   /** Health never reads Elasticsearch more often than this, even on Refresh (minutes, one of `HEALTH_FLOOR_CHOICES`). */
   healthRefreshFloorMinutes: number
   /** Closing the main window keeps the app running in the menu bar / notification area. */
@@ -115,7 +123,7 @@ export interface AppOptions {
 export const SPEECH_RATE_RANGE = [120, 300] as const
 export const DEFAULT_SPEECH_RATE = 190
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -239,9 +247,35 @@ const healthEnvironment = z.object({
   thresholds: healthThresholds.default(DEFAULT_HEALTH_THRESHOLDS as HealthThresholds)
 })
 
+/** A number kept inside a range without rounding (thresholds such as 1.5 standard deviations). */
+const within = (range: readonly [number, number]) => z.number().transform((n) => Math.min(range[1], Math.max(range[0], n)))
+
+const alertThresholds = z.object(
+  Object.fromEntries((Object.keys(METRIC_ALERT_THRESHOLD_RANGES) as (keyof AlertThresholds)[]).map((k) => [k, within(METRIC_ALERT_THRESHOLD_RANGES[k]).default(DEFAULT_METRIC_ALERT_THRESHOLDS[k])])) as {
+    [K in keyof AlertThresholds]: z.ZodDefault<ReturnType<typeof within>>
+  }
+)
+
+const metricRuleOverride = z.object({
+  ...(Object.fromEntries((Object.keys(METRIC_ALERT_THRESHOLD_RANGES) as (keyof AlertThresholds)[]).map((k) => [k, within(METRIC_ALERT_THRESHOLD_RANGES[k]).optional()])) as {
+    [K in keyof AlertThresholds]: z.ZodOptional<ReturnType<typeof within>>
+  }),
+  critical: z.boolean().optional(),
+  muted: z.boolean().optional()
+})
+
+// Optional with defaults on every field, so it needs no config version bump: an older file simply has none.
+const alertRules = z.object({
+  thresholds: alertThresholds.default(DEFAULT_METRIC_ALERT_THRESHOLDS),
+  businessDays: z.array(z.number().int().min(0).max(6)).max(7).default([...DEFAULT_BUSINESS_DAYS]),
+  notifyMinSeverity: z.enum(ALERT_SEVERITIES).default('high'),
+  overrides: z.record(z.string().trim().min(1).max(200), metricRuleOverride).default({})
+})
+
 const healthSettings = z.object({
   refreshMinutes: clamped([MIN_HEALTH_REFRESH_MINUTES, MAX_HEALTH_REFRESH_MINUTES], DEFAULT_HEALTH_REFRESH_MINUTES),
-  environments: z.array(healthEnvironment).default([])
+  environments: z.array(healthEnvironment).default([]),
+  alertRules: alertRules.optional()
 })
 
 const modules = z.object(
@@ -267,6 +301,63 @@ const aiReview = z.object({
   briefPrompt: z.string().max(20_000).default(AI_REVIEW.briefPrompt)
 })
 
+// Plan module (optional, per profile). Every field defaults, so an older profile simply has none.
+const meetingRule = z.object({
+  id: z.string().trim().min(1).max(64),
+  name: z.string().max(200).default(''),
+  enabled: z.boolean().default(true),
+  match: z
+    .object({
+      titleContains: z.array(z.string().max(200)).max(50).optional(),
+      titleRegex: z.string().max(500).optional(),
+      attendeeEmails: z.array(z.string().max(320)).max(200).optional(),
+      minAttendees: z.number().int().min(0).max(1000).optional(),
+      recurringOnly: z.boolean().optional()
+    })
+    .default({}),
+  action: z.enum(['remind', 'brief']),
+  leadMinutes: clamped([0, MAX_LEAD_MINUTES], DEFAULT_REMINDER_LEAD_MINUTES),
+  message: z.string().max(500).optional(),
+  automationId: z.string().min(1).max(200).optional()
+})
+
+const person = z.object({
+  id: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1).max(200),
+  emails: z.array(z.string().trim().max(320)).max(20).default([]),
+  handles: z
+    .object({ github: z.string().max(200).optional(), jira: z.string().max(200).optional(), linear: z.string().max(200).optional(), slack: z.string().max(200).optional() })
+    .optional(),
+  notes: z.string().max(5000).optional()
+})
+
+const inboxSettings = z.object({
+  areas: z.array(z.string().trim().min(1).max(100)).max(INBOX_LIMITS.areas).default([]),
+  criticalities: z
+    .array(z.object({ name: z.string().trim().min(1).max(100), priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]) }))
+    .max(INBOX_LIMITS.criticalities)
+    .default([]),
+  trackerConnectionId: z.string().max(200).default(''),
+  project: z.string().trim().max(100).default(''),
+  issueTypes: z.object({ task: z.string().trim().max(100).default(''), bug: z.string().trim().max(100).default('') }).default({ task: '', bug: '' }),
+  descriptionTemplate: z.string().max(20_000).default('')
+})
+
+const planner = z.object({
+  calendarIds: z.array(id).max(20).default([]),
+  refreshMinutes: clamped([MIN_PLANNER_REFRESH_MINUTES, MAX_PLANNER_REFRESH_MINUTES], DEFAULT_PLANNER_REFRESH_MINUTES),
+  reminderLeadMinutes: clamped([0, MAX_LEAD_MINUTES], DEFAULT_REMINDER_LEAD_MINUTES),
+  rules: z.array(meetingRule).max(100).default([]),
+  briefTemplate: z.string().max(20_000).default(''),
+  people: z.array(person).max(500).default([]),
+  inbox: inboxSettings.optional(),
+  // Unset means DEFAULT_MILESTONE_MARGIN (see the Plan service).
+  milestoneMargin: z
+    .number()
+    .transform((n) => Math.min(MILESTONE_MARGIN_RANGE[1], Math.max(MILESTONE_MARGIN_RANGE[0], Math.round(n))))
+    .optional()
+})
+
 const folderOptions = z.object({ onlyGitRepos: z.boolean().optional(), subfoldersAreProjects: z.boolean().optional() })
 
 const profile = z.object({
@@ -276,7 +367,7 @@ const profile = z.object({
   accountIds: z.array(id).default([]),
   agentIds: z.array(id).optional(),
   preferredAgents: z.array(z.string().min(1)).optional(),
-  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }),
+  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }),
   folders: z.array(z.string().min(1)).optional(),
   defaultFolder: z.string().trim().min(1).optional(),
   folderOptions: z.record(z.string().min(1), folderOptions).optional(),
@@ -290,7 +381,8 @@ const profile = z.object({
   slackArchiveMinutes: z.number().int().min(1).optional(),
   aiReview: aiReview.optional(),
   accountFailover: z.enum(['ask', 'automatic', 'off']).optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  planner: planner.optional()
 })
 
 const groupMember = z.object({
@@ -404,6 +496,8 @@ export const configSchema = z.object({
       notifyTickets: z.boolean().default(true),
       notifyHealth: z.boolean().default(true),
       notifyFlowMaps: z.boolean().default(true),
+      notifyMeetings: z.boolean().default(true),
+      notifyMetricAlerts: z.boolean().default(true),
       healthRefreshFloorMinutes: z
         .number()
         .int()

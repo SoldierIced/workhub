@@ -26,6 +26,7 @@
     "./http": "./src/shared/http.ts",
     "./chat-slack": "./src/chat-slack/index.ts",
     "./health-elastic": "./src/health-elastic/index.ts",
+    "./calendar-ics": "./src/calendar-ics/index.ts",
     "./pr-events-json": "./src/pr-events-json/index.ts",
     "./git-review": "./src/git-review/index.ts",
     "./token-spend": "./src/token-spend/index.ts"

@@ -22,6 +22,19 @@ Pending: signing, Windows and Linux testing on real machines, provider balances 
 (section 9). The sections below are kept as written; where they mention Flows or open decisions,
 this status wins.
 
+### Plan module and metric alerts (beyond the phases)
+
+| Part | Status |
+|---|---|
+| Metric alerts | Done: a source-agnostic engine in `core/alerts` (daily series, jump, rate drop, sustained trend, new subject and missing data rules, a lifecycle with track, snooze, resolve and reopen), fed by Health's Elastic read; Health → Alerts tab with per-alert actions, Home card, notifications |
+| Plan, part 1 | Done: calendars from private ICS addresses, reminders and reminder rules, meeting briefs started by an agent (by hand or by rule), people |
+| Plan, part 2 | Done: milestones (progress typed or counted from a tracker query, status against time), an inbox with an approval queue (tracker issue, local task or recorded decision), producers (by hand, "Send to inbox" on a metric alert, `POST /v1/inbox` on the control endpoint), optional tracker capabilities `search` and `create` (Jira, Linear, demo) |
+
+Everything in Plan is per-profile configuration (calendars, rules, people, areas, criticality
+levels, tracker project and templates) with empty or neutral defaults. Pending: a GUI smoke test of
+part 2, more metric sources (product analytics), alert delivery to chat, and splitting the branch
+into chained pull requests.
+
 Status: Stage 1 done (public repo SoldierIced/workhub, release v0.2.0, 2026-10-26). Stage 2: P0 spike in progress. Source of truth for scope until a tracked task list exists.
 
 ## 1. Goal

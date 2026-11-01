@@ -11,6 +11,7 @@ export type Route =
   | 'history'
   | 'flowMaps'
   | 'health'
+  | 'plan'
   | 'sessions'
   | 'settings'
 
@@ -21,7 +22,7 @@ export interface NavItem {
   module?: OptionalModule
 }
 
-/** Main navigation, in Workhub 1's order and with its keys (⌘1-⌘8; ⌘7, once Flows, is Flow maps). */
+/** Main navigation, in Workhub 1's order and with its keys (⌘1-⌘8; ⌘7, once Flows, is Flow maps), then Plan (⌘9). */
 export const NAV_ITEMS: readonly NavItem[] = [
   { route: 'home', shortcut: { key: '1' } },
   { route: 'pullRequests', shortcut: { key: '2' } },
@@ -30,7 +31,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { route: 'automations', shortcut: { key: '5' }, module: 'automations' },
   { route: 'history', shortcut: { key: '6' } },
   { route: 'flowMaps', shortcut: { key: '7' }, module: 'flowMaps' },
-  { route: 'health', shortcut: { key: '8' }, module: 'health' }
+  { route: 'health', shortcut: { key: '8' }, module: 'health' },
+  { route: 'plan', shortcut: { key: '9' }, module: 'planner' }
 ]
 
 export const SESSIONS_ITEM: NavItem = { route: 'sessions', shortcut: { key: '0' } }

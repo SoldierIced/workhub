@@ -31,6 +31,7 @@ import {
 import { uniqueConnectionId } from '../lib/tickets'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
+import { AlertRulesSettings } from './health/AlertRulesSettings'
 
 type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 
@@ -111,7 +112,12 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
   }
 
   /** Saves the profile with what changed; the profile is read again because saving the connection may have changed the config. */
-  const saveProfile = (patch: (p: Profile) => Profile) => run(() => window.hub.config.saveProfile(patch(profile)))
+  const saveProfile = (patch: (p: Profile) => Profile) =>
+    run(async () => {
+      // Fresh, so two forms saved by one save bar (environments, alert rules) never undo each other.
+      const latest = (await window.hub.config.get()).config.profiles.find((p) => p.id === profile.id) ?? profile
+      return window.hub.config.saveProfile(patch(latest))
+    })
 
   connectionSave.current = async () => {
     const gap = missing()
@@ -135,7 +141,7 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
       return { ok: false, problem: t('health.settings.invalidEnvironment') }
     }
     setFormError(null)
-    if (!(await saveProfile((p) => ({ ...p, health: { refreshMinutes: refresh, environments: envs.map(formToEnvironment) } })))) return { ok: false }
+    if (!(await saveProfile((p) => ({ ...p, health: { ...p.health, refreshMinutes: refresh, environments: envs.map(formToEnvironment) } })))) return { ok: false }
     setEnvBaseline({ refresh, envs })
     return { ok: true }
   }
@@ -324,6 +330,8 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
           ))}
         </CardBody>
       </Card>
+
+      <AlertRulesSettings profile={profile} editable={editable} run={run} />
     </div>
   )
 }

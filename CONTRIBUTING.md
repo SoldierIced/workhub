@@ -24,7 +24,9 @@ npm run dev     # development app ("Workhub 2 Dev")
 A development run keeps its data in `packages/app/.dev-data/` (git-ignored). Set
 `WORKHUB_DATA_DIR` to use another folder, and never point a test run at a real install's data.
 The README lists the `WORKHUB_DEMO_*` variables that serve synthetic data, so you can work on
-tickets, pull requests, Slack, Health or usage without real accounts.
+tickets, pull requests, Slack, Health or usage without real accounts. `npm run demo` turns them all
+on with a seeded scenario in `.demo-data/` (`-- --reset` starts over); the scenario's data is pure code in
+`packages/core/src/scenario/` and everything in it must stay synthetic.
 
 ## Layout
 

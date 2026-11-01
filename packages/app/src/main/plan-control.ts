@@ -1,0 +1,285 @@
+/**
+ * Plan over the control endpoint: what an agent in a Workhub session may read and change of its
+ * profile's plan. Today's and tomorrow's meetings, the inbox (read, and local moves of an item),
+ * the milestones and the people. Approving an item to the tracker is never offered here: it stays a
+ * human action in the UI. Every answer is short and capped; no secret (calendar addresses, notes)
+ * leaves through it.
+ */
+import { INBOX_KINDS, INBOX_LIMITS, INBOX_STATUSES, filterInbox, isDay, isOpenItem, moduleScreens, plannerSettings, type InboxItem, type Profile } from '@workhub/core'
+import type { PlanView } from '../shared/plan-api'
+import type { ControlReply } from './control-server'
+import type { InboxUpdate, PlannerService } from './planner-service'
+
+/** Items `GET /v1/inbox` returns by default and at most. */
+export const CONTROL_INBOX_LIMIT = { default: 50, max: 200 } as const
+/** Characters of an item's detail and an event's description in a list answer. */
+export const CONTROL_TEXT_CAP = { detail: 1000, description: 500 } as const
+/** At most this many events and attendees per event in `GET /v1/plan/today`. */
+export const CONTROL_EVENT_CAP = { events: 100, attendees: 50 } as const
+/** The longest note `PATCH /v1/inbox/:id` appends to an item's detail. */
+export const CONTROL_NOTE_MAX = 2000
+
+const DAY_MS = 86_400_000
+const SESSION_ID = /^[\w-]{1,100}$/
+
+export interface ControlProfileDeps {
+  /** The profile a session runs in (undefined when there is no such session). */
+  sessionProfile: (sessionId: string) => string | null | undefined
+  /** Whether a profile exists, and the active one. */
+  profiles: () => Promise<{ ids: string[]; active: string | null }>
+}
+
+export type ControlProfile = { ok: true; profileId: string; session: string | null } | { ok: false; status: number; error: string }
+
+/**
+ * The profile a control request acts on: the one of `session` (an agent passes `$WORKHUB_SESSION`),
+ * else `profile` (a profile id), else the active one.
+ */
+export async function resolveControlProfile(deps: ControlProfileDeps, ask: { session?: unknown; profile?: unknown }): Promise<ControlProfile> {
+  const { ids, active } = await deps.profiles()
+  let profileId: string | null = null
+  const session = typeof ask.session === 'string' && SESSION_ID.test(ask.session) ? ask.session : null
+  if (session) {
+    const owner = deps.sessionProfile(session)
+    if (owner === undefined) return { ok: false, status: 404, error: 'unknown session' }
+    profileId = owner
+  }
+  if (!profileId && typeof ask.profile === 'string' && ask.profile) {
+    if (!ids.includes(ask.profile)) return { ok: false, status: 404, error: 'unknown profile' }
+    profileId = ask.profile
+  }
+  profileId ??= active
+  if (!profileId) return { ok: false, status: 409, error: 'no profile' }
+  return { ok: true, profileId, session }
+}
+
+const fail = (status: number, error: string): ControlReply => ({ status, body: { ok: false, error } })
+const iso = (ms: number) => new Date(ms).toISOString()
+const cap = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
+
+const STATE_REASON: Record<PlanView['state'], string | undefined> = {
+  ready: undefined,
+  demo: undefined,
+  moduleOff: 'Plan is off in this profile',
+  noConnection: 'No calendar is set up for this profile (Settings → Plan → Calendars)',
+  error: 'No calendar of this profile could be read'
+}
+
+/** Local midnight of the day of `now`. */
+function startOfDay(now: number): number {
+  const d = new Date(now)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+/** The events of today and tomorrow (local days) for an agent, with their briefs. */
+export function todayAnswer(view: PlanView, now: number): Record<string, unknown> {
+  const from = startOfDay(now)
+  const to = startOfDay(from + 2 * DAY_MS + DAY_MS / 2)
+  const events = view.events.filter((e) => e.start < to && e.end > from)
+  const reason = STATE_REASON[view.state]
+  return {
+    ok: true,
+    state: view.state,
+    ...(reason ? { reason } : {}),
+    now: iso(now),
+    calendars: view.calendars.map((c) => ({ name: c.name, ok: c.ok, ...(c.failure ? { failure: c.failure } : {}) })),
+    events: events.slice(0, CONTROL_EVENT_CAP.events).map((e) => {
+      const brief = view.briefs[e.id]
+      return {
+        id: e.id,
+        title: e.title,
+        start: iso(e.start),
+        end: iso(e.end),
+        allDay: e.allDay,
+        ...(e.location ? { location: e.location } : {}),
+        ...(e.meetingUrl ? { meetingUrl: e.meetingUrl } : {}),
+        ...(e.organizer ? { organizer: { ...(e.organizer.name ? { name: e.organizer.name } : {}), email: e.organizer.email } } : {}),
+        attendees: e.attendees.slice(0, CONTROL_EVENT_CAP.attendees).map((a) => ({ ...(a.name ? { name: a.name } : {}), email: a.email, ...(a.status ? { status: a.status } : {}) })),
+        ...(e.attendees.length > CONTROL_EVENT_CAP.attendees ? { moreAttendees: e.attendees.length - CONTROL_EVENT_CAP.attendees } : {}),
+        ...(e.description ? { description: cap(e.description, CONTROL_TEXT_CAP.description) } : {}),
+        recurring: e.recurring,
+        ...(brief ? { brief: { phase: brief.phase, ...(brief.sessionId ? { sessionId: brief.sessionId } : {}) } } : {})
+      }
+    }),
+    ...(events.length > CONTROL_EVENT_CAP.events ? { truncated: true } : {})
+  }
+}
+
+/** One inbox item as an agent sees it: people by name, dates as ISO, the detail capped. */
+export function itemAnswer(item: InboxItem, people: readonly { id: string; name: string }[], detailCap: number = CONTROL_TEXT_CAP.detail): Record<string, unknown> {
+  const names = (item.people ?? []).map((id) => people.find((p) => p.id === id)?.name ?? id)
+  return {
+    id: item.id,
+    kind: item.kind,
+    status: item.status,
+    title: item.title,
+    detail: cap(item.detail, detailCap),
+    ...(item.area ? { area: item.area } : {}),
+    ...(item.criticality ? { criticality: item.criticality } : {}),
+    ...(item.due ? { due: item.due } : {}),
+    ...(names.length > 0 ? { people: names } : {}),
+    ...(item.link ? { link: item.link } : {}),
+    ...(item.ticket ? { ticket: item.ticket } : {}),
+    source: { type: item.source.type, ...(item.source.label ? { label: item.source.label } : {}) },
+    createdAt: iso(item.createdAt),
+    ...(item.closedAt ? { closedAt: iso(item.closedAt) } : {})
+  }
+}
+
+export type InboxQuery = { status: InboxItem['status'] | 'open' | 'all'; kind?: InboxItem['kind']; area?: string; q?: string; limit: number }
+
+/** The filters of `GET /v1/inbox`; a string says what is wrong. */
+export function parseInboxQuery(params: URLSearchParams): InboxQuery | string {
+  const status = params.get('status') || 'open'
+  if (status !== 'open' && status !== 'all' && !(INBOX_STATUSES as readonly string[]).includes(status)) return `"status" must be open, all or one of ${INBOX_STATUSES.join(', ')}`
+  const kind = params.get('kind') || undefined
+  if (kind !== undefined && !(INBOX_KINDS as readonly string[]).includes(kind)) return '"kind" must be task, bug or decision'
+  const area = params.get('area') || undefined
+  if (area !== undefined && area.length > 200) return '"area" is too long'
+  const q = params.get('q') || undefined
+  if (q !== undefined && q.length > 200) return '"q" is too long'
+  const rawLimit = params.get('limit')
+  const limit = rawLimit === null || rawLimit === '' ? CONTROL_INBOX_LIMIT.default : Number(rawLimit)
+  if (!Number.isInteger(limit) || limit < 1) return '"limit" must be a positive whole number'
+  return { status: status as InboxQuery['status'], ...(kind ? { kind: kind as InboxItem['kind'] } : {}), ...(area ? { area } : {}), ...(q ? { q } : {}), limit: Math.min(limit, CONTROL_INBOX_LIMIT.max) }
+}
+
+/** Newest first, open ones (pending, then local) before closed ones. */
+function inboxOrder(a: InboxItem, b: InboxItem): number {
+  const rank = (i: InboxItem) => (i.status === 'pending' ? 0 : i.status === 'local' ? 1 : 2)
+  return rank(a) - rank(b) || b.createdAt - a.createdAt
+}
+
+const UPDATE_STATUSES = ['pending', 'local', 'done', 'discarded'] as const
+
+/** The body of `PATCH /v1/inbox/:id`; a string says what is wrong. */
+export function parseInboxUpdate(body: unknown): InboxUpdate | string {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'the body must be a JSON object'
+  const v = body as Record<string, unknown>
+  const out: InboxUpdate = {}
+  if (v['status'] !== undefined) {
+    if (!(UPDATE_STATUSES as readonly unknown[]).includes(v['status'])) return '"status" must be pending, local, done or discarded (approving to the tracker is done in Workhub)'
+    out.status = v['status'] as InboxUpdate['status']
+  }
+  if (v['due'] !== undefined) {
+    if (v['due'] === null || v['due'] === '') out.due = null
+    else if (isDay(v['due'])) out.due = v['due']
+    else return '"due" must be a date (YYYY-MM-DD) or null'
+  }
+  for (const key of ['area', 'criticality'] as const) {
+    const x = v[key]
+    if (x === undefined) continue
+    if (x === null || (typeof x === 'string' && !x.trim())) out[key] = null
+    else if (typeof x === 'string' && x.length <= 200) out[key] = x.trim()
+    else return `"${key}" must be a short text or null`
+  }
+  if (v['note'] !== undefined) {
+    if (typeof v['note'] !== 'string') return '"note" must be a string'
+    const note = v['note'].trim()
+    if (note.length > CONTROL_NOTE_MAX) return `"note" is longer than ${CONTROL_NOTE_MAX} characters`
+    if (note) out.note = note
+  }
+  if (Object.keys(out).length === 0) return 'nothing to change: send status, due, area, criticality or note'
+  return out
+}
+
+export interface PlanControlDeps extends ControlProfileDeps {
+  planner: Pick<PlannerService, 'view' | 'updateItem'>
+  /** The profile's agenda with its briefs (the Plan screen's view). */
+  agenda: (profileId: string) => Promise<PlanView>
+  profile: (profileId: string) => Promise<Profile | undefined>
+  now?: () => number
+}
+
+/** The ask of a request: `session` and `profile` from the query, or from a JSON body. */
+const askOf = (params: URLSearchParams, body?: unknown) => {
+  const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
+  return { session: b['session'] ?? params.get('session') ?? undefined, profile: b['profile'] ?? params.get('profile') ?? undefined }
+}
+
+/** The handlers of the Plan endpoints, for `ControlDeps.plan`. */
+export function createPlanControl(deps: PlanControlDeps): PlanControl {
+  const now = deps.now ?? Date.now
+  const plannerOn = (p: Profile | undefined) => p !== undefined && moduleScreens(p.modules).includes('planner')
+  return {
+    async today(params) {
+      const who = await resolveControlProfile(deps, askOf(params))
+      if (!who.ok) return fail(who.status, who.error)
+      return { status: 200, body: todayAnswer(await deps.agenda(who.profileId), now()) }
+    },
+    async inbox(params) {
+      const query = parseInboxQuery(params)
+      if (typeof query === 'string') return fail(400, query)
+      const who = await resolveControlProfile(deps, askOf(params))
+      if (!who.ok) return fail(who.status, who.error)
+      const profile = await deps.profile(who.profileId)
+      if (!plannerOn(profile)) return { status: 200, body: { ok: true, enabled: false, reason: STATE_REASON.moduleOff, items: [], total: 0 } }
+      const view = await deps.planner.view(who.profileId)
+      const narrowed = filterInbox(view.inbox, { kind: query.kind ?? 'all', area: query.area ?? 'all', status: query.status === 'open' ? 'all' : query.status, ...(query.q ? { text: query.q } : {}) })
+      const items = (query.status === 'open' ? narrowed.filter(isOpenItem) : narrowed).sort(inboxOrder)
+      const people = plannerSettings(profile).people
+      return { status: 200, body: { ok: true, enabled: true, today: view.today, items: items.slice(0, query.limit).map((i) => itemAnswer(i, people)), total: items.length, ...(items.length > query.limit ? { truncated: true } : {}) } }
+    },
+    async updateItem(id, body, params) {
+      if (!/^[\w.:-]{1,200}$/.test(id)) return fail(400, 'bad item id')
+      const update = parseInboxUpdate(body)
+      if (typeof update === 'string') return fail(400, update)
+      const who = await resolveControlProfile(deps, askOf(params, body))
+      if (!who.ok) return fail(who.status, who.error)
+      const r = await deps.planner.updateItem(who.profileId, id, update)
+      if (!r.ok) return fail(r.reason === 'unknown' ? 404 : r.reason === 'tooLong' ? 400 : 409, r.error)
+      const profile = await deps.profile(who.profileId)
+      return { status: 200, body: { ok: true, item: itemAnswer(r.item, plannerSettings(profile).people, INBOX_LIMITS.detail) } }
+    },
+    async milestones(params) {
+      const who = await resolveControlProfile(deps, askOf(params))
+      if (!who.ok) return fail(who.status, who.error)
+      const view = await deps.planner.view(who.profileId)
+      if (!view.enabled) return { status: 200, body: { ok: true, enabled: false, reason: STATE_REASON.moduleOff, milestones: [] } }
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          enabled: true,
+          today: view.today,
+          milestones: view.milestones.map((row) => ({
+            id: row.milestone.id,
+            name: row.milestone.name,
+            start: row.milestone.start,
+            end: row.milestone.end,
+            status: row.status,
+            progress: row.progress,
+            elapsed: row.elapsed,
+            source: row.milestone.source.kind,
+            ...(row.counts ? { counts: { total: row.counts.total, todo: row.counts.todo, inProgress: row.counts.inProgress, done: row.counts.done, at: iso(row.counts.at) } } : {}),
+            ...(row.error ? { error: row.error } : {}),
+            ...(row.milestone.link ? { link: row.milestone.link } : {})
+          }))
+        }
+      }
+    },
+    async people(params) {
+      const who = await resolveControlProfile(deps, askOf(params))
+      if (!who.ok) return fail(who.status, who.error)
+      const profile = await deps.profile(who.profileId)
+      if (!plannerOn(profile)) return { status: 200, body: { ok: true, enabled: false, reason: STATE_REASON.moduleOff, people: [] } }
+      // Notes stay in Workhub: they go into briefs, not to any agent that asks.
+      const people = plannerSettings(profile).people.map((p) => ({ id: p.id, name: p.name, emails: p.emails, ...(p.handles && Object.values(p.handles).some(Boolean) ? { handles: p.handles } : {}) }))
+      return { status: 200, body: { ok: true, enabled: true, people } }
+    }
+  }
+}
+
+/** What the control server calls for the Plan endpoints. */
+export interface PlanControl {
+  /** `GET /v1/plan/today`. */
+  today(params: URLSearchParams): Promise<ControlReply>
+  /** `GET /v1/inbox`. */
+  inbox(params: URLSearchParams): Promise<ControlReply>
+  /** `PATCH /v1/inbox/:id`. */
+  updateItem(id: string, body: unknown, params: URLSearchParams): Promise<ControlReply>
+  /** `GET /v1/milestones`. */
+  milestones(params: URLSearchParams): Promise<ControlReply>
+  /** `GET /v1/people`. */
+  people(params: URLSearchParams): Promise<ControlReply>
+}

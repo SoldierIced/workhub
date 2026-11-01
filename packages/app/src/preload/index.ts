@@ -160,6 +160,33 @@ const api: HubApi = {
     ask: (draft, folder) => ipcRenderer.send('flowMaps:ask', draft, folder),
     onAsk: (cb) => subscribe<[string, string | undefined]>('flowMaps:askInMain', cb)
   },
+  plan: {
+    get: (profileId, force) => ipcRenderer.invoke('plan:get', profileId, force),
+    test: (connection, secret) => ipcRenderer.invoke('plan:test', connection, secret),
+    brief: (profileId, eventId) => ipcRenderer.invoke('plan:brief', profileId, eventId),
+    oneOnOne: (profileId, personId) => ipcRenderer.invoke('plan:oneOnOne', profileId, personId),
+    onChanged: (cb) => subscribe<[string]>('plan:changed', cb),
+    onFocus: (cb) => subscribe<[]>('plan:focus', cb)
+  },
+  planner: {
+    get: (profileId) => ipcRenderer.invoke('planner:get', profileId),
+    saveMilestone: (profileId, milestone) => ipcRenderer.invoke('planner:saveMilestone', profileId, milestone),
+    deleteMilestone: (profileId, id) => ipcRenderer.invoke('planner:deleteMilestone', profileId, id),
+    refreshMilestones: (profileId) => ipcRenderer.invoke('planner:refreshMilestones', profileId),
+    addItem: (profileId, proposal, force) => ipcRenderer.invoke('planner:addItem', profileId, proposal, force),
+    editItem: (profileId, id, edit) => ipcRenderer.invoke('planner:editItem', profileId, id, edit),
+    act: (profileId, id, action) => ipcRenderer.invoke('planner:act', profileId, id, action),
+    fromAlert: (profileId, alertKey) => ipcRenderer.invoke('planner:fromAlert', profileId, alertKey),
+    bulkEdit: (profileId, ids, patch) => ipcRenderer.invoke('planner:bulkEdit', profileId, ids, patch),
+    onChanged: (cb) => subscribe<[string]>('planner:changed', cb)
+  },
+  metricAlerts: {
+    list: (profileId) => ipcRenderer.invoke('metricAlerts:list', profileId),
+    setStatus: (profileId, key, action) => ipcRenderer.invoke('metricAlerts:setStatus', profileId, key, action),
+    refresh: (profileId) => ipcRenderer.invoke('metricAlerts:refresh', profileId),
+    onChanged: (cb) => subscribe<[string]>('metricAlerts:changed', cb),
+    onOpen: (cb) => subscribe<[string]>('metricAlerts:open', cb)
+  },
   prEvents: {
     ready: () => ipcRenderer.send('prEvents:ready'),
     onEvents: (cb) => subscribe<[PrEventBatch]>('prEvents:events', cb),

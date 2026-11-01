@@ -44,7 +44,7 @@ export function updateConnection(config: WorkhubConfig, connection: Connection):
 /** Refused while a profile uses the connection, so no profile is left pointing at nothing. */
 export function deleteConnection(config: WorkhubConfig, id: string): Result<WorkhubConfig> {
   if (!config.connections.some((c) => c.id === id)) return notFound(`connections.${id}`)
-  const users = config.profiles.filter((p) => Object.values(p.connections).includes(id)).map((p) => p.id)
+  const users = config.profiles.filter((p) => Object.values(p.connections).includes(id) || (p.planner?.calendarIds ?? []).includes(id)).map((p) => p.id)
   if (users.length) return fail([{ path: `connections.${id}`, message: `used by profile(s): ${users.join(', ')}` }])
   return commit(config, { ...config, connections: config.connections.filter((c) => c.id !== id) })
 }

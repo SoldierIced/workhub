@@ -3,7 +3,7 @@ import type { MessageKey, Params } from '../i18n/translate'
 
 /** Where a fix lives: a Settings tab and, when there is one, the item to open in it. */
 export interface IssueTarget {
-  tab: 'connections' | 'trackers' | 'health' | 'profiles' | 'accounts'
+  tab: 'connections' | 'trackers' | 'health' | 'profiles' | 'accounts' | 'plan'
   id?: string
 }
 
@@ -17,7 +17,7 @@ export interface HumanIssue {
   technical: string
 }
 
-const KIND_KEY: Record<ConnectionKind, MessageKey> = { codeHost: 'kind.codeHost', tracker: 'kind.tracker', chat: 'kind.chat', health: 'kind.health' }
+const KIND_KEY: Record<ConnectionKind, MessageKey> = { codeHost: 'kind.codeHost', tracker: 'kind.tracker', chat: 'kind.chat', health: 'kind.health', calendar: 'kind.calendar' }
 
 /**
  * Turns a validation issue (`connections.jira-acme.secretRef: a secret is required`) into a sentence
@@ -38,7 +38,7 @@ export function humanIssue(issue: ValidationIssue, config: WorkhubConfig, provid
     const activeProfile = config.profiles.find((p) => p.id === config.activeProfileId)
     // Trackers and the active profile's Health connection have their own, friendlier forms.
     const target: IssueTarget =
-      c.kind === 'tracker' ? { tab: 'trackers', id: c.id } : c.kind === 'health' && activeProfile?.connections.health === c.id ? { tab: 'health', id: c.id } : { tab: 'connections', id: c.id }
+      c.kind === 'tracker' ? { tab: 'trackers', id: c.id } : c.kind === 'calendar' ? { tab: 'plan', id: c.id } : c.kind === 'health' && activeProfile?.connections.health === c.id ? { tab: 'health', id: c.id } : { tab: 'connections', id: c.id }
     if (field === 'secretRef') return { key, message: 'issues.secret', params: { name }, action: { label: 'issues.secret.action', target }, technical }
     if (field === 'endpoint' && /required/.test(issue.message)) return { key, message: 'issues.endpoint', params: { name }, action: { label: 'issues.endpoint.action', target }, technical }
     if (field === 'endpoint') return { key, message: 'issues.endpointUrl', params: { name }, action: { label: 'issues.endpoint.action', target }, technical }

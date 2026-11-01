@@ -1,9 +1,10 @@
-import { Activity, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Route as RouteIcon, Ticket, Users, UserCog } from 'lucide-react'
+import { Activity, CalendarDays, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Route as RouteIcon, Ticket, Users, UserCog } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   appOptions,
   automaticProfileColor,
   CONNECTION_KINDS,
+  PROFILE_CONNECTION_KINDS,
   FAILOVER_MODES,
   failoverMode,
   NO_MODULES,
@@ -40,6 +41,7 @@ import { AiReviewProfileFields } from './AiReviewSettings'
 import { ProfileColorField } from './ProfileColorField'
 import { HealthSettings } from './HealthSettings'
 import { FlowMapsSettings } from './FlowMapsSettings'
+import { PlanSettings } from './PlanSettings'
 import { SlackArchiveField, SlackSettings } from './SlackSettings'
 import { PullRequestNotificationRows } from './PullRequestNotificationSettings'
 import { DefaultFolderField, ProfileExtraFields, prunedFolderOptions, useProfileEnvDraft } from './ProfileExtraSettings'
@@ -59,13 +61,15 @@ const KIND_LABEL: Record<ConnectionKind, MessageKey> = {
   codeHost: 'kind.codeHost',
   tracker: 'kind.tracker',
   chat: 'kind.chat',
-  health: 'kind.health'
+  health: 'kind.health',
+  calendar: 'kind.calendar'
 }
 const MODULE_LABEL: Record<OfferedModule, MessageKey> = {
   health: 'module.health',
   chatWatcher: 'module.chatWatcher',
   automations: 'module.automations',
-  flowMaps: 'module.flowMaps'
+  flowMaps: 'module.flowMaps',
+  planner: 'module.planner'
 }
 
 /** `KEY=value` per line <-> record. */
@@ -227,6 +231,7 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
           { value: 'trackers', label: t('trackers.tab'), icon: <Ticket className="size-4" aria-hidden />, content: section(<TrackerSettings key={focusId('trackers')} snap={snap} run={run} initialId={focusId('trackers')} />) },
           { value: 'health', label: t('health.settings.tab'), icon: <Activity className="size-4" aria-hidden />, content: section(<HealthSettings snap={snap} run={run} focusSecret={focus?.tab === 'health'} />) },
           { value: 'flowMaps', label: t('flowMaps.settings.tab'), icon: <RouteIcon className="size-4" aria-hidden />, content: section(<FlowMapsSettings snap={snap} run={run} />) },
+          { value: 'plan', label: t('plan.settings.tab'), icon: <CalendarDays className="size-4" aria-hidden />, content: section(<PlanSettings snap={snap} run={run} />) },
           { value: 'slack', label: t('nav.slack'), icon: <MessageSquare className="size-4" aria-hidden />, content: section(<SlackSettings snap={snap} run={run} />) },
           { value: 'accounts', label: t('settings.accounts'), icon: <UserCog className="size-4" aria-hidden />, content: section(<AccountsSection key={focusId('accounts')} snap={snap} run={run} initialId={focusId('accounts')} />, t('help.tab.accounts')) },
           { value: 'usage', label: t('agentUsage.settings.tab'), icon: <Gauge className="size-4" aria-hidden />, content: section(<UsageSettings snap={snap} run={run} />, t('help.tab.usage')) }
@@ -866,7 +871,7 @@ function ProfilesSection({ snap, run, initialId }: SectionProps & { initialId?: 
           <ProfileExtraFields form={form} onChange={setForm} env={env} />
           <FieldGroup legend={t('settings.connections')} help={t('help.profile.connections')}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-2">
-              {CONNECTION_KINDS.map((kind) => (
+              {PROFILE_CONNECTION_KINDS.map((kind) => (
                 <Field key={kind} label={t(KIND_LABEL[kind])}>
                   <Select
                     value={form.connections[kind] ?? ''}

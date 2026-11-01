@@ -210,7 +210,7 @@ function WelcomePage() {
         name: name.trim(),
         connections: {},
         accountIds: [],
-        modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false },
+        modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false },
         ...(folders.length ? { folders } : {})
       }
       const r = await window.hub.config.saveProfile(profile)

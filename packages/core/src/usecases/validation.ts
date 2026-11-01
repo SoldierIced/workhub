@@ -129,6 +129,17 @@ export function validateConfig(config: WorkhubConfig): ValidationIssue[] {
     for (const a of p.agentIds ?? []) {
       if (!agents.has(a)) issues.push({ path: `${path}.agentIds`, message: `unknown agent "${a}"` })
     }
+    for (const ref of p.planner?.calendarIds ?? []) {
+      const c = connections.get(ref)
+      if (!c) issues.push({ path: `${path}.planner.calendarIds`, message: `unknown connection "${ref}"` })
+      else if (c.kind !== 'calendar') issues.push({ path: `${path}.planner.calendarIds`, message: `connection "${ref}" is a ${c.kind} connection, not calendar` })
+    }
+    for (const [list, items] of [
+      ['rules', p.planner?.rules ?? []],
+      ['people', p.planner?.people ?? []]
+    ] as const) {
+      for (const d of duplicates(items.map((i) => i.id))) issues.push({ path: `${path}.planner.${list}`, message: `duplicate id "${d}"` })
+    }
   }
   if (config.activeProfileId && !config.profiles.some((p) => p.id === config.activeProfileId)) {
     issues.push({ path: 'activeProfileId', message: `unknown profile "${config.activeProfileId}"` })

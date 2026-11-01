@@ -18,9 +18,11 @@ import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from
 import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
 import { GitReview, LocalChanges } from '@workhub/adapters/git-review'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
+import { DemoCalendarSource, IcsCalendarSource } from '@workhub/adapters/calendar-ics'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { readKeychainItem, readWorkhub1Settings } from '@workhub/adapters/workhub1-import'
 import {
+  alertRulesOf,
   appOptions,
   canonicalUrl,
   creditSpend,
@@ -47,6 +49,7 @@ import {
   usageAccountKey,
   validateConfig,
   type FlowAlert,
+  type MetricAlert,
   type HealthAlert,
   moduleScreens,
   type FlowTraceSort,
@@ -77,7 +80,7 @@ import type { PullRequestWindowTab } from '../shared/codehost-api'
 import { Notifier } from './notifier'
 import { TrayService } from './tray'
 import { TrayPopover } from './tray-popover'
-import { flowAlertWords, healthAlertWords, isLocale, trayText } from './tray-text'
+import { flowAlertWords, healthAlertWords, isLocale, metricAlertWords, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
 import { profileWorkspaces } from './workspaces'
 import { NotificationPermissionCheck } from './notification-permission'
@@ -107,8 +110,11 @@ import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager
 import { registerLinksIpc } from './links'
 import { LocalReviewService, registerLocalReviewIpc } from './local-review'
 import { controlEnv, controlSocketPath, startControlServer } from './control-server'
+import { createPlanControl } from './plan-control'
 import { FLOW_MAPS_FOLDER, saveFlowMap } from './flow-maps'
 import { registerFlowMapsIpc } from './flow-maps-ipc'
+import { DemoMetricSource, HealthMetricSource, MetricAlertService, ProductMetricSource, type MetricAlertsState } from './metric-alerts'
+import { registerMetricAlertsIpc } from './metric-alerts-ipc'
 import { registerFileViewerIpc } from './file-viewer'
 import { SlackWatcherService } from './slack-watcher'
 import { StateFile } from './state-file'
@@ -126,6 +132,15 @@ import { createLinkService } from './link-service'
 import { listChromeProfiles, systemLinkDeps } from './link-system'
 import { profileSessionEnv, saveProfileEnv, storedProfileEnvNames } from './profile-env'
 import { SetupService } from './setup-service'
+import { CalendarService } from './calendar-service'
+import { CalendarStateStore, CalendarWatcher } from './calendar-watcher'
+import { demoScenario, seedScenarioConfig, seedScenarioState } from './demo-scenario'
+import { BriefService } from './plan-briefs'
+import { meetingReminderWords, planView, registerPlanIpc } from './plan-ipc'
+import { PlannerService, type PlannerState } from './planner-service'
+import { addControlInboxItems, registerPlannerIpc } from './planner-ipc'
+import { expandHome } from './automations'
+import { gatePrompt, productCalendarEvents, ticketsInProgress, type CalendarState, type DueAction } from '@workhub/core'
 import type { SetupPage } from '../shared/setup-api'
 
 // Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
@@ -168,6 +183,10 @@ function revealLogs(): void {
 const configStore = new JsonConfigStore(join(dataDir, 'config.json'))
 const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
 const configuration = new ConfigurationService(configStore, secrets)
+// WORKHUB_DEMO_SCENARIO=team-lead (`npm run demo`): the milestones, inbox and metric alerts of the scenario are written before
+// the services read their state files; its profile is saved once the app is ready (see below). Files that exist are kept.
+const scenario = demoScenario()
+if (scenario) seedScenarioState(dataDir)
 let loadError: string | undefined
 // WORKHUB_DEMO_CODEHOST=1 reads synthetic pull requests instead of a real host (screenshots, demos).
 // The demo moves on one step at a time (`prEvents.demoAdvance`) so pull request events can be seen.
@@ -183,7 +202,9 @@ const prEvents = new PrEventService({
 // WORKHUB_DEMO_HEALTH=1 serves synthetic environments, so Health can be shown without a cluster.
 const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1', flowMapsDir: join(dataDir, FLOW_MAPS_FOLDER) })
 // WORKHUB_DEMO_TICKETS=1 serves synthetic tickets, so the UI can be shown without credentials.
-const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1')
+const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1', undefined, scenario ?? undefined)
+// WORKHUB_DEMO_CALENDAR=1 serves synthetic meetings around now, so Plan can be shown without a calendar address.
+const calendar = new CalendarService({ configuration, secrets, source: new IcsCalendarSource(), demo: process.env['WORKHUB_DEMO_CALENDAR'] === '1' ? new DemoCalendarSource(Date.now, scenario ? productCalendarEvents : undefined) : null })
 
 let win: BrowserWindow | null = null
 /** What session and sub-agent windows follow too: the sessions' live state and what their screens show. */
@@ -498,6 +519,51 @@ const automations = new AutomationService({
   },
   configChanged: () => send('config:changed'),
   notice: (n) => send('slack:notice', n)
+})
+
+// Plan: reminders and meeting briefs (calendar-state.json keeps what fired and which briefs started).
+const calendarState = new CalendarStateStore(new StateFile<CalendarState>(join(dataDir, 'calendar-state.json'), 500))
+const briefs = new BriefService({
+  config: () => configuration.current(),
+  startSession: (input) => sessions.start(input),
+  sessions: driver,
+  rename: (id, name) => {
+    try {
+      sessions.rename(id, name)
+    } catch {
+      // The session went away before it was named.
+    }
+  },
+  store: calendarState,
+  gate: (config, target, origin) => {
+    if (gatePrompt(agentKeyBudget(config, target.agentKey, budgetOf), origin === 'rule' ? 'automation' : 'user').kind !== 'send') return 'A usage ceiling of this account is reached (Settings → Usage)'
+    if (origin !== 'rule') return null
+    const at = target.agentKey.indexOf(':')
+    const agentId = at < 0 ? target.agentKey : target.agentKey.slice(0, at)
+    const accountId = at < 0 ? null : target.agentKey.slice(at + 1) || null
+    const percent = agentId === 'claude' ? usage.current().find((u) => u.agentId === 'claude' && u.accountId === accountId)?.windows.find((w) => w.window === '5h')?.percent : undefined
+    return percent !== undefined && percent >= target.usageThreshold ? `The account's 5 h usage is at ${Math.round(percent)}%` : null
+  },
+  context: async (profileId) => {
+    const [lists, tickets] = await Promise.all([
+      Promise.race([codeHost.lists(profileId), new Promise<null>((r) => setTimeout(() => r(null), 8_000))]).catch(() => null),
+      ticketService.call(profileId, (t, ignored) => t.listAssigned({ ignoredStatuses: ignored }))
+    ])
+    const pr = (i: { pr: { title: string; url: string; author: string; owner: string; repo: string } }) => ({ title: i.pr.title, url: i.pr.url, author: i.pr.author, repo: `${i.pr.owner}/${i.pr.repo}` })
+    return {
+      mine: (lists?.mine ?? []).map(pr),
+      toReview: (lists?.toReview ?? []).map(pr),
+      tickets: tickets.ok ? ticketsInProgress(tickets.value).map((t) => ({ key: t.key, title: t.title, status: t.status, ...(t.assignee ? { assignee: t.assignee } : {}) })) : []
+    }
+  },
+  formatTime: (ms) => new Intl.DateTimeFormat(trayLocale, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(ms),
+  resolveFolder: async (folder) => {
+    const path = resolve(expandHome(folder || '~', homedir()))
+    return (await stat(path).then((s) => s.isDirectory(), () => false)) ? path : null
+  },
+  home: homedir(),
+  changed: (profileId) => send('plan:changed', profileId),
+  resumes: (config, agentKey) => knownAgents(config).find((a) => a.id === (agentKey.split(':')[0] ?? agentKey))?.adapter === 'native'
 })
 
 // The monitor's "Local changes" of a session's folder (read-only git commands).
@@ -982,6 +1048,7 @@ function registerIpc(): void {
       return true
     }
   })
+  registerMetricAlertsIpc(ipc, metricAlerts)
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   registerAiReviewIpc(ipc, aiReview)
   registerAgentReviewIpc(ipc, agentReview)
@@ -998,6 +1065,11 @@ function registerIpc(): void {
   ipc.handle('continuity:failover', (_e, id: string, request) => continuity.failover(id, request))
   ipc.handle('continuity:handoff', (_e, id: string, request) => continuity.handoff(id, request))
   ipc.handle('health:test', (_e, connection, secret, indexToProbe?: string) => health.test(connection, secret, indexToProbe))
+  registerPlanIpc(ipc, { calendar, briefs })
+  registerPlannerIpc(ipc, planner, {
+    alert: async (profileId, key) => (await metricAlerts.list(profileId)).alerts.find((a) => a.key === key),
+    alertSent: (profileId, key) => metricAlerts.setStatus(profileId, key, { type: 'sendToInbox' })
+  })
   ipc.on('tray:state', (_e, state: TrayRendererState) => {
     if (isLocale(state?.locale) && state.locale !== trayLocale) {
       trayLocale = state.locale
@@ -1140,6 +1212,73 @@ const flowAlertWatcher = new FlowAlertWatcher({
     const file = new StateFile<{ firedAt: Record<string, number> }>(join(dataDir, 'flow-alerts.json'), 500)
     return { load: () => file.load({ firedAt: {} }).firedAt ?? {}, save: (firedAt) => file.save({ firedAt }) }
   })()
+})
+
+/** A meeting reminder; a click joins the call when there is a link, else shows the Plan screen. */
+function meetingReminder(profileId: string, action: DueAction): void {
+  const now = Date.now()
+  const words = meetingReminderWords(action, now, trayText(trayLocale))
+  const url = action.event.meetingUrl
+  void notifier.show('meeting', words, () => {
+    if (url) return void openLink(profileId, url)
+    showMain()
+    send('plan:focus')
+  }, { eventId: action.event.id, rule: action.ruleId })
+}
+
+/** Demo calendar: a brief rule matched. Nothing starts; "Prepare brief" on the meeting does, on request. */
+async function demoBriefNotice(action: DueAction): Promise<void> {
+  const words = meetingReminderWords({ event: action.event, message: 'Demo: this rule would start a brief now. Open Plan and choose Prepare brief to start one.' }, Date.now(), trayText(trayLocale))
+  void notifier.show('meeting', words, () => {
+    showMain()
+    send('plan:focus')
+  }, { eventId: action.event.id, rule: action.ruleId })
+}
+
+const calendarWatcher = new CalendarWatcher({
+  profiles: () => calendar.plannerProfiles(),
+  read: async (profileId) => {
+    const r = await calendar.read(profileId)
+    return r && (r.state === 'ready' || r.state === 'demo') ? { events: r.events, settings: r.settings } : null
+  },
+  store: calendarState,
+  remind: meetingReminder,
+  // The synthetic calendar never starts a brief by itself (that would spend tokens just for opening the demo): it says so.
+  brief: (profileId, action) =>
+    process.env['WORKHUB_DEMO_CALENDAR'] === '1' ? demoBriefNotice(action) : briefs.brief(profileId, action.event, { ruleId: action.ruleId, ...(action.automationId ? { automationId: action.automationId } : {}) }),
+  log: (m) => diagnostics.log.warn(m)
+})
+
+function metricAlertNotification(profileId: string, alerts: MetricAlert[]): void {
+  void notifier.show('metricAlert', metricAlertWords(alerts, trayText(trayLocale).t), () => {
+    navigate('health')
+    send('metricAlerts:open', profileId)
+  }, { profileId, alerts: alerts.map((a) => a.key) })
+}
+
+const demoHealth = process.env['WORKHUB_DEMO_HEALTH'] === '1'
+/** Every profile with the Health module on, with its alert rules. */
+const metricAlertProfiles = async () =>
+  (await configuration.current()).profiles.filter((p) => moduleScreens(p.modules).includes('health')).map((p) => ({ id: p.id, rules: alertRulesOf(p.health?.alertRules) }))
+const healthMetricSource = new HealthMetricSource((profileId) => health.get(profileId))
+const demoMetricSource = new DemoMetricSource(async (profileId) => (await metricAlertProfiles()).find((p) => p.id === profileId)?.rules.businessDays ?? [1, 2, 3, 4, 5])
+const productMetricSource = new ProductMetricSource(async (profileId) => (await metricAlertProfiles()).find((p) => p.id === profileId)?.rules.businessDays ?? [1, 2, 3, 4, 5])
+// WORKHUB_DEMO_HEALTH=1 adds a month of synthetic product metrics, so the Alerts tab has something to show.
+const metricAlerts = new MetricAlertService({
+  profiles: metricAlertProfiles,
+  sources: () => (demoHealth ? [healthMetricSource, demoMetricSource, ...(scenario ? [productMetricSource] : [])] : [healthMetricSource]),
+  store: new StateFile<MetricAlertsState>(join(dataDir, 'metric-alerts.json'), 1_000),
+  notify: metricAlertNotification,
+  changed: (profileId) => send('metricAlerts:changed', profileId),
+  demo: demoHealth
+})
+
+// Plan milestones and inbox (planner-state.json: per profile, user data rather than settings).
+const planner = new PlannerService({
+  profiles: async () => (await configuration.current()).profiles,
+  store: new StateFile<PlannerState>(join(dataDir, 'planner-state.json'), 500),
+  tracker: (profileId, connectionId) => ticketService.trackerFor(profileId, connectionId),
+  changed: (profileId) => send('planner:changed', profileId)
 })
 
 const ticketWatcher = new TicketWatcher({
@@ -1488,6 +1627,14 @@ async function fillDefaultFoldersOnStart(): Promise<void> {
 }
 
 let controlServer: import('node:http').Server | null = null
+/** How the control endpoint finds the profile of a request (the calling session's, a named one, the active one). */
+const controlProfiles = {
+  sessionProfile: (id: string) => sessions.list().find((s) => s.id === id)?.profileId,
+  profiles: async () => {
+    const config = await configuration.current()
+    return { ids: config.profiles.map((p) => p.id), active: config.activeProfileId ?? null }
+  }
+}
 void app.whenReady().then(async () => {
   controlServer = await startControlServer(controlSocket, {
     openReview: (sessionId, repos) => {
@@ -1499,6 +1646,13 @@ void app.whenReady().then(async () => {
       return { ok: true }
     },
     saveFlowMap: (map) => saveFlowMap(join(dataDir, FLOW_MAPS_FOLDER), map),
+    addInboxItems: (body) => addControlInboxItems({ service: planner, ...controlProfiles }, body),
+    plan: createPlanControl({
+      ...controlProfiles,
+      planner,
+      agenda: (profileId) => planView({ calendar, briefs }, profileId),
+      profile: async (profileId) => (await configuration.current()).profiles.find((p) => p.id === profileId)
+    }),
     log: (m) => diagnostics.log.warn(m)
   })
   if (!firstInstance) return
@@ -1506,6 +1660,14 @@ void app.whenReady().then(async () => {
     await configuration.load()
   } catch (err) {
     loadError = err instanceof Error ? err.message : String(err)
+  }
+  if (scenario && !loadError) {
+    try {
+      if (await seedScenarioConfig(configuration, dataDir)) diagnostics.log.info(`demo scenario "${scenario}" seeded in ${dataDir}`)
+    } catch (err) {
+      loadError = err instanceof Error ? err.message : String(err)
+      diagnostics.log.error(loadError)
+    }
   }
   const startup = diagnostics.activity.begin('startup')
   denyWebPermissions()
@@ -1533,7 +1695,10 @@ void app.whenReady().then(async () => {
   aiReview.start()
   healthWatcher.start()
   flowAlertWatcher.start()
+  metricAlerts.start()
   ticketWatcher.start()
+  calendarWatcher.start()
+  planner.start()
   // First run: no profile yet and the welcome was not finished.
   const first = await configuration.current()
   if (!loadError && first.profiles.length === 0 && !appOptions(first).welcomeDone) openSetupWindow('welcome')
@@ -1575,7 +1740,10 @@ app.on('before-quit', (event) => {
   controlServer?.close()
   healthWatcher.stop()
   flowAlertWatcher.stop()
+  metricAlerts.stop()
   ticketWatcher.stop()
+  calendarWatcher.stop()
+  planner.stop()
   sessionNames.flush()
   void sessions.stopAll().finally(() => app.quit())
 })

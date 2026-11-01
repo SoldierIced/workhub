@@ -18,8 +18,25 @@ describe('parseConfig', () => {
       name: 'Acme',
       connections: {},
       accountIds: [],
-      modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }
+      modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
     })
+  })
+
+  it('fills and clamps the metric alert rules of a profile, and leaves them out when absent', () => {
+    const parsed = parseConfig({
+      version: CONFIG_VERSION,
+      profiles: [
+        { id: 'acme', name: 'Acme', health: { environments: [], alertRules: { thresholds: { jumpPct: 75, jumpStdDevs: 99 }, overrides: { 'health.errors': { minVolume: 5, critical: true } } } } },
+        { id: 'beta', name: 'Beta', health: { environments: [] } }
+      ]
+    })
+    expect(parsed.profiles[0]?.health?.alertRules).toEqual({
+      thresholds: { trendDays: 3, trendPct: 20, jumpPct: 75, jumpStdDevs: 10, minVolume: 20, newSubjectDays: 30, rateDropPoints: 5 },
+      businessDays: [1, 2, 3, 4, 5],
+      notifyMinSeverity: 'high',
+      overrides: { 'health.errors': { minVolume: 5, critical: true } }
+    })
+    expect(parsed.profiles[1]?.health?.alertRules).toBeUndefined()
   })
 
   it('rejects a document from a newer Workhub', () => {

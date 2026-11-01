@@ -54,7 +54,7 @@ function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boo
   const stopped: string[] = []
   const renamed: [string, string | null][] = []
   let head = 'sha1'
-  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }], activeProfileId: 'p' }
+  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }], activeProfileId: 'p' }
   // Automatic review is opt-in (off by default); these tests drive the automatic trigger.
   // `reviewerSession` defaults to `same`; most tests check one reviewer per round (`new`) and opt in when they need it.
   config.profiles[0]!.aiReview = { ...aiReviewSettings(null), auto: true, reviewerSession: opts.reviewerSession ?? 'new' }

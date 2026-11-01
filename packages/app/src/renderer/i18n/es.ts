@@ -4,6 +4,7 @@ import { aiReviewEs } from './aiReview.es'
 import { sessionsUxEs } from './sessionsUx.es'
 import { sessionMonitorEs } from './sessionMonitor.es'
 import { healthEs } from './health.es'
+import { metricAlertsEs } from './metricAlerts.es'
 import { flowMapsEs } from './flowMaps.es'
 import { healthPromptsEs } from './healthPrompts.es'
 import { prEventsEs } from './prEvents.es'
@@ -27,6 +28,8 @@ import { windowsEs } from './windows.es'
 import { slashCommandsEs } from './slashCommands.es'
 import { localReviewEs } from './localReview.es'
 import { unsavedEs } from './unsaved.es'
+import { planEs } from './plan.es'
+import { plannerEs } from './planner.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -436,6 +439,7 @@ export const es: Record<keyof typeof en, string> = {
   ...updatesEs,
   ...setupEs,
   ...healthEs,
+  ...metricAlertsEs,
   ...flowMapsEs,
   ...healthPromptsEs,
   ...prEventsEs,
@@ -458,5 +462,7 @@ export const es: Record<keyof typeof en, string> = {
   ...windowsEs,
   ...slashCommandsEs,
   ...localReviewEs,
-  ...unsavedEs
+  ...unsavedEs,
+  ...planEs,
+  ...plannerEs
 }

@@ -1,9 +1,10 @@
 import type { AiReviewSettings } from '../ai-review/types'
 import type { HealthSettings } from '../health/types'
+import type { PlannerSettings } from '../calendar/types'
 import type { ConnectionKind } from './connection'
 
 /** Optional modules (PLAN section 4): each one adds its screens only when enabled in a profile. */
-export const OPTIONAL_MODULES = ['flows', 'health', 'chatWatcher', 'automations', 'flowMaps'] as const
+export const OPTIONAL_MODULES = ['flows', 'health', 'chatWatcher', 'automations', 'flowMaps', 'planner'] as const
 export type OptionalModule = (typeof OPTIONAL_MODULES)[number]
 export type ModuleToggles = Record<OptionalModule, boolean>
 
@@ -16,7 +17,7 @@ export type OfferedModule = Exclude<OptionalModule, (typeof RETIRED_MODULES)[num
 /** The optional modules a profile can turn on today (Settings → Profiles → Modules). */
 export const OFFERED_MODULES: readonly OfferedModule[] = OPTIONAL_MODULES.filter((m): m is OfferedModule => !(RETIRED_MODULES as readonly string[]).includes(m))
 
-export const NO_MODULES: ModuleToggles = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }
+export const NO_MODULES: ModuleToggles = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
 
 /**
  * A work context: which connection serves each kind, which agent accounts it uses and which
@@ -72,6 +73,8 @@ export interface Profile {
   accountFailover?: 'ask' | 'automatic' | 'off'
   /** The profile's colour (`#rrggbb`), down the left edge of its sessions in the sidebar. Unset: `profileColor` picks one. */
   color?: string
+  /** Plan module setup: calendars, reminders, meeting rules, the brief prompt and people (see `plannerSettings` for the defaults). */
+  planner?: PlannerSettings
 }
 
 /** Colours a profile without one of its own takes, by its place in the list (Workhub 1's accent palette). */

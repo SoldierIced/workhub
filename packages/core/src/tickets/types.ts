@@ -76,6 +76,58 @@ export interface TrackerCapabilities {
   transitions: boolean
   comments: boolean
   assign: boolean
+  /** `searchByQuery`: tickets matching a tracker query (Plan milestones count them). */
+  search?: boolean
+  /** `createIssue`: new issues (Plan's inbox creates them on approval). */
+  create?: boolean
+}
+
+/** One ticket a query found: enough to count it and link it. */
+export interface TicketSummary {
+  key: string
+  title: string
+  status: string
+  category: StatusCategory
+  url?: string
+}
+
+export interface SearchOptions {
+  /** At most this many tickets (default `DEFAULT_SEARCH_LIMIT`, never above `MAX_SEARCH_RESULTS`). */
+  limit?: number
+}
+
+export const DEFAULT_SEARCH_LIMIT = 200
+export const MAX_SEARCH_RESULTS = 1000
+
+/** The search limit asked for, kept between 1 and `MAX_SEARCH_RESULTS`. */
+export function searchLimit(options?: SearchOptions): number {
+  const n = Math.floor(options?.limit ?? DEFAULT_SEARCH_LIMIT)
+  return Number.isFinite(n) ? Math.min(MAX_SEARCH_RESULTS, Math.max(1, n)) : DEFAULT_SEARCH_LIMIT
+}
+
+/** A generic priority every tracker maps to its own: 1 highest (urgent) to 4 lowest. */
+export type IssuePriority = 1 | 2 | 3 | 4
+export const ISSUE_PRIORITIES: readonly IssuePriority[] = [1, 2, 3, 4]
+
+export function isIssuePriority(value: unknown): value is IssuePriority {
+  return value === 1 || value === 2 || value === 3 || value === 4
+}
+
+export interface CreateIssueInput {
+  /** Jira: the project key. Linear: the team key. */
+  project: string
+  /** Jira: the issue type name (default `Task`). Linear has no issue types and ignores it. */
+  issueType?: string
+  title: string
+  /** Plain text; blank lines start paragraphs. */
+  description: string
+  priority?: IssuePriority
+  labels?: string[]
+}
+
+export interface CreatedIssue {
+  key: string
+  url?: string
 }
 
 export type ConnectionTest = { ok: true; account: string } | { ok: false; error: string }

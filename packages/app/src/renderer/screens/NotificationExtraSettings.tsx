@@ -17,7 +17,9 @@ const KINDS = [
   ['notifyAutomations', 'settings.notifyAutomations', 'settings.notifyAutomationsHint'],
   ['notifyTickets', 'settings.notifyTickets', 'settings.notifyTicketsHint'],
   ['notifyHealth', 'settings.notifyHealth', 'settings.notifyHealthHint'],
-  ['notifyFlowMaps', 'settings.notifyFlowMaps', 'settings.notifyFlowMapsHint']
+  ['notifyFlowMaps', 'settings.notifyFlowMaps', 'settings.notifyFlowMapsHint'],
+  ['notifyMeetings', 'settings.notifyMeetings', 'settings.notifyMeetingsHint'],
+  ['notifyMetricAlerts', 'settings.notifyMetricAlerts', 'settings.notifyMetricAlertsHint']
 ] as const satisfies readonly (readonly [string, MessageKey, MessageKey])[]
 
 /** Settings → General: the switches of the notifications that are not about one session, and the pause. */

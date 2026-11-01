@@ -140,7 +140,7 @@ describe('SessionManager', () => {
   })
 
   it('puts a session in the profile that owns its folder, whatever profile was active', async () => {
-    const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }
+    const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
     const config: WorkhubConfig = {
       ...emptyConfig(),
       profiles: [
@@ -395,7 +395,7 @@ describe('session helpers', () => {
   it('resolves an account key the profile does not offer from the config', () => {
     const profiled: WorkhubConfig = {
       ...config,
-      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }],
+      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }],
       activeProfileId: 'p'
     }
     expect(resolveChoice(profiled, 'p', 'claude:work')).toMatchObject({ account: { id: 'work' }, label: 'Claude Code · Work' })

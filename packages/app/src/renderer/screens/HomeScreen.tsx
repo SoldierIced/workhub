@@ -10,6 +10,8 @@ import { moduleScreens, ticketsInProgress } from '@workhub/core'
 import { HomeTicketsCard } from '../components/organisms/HomeTickets'
 import { AgentUsageCard } from '../components/organisms/AgentUsageCard'
 import { TokenSpendCard } from '../components/organisms/TokenSpendCard'
+import { OpenAlertsCard } from '../components/organisms/OpenAlertsCard'
+import { requestAlertsTab } from '../metricAlertsStore'
 import { useFolderSpend } from '../lib/folder-spend'
 import { agentUsageSections, kiroUsageNote } from '../lib/agent-usage'
 import { useApiSpend, useNow, useUsageSettings } from '../lib/usage'
@@ -19,6 +21,8 @@ import { useTickets } from '../ticketsStore'
 import type { SessionData } from '../store'
 import { usePullRequestLists } from '../pullRequestsStore'
 import { HealthPills } from './health/HealthPills'
+import { HomeMeetingsCard } from './plan/HomeMeetingsCard'
+import { HomeInboxCard, HomeMilestonesCard } from './plan/HomePlannerCards'
 import { PullRequestCard, PullRequestTile } from './pullRequests/HomeCards'
 import { usageWindowNameInline } from '../lib/usage-window'
 
@@ -95,6 +99,8 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
         </header>
 
         {modules.has('health') && <HealthPills profile={profile} onOpenHealth={() => onNavigate?.('health')} onOpenSettings={onOpenSettings} />}
+
+        {modules.has('planner') && <HomeMeetingsCard profile={profile} onOpenPlan={() => onNavigate?.('plan')} onOpenSettings={onOpenSettings} />}
 
         {profile && !hasFolders && (
           <section className="flex items-center gap-3 rounded-[10px] border border-border bg-surface p-3 shadow-sm">
@@ -185,6 +191,17 @@ export function HomeScreen({ profile, sessions, usage: reads = [], onOpenSession
             <AgentUsageCard sections={usageSections} kiro={kiro} kiroSpend={kiroSpend} apiSpend={apiSpend} ceilings={budget.ceilings} now={now} onOpenSettings={() => onOpenSettings('usage')} />
           </div>
           <div className="flex min-w-0 flex-col gap-3">
+            {modules.has('planner') && profile && <HomeInboxCard profileId={profile.id} onOpenPlan={() => onNavigate?.('plan')} />}
+            {modules.has('planner') && profile && <HomeMilestonesCard profileId={profile.id} onOpenPlan={() => onNavigate?.('plan')} />}
+            {modules.has('health') && profile && (
+              <OpenAlertsCard
+                profileId={profile.id}
+                onOpen={() => {
+                  requestAlertsTab(profile.id)
+                  onNavigate?.('health')
+                }}
+              />
+            )}
             <HomeTicketsCard
               profileId={profile?.id}
               status={tix.status}

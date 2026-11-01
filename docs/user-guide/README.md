@@ -12,13 +12,14 @@ One page per area of Workhub 2. Names in **bold** are labels you see in the app 
 8. [Slack](slack.md)
 9. [Health](health.md)
 10. [Flow maps](flow-maps.md)
-11. [Automations](automations.md)
-12. [History](history.md)
-13. [Usage and budgets](usage.md)
-14. [Settings](settings.md)
-15. [Keyboard shortcuts](keyboard-shortcuts.md)
+11. [Plan](plan.md)
+12. [Automations](automations.md)
+13. [History](history.md)
+14. [Usage and budgets](usage.md)
+15. [Settings](settings.md)
+16. [Keyboard shortcuts](keyboard-shortcuts.md)
 
 Back to the [documentation index](../README.md). Problems: [Troubleshooting](../troubleshooting.md).
 
-Screens tied to an optional module (Slack, Automations, Health, Flow maps) show up only when the
-active profile enables the module in **Settings → Profiles**.
+Screens tied to an optional module (Slack, Automations, Health, Flow maps, Plan) show up only when
+the active profile enables the module in **Settings → Profiles**.

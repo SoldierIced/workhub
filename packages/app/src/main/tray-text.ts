@@ -1,4 +1,4 @@
-import type { FlowAlert, HealthAlert, TrayText } from '@workhub/core'
+import type { FlowAlert, HealthAlert, MetricAlert, TrayText } from '@workhub/core'
 // The renderer's dictionaries are plain data; the main process words the tray menu and its own
 // notifications (tickets, Health) with them, in the language the renderer reports.
 import { DICTIONARIES, translate, translatePlural, type Locale, type MessageKey, type PluralKey } from '../renderer/i18n/translate'
@@ -51,4 +51,24 @@ export function flowAlertWords(alert: FlowAlert, t: TrayText['t']): { title: str
     title: t(base, { part: alert.label, map: alert.mapName, environment: alert.environmentName }),
     body: t(`${base}Body`, { value: format(alert.value), limit: format(alert.threshold) })
   }
+}
+
+const signed = (n: number): string => `${n > 0 ? '+' : ''}${n}`
+
+/** The title and body of a metric alert notification; several at once fold into one. Worst first. */
+export function metricAlertWords(alerts: readonly MetricAlert[], t: TrayText['t']): { title: string; body: string } {
+  const one = (a: MetricAlert) => (a.segment ? `${a.subject} · ${a.segment}` : a.subject)
+  if (alerts.length !== 1) {
+    const names = alerts.slice(0, 4).map((a) => `${a.label ?? a.metric}: ${one(a)}`).join(', ') + (alerts.length > 4 ? ', …' : '')
+    return { title: t('notify.metricAlert.many', { count: alerts.length }), body: names }
+  }
+  const a = alerts[0]!
+  const title = t(`notify.metricAlert.${a.kind}`, { metric: a.label ?? a.metric, subject: one(a) })
+  const body =
+    a.changePoints !== undefined
+      ? t('notify.metricAlert.bodyPoints', { value: a.lastValue, baseline: a.baseline, change: signed(a.changePoints) })
+      : a.changePct !== undefined
+        ? t('notify.metricAlert.bodyPct', { value: a.lastValue, baseline: a.baseline, change: `${signed(Math.round(a.changePct))}%` })
+        : t('notify.metricAlert.bodyPlain', { value: a.lastValue })
+  return { title, body }
 }

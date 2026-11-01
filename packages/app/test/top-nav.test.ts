@@ -37,7 +37,7 @@ describe('top bar navigation', () => {
   })
 
   it('keeps every screen and its ⌘ key reachable while the sidebar only lists sessions', () => {
-    const modules = { flows: false, health: true, chatWatcher: true, automations: true, flowMaps: false }
+    const modules = { flows: false, health: true, chatWatcher: true, automations: true, flowMaps: false, planner: false }
     expect(visibleNavItems(modules).map((i) => `${i.route}:${i.shortcut.key}`)).toEqual(['home:1', 'pullRequests:2', 'tickets:3', 'slack:4', 'automations:5', 'history:6', 'health:8'])
     expect(allNavItems(modules).map((i) => i.route)).toContain('sessions')
   })

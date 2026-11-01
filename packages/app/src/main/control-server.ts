@@ -1,6 +1,6 @@
 /**
  * The local control endpoint: lets tools an agent runs inside a Workhub session ask Workhub for
- * something, today only "open the human review of my changes". It is HTTP over a Unix socket in
+ * something: "open the human review of my changes", store a flow map, read and update the plan. It is HTTP over a Unix socket in
  * the data folder (a named pipe on Windows), so only the user's own processes reach it; every
  * session gets `WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (the path) in its environment.
  *
@@ -11,12 +11,28 @@
  *
  *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/flow-maps \
  *     -H 'content-type: application/json' --data-binary @checkout.flow-map.json
+ *
+ * And it takes proposals for Plan's inbox (pending items the user approves, keeps or discards):
+ *
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/inbox \
+ *     -H 'content-type: application/json' \
+ *     -d '{"session":"'"$WORKHUB_SESSION"'","items":[{"kind":"task","title":"Send the rollout plan","detail":"Agreed in the sync","people":["ana@example.com"],"due":"2026-11-05"}]}'
+ *
+ * And it lets an agent read and update its profile's plan (`plan-control.ts`; the `workhub-plan` skill):
+ *
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/plan/today?session=$WORKHUB_SESSION"
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/inbox?session=$WORKHUB_SESSION&status=local"
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X PATCH "http://workhub/v1/inbox/<id>" \
+ *     -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","status":"done"}'
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/milestones?session=$WORKHUB_SESSION"
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/people?session=$WORKHUB_SESSION"
  */
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, statSync, unlinkSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
+import type { PlanControl } from './plan-control'
 
 const MAX_BODY = 256 * 1024
 const MAX_REPOS = 20
@@ -26,6 +42,12 @@ export interface ReviewRequestRepo {
   base?: string
 }
 
+/** A whole answer: its HTTP status and JSON body. */
+export interface ControlReply {
+  status: number
+  body: Record<string, unknown>
+}
+
 export type ControlResult = { ok: true } | { ok: false; status: number; error: string }
 
 export interface ControlDeps {
@@ -33,6 +55,10 @@ export interface ControlDeps {
   openReview(sessionId: string, repos: ReviewRequestRepo[]): ControlResult
   /** Validates and stores a flow map (the Flow maps screen); errors name the fields. */
   saveFlowMap?(map: unknown): { ok: true; file: string; id: string } | { ok: false; errors: string[] }
+  /** Adds the items of a body to a profile's inbox as pending (`parseInboxProposals` checks it). */
+  addInboxItems?(body: unknown): Promise<{ ok: true; added: string[]; duplicates: string[] } | { ok: false; status: number; error: string }>
+  /** Plan for agents: today's meetings, reading and updating the inbox, milestones, people. */
+  plan?: PlanControl
   log?: (message: string) => void
 }
 
@@ -83,6 +109,13 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
+function reply(res: ServerResponse, r: ControlReply): void {
+  send(res, r.status, r.body)
+}
+
+/** The read-only Plan endpoints and the handler of each. */
+const PLAN_READS: Record<string, 'today' | 'milestones' | 'people'> = { '/v1/plan/today': 'today', '/v1/milestones': 'milestones', '/v1/people': 'people' }
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   let size = 0
   const chunks: Buffer[] = []
@@ -110,6 +143,43 @@ export async function handleControl(deps: ControlDeps, req: IncomingMessage, res
     }
     const saved = deps.saveFlowMap(body)
     return saved.ok ? send(res, 200, saved) : send(res, 400, { ok: false, error: saved.errors.join('; '), errors: saved.errors })
+  }
+  if (url.pathname === '/v1/inbox') {
+    if (req.method === 'GET') return deps.plan ? reply(res, await deps.plan.inbox(url.searchParams)) : send(res, 404, { ok: false, error: 'the inbox is not available' })
+    if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'use GET or POST' })
+    if (!deps.addInboxItems) return send(res, 404, { ok: false, error: 'the inbox is not available' })
+    let body: unknown
+    try {
+      body = await readJson(req)
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e instanceof Error ? e.message : 'bad body' })
+    }
+    const added = await deps.addInboxItems(body)
+    return added.ok ? send(res, 200, added) : send(res, added.status, { ok: false, error: added.error })
+  }
+  const item = /^\/v1\/inbox\/([^/]{1,200})$/.exec(url.pathname)
+  if (item) {
+    if (req.method !== 'PATCH') return send(res, 405, { ok: false, error: 'use PATCH' })
+    if (!deps.plan) return send(res, 404, { ok: false, error: 'the inbox is not available' })
+    let body: unknown
+    try {
+      body = await readJson(req)
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e instanceof Error ? e.message : 'bad body' })
+    }
+    let id: string
+    try {
+      id = decodeURIComponent(item[1]!)
+    } catch {
+      return send(res, 400, { ok: false, error: 'bad item id' })
+    }
+    return reply(res, await deps.plan.updateItem(id, body, url.searchParams))
+  }
+  const read = Object.hasOwn(PLAN_READS, url.pathname) ? PLAN_READS[url.pathname] : undefined
+  if (read) {
+    if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'use GET' })
+    if (!deps.plan) return send(res, 404, { ok: false, error: 'Plan is not available' })
+    return reply(res, await deps.plan[read](url.searchParams))
   }
   const review = /^\/v1\/sessions\/([\w-]{1,100})\/review$/.exec(url.pathname)
   if (!review) return send(res, 404, { ok: false, error: 'unknown endpoint' })

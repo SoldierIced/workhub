@@ -5,7 +5,7 @@ import { createLinkService, slackTeamIdFromState, type LinkDeps } from '../src/m
 function setup(over: Partial<LinkDeps> & { profile?: object } = {}) {
   const opened: string[] = []
   const ran: LinkCommand[] = []
-  const config = parseConfig({ version: 7, activeProfileId: 'p', profiles: [{ id: 'p', name: 'P', ...over.profile }] })
+  const config = parseConfig({ version: 8, activeProfileId: 'p', profiles: [{ id: 'p', name: 'P', ...over.profile }] })
   const deps: LinkDeps = {
     platform: 'darwin',
     config: async () => config,

@@ -43,6 +43,9 @@ import type { CodeHostApi } from './codehost-api'
 import type { ContinuityApi } from './continuity-api'
 import type { HealthApi } from './health-api'
 import type { FlowMapsApi } from './flow-maps-api'
+import type { PlanApi } from './plan-api'
+import type { PlannerApi } from './planner-api'
+import type { MetricAlertsApi } from './metric-alerts-api'
 import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
 import type { TicketsApi } from './tickets-api'
@@ -428,6 +431,9 @@ export interface HubApi {
   updates: UpdatesApi
   health: HealthApi
   flowMaps: FlowMapsApi
+  plan: PlanApi
+  planner: PlannerApi
+  metricAlerts: MetricAlertsApi
   prEvents: PrEventsApi
   links: LinksApi
   slack: SlackApi

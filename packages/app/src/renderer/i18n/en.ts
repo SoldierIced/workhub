@@ -3,6 +3,7 @@ import { aiReviewEn } from './aiReview.en'
 import { sessionsUxEn } from './sessionsUx.en'
 import { sessionMonitorEn } from './sessionMonitor.en'
 import { healthEn } from './health.en'
+import { metricAlertsEn } from './metricAlerts.en'
 import { flowMapsEn } from './flowMaps.en'
 import { healthPromptsEn } from './healthPrompts.en'
 import { prEventsEn } from './prEvents.en'
@@ -26,6 +27,8 @@ import { windowsEn } from './windows.en'
 import { slashCommandsEn } from './slashCommands.en'
 import { localReviewEn } from './localReview.en'
 import { unsavedEn } from './unsaved.en'
+import { planEn } from './plan.en'
+import { plannerEn } from './planner.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -437,6 +440,7 @@ export const en = {
   ...updatesEn,
   ...setupEn,
   ...healthEn,
+  ...metricAlertsEn,
   ...flowMapsEn,
   ...healthPromptsEn,
   ...prEventsEn,
@@ -459,5 +463,7 @@ export const en = {
   ...windowsEn,
   ...slashCommandsEn,
   ...localReviewEn,
-  ...unsavedEn
+  ...unsavedEn,
+  ...planEn,
+  ...plannerEn
 } as const

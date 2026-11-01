@@ -1,8 +1,15 @@
 import {
+  PRODUCT_ASSIGNED,
+  PRODUCT_QUERY_RESULTS,
   TrackerError,
   isTicketKey,
   pullRequestUrlsIn,
+  searchLimit,
   type ConnectionTest,
+  type CreateIssueInput,
+  type CreatedIssue,
+  type SearchOptions,
+  type TicketSummary,
   type ListTicketsOptions,
   type StatusCategory,
   type Ticket,
@@ -39,6 +46,20 @@ interface Seed {
   labels: string[]
   comments: { author: string; body: string; minutesAgo: number }[]
 }
+
+/** The team-lead scenario's tickets (`WORKHUB_DEMO_SCENARIO=team-lead`): NOTE, WEB and OPS keys. */
+const PRODUCT_SPRINT = { id: '41', name: 'Sprint 41', state: 'active' as const, startDate: '2026-10-19T09:00:00Z' }
+const PRODUCT_SEEDS: Seed[] = PRODUCT_ASSIGNED.map((t) => ({
+  key: t.key,
+  title: t.title,
+  state: t.state,
+  ...(t.sprint ? { sprint: PRODUCT_SPRINT } : {}),
+  type: t.type,
+  priority: t.priority,
+  description: t.description,
+  labels: t.labels,
+  comments: t.comments ?? []
+}))
 
 const SEEDS: Seed[] = [
   {
@@ -110,18 +131,47 @@ const SEEDS: Seed[] = [
   }
 ]
 
+/** A small stable number from a string, so the same demo query always finds the same tickets. */
+function hashOf(text: string): number {
+  let h = 0
+  for (const ch of text) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return h
+}
+
+/** Synthetic tickets for a query: between 4 and 15, a stable share of them done or in progress. */
+export function demoSearch(query: string, limit: number): TicketSummary[] {
+  const h = hashOf(query.trim().toLowerCase())
+  const total = 4 + (h % 12)
+  const done = Math.floor(total * (((h >> 4) % 70) / 100))
+  const inProgress = Math.min(total - done, 1 + ((h >> 8) % 3))
+  const prefix = 100 + (h % 800)
+  return Array.from({ length: Math.min(total, limit) }, (_, i) => {
+    const state = STATES[i < done ? 'done' : i < done + inProgress ? 'progress' : 'todo']!
+    const key = `DEMO-${prefix + i}`
+    return { key, title: `Demo work item ${i + 1} for "${query.trim().slice(0, 40)}"`, status: state.name, category: state.category, url: `https://demo.example.com/browse/${key}` }
+  })
+}
+
 function minutesAgo(m: number): number {
   return Date.now() - m * 60_000
 }
 
 export class DemoTracker implements TicketTracker {
   readonly provider: string
-  readonly capabilities: TrackerCapabilities = { sprints: true, transitions: true, comments: true, assign: true }
-  private readonly state = new Map<string, keyof typeof STATES>(SEEDS.map((s) => [s.key, s.state]))
+  readonly capabilities: TrackerCapabilities = { sprints: true, transitions: true, comments: true, assign: true, search: true, create: true }
+  private readonly seeds: Seed[]
+  private readonly product: boolean
+  private readonly state: Map<string, keyof typeof STATES>
   private readonly extraComments = new Map<string, TicketComment[]>()
+  /** Issues created in this run (kept in memory only). */
+  readonly created: (CreateIssueInput & CreatedIssue)[] = []
 
-  constructor(provider = 'jira') {
+  /** `scenario: 'team-lead'` serves the team-lead scenario's tickets and milestone queries instead of the generic ones. */
+  constructor(provider = 'jira', options: { scenario?: string } = {}) {
     this.provider = provider
+    this.product = options.scenario === 'team-lead'
+    this.seeds = this.product ? PRODUCT_SEEDS : SEEDS
+    this.state = new Map(this.seeds.map((s) => [s.key, s.state]))
   }
 
   isTicketKey(text: string): boolean {
@@ -134,11 +184,11 @@ export class DemoTracker implements TicketTracker {
 
   async listAssigned(options: ListTicketsOptions = {}): Promise<Ticket[]> {
     const hidden = new Set((options.ignoredStatuses ?? []).map((s) => s.toLowerCase()))
-    return SEEDS.map((s) => this.ticket(s)).filter((t) => t.category !== 'done' && !hidden.has(t.status.toLowerCase()))
+    return this.seeds.map((s) => this.ticket(s)).filter((t) => t.category !== 'done' && !hidden.has(t.status.toLowerCase()))
   }
 
   async getTicket(key: string): Promise<TicketDetail | null> {
-    const seed = SEEDS.find((s) => s.key === key)
+    const seed = this.seeds.find((s) => s.key === key)
     if (!seed) return null
     const comments: TicketComment[] = [
       ...seed.comments.map((c, i) => ({ id: `${key}-c${i}`, author: c.author, body: c.body, createdAt: minutesAgo(c.minutesAgo) })),
@@ -177,6 +227,21 @@ export class DemoTracker implements TicketTracker {
   }
 
   async assignToMe(): Promise<void> {}
+
+  async searchByQuery(query: string, options?: SearchOptions): Promise<TicketSummary[]> {
+    if (!query.trim()) throw new TrackerError('The query is empty')
+    const known = this.product ? PRODUCT_QUERY_RESULTS[query.trim()] : undefined
+    return known ? known.slice(0, searchLimit(options)) : demoSearch(query, searchLimit(options))
+  }
+
+  async createIssue(input: CreateIssueInput): Promise<CreatedIssue> {
+    if (!input.project.trim()) throw new TrackerError('No project is set')
+    if (!input.title.trim()) throw new TrackerError('The title is empty')
+    const key = `${input.project.trim().toUpperCase()}-${900 + this.created.length}`
+    const issue = { key, url: `https://demo.example.com/browse/${key}` }
+    this.created.push({ ...input, ...issue })
+    return issue
+  }
 
   private ticket(seed: Seed): Ticket {
     const s = STATES[this.state.get(seed.key) ?? seed.state]!

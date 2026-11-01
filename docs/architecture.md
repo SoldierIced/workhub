@@ -10,7 +10,7 @@ An npm workspace with three packages. Dependencies point inward.
 | Package | Role | May depend on |
 |---|---|---|
 | `packages/core` | Domain models, ports (interfaces), use cases, the config schema. Pure TypeScript; its only runtime dependency is `zod`. No Electron or Node APIs. | nothing in the repo |
-| `packages/adapters` | Implementations of the ports on Node and Electron: agents, code hosts, trackers, chat, health, storage, transcript readers. | `core` |
+| `packages/adapters` | Implementations of the ports on Node and Electron: agents, code hosts, trackers, chat, health, calendars, storage, transcript readers. | `core` |
 | `packages/app` | The Electron shell: main process, preload bridge and the React renderer (Tailwind and Radix, English and Spanish). | `core`, `adapters` |
 
 Workspace packages ship TypeScript source and the app bundles them with electron-vite, so there is
@@ -39,11 +39,20 @@ adapter, not by reaching into a service from the UI.
 | `AgentRuntime` | `agent-claude-native`, `agent-acp`, `agent-terminal` |
 | Transcript readers (fill the common monitor model) | `transcript-claude`, `-kiro`, `-opencode`, `-codex` |
 | Code host | `codehost-github` (`gh`), `codehost-gitlab` (`glab`) |
-| Ticket tracker | `tracker-jira`, `tracker-linear`, `tracker-demo` |
+| Ticket tracker (capabilities: sprints, transitions, comments, assign, and the optional `search` and `create` that Plan uses) | `tracker-jira`, `tracker-linear`, `tracker-demo` |
 | Chat source | `chat-slack` (through a Claude account's Slack connector) |
 | Health provider | `health-elastic` |
+| Calendar source (`CalendarSource`; ICS parsing, recurrence and rules are pure code in `core/calendar`) | `calendar-ics` (private ICS address over https, 20 s timeout, 5 MB cap; also the demo source) |
+| `MetricSource` (daily samples for metric alerts) | Health's own read (`HealthMetricSource` in the main process), synthetic history in the Health demo |
 | Config and secrets | `config-json`, `secrets-electron` (Electron `safeStorage`) |
 | Other | `pr-events-json`, `git-review`, `token-spend`, `workhub1-import` |
+
+Trackers declare optional capabilities too. `searchByQuery` (Jira: JQL through
+`/rest/api/3/search/jql`, paged up to a cap; Linear: a project, or a team key and a label) counts
+Plan's milestones, and `createIssue` (Jira: `POST /rest/api/3/issue` with an ADF description;
+Linear: `issueCreate` in a team found by key) turns approved inbox items into issues. Both take a
+generic priority from 1 (highest) to 4 that each adapter maps to its own scale. A tracker without
+them hides those features.
 
 Agents declare their capabilities (app mode, transcript, usage, plan usage, history, hooks, models,
 MCP status and control, sub-agents, permission requests, image input, mid-turn input). The UI
@@ -74,6 +83,16 @@ never breaks the session.
   encrypted with `safeStorage`. Workhub refuses to store a secret when OS encryption is
   unavailable. GitHub and GitLab access reuses the `gh` and `glab` sign-ins; Slack goes through a
   Claude account's connector. See [SECURITY.md](../SECURITY.md).
+- The local control endpoint (`control-server.ts`) is HTTP over a Unix socket in the data folder
+  (mode `0600`; a named pipe on Windows), so only the user's own processes reach it. Every session
+  gets `WORKHUB_SOCKET` and `WORKHUB_SESSION` in its environment; a request acts on the profile of
+  the session it names, else a named profile, else the active one. Bodies are capped at 256 KB and
+  checked field by field. Endpoints: `POST /v1/sessions/:id/review` (open the human review),
+  `POST /v1/flow-maps`, and Plan's (`plan-control.ts`): `GET /v1/plan/today`, `GET` and `POST
+  /v1/inbox`, `PATCH /v1/inbox/:id` (local moves and fields only: approving an item to the tracker
+  stays a human action in the UI), `GET /v1/milestones` and `GET /v1/people` (no notes). Changes
+  go through the same services as the UI, which push change events to open windows. Agents learn
+  them from the skills in `skills/` (`workhub-flow-map`, `workhub-plan`).
 - Agents run with their own permission modes and MCP servers and can execute code on the machine.
   The effective permission mode of each session is shown in its header.
 
@@ -88,8 +107,9 @@ running app.
 |---|---|
 | `config.json` | Connections, accounts, profiles, options. Never secrets. |
 | `secrets.json` | Tokens, encrypted with `safeStorage`. |
+| `control.sock` | The control endpoint's socket (a temp folder when the data folder's path is too long; a named pipe on Windows). |
 | `logs/` | `main.log` and rotated copies; see [Troubleshooting](troubleshooting.md#logs). |
-| State files (`*.json`) | Open sessions, session names and windows, agent options, token spend, usage alerts and budgets (including per-session), API spend ledger, Slack state, automation state, pull request events, health alerts, ticket watch. Written through a small `StateFile` helper. They can hold session titles, repository names and Slack message text, and no credentials. |
+| State files (`*.json`) | Open sessions, session names and windows, agent options, token spend, usage alerts and budgets (including per-session), API spend ledger, Slack state, automation state, pull request events, health alerts, metric alerts (`metric-alerts.json`: daily series and alerts per profile), ticket watch, Plan (`calendar-state.json`: reminders already fired and meeting briefs started, pruned after a few days; `planner-state.json`: milestones, their last tracker counts and the inbox per profile, closed inbox items pruned after 7 days). Written through a small `StateFile` helper. They can hold session titles, repository names and Slack message text, and no credentials. |
 | `ai-review/` | Read-only checkouts used by the review loop; its state is in `ai-review-state.json`. |
 | `pasted-images/` | Images pasted into prompts. |
 | `slack-hook/`, `kiro-usage/` | Support folders for the Slack tracking hook and the Kiro usage probe. |
@@ -134,5 +154,7 @@ the Finder or a desktop launcher inherits a bare one.
 - Smoke tests drive a real app: start it with `--remote-debugging-port=9222` and use
   `packages/app/scripts/drive.mjs` over CDP. `packages/app/scripts/demo-agent.mjs` is a custom ACP
   agent that exercises automations without a model. The `WORKHUB_DEMO_*` environment variables serve
-  synthetic tickets, pull requests, Slack, Health and usage data (see the
-  [README](../README.md#development)).
+  synthetic tickets, pull requests, Slack, Health, calendar (`WORKHUB_DEMO_CALENDAR=1`) and usage data (see the
+  [README](../README.md#development)). `npm run demo` (`scripts/demo.mjs`) sets them all plus
+  `WORKHUB_DEMO_SCENARIO=team-lead`: `core/scenario` holds the synthetic "team lead" day as pure
+  functions of `now`, and the main process seeds it into an isolated data folder (`demo-scenario.ts`).

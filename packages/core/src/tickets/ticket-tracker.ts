@@ -1,5 +1,9 @@
 import type {
   ConnectionTest,
+  CreateIssueInput,
+  CreatedIssue,
+  SearchOptions,
+  TicketSummary,
   ListTicketsOptions,
   Ticket,
   TicketDetail,
@@ -26,6 +30,20 @@ export interface TicketTracker {
   /** Blank lines start paragraphs. */
   addComment(key: string, text: string): Promise<void>
   assignToMe(key: string): Promise<void>
+  /**
+   * Tickets matching a tracker query, any status (`capabilities.search`). Jira: a JQL query.
+   * Linear: a project name or id (`project:` optional), or `team:KEY label:Name`.
+   */
+  searchByQuery?(query: string, options?: SearchOptions): Promise<TicketSummary[]>
+  /** Creates an issue (`capabilities.create`). */
+  createIssue?(input: CreateIssueInput): Promise<CreatedIssue>
+}
+
+/** Ticket counts by status category, e.g. for a milestone's progress. */
+export function countByCategory(tickets: readonly Pick<TicketSummary, 'category'>[]): { total: number; todo: number; inProgress: number; done: number } {
+  const counts = { total: tickets.length, todo: 0, inProgress: 0, done: 0 }
+  for (const t of tickets) counts[t.category] += 1
+  return counts
 }
 
 /** A tracker call that failed in a way the user can read (bad credentials, network, 404). */

@@ -10,6 +10,7 @@ import { ROUTE_ICON, ROUTE_LABEL } from '../../lib/routes'
 import { shortcutLabel } from '../../lib/shortcuts'
 import { slackUnreadCount, topNavLabel, worstHealthState } from '../../lib/topNav'
 import { useCachedPullRequestLists } from '../../pullRequestsStore'
+import { usePlanner } from '../../plannerStore'
 import { StateDot } from '../atoms/StateDot'
 
 export interface TopNavProps {
@@ -41,6 +42,8 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
   const healthOn = items.some((i) => i.route === 'health')
   const { view: health } = useHealth(profileId, healthOn)
   const lists = useCachedPullRequestLists(profileId)
+  const planOn = items.some((i) => i.route === 'plan')
+  const { view: planner } = usePlanner(profileId, planOn)
   const navRef = useRef<HTMLElement>(null)
   // How far the bar folded at this width (0 full, 1 tight, 2 icons but the active label, 3 icons
   // only); a new width starts again from the full bar.
@@ -65,6 +68,7 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
   const unread = slack && slack.health !== 'off' ? slackUnreadCount(slack.threads, slack.me) : 0
   const toReview = lists?.toReview.length ?? 0
   const healthState = healthOn ? worstHealthState(health) : null
+  const pendingInbox = planOn ? (planner?.inbox.filter((i) => i.status === 'pending').length ?? 0) : 0
 
   const extra = (r: Route): { badge: ReactNode; note?: string } => {
     if (r === 'slack' && unread > 0) {
@@ -74,6 +78,10 @@ export function TopNav({ items, route, onNavigate, profileId }: TopNavProps) {
     if (r === 'pullRequests' && toReview > 0) {
       const note = tn('topNav.prsToReview', toReview)
       return { badge: <Count value={toReview} label={note} />, note }
+    }
+    if (r === 'plan' && pendingInbox > 0) {
+      const note = tn('topNav.inboxPending', pendingInbox)
+      return { badge: <Count value={pendingInbox} label={note} />, note }
     }
     if (r === 'health' && healthState) {
       const note = t('topNav.health', { state: t(HEALTH_LABEL[healthState]) })

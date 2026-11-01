@@ -14,6 +14,7 @@ On macOS the modifier is ⌘. On Windows and Linux use Ctrl in its place.
 | ⌘/Ctrl+6 | History |
 | ⌘/Ctrl+7 | Flow maps (when the module is on) |
 | ⌘/Ctrl+8 | Health (when the module is on) |
+| ⌘/Ctrl+9 | Plan (when the module is on) |
 | ⌘/Ctrl+0 | Sessions |
 | ⌘/Ctrl+, | Settings |
 
