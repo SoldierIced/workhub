@@ -14,7 +14,7 @@ levels and where tickets go are yours to set.
 Plan is an optional module, off by default. Turn it on per profile in **Settings → Plan → Plan
 module** (or **Settings → Profiles → Modules**). The **Plan** screen (⌘9) then appears in the
 navigation and Home gets the **Next meetings**, **Inbox** and **Milestones at risk** cards. The Plan
-item in the navigation shows how many inbox items wait for approval.
+item in the navigation shows how many inbox items wait under **To review**.
 
 ## Adding a calendar
 
@@ -304,7 +304,7 @@ Items come from:
   urgent, 2 high, 3 medium, 4 low). Empty by default; **Start from four levels** fills a common set
   you can rename.
 - **Tracker for new issues** (the profile's tracker by default) and **Project** (Jira project key,
-  Linear team key). Approving needs a project.
+  Linear team key). **Create ticket** needs a project.
 - **Issue type for tasks** and **for bugs** (Jira only; empty uses `Task` and `Bug`).
 - **Issue description**: a template with `{title}`, `{detail}`, `{source}` and `{link}`.
 - **At-risk margin** for milestones.

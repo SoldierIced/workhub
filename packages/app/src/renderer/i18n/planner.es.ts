@@ -6,7 +6,7 @@ export const plannerEs: Record<keyof typeof plannerEn, string> = {
   'topNav.inboxPending.one': '{count} elemento por revisar (bandeja o hitos)',
   'topNav.inboxPending.other': '{count} elementos por revisar (bandeja o hitos)',
   'metricAlerts.action.sendToInbox': 'Enviar a la bandeja',
-  'metricAlerts.action.sendToInboxHint': 'Agrega un bug pendiente con los datos de esta alerta a la bandeja de Plan. Nada llega al gestor de tickets hasta que lo apruebes.',
+  'metricAlerts.action.sendToInboxHint': 'Agrega un bug pendiente con los datos de esta alerta a la bandeja de Plan. Nada llega al gestor de tickets hasta que elijas Crear ticket.',
   'metricAlerts.sentToInbox': 'Enviada a la bandeja, para revisar',
 
   'planner.milestones.intro': 'Períodos de trabajo con su avance frente al tiempo transcurrido. El avance se escribe a mano, se cuenta desde una consulta del gestor de tickets o se pesa desde las piezas que lo forman.',
@@ -144,7 +144,7 @@ export const plannerEs: Record<keyof typeof plannerEn, string> = {
   'planner.home.open': 'Abrir',
 
   'planner.settings.inbox': 'Bandeja',
-  'planner.settings.inboxHelp': 'Cómo se clasifican los elementos de la bandeja y dónde se crean los issues de las tareas y bugs aprobados. Las decisiones se registran en Workhub y nunca van al gestor.',
+  'planner.settings.inboxHelp': 'Cómo se clasifican los elementos de la bandeja y dónde se crean los issues de las tareas y bugs cuando eliges Crear ticket. Las decisiones se registran en Workhub y nunca van al gestor.',
   'planner.settings.areas': 'Áreas',
   'planner.settings.areasHint': 'Separadas por comas, por ejemplo los equipos o partes del producto con que clasificas el trabajo.',
   'planner.settings.criticalities': 'Niveles de criticidad',
@@ -159,7 +159,7 @@ export const plannerEs: Record<keyof typeof plannerEn, string> = {
   'planner.settings.priority.3': '3 · Media',
   'planner.settings.priority.4': '4 · Baja',
   'planner.settings.tracker': 'Gestor para los issues nuevos',
-  'planner.settings.trackerHint': 'Los elementos aprobados se crean aquí.',
+  'planner.settings.trackerHint': 'Crear ticket crea los issues aquí.',
   'planner.settings.trackerDefault': 'El gestor del perfil',
   'planner.settings.project': 'Proyecto',
   'planner.settings.projectHint': 'Jira: la clave del proyecto. Linear: la clave del equipo.',

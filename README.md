@@ -219,7 +219,7 @@ everything below is synthetic.
 
 Briefs never start by themselves in the demo: when a brief rule matches, a notification says it
 would start a brief. **Prepare brief** on a meeting does start a real agent session, which uses
-your agent account. Approving an inbox item creates a synthetic issue kept in memory only.
+your agent account. **Create ticket** on an inbox item creates a synthetic issue kept in memory only.
 The data is dated from the first run: use `--reset` on another day to refresh it.
 
 Data folder, in order of precedence: `WORKHUB_DATA_DIR`; `packages/app/.dev-data/` in a development
