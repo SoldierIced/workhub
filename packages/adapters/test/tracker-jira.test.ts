@@ -224,3 +224,57 @@ describe('ADF', () => {
     expect(textToAdf('  ').content).toHaveLength(0)
   })
 })
+
+describe('JiraTracker search and create', () => {
+  it('searches any status with JQL, page by page up to the limit', async () => {
+    const pages: Record<string, unknown> = {
+      '': { issues: [issue('PAY-1', status('Done', 'done')), issue('PAY-2', status('In Progress', 'indeterminate'))], nextPageToken: 'p2', isLast: false },
+      p2: { issues: [issue('PAY-3', status('To Do', 'new'))], isLast: true }
+    }
+    const { tracker, calls } = make({ 'GET /rest/api/3/search/jql': (_req, url) => ({ body: pages[url.searchParams.get('nextPageToken') ?? ''] }) })
+    expect(tracker.capabilities).toMatchObject({ search: true, create: true })
+    const found = await tracker.searchByQuery('project = PAY AND fixVersion = "1.4"', { limit: 50 })
+    expect(found.map((t) => [t.key, t.category])).toEqual([
+      ['PAY-1', 'done'],
+      ['PAY-2', 'inProgress'],
+      ['PAY-3', 'todo']
+    ])
+    expect(found[0]!.url).toBe('https://acme.example.com/browse/PAY-1')
+    expect(calls).toHaveLength(2)
+    expect(calls[0]!.url.searchParams.get('jql')).toBe('project = PAY AND fixVersion = "1.4"')
+    expect(calls[0]!.url.searchParams.get('fields')).toBe('summary,status')
+    expect(calls[0]!.url.searchParams.get('maxResults')).toBe('50')
+    expect(calls[1]!.url.searchParams.get('nextPageToken')).toBe('p2')
+  })
+
+  it('stops at the limit even when more pages exist', async () => {
+    const { tracker, calls } = make({ 'GET /rest/api/3/search/jql': () => ({ body: { issues: [issue('PAY-1', status('To Do', 'new')), issue('PAY-2', status('To Do', 'new'))], nextPageToken: 'more' } }) })
+    expect(await tracker.searchByQuery('project = PAY', { limit: 2 })).toHaveLength(2)
+    expect(calls).toHaveLength(1)
+    await expect(tracker.searchByQuery('  ')).rejects.toThrow(/empty/)
+  })
+
+  it('creates an issue with an ADF description, a mapped priority and labels without spaces', async () => {
+    const { tracker, calls } = make({ 'POST /rest/api/3/issue': () => ({ status: 201, body: { id: '10001', key: 'PAY-124' } }) })
+    const created = await tracker.createIssue({ project: 'PAY', issueType: 'Bug', title: 'Checkout errors jumped', description: 'Value 90.\n\nSource: alert', priority: 2, labels: ['from inbox'] })
+    expect(created).toEqual({ key: 'PAY-124', url: 'https://acme.example.com/browse/PAY-124' })
+    const body = JSON.parse(calls[0]!.req.body!)
+    expect(body.fields).toEqual({
+      project: { key: 'PAY' },
+      issuetype: { name: 'Bug' },
+      summary: 'Checkout errors jumped',
+      description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Value 90.' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'Source: alert' }] }] },
+      priority: { name: 'High' },
+      labels: ['from-inbox']
+    })
+  })
+
+  it('defaults the issue type to Task and reports what Jira refused', async () => {
+    const ok = make({ 'POST /rest/api/3/issue': () => ({ body: { key: 'PAY-1' } }) })
+    await ok.tracker.createIssue({ project: 'PAY', title: 'x', description: '' })
+    expect(JSON.parse(ok.calls[0]!.req.body!).fields).toEqual({ project: { key: 'PAY' }, issuetype: { name: 'Task' }, summary: 'x' })
+    const bad = make({ 'POST /rest/api/3/issue': () => ({ status: 400, body: { errors: { project: 'valid project is required' } } }) })
+    await expect(bad.tracker.createIssue({ project: 'NOPE', title: 'x', description: '' })).rejects.toThrow('valid project is required')
+    await expect(ok.tracker.createIssue({ project: ' ', title: 'x', description: '' })).rejects.toThrow(/project/)
+  })
+})

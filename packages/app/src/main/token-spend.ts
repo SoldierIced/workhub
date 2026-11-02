@@ -36,6 +36,7 @@ export interface TokenSpendDeps {
 export class TokenSpendService {
   private readonly scanner: TokenSpendScanner
   private buckets: SpendBuckets = {}
+  private reads: SpendBuckets = {}
   private scannedAt: number | null = null
   private scanning = false
   private timer: ReturnType<typeof setInterval> | null = null
@@ -46,6 +47,7 @@ export class TokenSpendService {
     this.scanner = new TokenSpendScanner(deps.store.load(emptySpendCache()))
     // What the last run found, until the first scan of this run ends.
     this.buckets = this.scanner.cached(spendWindowStart(this.now()))
+    this.reads = this.scanner.cacheReads(spendWindowStart(this.now()))
   }
 
   private now(): number {
@@ -74,6 +76,7 @@ export class TokenSpendService {
     try {
       const sources = await this.deps.sources()
       this.buckets = await this.scanner.scan(sources, startOfLocalDay(now, SPEND_DAYS - 1), spendWindowStart(now))
+      this.reads = this.scanner.cacheReads(spendWindowStart(now))
       this.scannedAt = this.now()
       this.worktrees = new Map()
       this.deps.store.save(this.scanner.snapshot())
@@ -107,14 +110,14 @@ export class TokenSpendService {
     // A linked worktree counts for its repository (and so for the profile owning it), wherever it
     // lives: outside the folders, or next to the repository inside one.
     const paths = new Set<string>()
-    for (const key of Object.keys(this.buckets)) {
+    for (const key of [...Object.keys(this.buckets), ...Object.keys(this.reads)]) {
       const parsed = parseSpendKey(key)
       if (parsed && parsed.day >= sinceDay) paths.add(parsed.path)
     }
     // The child folders too: a removed worktree may be named after a live one (see `folderSpend`).
     for (const [folder, kids] of Object.entries(children)) for (const kid of kids) paths.add(join(folder, kid))
     const aliases = hasFolders ? await worktreeAliases(paths, this.worktrees) : {}
-    const entries = folderSpend(this.buckets, folders, { sinceDay, children, owns, aliases })
+    const entries = folderSpend(this.buckets, folders, { sinceDay, children, owns, aliases, cacheReads: this.reads })
     return { entries, days: SPEND_DAYS, scannedAt: this.scannedAt, scanning: this.scanning, hasFolders }
   }
 }

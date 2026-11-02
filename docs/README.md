@@ -20,6 +20,7 @@ Start with [Getting started](user-guide/getting-started.md), or browse the [user
 | [Slack](user-guide/slack.md) | Watched channels and followed threads |
 | [Health](user-guide/health.md) | Errors, pods and slow endpoints from Elasticsearch |
 | [Flow maps](user-guide/flow-maps.md) | Diagrams of a business flow across services (⌘7), measured from APM, with its real executions; written by you or by an agent (`skills/workhub-flow-map`) |
+| [Plan](user-guide/plan.md) | Today's and tomorrow's meetings from your calendars (⌘9), reminders, agent-prepared meeting briefs, the people you meet, milestones and an inbox; agents read and update it (`skills/workhub-plan`) |
 | [Automations](user-guide/automations.md) | Prompts sent to a dedicated session on an event or a schedule |
 | [History](user-guide/history.md) | Past sessions, resumable |
 | [Usage and budgets](user-guide/usage.md) | Plan usage, ceilings, per-session limits, token spend |

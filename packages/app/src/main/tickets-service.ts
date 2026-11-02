@@ -62,7 +62,9 @@ export class TicketService {
     private readonly configuration: ConfigurationService,
     private readonly secrets: SecretStore,
     private readonly demo: boolean,
-    private readonly http?: HttpClient
+    private readonly http?: HttpClient,
+    /** The demo scenario whose tickets the demo tracker serves (`WORKHUB_DEMO_SCENARIO`). */
+    private readonly demoScenario?: string
   ) {}
 
   async resolve(profileId: string | null): Promise<Resolved> {
@@ -73,7 +75,7 @@ export class TicketService {
     const ignoredStatuses = connection ? list(connection.settings[TRACKER_SETTINGS.ignoredStatuses]) : []
     const base = { provider: connection?.provider, connectionName: connection ? connection.name || connection.id : undefined, projectKeys }
     if (this.demo && profileId) {
-      const tracker = this.demos.get(profileId) ?? new DemoTracker(connection?.provider ?? 'jira')
+      const tracker = this.demos.get(profileId) ?? new DemoTracker(connection?.provider ?? 'jira', { scenario: this.demoScenario })
       this.demos.set(profileId, tracker)
       return { status: { ...base, state: 'demo' }, tracker, ignoredStatuses }
     }
@@ -89,7 +91,7 @@ export class TicketService {
   }
 
   async test(connection: Connection, change: SecretChange): Promise<ConnectionTest> {
-    if (this.demo) return new DemoTracker(connection.provider).testConnection()
+    if (this.demo) return new DemoTracker(connection.provider, { scenario: this.demoScenario }).testConnection()
     const resolved = await secretForConnectionTest(await this.configuration.current(), this.secrets, connection, change)
     if (!resolved.ok) return resolved
     const { secret } = resolved
@@ -99,6 +101,26 @@ export class TicketService {
       return await built.tracker.testConnection()
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+
+  /**
+   * The tracker of a connection for a profile's Plan features (milestones, inbox): the given tracker
+   * connection, or the profile's own when none is named. The demo serves the profile's demo tracker.
+   */
+  async trackerFor(profileId: string, connectionId?: string): Promise<{ tracker: TicketTracker } | { error: string }> {
+    try {
+      if (!connectionId || this.demo) {
+        const { tracker, status } = await this.resolve(profileId)
+        return tracker ? { tracker } : { error: NOT_READY[status.state] }
+      }
+      const connection = (await this.configuration.current()).connections.find((c) => c.id === connectionId && c.kind === 'tracker')
+      if (!connection) return { error: 'The tracker connection no longer exists' }
+      const secret = connection.secretRef ? await this.secrets.get(connection.secretRef) : null
+      const built = buildTracker(connection, secret, this.http)
+      return 'missing' in built ? { error: NOT_READY[built.missing] } : { tracker: built.tracker }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) }
     }
   }
 

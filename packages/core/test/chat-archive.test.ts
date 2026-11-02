@@ -67,7 +67,7 @@ describe('archived Slack threads', () => {
     expect(threadArchiveMinutes({})).toBe(15)
     expect(threadArchiveMinutes({ slackArchiveMinutes: 0 })).toBe(1)
     expect(threadArchiveMinutes({ slackArchiveMinutes: 45 })).toBe(45)
-    expect(migrateConfig({ version: 4, profiles: [{ id: 'p', name: 'P' }] })).toEqual({ version: 7, profiles: [{ id: 'p', name: 'P' }] })
+    expect(migrateConfig({ version: 4, profiles: [{ id: 'p', name: 'P' }] })).toEqual({ version: 8, profiles: [{ id: 'p', name: 'P' }] })
     const parsed = parseConfig({ version: 4, profiles: [{ id: 'p', name: 'P' }, { id: 'q', name: 'Q', slackArchiveMinutes: 30 }] })
     expect(threadArchiveMinutes(parsed.profiles[0])).toBe(15)
     expect(parsed.profiles[1]?.slackArchiveMinutes).toBe(30)

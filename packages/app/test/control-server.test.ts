@@ -3,7 +3,7 @@ import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { controlEnv, controlSocketPath, parseReviewBody, startControlServer, type ReviewRequestRepo } from '../src/main/control-server'
+import { controlEnv, controlSocketPath, newControlToken, parseReviewBody, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -27,7 +27,42 @@ describe('control endpoint', () => {
     expect(controlSocketPath('/data/wh', 'darwin')).toBe(join('/data/wh', 'control.sock'))
     expect(controlSocketPath(`/${'x'.repeat(120)}`, 'darwin')).toMatch(/workhub-control-[0-9a-f]{16}\.sock$/)
     expect(controlSocketPath('C:\\data', 'win32')).toMatch(/^\\\\\.\\pipe\\workhub-control-[0-9a-f]{16}$/)
-    expect(controlEnv('s1', '/x.sock')).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_SOCKET: '/x.sock' })
+    expect(controlEnv('s1', { socket: '/x.sock' })).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_SOCKET: '/x.sock' })
+    expect(controlEnv('s1', { url: 'http://127.0.0.1:5000', token: 't' })).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_URL: 'http://127.0.0.1:5000', WORKHUB_TOKEN: 't' })
+    expect(controlEnv('s1', null)).toEqual({ WORKHUB_SESSION: 's1' })
+    expect(usesLoopbackControl('win32')).toBe(true)
+    expect(usesLoopbackControl('darwin')).toBe(false)
+    expect(newControlToken()).toMatch(/^[0-9a-f]{64}$/)
+    expect(newControlToken()).not.toBe(newControlToken())
+  })
+
+  it('serves on a loopback port only with the token and without a browser origin (Windows)', async () => {
+    const token = newControlToken()
+    const opened: string[] = []
+    const started = await startLoopbackControlServer(token, { openReview: (id) => (opened.push(id), { ok: true }) })
+    expect(started).not.toBeNull()
+    const { server, url } = started!
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    const port = Number(new URL(url).port)
+    const hit = (headers: Record<string, string>, method = 'GET', path = '/v1/health') =>
+      new Promise<number>((resolve, reject) => {
+        const req = request({ host: '127.0.0.1', port, method, path, headers: { 'content-type': 'application/json', ...headers } }, (res) => {
+          res.resume()
+          res.on('end', () => resolve(res.statusCode ?? 0))
+        })
+        req.on('error', reject)
+        req.end(method === 'POST' ? '{}' : undefined)
+      })
+    try {
+      expect(await hit({})).toBe(401)
+      expect(await hit({ authorization: 'Bearer nope' })).toBe(401)
+      expect(await hit({ authorization: `Bearer ${token}`, origin: 'https://evil.example.com' })).toBe(401)
+      expect(await hit({ authorization: `Bearer ${token}` })).toBe(200)
+      expect(await hit({ authorization: `Bearer ${token}` }, 'POST', '/v1/sessions/s1/review')).toBe(200)
+      expect(opened).toEqual(['s1'])
+    } finally {
+      server.close()
+    }
   })
 
   it('checks the repos of a review request', () => {

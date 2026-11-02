@@ -1,8 +1,13 @@
 /**
  * The local control endpoint: lets tools an agent runs inside a Workhub session ask Workhub for
- * something, today only "open the human review of my changes". It is HTTP over a Unix socket in
- * the data folder (a named pipe on Windows), so only the user's own processes reach it; every
- * session gets `WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (the path) in its environment.
+ * something: "open the human review of my changes", store a flow map, read and update the plan.
+ *
+ * On macOS and Linux it is HTTP over a Unix socket in the data folder, so only the user's own
+ * processes reach it; every session gets `WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (the path).
+ * On Windows Node cannot serve a Unix socket and curl cannot talk to a named pipe, so it is HTTP on
+ * a random loopback port guarded by a token made at each launch: sessions get `WORKHUB_URL` and
+ * `WORKHUB_TOKEN` instead, and every request sends `Authorization: Bearer $WORKHUB_TOKEN`. The
+ * `workhub-*` skills pick whichever the session has.
  *
  *   curl --unix-socket "$WORKHUB_SOCKET" -X POST "http://workhub/v1/sessions/$WORKHUB_SESSION/review" \
  *     -H 'content-type: application/json' -d '{"repos":[{"path":"/abs/repo","base":"origin/main"}]}'
@@ -11,12 +16,28 @@
  *
  *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/flow-maps \
  *     -H 'content-type: application/json' --data-binary @checkout.flow-map.json
+ *
+ * And it takes proposals for Plan's inbox (pending items the user approves, keeps or discards):
+ *
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/inbox \
+ *     -H 'content-type: application/json' \
+ *     -d '{"session":"'"$WORKHUB_SESSION"'","items":[{"kind":"task","title":"Send the rollout plan","detail":"Agreed in the sync","people":["ana@example.com"],"due":"2026-11-05"}]}'
+ *
+ * And it lets an agent read and update its profile's plan (`plan-control.ts`; the `workhub-plan` skill):
+ *
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/plan/today?session=$WORKHUB_SESSION"
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/inbox?session=$WORKHUB_SESSION&status=local"
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X PATCH "http://workhub/v1/inbox/<id>" \
+ *     -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","status":"done"}'
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/milestones?session=$WORKHUB_SESSION"
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/people?session=$WORKHUB_SESSION"
  */
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, statSync, unlinkSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
+import type { PlanControl } from './plan-control'
 
 const MAX_BODY = 256 * 1024
 const MAX_REPOS = 20
@@ -26,6 +47,12 @@ export interface ReviewRequestRepo {
   base?: string
 }
 
+/** A whole answer: its HTTP status and JSON body. */
+export interface ControlReply {
+  status: number
+  body: Record<string, unknown>
+}
+
 export type ControlResult = { ok: true } | { ok: false; status: number; error: string }
 
 export interface ControlDeps {
@@ -33,10 +60,18 @@ export interface ControlDeps {
   openReview(sessionId: string, repos: ReviewRequestRepo[]): ControlResult
   /** Validates and stores a flow map (the Flow maps screen); errors name the fields. */
   saveFlowMap?(map: unknown): { ok: true; file: string; id: string } | { ok: false; errors: string[] }
+  /** Adds the items of a body to a profile's inbox as pending (`parseInboxProposals` checks it). */
+  addInboxItems?(body: unknown): Promise<{ ok: true; added: string[]; duplicates: string[] } | { ok: false; status: number; error: string }>
+  /** Plan for agents: today's meetings, reading and updating the inbox, milestones, people. */
+  plan?: PlanControl
   log?: (message: string) => void
 }
 
-/** Where the endpoint listens for a data folder: a socket file in it, or a named pipe on Windows. */
+/**
+ * Where the socket endpoint listens for a data folder: a socket file in it (macOS and Linux). On
+ * Windows it is a named pipe, which Node serves but curl cannot reach, so the app uses the loopback
+ * endpoint there (`startLoopbackControlServer`); the pipe stays for tests and Node clients.
+ */
 export function controlSocketPath(dataDir: string, platform: NodeJS.Platform = process.platform): string {
   const hash = createHash('sha256').update(dataDir).digest('hex').slice(0, 16)
   if (platform === 'win32') return `\\\\.\\pipe\\workhub-control-${hash}`
@@ -46,8 +81,27 @@ export function controlSocketPath(dataDir: string, platform: NodeJS.Platform = p
 }
 
 /** The environment a session gets to reach the endpoint. */
-export function controlEnv(sessionId: string, socketPath: string): Record<string, string> {
-  return { WORKHUB_SESSION: sessionId, WORKHUB_SOCKET: socketPath }
+/** How sessions reach the endpoint: the socket path, or the loopback URL and its token (Windows); null before it listens. */
+export type ControlEndpoint = { socket: string } | { url: string; token: string }
+
+/** Whether this platform serves the endpoint on a loopback port with a token instead of a Unix socket. */
+export const usesLoopbackControl = (platform: NodeJS.Platform = process.platform) => platform === 'win32'
+
+/** A new token for the loopback endpoint (one per launch). */
+export const newControlToken = () => randomBytes(32).toString('hex')
+
+export function controlEnv(sessionId: string, endpoint: ControlEndpoint | null): Record<string, string> {
+  if (!endpoint) return { WORKHUB_SESSION: sessionId }
+  if ('socket' in endpoint) return { WORKHUB_SESSION: sessionId, WORKHUB_SOCKET: endpoint.socket }
+  return { WORKHUB_SESSION: sessionId, WORKHUB_URL: endpoint.url, WORKHUB_TOKEN: endpoint.token }
+}
+
+/** True when the request carries `Authorization: Bearer <token>` (compared in constant time). */
+export function hasControlToken(req: Pick<IncomingMessage, 'headers'>, token: string): boolean {
+  const header = req.headers.authorization ?? ''
+  const given = Buffer.from(header.startsWith('Bearer ') ? header.slice(7).trim() : '')
+  const want = Buffer.from(token)
+  return given.length === want.length && timingSafeEqual(given, want)
 }
 
 /** The repos of a review request, checked one by one; a string when the body is not one. */
@@ -83,6 +137,13 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
+function reply(res: ServerResponse, r: ControlReply): void {
+  send(res, r.status, r.body)
+}
+
+/** The read-only Plan endpoints and the handler of each. */
+const PLAN_READS: Record<string, 'today' | 'milestones' | 'people'> = { '/v1/plan/today': 'today', '/v1/milestones': 'milestones', '/v1/people': 'people' }
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   let size = 0
   const chunks: Buffer[] = []
@@ -110,6 +171,64 @@ export async function handleControl(deps: ControlDeps, req: IncomingMessage, res
     }
     const saved = deps.saveFlowMap(body)
     return saved.ok ? send(res, 200, saved) : send(res, 400, { ok: false, error: saved.errors.join('; '), errors: saved.errors })
+  }
+  if (url.pathname === '/v1/inbox') {
+    if (req.method === 'GET') return deps.plan ? reply(res, await deps.plan.inbox(url.searchParams)) : send(res, 404, { ok: false, error: 'the inbox is not available' })
+    if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'use GET or POST' })
+    if (!deps.addInboxItems) return send(res, 404, { ok: false, error: 'the inbox is not available' })
+    let body: unknown
+    try {
+      body = await readJson(req)
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e instanceof Error ? e.message : 'bad body' })
+    }
+    const added = await deps.addInboxItems(body)
+    return added.ok ? send(res, 200, added) : send(res, added.status, { ok: false, error: added.error })
+  }
+  const item = /^\/v1\/inbox\/([^/]{1,200})$/.exec(url.pathname)
+  if (item) {
+    if (req.method !== 'PATCH') return send(res, 405, { ok: false, error: 'use PATCH' })
+    if (!deps.plan) return send(res, 404, { ok: false, error: 'the inbox is not available' })
+    let body: unknown
+    try {
+      body = await readJson(req)
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e instanceof Error ? e.message : 'bad body' })
+    }
+    let id: string
+    try {
+      id = decodeURIComponent(item[1]!)
+    } catch {
+      return send(res, 400, { ok: false, error: 'bad item id' })
+    }
+    return reply(res, await deps.plan.updateItem(id, body, url.searchParams))
+  }
+  const milestone = url.pathname === '/v1/milestones' ? null : /^\/v1\/milestones\/([^/]{1,200})$/.exec(url.pathname)
+  if ((url.pathname === '/v1/milestones' && req.method === 'POST') || milestone) {
+    if (!deps.plan) return send(res, 404, { ok: false, error: 'Plan is not available' })
+    const method = req.method
+    if (milestone ? method !== 'PATCH' && method !== 'DELETE' : method !== 'POST') return send(res, 405, { ok: false, error: milestone ? 'use PATCH or DELETE' : 'use GET or POST' })
+    let body: unknown
+    try {
+      body = await readJson(req)
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e instanceof Error ? e.message : 'bad body' })
+    }
+    let id: string | null = null
+    if (milestone) {
+      try {
+        id = decodeURIComponent(milestone[1]!)
+      } catch {
+        return send(res, 400, { ok: false, error: 'bad milestone id' })
+      }
+    }
+    return reply(res, await deps.plan.changeMilestone(id, method as 'POST' | 'PATCH' | 'DELETE', body, url.searchParams))
+  }
+  const read = Object.hasOwn(PLAN_READS, url.pathname) ? PLAN_READS[url.pathname] : undefined
+  if (read) {
+    if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'use GET' })
+    if (!deps.plan) return send(res, 404, { ok: false, error: 'Plan is not available' })
+    return reply(res, await deps.plan[read](url.searchParams))
   }
   const review = /^\/v1\/sessions\/([\w-]{1,100})\/review$/.exec(url.pathname)
   if (!review) return send(res, 404, { ok: false, error: 'unknown endpoint' })
@@ -153,6 +272,33 @@ export function startControlServer(socketPath: string, deps: ControlDeps): Promi
         }
       }
       resolve(server)
+    })
+  })
+}
+
+/**
+ * Starts the endpoint on a random port of 127.0.0.1, answering only requests with the token
+ * (Windows). A request a browser page sends carries an `Origin` and is refused too, so a web page
+ * cannot use the port even if it guessed the token. Resolves to null when it cannot listen.
+ */
+export function startLoopbackControlServer(token: string, deps: ControlDeps): Promise<{ server: Server; url: string } | null> {
+  const server = createServer((req, res) => {
+    if (req.headers.origin !== undefined || !hasControlToken(req, token)) return send(res, 401, { ok: false, error: 'missing or wrong token: send Authorization: Bearer $WORKHUB_TOKEN' })
+    handleControl(deps, req, res).catch((e: unknown) => send(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }))
+  })
+  return new Promise((resolve) => {
+    server.once('error', (e) => {
+      deps.log?.(`control endpoint not started: ${e.message}`)
+      resolve(null)
+    })
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close()
+        resolve(null)
+        return
+      }
+      resolve({ server, url: `http://127.0.0.1:${address.port}` })
     })
   })
 }

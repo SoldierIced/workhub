@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { groupBySprint, type TicketDetail } from '@workhub/core'
-import { LinearTracker, linearCategory } from '../src/tracker-linear'
+import { LinearTracker, linearCategory, parseLinearQuery } from '../src/tracker-linear'
 import type { HttpClient, HttpRequest } from '../src/shared/http'
 
 const NOW = Date.parse('2026-10-27T12:00:00Z')
@@ -134,5 +134,61 @@ describe('LinearTracker', () => {
     expect(t.isTicketKey('eng-4')).toBe(true)
     expect(t.isTicketKey('OPS-4')).toBe(false)
     expect(() => new LinearTracker({ apiKey: 'k', endpoint: 'http://linear.example.com' })).toThrow(/https/)
+  })
+})
+
+describe('LinearTracker search and create', () => {
+  it('parses the accepted query forms', () => {
+    expect(parseLinearQuery('Checkout revamp')).toEqual({ kind: 'project', project: 'Checkout revamp' })
+    expect(parseLinearQuery('project: "Checkout revamp"')).toEqual({ kind: 'project', project: 'Checkout revamp' })
+    expect(parseLinearQuery('team:eng label:Bug')).toEqual({ kind: 'teamLabel', team: 'ENG', label: 'Bug' })
+    expect(parseLinearQuery('label:"Needs triage" team:ENG')).toEqual({ kind: 'teamLabel', team: 'ENG', label: 'Needs triage' })
+    expect(parseLinearQuery('label:Needs triage team:ENG')).toEqual({ kind: 'teamLabel', team: 'ENG', label: 'Needs triage' })
+    expect(parseLinearQuery('team:ENG')).toBeNull()
+    expect(parseLinearQuery('  ')).toBeNull()
+  })
+
+  it('searches a project by name (or id), page by page', async () => {
+    const { tracker, calls } = fakeLinear([
+      [
+        'issues(filter',
+        (v) =>
+          v.after
+            ? { data: { issues: { nodes: [node('ENG-3', { name: 'Todo', type: 'unstarted' })], pageInfo: { hasNextPage: false, endCursor: null } } } }
+            : { data: { issues: { nodes: [node('ENG-1', { name: 'Done', type: 'completed' }), node('ENG-2', { name: 'In Progress', type: 'started' })], pageInfo: { hasNextPage: true, endCursor: 'c1' } } } }
+      ]
+    ])
+    const found = await tracker.searchByQuery('Checkout revamp')
+    expect(found.map((t) => [t.key, t.category])).toEqual([
+      ['ENG-1', 'done'],
+      ['ENG-2', 'inProgress'],
+      ['ENG-3', 'todo']
+    ])
+    expect(calls[0]!.variables).toEqual({ filter: { project: { name: { eqIgnoreCase: 'Checkout revamp' } } }, first: 100, after: null })
+    expect(calls[1]!.variables.after).toBe('c1')
+    await tracker.searchByQuery('3f2b1c4d-0000-4000-8000-123456789abc', { limit: 5 })
+    expect(calls[2]!.variables).toEqual({ filter: { project: { id: { eq: '3f2b1c4d-0000-4000-8000-123456789abc' } } }, first: 5, after: null })
+  })
+
+  it('searches a team with a label, and refuses a query it cannot read', async () => {
+    const { tracker, calls } = fakeLinear([['issues(filter', () => ({ data: { issues: { nodes: [], pageInfo: { hasNextPage: false } } } })]])
+    expect(await tracker.searchByQuery('team:ENG label:Launch')).toEqual([])
+    expect(calls[0]!.variables.filter).toEqual({ team: { key: { eq: 'ENG' } }, labels: { some: { name: { eqIgnoreCase: 'Launch' } } } })
+    await expect(tracker.searchByQuery('team:ENG')).rejects.toThrow(/team:KEY label:Name/)
+  })
+
+  it('creates an issue in the team of a key, with its priority and known labels', async () => {
+    const { tracker, calls } = fakeLinear([
+      ['teams(filter', () => ({ data: { teams: { nodes: [{ id: 'team-1', labels: { nodes: [{ id: 'l-bug', name: 'Bug' }, { id: 'l-x', name: 'Other' }] } }] } } })],
+      ['issueCreate', () => ({ data: { issueCreate: { success: true, issue: { identifier: 'ENG-42', url: 'https://linear.example.com/t/ENG-42' } } } })]
+    ])
+    expect(await tracker.createIssue({ project: 'eng', title: 'Crash on save', description: 'Steps', priority: 1, labels: ['bug', 'unknown'] })).toEqual({ key: 'ENG-42', url: 'https://linear.example.com/t/ENG-42' })
+    expect(calls[0]!.variables).toEqual({ key: 'ENG' })
+    expect(calls[1]!.variables.input).toEqual({ teamId: 'team-1', title: 'Crash on save', description: 'Steps', priority: 1, labelIds: ['l-bug'] })
+  })
+
+  it('says when the team does not exist', async () => {
+    const { tracker } = fakeLinear([['teams(filter', () => ({ data: { teams: { nodes: [] } } })]])
+    await expect(tracker.createIssue({ project: 'NOPE', title: 'x', description: '' })).rejects.toThrow('Linear did not find the team NOPE')
   })
 })

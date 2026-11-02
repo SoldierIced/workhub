@@ -20,8 +20,8 @@ Edit profiles in **Settings → Profiles**. Changes are applied with the save ba
 | Accounts | The agent accounts offered when you start a session in this profile. |
 | Agents offered | Which agents appear in the **New session** menu. |
 | Agent order | The first agent is the default, and the one Workhub picks on its own (opening a session from a pull request or ticket, asking Claude to review). |
-| Connections | At most one connection of each kind: code host, ticket tracker, chat, Health. **None** turns that feature off in this profile. |
-| Optional modules | **Health**, **Chat watcher** (the Slack screen) and **Automations**. Off hides their screens. |
+| Connections | At most one connection of each kind: code host, ticket tracker, chat, Health. **None** turns that feature off in this profile. Calendars are picked in **Settings → Plan**, where a profile can read several. |
+| Optional modules | **Health**, **Chat watcher** (the Slack screen), **Automations**, **Flow maps** and **Plan** (meetings, reminders, briefs, people; see [Plan](plan.md)). Off hides their screens. |
 | Account failover | **Ask**, **Automatic** or **Off**: what a session does when its Claude account reaches its usage limit or your ceiling. See [Usage and budgets](usage.md). |
 | AI review | Settings for the [review before PR](review-before-pr.md) feature. |
 | Slack | How long a thread stays quiet before it folds into **Archived**. See [Slack](slack.md). |

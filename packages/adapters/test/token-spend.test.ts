@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { localDayKey, spendKey, type SpendBuckets } from '@workhub/core'
-import { claudeSpendLine, codexSpendLine, commitClaude, kiroSpendFile, TokenSpendScanner, worktreeAliases, worktreeOf, type ClaudeSpendState, type CodexSpendState } from '../src/token-spend'
+import { claudePending, claudeSpendLine, codexSpendLine, commitClaude, kiroSpendFile, TokenSpendScanner, worktreeAliases, worktreeOf, type ClaudeSpendState, type CodexSpendState } from '../src/token-spend'
 
 const T = '2026-10-27T10:00:00.000Z'
 const DAY = localDayKey(new Date(T))
@@ -27,6 +27,23 @@ describe('Claude spend lines', () => {
     claudeSpendLine(assistant('m2', usage(1, 1)), state, b)
     commitClaude(state, b)
     expect(b).toEqual({ [key('claude', '/w/acme')]: 35 + 2 })
+  })
+
+  it('keeps the cache reads of a streamed message apart, counted once', () => {
+    const state: ClaudeSpendState = {}
+    const b: SpendBuckets = {}
+    const reads: SpendBuckets = {}
+    claudeSpendLine(assistant('m1', usage(10, 1, 5, 400)), state, b, undefined, undefined, reads)
+    claudeSpendLine(assistant('m1', usage(10, 20, 5, 400)), state, b, undefined, undefined, reads)
+    claudeSpendLine(assistant('m2', usage(1, 1, 0, 1000)), state, b, undefined, undefined, reads)
+    // m1 was counted once, when m2 started; m2 is still streaming and shows up as pending.
+    expect(b).toEqual({ [key('claude', '/w/acme')]: 35 })
+    expect(reads).toEqual({ [key('claude', '/w/acme')]: 400 })
+    const pendingReads: SpendBuckets = {}
+    claudePending(state, undefined, pendingReads)
+    expect(pendingReads).toEqual({ [key('claude', '/w/acme')]: 1000 })
+    commitClaude(state, b, undefined, reads)
+    expect(reads).toEqual({ [key('claude', '/w/acme')]: 1400 })
   })
 
   it('moves the work to the folder edits and cd commands touch, not reads', () => {
@@ -72,6 +89,19 @@ describe('Codex spend lines', () => {
     expect(b).toEqual({ [key('codex', '/w/repo')]: 190 })
   })
 
+  it('counts the growth of the cached input as cache reads, restarting with a smaller total', () => {
+    const state: CodexSpendState = {}
+    const b: SpendBuckets = {}
+    const reads: SpendBuckets = {}
+    codexSpendLine(JSON.stringify({ timestamp: T, type: 'session_meta', payload: { cwd: '/w/repo' } }), state, b, undefined, reads)
+    codexSpendLine(tokenCount(100, 40, 10), state, b, undefined, reads)
+    codexSpendLine(tokenCount(100, 40, 10), state, b, undefined, reads)
+    codexSpendLine(tokenCount(300, 140, 30), state, b, undefined, reads)
+    expect(reads).toEqual({ [key('codex', '/w/repo')]: 140 })
+    codexSpendLine(tokenCount(20, 5, 1), state, b, undefined, reads)
+    expect(reads).toEqual({ [key('codex', '/w/repo')]: 145 })
+  })
+
   it('takes the totals from token_usage_record once there is one, without counting twice', () => {
     const state: CodexSpendState = {}
     const b: SpendBuckets = {}
@@ -101,6 +131,22 @@ describe('Kiro spend file', () => {
     )
     kiroSpendFile('{nope', b)
     expect(b).toEqual({ [key('kiro', '/w/repo')]: 8 })
+  })
+
+  it('keeps the cache reads of each turn apart', () => {
+    const b: SpendBuckets = {}
+    const reads: SpendBuckets = {}
+    kiroSpendFile(
+      JSON.stringify({
+        cwd: '/w/repo',
+        updated_at: T,
+        session_state: { conversation_metadata: { user_turn_metadatas: [{ input_token_count: 5, cache_read_input_token_count: 50 }, { input_token_count: 1, cache_read_input_token_count: 20 }, { output_token_count: 3 }] } }
+      }),
+      b,
+      reads
+    )
+    expect(b).toEqual({ [key('kiro', '/w/repo')]: 9 })
+    expect(reads).toEqual({ [key('kiro', '/w/repo')]: 70 })
   })
 })
 

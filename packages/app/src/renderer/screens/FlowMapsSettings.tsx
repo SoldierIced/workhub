@@ -13,6 +13,9 @@ type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
 
 const ENDPOINT_EXAMPLE = `curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/flow-maps \\
   -H 'content-type: application/json' --data-binary @my-flow.json`
+// Windows sessions reach the endpoint on a loopback port with a token (see control-server.ts).
+const ENDPOINT_EXAMPLE_WINDOWS = `curl -H "Authorization: Bearer $WORKHUB_TOKEN" -X POST "$WORKHUB_URL/v1/flow-maps" \\
+  -H 'content-type: application/json' --data-binary @my-flow.json`
 
 /** Settings → Flow maps: the screen's switch for the active profile, the maps folder, importing files and the maps it holds. */
 export function FlowMapsSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
@@ -91,7 +94,7 @@ export function FlowMapsSettings({ snap, run }: { snap: ConfigSnapshot; run: Run
         </div>
         <div className="flex flex-col gap-1 py-3">
           <p className="text-xs text-subtle">{t('flowMaps.settings.endpoint')}</p>
-          <pre className="overflow-x-auto rounded bg-surface-raised px-2 py-1.5 text-[11px] text-muted">{ENDPOINT_EXAMPLE}</pre>
+          <pre className="overflow-x-auto rounded bg-surface-raised px-2 py-1.5 text-[11px] text-muted">{window.hub.platform === 'windows' ? ENDPOINT_EXAMPLE_WINDOWS : ENDPOINT_EXAMPLE}</pre>
         </div>
       </SettingsGroup>
 

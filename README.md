@@ -8,8 +8,9 @@ environment health around each task. Agents declare their capabilities and the U
 each one supports. Nothing personal or company-specific is in the code: every connection, profile
 and account is configuration loaded at runtime.
 
-Status: pre-release (`2.0.0-alpha.1`). macOS is the only platform exercised so far; Windows and
-Linux installers are built by CI and untested. See [PLAN.md](PLAN.md) for the scope and the
+Status: alpha (see [Releases](https://github.com/SoldierIced/workhub/releases) and
+[CHANGELOG.md](CHANGELOG.md) for the current version). macOS is the only platform tested so far;
+Windows and Linux installers are built by CI and untested. See [PLAN.md](PLAN.md) for the scope and the
 current status.
 
 ## Features
@@ -42,7 +43,7 @@ current status.
 - **Review before PR**: the session's agent writes a brief of everything it touched, another agent
   reviews it read-only, and the two loop over the findings until approval or the round limit. The
   base prompt is editable per profile.
-- An automatic review loop for a branch on a read-only checkout, local diff review (comment on
+- A review loop for a branch on a read-only checkout (automatic start optional), local diff review (comment on
   lines and send the comments to the agent), and a file viewer window for files the agent read or
   edited.
 
@@ -55,7 +56,13 @@ current status.
   No Slack app and no token.
 - **Automations** (module): send a prompt to a dedicated session on a Slack event or a schedule.
 - **Health** (module): Elastic APM and Kibana - errors, pods, slow endpoints, alerts - with
-  "investigate with an agent".
+  "investigate with an agent", plus metric alerts with a lifecycle (jumps, sustained trends, new
+  subjects, rate changes, missing data; track, snooze, resolve) from a source-agnostic engine.
+- **Plan** (module): today's and tomorrow's meetings from your calendars (private ICS address),
+  reminders and reminder rules, meeting briefs prepared by an agent, and the people you meet;
+  milestones with progress against time (typed or counted from a tracker query); and an inbox
+  where items from you, metric alerts and agents wait for approval before becoming tickets, local
+  tasks or recorded decisions.
 
 **App**
 - Profiles with folders, a default folder, per-folder options, the browser or Chrome profile (or a
@@ -85,6 +92,10 @@ them for macOS (arm64 `.dmg` and `.zip`), Windows (x64 NSIS `.exe`) and Linux (x
 to Workhub 1. The builds are **not signed with a paid certificate**, so each OS asks for one extra
 step on the first launch. Every artifact has a `.sha256` file to check the download.
 
+A release is created as a **draft** and only its owner sees drafts until it is published. If the
+Releases page shows no published release, build from source instead (see **macOS from source**
+below and [Build installers](#build-installers)).
+
 **macOS**: open the `.dmg` and drag Workhub 2 to Applications (or unzip the `.zip`). The app is
 signed ad hoc and not notarized, so Gatekeeper blocks the first launch: open the app once, then go
 to System Settings > Privacy & Security, scroll to Security and click **Open Anyway**. Or run
@@ -100,6 +111,13 @@ then **Run anyway**. The installer lets you pick the folder and installs per use
 `/Applications` (named `WORKHUB_BUNDLE_NAME`, default `Workhub`). It refuses to replace a bundle
 that is another app, and quits and reopens only Workhub 2 (`WORKHUB_KEEP_RUNNING=1` swaps the
 bundle without quitting).
+
+### Agent skills
+
+The `skills/workhub-plan` and `skills/workhub-flow-map` folders teach an agent to use Workhub's local
+control endpoint. Workhub does not install them: copy or symlink them into your agent's skills
+folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`). See
+[Plan](docs/user-guide/plan.md#the-workhub-plan-skill).
 
 ### Updates
 
@@ -137,7 +155,7 @@ The [user guide](docs/user-guide/README.md) has one page per area:
 | [Monitor](docs/user-guide/monitor.md) | Per-session panel and Home |
 | [Review before PR](docs/user-guide/review-before-pr.md) | Agent-briefs-reviewer loop, review loop, local diff review |
 | [Pull requests](docs/user-guide/pull-requests.md), [Tickets](docs/user-guide/tickets.md) | Code host and tracker |
-| [Slack](docs/user-guide/slack.md), [Health](docs/user-guide/health.md), [Flow maps](docs/user-guide/flow-maps.md), [Automations](docs/user-guide/automations.md) | Optional modules |
+| [Slack](docs/user-guide/slack.md), [Health](docs/user-guide/health.md), [Flow maps](docs/user-guide/flow-maps.md), [Plan](docs/user-guide/plan.md), [Automations](docs/user-guide/automations.md) | Optional modules |
 | [History](docs/user-guide/history.md), [Usage and budgets](docs/user-guide/usage.md) | Past sessions, plan usage and ceilings |
 | [Settings](docs/user-guide/settings.md), [Keyboard shortcuts](docs/user-guide/keyboard-shortcuts.md) | Reference |
 
@@ -157,6 +175,31 @@ npm run build        # electron-vite build of the app (packages/app/out)
 
 To run the built app: `cd packages/app && npx electron .`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+### Try the demo
+
+```sh
+npm run demo              # the dev build with every demo source on, in an isolated data folder
+npm run demo -- --reset   # wipe that folder first, so the scenario is seeded again
+```
+
+`npm run demo` keeps its data in `.demo-data/` (git-ignored), never in `packages/app/.dev-data/` or
+an installed copy, and needs no account, token or calendar. On the first run it seeds "a day of a
+team lead" for a made-up notes app: a ready profile with Plan, Health and Automations on, and
+everything below is synthetic.
+
+| Screen | What you see |
+|---|---|
+| Home | Next meetings, open metric alerts, milestones at risk, pending inbox items, tickets in progress |
+| Plan | Today and tomorrow: a daily standup, a 1:1, an activation metrics review, a roadmap check-in, refinement and a support sync, with attendees from the people list. One meeting starts about ten minutes after launch, so a reminder appears quickly |
+| Plan, milestones | Six milestones, one in every status (on track, at risk, late, not started, done) and one tracked by hand |
+| Plan, inbox | Items that came from meetings waiting for approval, local tasks (overdue, due today, critical), approved items with demo tickets, decisions, and items linked to people |
+| Health, alerts | A signup funnel (one step drops more than 10 points, another 5 to 10), cancellation reasons (one rising for days, one jumping, one new), front-end errors, a key event with missing data, in mixed states (new, tracking, snoozed, proposing to resolve), next to the Elastic-style signals |
+
+Briefs never start by themselves in the demo: when a brief rule matches, a notification says it
+would start a brief. **Prepare brief** on a meeting does start a real agent session, which uses
+your agent account. Approving an inbox item creates a synthetic issue kept in memory only.
+The data is dated from the first run: use `--reset` on another day to refresh it.
+
 Data folder, in order of precedence: `WORKHUB_DATA_DIR`; `packages/app/.dev-data/` in a development
 run (git-ignored); the app's `userData` folder in a packaged build. Use `WORKHUB_DATA_DIR` to keep a
 test run away from real data.
@@ -165,7 +208,8 @@ Other environment variables, all for development, demos and smoke runs:
 
 | Variable | Effect |
 |---|---|
-| `WORKHUB_DEMO_TICKETS=1`, `WORKHUB_DEMO_CODEHOST=1`, `WORKHUB_DEMO_SLACK=1`, `WORKHUB_DEMO_HEALTH=1`, `WORKHUB_DEMO_USAGE=1` | Serve synthetic tickets, pull requests, Slack channels, Health data or usage instead of a real service |
+| `WORKHUB_DEMO_TICKETS=1`, `WORKHUB_DEMO_CODEHOST=1`, `WORKHUB_DEMO_SLACK=1`, `WORKHUB_DEMO_HEALTH=1`, `WORKHUB_DEMO_USAGE=1`, `WORKHUB_DEMO_CALENDAR=1` | Serve synthetic tickets, pull requests, Slack channels, Health data, usage or meetings instead of a real service |
+| `WORKHUB_DEMO_SCENARIO=team-lead` | With the demo variables above and an empty data folder: seeds the "team lead" profile, calendar, milestones, inbox and metric alerts (`npm run demo` sets it) |
 | `WORKHUB_KIRO_DIR` | Read Kiro's files from another folder |
 | `WORKHUB_NOTIFICATION_LOG`, `WORKHUB_TRAY_LOG` | Write notifications / the tray menu to a file, for smoke runs |
 | `WORKHUB_TRAY_POPOVER_PIN=1` | Keep the tray popover open (screenshots) |
@@ -224,6 +268,7 @@ packages/
                 transcript-claude / -kiro / -opencode / -codex   monitor and history readers
                 codehost-github / -gitlab   pull requests through gh / glab
                 tracker-jira / -linear / -demo   tickets
+                calendar-ics          calendars from a private ICS address (and the demo calendar)
                 chat-slack, health-elastic, git-review, token-spend, workhub1-import
   app/        Electron shell: main process, preload bridge, React renderer (Tailwind + Radix, en/es)
 scripts/      Build, release, icons and install scripts
@@ -237,7 +282,7 @@ there is no separate build step for `core` or `adapters`.
 ## Privacy
 
 No telemetry. Workhub makes network calls only to services you configure (your code host, tracker,
-Elastic, agents) and to GitHub when you turn on update checks. Configuration stays on your machine;
+Elastic, calendars, agents) and to GitHub when you turn on update checks. Configuration stays on your machine;
 `config.json` holds only `secretRef` keys, never secrets. Agents run with their own configuration
 (MCP servers, hooks, permission defaults). See [SECURITY.md](SECURITY.md) for what is stored where.
 

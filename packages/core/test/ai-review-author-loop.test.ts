@@ -23,7 +23,7 @@ const config: WorkhubConfig = {
     { id: 'personal', agentId: 'claude', name: 'Personal' },
     { id: 'work', agentId: 'claude', name: 'Work' }
   ],
-  profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['personal', 'work'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }],
+  profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['personal', 'work'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }],
   activeProfileId: 'p'
 }
 const agents = resolveEffectiveAgents(config, 'p')

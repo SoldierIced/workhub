@@ -82,7 +82,7 @@ describe('linkLaunch', () => {
 
 describe('profileForLink', () => {
   const config = parseConfig({
-    version: 7,
+    version: 8,
     activeProfileId: 'home',
     connections: [
       { id: 'jira-work', kind: 'tracker', provider: 'jira', endpoint: 'https://acme.atlassian.net', settings: {} },
@@ -147,9 +147,9 @@ describe('Workhub 1 linkOpener import', () => {
   })
   it('lands in the imported profile, and fills an existing profile that has no setting', () => {
     const v1 = { profiles: [{ id: 'work', name: 'Work', linkOpener: 'open-acme' }, { id: 'home', name: 'Home', linkOpener: 'open -a Safari' }, { id: 'none', name: 'None' }] }
-    const plan = planWorkhub1Import(v1, parseConfig({ version: 7 }), '/Users/acme')
+    const plan = planWorkhub1Import(v1, parseConfig({ version: 8 }), '/Users/acme')
     expect(plan.profiles.map((p) => [p.id, p.linkCommand, p.linkBrowser])).toEqual([['work', 'open-acme', undefined], ['home', undefined, 'Safari'], ['none', undefined, undefined]])
-    const config = parseConfig({ version: 7, profiles: [{ id: 'work', name: 'Work' }, { id: 'home', name: 'Home', linkChromeProfile: 'Default' }] })
+    const config = parseConfig({ version: 8, profiles: [{ id: 'work', name: 'Work' }, { id: 'home', name: 'Home', linkChromeProfile: 'Default' }] })
     const filled = fillWorkhub1FolderFlags(v1, config, '/Users/acme')
     expect(filled.map((p) => [p.id, p.linkCommand])).toEqual([['work', 'open-acme']])
   })

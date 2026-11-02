@@ -91,10 +91,10 @@ describe('setup checks', () => {
     expect(agentItem('kiro', NONE)).toMatchObject({ status: 'missing', optional: true })
   })
 
-  const base: WorkhubConfig = { version: 7, connections: [], agents: [], accounts: [], profiles: [] }
+  const base: WorkhubConfig = { version: 8, connections: [], agents: [], accounts: [], profiles: [] }
   it('profile, jira, slack, health and usage read the config', () => {
     expect(profileItem(base)).toMatchObject({ status: 'missing', fix: { kind: 'settings', tab: 'profiles' } })
-    const withFolders: WorkhubConfig = { ...base, profiles: [{ id: 'a', name: 'Acme', connections: { tracker: 'j' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }, folders: ['~/a', '~/b'] }] }
+    const withFolders: WorkhubConfig = { ...base, profiles: [{ id: 'a', name: 'Acme', connections: { tracker: 'j' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }, folders: ['~/a', '~/b'] }] }
     expect(profileItem(withFolders)).toMatchObject({ status: 'ok', params: { names: 'Acme', count: '2' } })
 
     const jira = { id: 'j', kind: 'tracker' as const, provider: 'jira', endpoint: 'https://x.atlassian.net', secretRef: 's', settings: {} }
@@ -120,18 +120,18 @@ describe('setup checks', () => {
 
 describe('config 7', () => {
   it('migrates a version 6 document unchanged and fills the new options', () => {
-    expect(migrateConfig({ version: 6, profiles: [] })).toEqual({ version: 7, profiles: [] })
+    expect(migrateConfig({ version: 6, profiles: [] })).toEqual({ version: 8, profiles: [] })
     const parsed = parseConfig({ version: 6, options: { notifyReplied: false }, profiles: [{ id: 'p', name: 'P' }] })
-    expect(parsed.version).toBe(7)
+    expect(parsed.version).toBe(8)
     expect(appOptions(parsed)).toMatchObject({ notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: 190, welcomeDone: false, notifyReplied: false })
-    expect(parsed.profiles[0]).toEqual({ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } })
+    expect(parsed.profiles[0]).toEqual({ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } })
   })
 
   it('keeps the new profile fields and refuses a bad variable name or speech rate', () => {
     const profile = { id: 'p', name: 'P', symbol: 'rocket', ownsOutside: true, linkBrowser: 'Google Chrome', envNames: ['API_KEY'], folders: ['~/a'], folderOptions: { '~/a': { onlyGitRepos: true, subfoldersAreProjects: true } } }
-    expect(parseConfig({ version: 7, profiles: [profile] }).profiles[0]).toMatchObject(profile)
-    expect(() => parseConfig({ version: 7, profiles: [{ ...profile, envNames: ['1BAD'] }] })).toThrow()
-    expect(() => parseConfig({ version: 7, options: { speechRate: 9999 } })).toThrow()
+    expect(parseConfig({ version: 8, profiles: [profile] }).profiles[0]).toMatchObject(profile)
+    expect(() => parseConfig({ version: 8, profiles: [{ ...profile, envNames: ['1BAD'] }] })).toThrow()
+    expect(() => parseConfig({ version: 8, options: { speechRate: 9999 } })).toThrow()
   })
 
   it('the master switch silences every kind', () => {

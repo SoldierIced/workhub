@@ -1,5 +1,5 @@
-import { Activity, ListChecks, RotateCcw, Sparkles } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Activity, BellRing, ListChecks, RotateCcw, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { folderForEvent, folderForPod, folderName, matchFolder, moduleScreens, pruneSelection, selectableItems, toggleItem, workloadName, type HealthItemId, type Profile } from '@workhub/core'
 import type { HealthEnvironmentView, HealthState } from '@shared/health-api'
 import { Badge, Button, Spinner, StateDot } from '../components/atoms'
@@ -14,6 +14,9 @@ import { investigateRow, investigateTogether, type HealthRow, type Investigation
 import { relativeTime } from '../lib/pullRequests'
 import { EnvironmentPanel } from './health/EnvironmentPanel'
 import { HealthRowsProvider, type HealthRowActions } from './health/HealthRows'
+import { MetricAlertsPanel } from './health/MetricAlertsPanel'
+import { useMetricAlerts, useMetricAlertsOpen } from '../metricAlertsStore'
+import { openAlerts } from '../lib/metricAlerts'
 
 const STATUS_COPY: Partial<Record<HealthState, { title: MessageKey; hint: MessageKey }>> = {
   moduleOff: { title: 'health.status.moduleOff.title', hint: 'health.status.moduleOff.hint' },
@@ -57,6 +60,11 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
   const toast = useToast()
   const enabled = Boolean(profile && moduleScreens(profile.modules).includes('health'))
   const { view, loading, error, refresh } = useHealth(profile?.id, enabled)
+  // Environments (the live read) or Alerts (the metric alert engine); a clicked alert notification opens Alerts.
+  const [tab, setTab] = useState<'environments' | 'alerts'>('environments')
+  useMetricAlertsOpen(profile?.id, useCallback(() => setTab('alerts'), []))
+  const alertsView = useMetricAlerts(enabled ? profile?.id : null).view
+  const openCount = openAlerts(alertsView?.alerts ?? []).length
   const [selected, setSelected] = useState<string | null>(null)
   const environments = enabled ? (view?.environments ?? []) : []
   const current = environments.find((e) => e.id === selected) ?? environments[0]
@@ -141,10 +149,37 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
         </div>
         {view?.state === 'demo' && <Badge tone="info">{t('health.demo')}</Badge>}
         {view?.updatedAt !== undefined && <span className="mt-1.5 text-sm text-subtle">{t('health.updated', { time: relativeTime(view.updatedAt, Date.now(), locale) })}</span>}
-        {environments.length > 0 && (
+        {environments.length > 0 && tab === 'environments' && (
           <RefreshButton variant="button" label={t('health.refresh')} loading={loading} onRefresh={refresh} />
         )}
       </header>
+
+      {enabled && profile && (
+        <div role="tablist" aria-label={t('health.sections')} className="flex gap-1 border-b border-border">
+          {(['environments', 'alerts'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={cn(
+                'relative inline-flex h-9 items-center gap-1.5 border-b-2 px-3 text-base transition-colors',
+                tab === id ? 'border-accent font-medium text-text' : 'border-transparent text-muted hover:text-text'
+              )}
+            >
+              {id === 'alerts' && <BellRing className="size-3.5" aria-hidden />}
+              {t(id === 'alerts' ? 'health.tab.alerts' : 'health.tab.environments')}
+              {id === 'alerts' && openCount > 0 && <Badge tone="danger">{openCount}</Badge>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {enabled && profile && tab === 'alerts' && <MetricAlertsPanel profileId={profile.id} />}
+
+      {tab === 'environments' && (
+        <>
 
       {error && (
         <div role="alert" className="flex items-center gap-3 rounded-lg border border-danger/30 bg-danger-soft px-4 py-3">
@@ -239,6 +274,8 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
               </Button>
             </div>
           )}
+        </>
+      )}
         </>
       )}
     </div>

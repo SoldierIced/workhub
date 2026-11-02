@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BUILTIN_AGENTS,
+  freshTokens,
   launchEnvironment,
   mergeMonitor,
   moduleScreens,
@@ -126,11 +127,29 @@ describe('monitor view', () => {
   })
 
   it('lists module screens enabled in the profile, never a retired one (Flows)', () => {
-    expect(moduleScreens({ flows: true, health: false, chatWatcher: true, automations: false, flowMaps: false })).toEqual(['chatWatcher'])
+    expect(moduleScreens({ flows: true, health: false, chatWatcher: true, automations: false, flowMaps: false, planner: false })).toEqual(['chatWatcher'])
     expect(moduleScreens(undefined)).toEqual([])
   })
 
   it('merges partial updates without erasing fields', () => {
     expect(mergeMonitor({ credits: 1, title: 'a' }, { credits: 2, model: undefined })).toEqual({ credits: 2, title: 'a' })
+  })
+})
+
+describe('freshTokens', () => {
+  it('adds input, cache write and output, leaving cache reads out', () => {
+    expect(freshTokens({ input: 10, cacheWrite: 5, output: 3, cacheRead: 1000, total: 1018 })).toBe(18)
+    expect(freshTokens({ input: 10, cacheRead: 1000 })).toBe(10)
+  })
+
+  it('falls back to the total minus cache reads, then to the total, when the parts are missing', () => {
+    expect(freshTokens({ total: 1018, cacheRead: 1000 })).toBe(18)
+    expect(freshTokens({ total: 40 })).toBe(40)
+    expect(freshTokens({ total: 5, cacheRead: 9 })).toBe(0)
+  })
+
+  it('is undefined when nothing was reported', () => {
+    expect(freshTokens(undefined)).toBeUndefined()
+    expect(freshTokens({})).toBeUndefined()
   })
 })

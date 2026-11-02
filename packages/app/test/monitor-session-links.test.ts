@@ -90,12 +90,12 @@ describe("the session's ticket keys", () => {
     const work = sessionWork({
       items: [],
       repos: [
-        { name: '.wt-loan-fix', root: '/w/.wt-loan-fix', branch: 'feat/pay-126-membership-savings' },
-        { name: 'wm-api', root: '/w/wm-api', branch: 'develop' },
+        { name: '.wt-search-fix', root: '/w/.wt-search-fix', branch: 'feat/pay-126-search-filters' },
+        { name: 'acme-api', root: '/w/acme-api', branch: 'develop' },
         // Touched, but on a branch the session never committed to or pushed.
         { name: 'ms-payments', root: '/w/ms-payments', branch: 'hotfix_TEAM-45_duplicate-payment' }
       ],
-      branches: [{ folder: '/w/.wt-loan-fix', pushed: true }, { folder: '/w/wm-api' }],
+      branches: [{ folder: '/w/.wt-search-fix', pushed: true }, { folder: '/w/acme-api' }],
       titles: ['PAY-125: order stuck in pending state', undefined, 'OPS-9 not this profile'],
       mentionedTickets: ['PAY-124', 'UTF-8'],
       providers: jira
@@ -160,7 +160,7 @@ describe('the monitor hints', () => {
   })
 
   it('say what to turn on when the Slack watcher cannot read, the profile first', () => {
-    const on = { modules: { flows: false, health: false, chatWatcher: true, automations: false, flowMaps: false } }
+    const on = { modules: { flows: false, health: false, chatWatcher: true, automations: false, flowMaps: false, planner: false } }
     const off = { modules: { ...on.modules, chatWatcher: false } }
     const channels = [{ id: 'C01', name: 'reviews', purpose: '' }]
     expect(slackSetupHint(off, { enabled: true, channels })).toBe('module')

@@ -38,6 +38,7 @@ import { SlackScreen } from './screens/SlackScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
 import { HealthScreen } from './screens/HealthScreen'
 import { FlowMapsScreen } from './screens/flowMaps/FlowMapsScreen'
+import { PlanScreen } from './screens/plan/PlanScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
@@ -246,6 +247,8 @@ function Shell() {
     },
     [openSettings, showScreen]
   )
+  // A meeting reminder without a call link was clicked: show Plan.
+  useEffect(() => window.hub.plan.onFocus(() => navigate('plan')), [navigate])
   // A setup window's fix button asked for a Settings tab.
   useEffect(() => window.hub.setup.onOpenSettings((tab) => openSettings(tab)), [openSettings])
   // The full dialog: pick the agent, account and folder (the toolbar's arrow, a sidebar folder row).
@@ -477,6 +480,8 @@ function Shell() {
                 />
               ) : route === 'health' ? (
                 <HealthScreen profile={profile} projectFolders={projectFolders} onOpenSettings={openSettings} onInvestigate={investigate} />
+              ) : route === 'plan' ? (
+                <PlanScreen profile={profile} onOpenSession={openSession} onOpenSettings={openSettings} />
               ) : route === 'flowMaps' ? (
                 <FlowMapsScreen profile={profile} onOpenSettings={openSettings} onInvestigate={investigate} />
               ) : route === 'tickets' ? (

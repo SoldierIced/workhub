@@ -16,12 +16,13 @@ folder. It holds:
 
 - `config.json`: connections, accounts, profiles and settings. It never holds secrets, only
   `secretRef` keys that point into the secrets file.
-- `secrets.json`: API tokens you type into Settings, encrypted with Electron `safeStorage`
+- `secrets.json`: API tokens you type into Settings, and the private addresses of calendars (Plan), encrypted with Electron `safeStorage`
   (macOS Keychain, Windows DPAPI, Linux libsecret/kwallet). Workhub refuses to store a secret when
   OS encryption is unavailable and never writes one in plain text.
 - State files: open sessions, session names and windows, token spend, usage and budget ledgers,
-  Slack and automation state, pull request events, alert state and AI review checkouts. These
-  can contain session titles, repository names and Slack message text; they hold no credentials.
+  Slack and automation state, pull request events, alert state, Plan state (fired reminders and
+  meeting briefs) and AI review checkouts. These can contain session titles, repository names,
+  meeting titles and Slack message text; they hold no credentials.
 
 GitHub and GitLab access uses the `gh` and `glab` CLIs and your own sign-in; Workhub stores no
 token for them. Slack is read through a Claude account's Slack connector; there is no Slack token.

@@ -51,7 +51,7 @@ function setup(script: { author?: Step[]; reviewer?: Step[]; installed?: Record<
   const placed: [string, string][] = []
   const emitted: ReviewLoopView[][] = []
   const hanging = new Map<string, (stopReason: string) => void>()
-  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false } }], activeProfileId: 'p' }
+  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }], activeProfileId: 'p' }
   const setState = (id: string, state: SessionState) => {
     const i = views.findIndex((v) => v.id === id)
     views[i] = { ...views[i]!, state }

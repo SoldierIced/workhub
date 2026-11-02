@@ -3,6 +3,7 @@
  * and the Health screen reads. Nothing here is specific to a company, a cluster or an index name:
  * all of that comes from the profile's configuration.
  */
+import type { AlertRulesConfig } from '../alerts/types'
 
 /** Limits that turn raw numbers into a state. All are tunable; the defaults are starting points. */
 export interface HealthThresholds {
@@ -92,6 +93,8 @@ export interface HealthSettings {
   /** Minutes between refreshes: 5 to 60. */
   refreshMinutes: number
   environments: HealthEnvironment[]
+  /** Metric alert rules (thresholds, business days, notification minimum); defaults when unset. */
+  alertRules?: AlertRulesConfig
 }
 
 export const HEALTH_REFRESH_CHOICES = [5, 10, 15, 30, 60] as const

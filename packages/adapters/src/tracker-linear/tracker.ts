@@ -2,7 +2,12 @@ import {
   TrackerError,
   isTicketKey,
   pullRequestUrlsIn,
+  searchLimit,
   type ConnectionTest,
+  type CreateIssueInput,
+  type CreatedIssue,
+  type SearchOptions,
+  type TicketSummary,
   type ListTicketsOptions,
   type StatusCategory,
   type Ticket,
@@ -39,10 +44,37 @@ export function linearCategory(type: unknown): StatusCategory {
   return type === 'started' ? 'inProgress' : type === 'completed' || type === 'canceled' ? 'done' : 'todo'
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * What a Linear search query names:
+ * - `team:ENG label:Bug` (or `label:"Needs triage"`): the issues of a team with that label;
+ * - `project:Checkout revamp`, or the bare project name or id: the issues of that project.
+ */
+export type LinearQuery = { kind: 'project'; project: string } | { kind: 'teamLabel'; team: string; label: string }
+
+export function parseLinearQuery(query: string): LinearQuery | null {
+  const q = query.trim()
+  if (!q) return null
+  const team = /(?:^|\s)team:\s*([A-Za-z0-9_-]+)/i.exec(q)?.[1]
+  const label = /(?:^|\s)label:\s*(?:"([^"]+)"|(.+?))\s*(?=\s(?:team|project):|$)/i.exec(q)
+  const labelName = (label?.[1] ?? label?.[2])?.trim()
+  if (team && labelName) return { kind: 'teamLabel', team: team.toUpperCase(), label: labelName }
+  if (team || label) return null
+  const project = q.replace(/^project:\s*/i, '').replace(/^"(.*)"$/, '$1').trim()
+  return project ? { kind: 'project', project } : null
+}
+
+/** The issue filter of a parsed query. */
+function linearFilter(q: LinearQuery): Json {
+  if (q.kind === 'teamLabel') return { team: { key: { eq: q.team } }, labels: { some: { name: { eqIgnoreCase: q.label } } } }
+  return { project: UUID.test(q.project) ? { id: { eq: q.project } } : { name: { eqIgnoreCase: q.project } } }
+}
+
 /** Linear (GraphQL) behind the TicketTracker port. Cycles are the sprints. */
 export class LinearTracker implements TicketTracker {
   readonly provider = 'linear'
-  readonly capabilities: TrackerCapabilities = { sprints: true, transitions: true, comments: true, assign: true }
+  readonly capabilities: TrackerCapabilities = { sprints: true, transitions: true, comments: true, assign: true, search: true, create: true }
   private readonly endpoint: string
   private readonly http: HttpClient
   private readonly now: () => number
@@ -135,6 +167,57 @@ export class LinearTracker implements TicketTracker {
     const assigneeId = data['viewer']?.id
     if (!assigneeId) throw new TrackerError('Could not read your Linear account')
     await this.update(key, { assigneeId })
+  }
+
+  /** The issues of a project, or of a team with a label (see `parseLinearQuery`), any status. */
+  async searchByQuery(query: string, options?: SearchOptions): Promise<TicketSummary[]> {
+    const parsed = parseLinearQuery(query)
+    if (!parsed) throw new TrackerError('Use a project name or id, or "team:KEY label:Name"')
+    const limit = searchLimit(options)
+    const filter = linearFilter(parsed)
+    const out: TicketSummary[] = []
+    let after: string | null = null
+    while (out.length < limit) {
+      const data = await this.query(
+        `query($filter: IssueFilter, $first: Int!, $after: String) { issues(filter: $filter, first: $first, after: $after) { nodes { identifier title url state { name type } } pageInfo { hasNextPage endCursor } } }`,
+        { filter, first: Math.min(100, limit - out.length), after }
+      )
+      const nodes = (data['issues']?.nodes as Json[] | undefined) ?? []
+      for (const n of nodes) {
+        out.push({ key: String(n['identifier']), title: String(n['title'] ?? ''), status: String(n['state']?.name ?? ''), category: linearCategory(n['state']?.type), ...(typeof n['url'] === 'string' ? { url: n['url'] } : {}) })
+      }
+      const page = data['issues']?.pageInfo as Json | undefined
+      after = page?.['hasNextPage'] && typeof page['endCursor'] === 'string' ? page['endCursor'] : null
+      if (!after || nodes.length === 0) break
+    }
+    return out.slice(0, limit)
+  }
+
+  /** A new issue in the team with key `input.project`; labels are matched by name in that team, unknown ones skipped. */
+  async createIssue(input: CreateIssueInput): Promise<CreatedIssue> {
+    const teamKey = input.project.trim().toUpperCase()
+    const title = input.title.trim()
+    if (!teamKey) throw new TrackerError('No Linear team is set')
+    if (!title) throw new TrackerError('The title is empty')
+    const teams = await this.query(`query($key: String!) { teams(filter: { key: { eq: $key } }) { nodes { id labels(first: 250) { nodes { id name } } } } }`, { key: teamKey })
+    const team = (teams['teams']?.nodes as Json[] | undefined)?.[0]
+    if (!team?.['id']) throw new TrackerError(`Linear did not find the team ${teamKey}`, 404)
+    const wanted = new Set((input.labels ?? []).map((l) => l.trim().toLowerCase()).filter(Boolean))
+    const labelIds = ((team['labels']?.nodes as Json[] | undefined) ?? []).filter((l) => wanted.has(String(l['name']).toLowerCase())).map((l) => String(l['id']))
+    const description = input.description.trim()
+    const data = await this.query(`mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { identifier url } } }`, {
+      input: {
+        teamId: String(team['id']),
+        title,
+        ...(description ? { description } : {}),
+        // Linear's priorities: 1 urgent, 2 high, 3 medium, 4 low (0 none): the generic scale as is.
+        ...(input.priority ? { priority: input.priority } : {}),
+        ...(labelIds.length > 0 ? { labelIds } : {})
+      }
+    })
+    const issue = data['issueCreate']?.issue as Json | undefined
+    if (!data['issueCreate']?.success || typeof issue?.['identifier'] !== 'string') throw new TrackerError('Linear did not create the issue')
+    return { key: issue['identifier'], ...(typeof issue['url'] === 'string' ? { url: issue['url'] } : {}) }
   }
 
   private async update(key: string, input: Json): Promise<void> {

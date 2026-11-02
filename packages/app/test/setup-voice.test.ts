@@ -25,7 +25,7 @@ describe('probe', () => {
 
 describe('SetupService', () => {
   const config: WorkhubConfig = {
-    version: 7,
+    version: 8,
     connections: [],
     agents: [],
     accounts: [{ id: 'work', agentId: 'claude', name: 'Work', configDir: '/tmp/workhub-test-claude-work' }],
@@ -116,7 +116,7 @@ describe('profile environment', () => {
     const data = new Map<string, string>()
     return { data, get: async (r) => data.get(r) ?? null, set: async (r, v) => void data.set(r, v), delete: async (r) => void data.delete(r), has: async (r) => data.has(r) }
   }
-  const profile: Profile = { id: 'acme', name: 'Acme', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false }, folders: ['~/work'], envNames: ['TOKEN', 'ROOT', '1BAD'] }
+  const profile: Profile = { id: 'acme', name: 'Acme', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }, folders: ['~/work'], envNames: ['TOKEN', 'ROOT', '1BAD'] }
 
   it('keeps values in the secret store and expands the folder variables for a session', async () => {
     const secrets = store()

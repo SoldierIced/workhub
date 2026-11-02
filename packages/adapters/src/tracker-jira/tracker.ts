@@ -2,7 +2,13 @@ import {
   TrackerError,
   isTicketKey,
   listedPullRequests,
+  searchLimit,
   type ConnectionTest,
+  type CreateIssueInput,
+  type CreatedIssue,
+  type IssuePriority,
+  type SearchOptions,
+  type TicketSummary,
   type ListTicketsOptions,
   type StatusCategory,
   type Ticket,
@@ -32,6 +38,10 @@ const SPRINT_SCHEMA = 'com.pyxis.greenhopper.jira:gh-sprint'
 const LIST_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee', 'description', 'comment']
 const DETAIL_FIELDS = 'summary,status,issuetype,priority,assignee,reporter,created,updated,labels,description,comment,parent,subtasks'
 const AGILE_CONCURRENCY = 5
+const SEARCH_PAGE = 100
+
+/** The generic priority (1 highest to 4 lowest) as Jira's default priority names. */
+export const JIRA_PRIORITY: Record<IssuePriority, string> = { 1: 'Highest', 2: 'High', 3: 'Medium', 4: 'Low' }
 
 type Json = Record<string, any>
 
@@ -55,7 +65,7 @@ const quote = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"
 /** Jira Cloud (REST v3 plus the Agile API for sprints) behind the TicketTracker port. */
 export class JiraTracker implements TicketTracker {
   readonly provider = 'jira'
-  readonly capabilities: TrackerCapabilities = { sprints: true, transitions: true, comments: true, assign: true }
+  readonly capabilities: TrackerCapabilities = { sprints: true, transitions: true, comments: true, assign: true, search: true, create: true }
   private readonly site: string
   private readonly auth: string
   private readonly http: HttpClient
@@ -156,6 +166,55 @@ export class JiraTracker implements TicketTracker {
     }
     if (!this.accountId) throw new TrackerError('Could not read your Jira account')
     await this.request('PUT', `/rest/api/3/issue/${encodeURIComponent(key)}/assignee`, undefined, { accountId: this.accountId })
+  }
+
+  /** Every ticket a JQL query finds (any status), page by page up to the limit. */
+  async searchByQuery(query: string, options?: SearchOptions): Promise<TicketSummary[]> {
+    const jql = query.trim()
+    if (!jql) throw new TrackerError('The query is empty')
+    const limit = searchLimit(options)
+    const out: TicketSummary[] = []
+    let token: string | undefined
+    while (out.length < limit) {
+      const page = (await this.request('GET', '/rest/api/3/search/jql', {
+        jql,
+        fields: 'summary,status',
+        maxResults: String(Math.min(SEARCH_PAGE, limit - out.length)),
+        ...(token ? { nextPageToken: token } : {})
+      })) as Json
+      const issues = (page['issues'] as Json[] | undefined) ?? []
+      for (const issue of issues) {
+        const f = issue['fields'] as Json | undefined
+        if (typeof issue['key'] !== 'string' || !f) continue
+        out.push({ key: issue['key'], title: String(f['summary'] ?? ''), status: String(f['status']?.name ?? ''), category: statusCategoryOf(f['status']?.statusCategory?.key), url: `${this.site}/browse/${issue['key']}` })
+      }
+      token = typeof page['nextPageToken'] === 'string' ? page['nextPageToken'] : undefined
+      if (!token || page['isLast'] === true || issues.length === 0) break
+    }
+    return out.slice(0, limit)
+  }
+
+  /** A new issue with a plain-paragraph (ADF) description. */
+  async createIssue(input: CreateIssueInput): Promise<CreatedIssue> {
+    const project = input.project.trim()
+    const summary = input.title.trim()
+    if (!project) throw new TrackerError('No Jira project is set')
+    if (!summary) throw new TrackerError('The title is empty')
+    // Jira labels cannot hold spaces.
+    const labels = (input.labels ?? []).map((l) => l.trim().replace(/\s+/g, '-')).filter(Boolean)
+    const description = textToAdf(input.description)
+    const fields: Json = {
+      project: { key: project },
+      issuetype: { name: input.issueType?.trim() || 'Task' },
+      summary: summary.slice(0, 255),
+      ...(description.content.length > 0 ? { description } : {}),
+      ...(input.priority ? { priority: { name: JIRA_PRIORITY[input.priority] } } : {}),
+      ...(labels.length > 0 ? { labels } : {})
+    }
+    const created = (await this.request('POST', '/rest/api/3/issue', undefined, { fields })) as Json
+    const key = created['key']
+    if (typeof key !== 'string') throw new TrackerError('Jira did not return the new issue')
+    return { key, url: `${this.site}/browse/${key}` }
   }
 
   /** The id of the Sprint custom field (it differs between sites), found once. */

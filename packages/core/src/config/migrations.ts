@@ -37,7 +37,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   // the sessions open at quit (`options.reopenSessions`) and the branches Close PR keeps
   // (`options.protectedBranches`). All optional and default, so the document is unchanged; the bump
   // keeps an older Workhub from loading the file and dropping them on its next save.
-  6: (raw) => raw
+  6: (raw) => raw,
+  // 7 -> 8: the Plan module: its toggle (`profiles[].modules.planner`), its setup
+  // (`profiles[].planner`), the `calendar` connection kind and the meeting reminder switch
+  // (`options.notifyMeetings`). All optional and default, so the document is unchanged; the bump
+  // keeps an older Workhub from loading the file and dropping them on its next save.
+  7: (raw) => raw
 }
 
 export class ConfigVersionError extends Error {

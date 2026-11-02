@@ -6,7 +6,7 @@
  */
 import type { AppOptions } from '../config/schema'
 
-export const NOTIFICATION_KINDS = ['replied', 'needsAnswer', 'error', 'prEvent', 'slack', 'automations', 'aiReview', 'tickets', 'health', 'flowMaps', 'usage'] as const
+export const NOTIFICATION_KINDS = ['replied', 'needsAnswer', 'error', 'prEvent', 'slack', 'automations', 'aiReview', 'tickets', 'health', 'flowMaps', 'metricAlert', 'usage', 'meeting'] as const
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]
 
 /** The boolean option that turns a kind on or off; null for kinds governed elsewhere. */
@@ -23,8 +23,11 @@ export const NOTIFICATION_TOGGLE: Record<NotificationKind, keyof AppOptions | nu
   tickets: 'notifyTickets',
   health: 'notifyHealth',
   flowMaps: 'notifyFlowMaps',
+  metricAlert: 'notifyMetricAlerts',
   // Usage alerts have their own switch per account under Settings → Usage.
-  usage: null
+  usage: null,
+  // Plan reminders (Settings → General).
+  meeting: 'notifyMeetings'
 }
 
 export function isNotificationKind(value: unknown): value is NotificationKind {

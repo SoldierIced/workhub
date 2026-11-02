@@ -34,7 +34,7 @@ In the dialog:
 | **Reviewer** | An agent of this profile with a chat. The default is an installed agent of a different kind than the session's own, in the profile's agent order. |
 | **Max rounds** | Reviews before the loop stops while the reviewer still requests changes. Default 3. |
 | **Send** | Starts the loop. |
-| **Review loop instead** | Starts the automatic branch review described below. |
+| **Review loop instead** | Starts a round of the branch review loop described below. |
 
 While it runs, both chats show a card with the phase (**Writing the brief**, **Starting the
 reviewer**, **Waiting on the reviewer**, **Waiting on the author**), the round, **Stop loop**, and
@@ -52,8 +52,9 @@ Workhub sends the whole reply to the reviewer.
 ## The older review loop
 
 The **review loop** reviews a branch of a git repository on a read-only checkout kept under the data
-folder, and sends the findings to the dev session. It can run on its own: when a dev session stays
-idle on a branch with commits ahead of its base, the reviewer starts. It never starts on
+folder, and sends the findings to the dev session. With **Start automatically** on, it runs on its
+own: when a dev session stays idle on a branch with commits ahead of its base, the reviewer starts;
+otherwise it starts when you send the branch to review. It never starts on
 `main`, `master`, `develop`, `development`, `trunk` or the base branch, and uncommitted changes are
 not reviewed. It runs for up to **Rounds before asking you** (default 3), then pauses for you.
 
@@ -75,10 +76,15 @@ finding opens it again and sends your note to the dev session (and to the review
 Set **Language of the review prompt and messages** to **Español** to get the reviewer's summary and
 findings in Spanish.
 
-Each chat has an **Auto review** check in its header, next to **Review before PR**. It is on by
-default; turn it off to keep automatic reviews from starting for that session (manual ones still
-run). Workhub remembers the choice per session, across restarts. The check shows only when the
-profile has **AI review** and **Start automatically** on.
+Reviews are manual by default: a round starts only when you send the branch to review. Automatic
+reviews are opt-in per profile with **Start automatically** (see the settings below). Profiles that
+never saved their AI review settings follow this default too, so after updating they stop starting
+reviews on their own until you turn the switch on.
+
+When the profile has **AI review** and **Start automatically** on, each chat shows an **Auto
+review** check in its header, next to **Review before PR**. The check starts on; turn it off to keep
+automatic reviews from starting for that session (manual ones still run). Workhub remembers the
+choice per session, across restarts.
 
 Its panel (**AI review**) shows **Round n of max**, a status (**Reviewing**, **Waiting for
 fixes**, **Needs you**, **Ready for PR**, **Failed**, **Stopped**), the reviewer's summary and its
@@ -95,9 +101,10 @@ Settings are per profile, in **Settings → Profiles → AI review**:
 | Setting | Meaning |
 |---|---|
 | **AI review** | On by default. |
-| **Start automatically when a dev session goes idle with new commits** | On by default. |
+| **Start automatically when a dev session goes idle with new commits** | Off by default; turn it on to review branches without asking. |
 | **Reviewer agent**, **Reviewer model** | Empty uses the first agent in the order and its default model. The model id is the agent's own (Kiro: `claude-opus-5.5`, say). |
 | **Reviewer effort** | Optional reasoning effort for the reviewer (`high`, `xhigh`, …). Agents without the setting ignore it. A large model at high effort finds far more in one pass and takes longer (15–20 minutes on a mid-sized change). |
+| **Reviewer across rounds** | **Same reviewer for every round** (default) keeps one reviewer session and its checkout for the whole review: later rounds continue its conversation instead of reading everything again. It is replaced by a new one when it was closed, when a round failed, or when the reviewer agent, model or effort changed. **New reviewer each round** starts every round with an empty context. |
 | **Base branch** | The pull request target (default `develop`). If it does not exist, the repository's default branch is used. It is fetched before every round. |
 | **Rounds before asking you** | Default 3. |
 | **Idle seconds before an automatic review** | Default 60. |
@@ -117,13 +124,17 @@ closes the review and tells the session so if you want. If the session is busy, 
 queued until it is idle. A reviewer session cannot receive comments.
 
 A tool the agent runs can open this window too. Every session (except reviewers) gets
-`WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (a local socket only your user can reach) in its
+`WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (a local socket only your user can reach; on Windows `WORKHUB_URL` and `WORKHUB_TOKEN`) in its
 environment:
 
 ```sh
 curl --unix-socket "$WORKHUB_SOCKET" -X POST "http://workhub/v1/sessions/$WORKHUB_SESSION/review" \
   -H 'content-type: application/json' -d '{"repos":[{"path":"/abs/path/to/repo","base":"origin/main"}]}'
 ```
+
+On Windows the session has `WORKHUB_URL` and `WORKHUB_TOKEN` instead of `WORKHUB_SOCKET` (a loopback
+port with a token made at each launch): replace `--unix-socket "$WORKHUB_SOCKET" http://workhub` with
+`-H "Authorization: Bearer $WORKHUB_TOKEN" "$WORKHUB_URL"` in these examples.
 
 `repos` is optional: the listed repositories are added to the ones Workhub finds in the session's
 folder, and `base` picks the branch to compare with. An open window reloads.

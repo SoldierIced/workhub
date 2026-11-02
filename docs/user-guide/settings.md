@@ -5,12 +5,14 @@ Open **Settings** with ⌘/Ctrl+, (or the app menu on macOS, **File** elsewhere)
 
 | Tab | What it holds |
 |---|---|
-| **General** | **Language** (System, English or Spanish); **Sessions** (reopen sessions on launch); **Session notifications** (Replied, Needs an answer, Error); **Other notifications** (Slack, Automations, Tickets, Health, **Pause notifications**); **Voice**; **Menu bar**; app icon badge; **Updates**; **Pull request notifications** and **Protected branches**; **Storage**; **Import from Workhub 1** (macOS). |
+| **General** | **Language** (System, English or Spanish); **Sessions** (reopen sessions on launch); **Session notifications** (Replied, Needs an answer, Error); **Other notifications** (Slack, Automations, Tickets, Health, **Meeting reminders**, **Pause notifications**); **Voice**; **Menu bar**; app icon badge; **Updates**; **Pull request notifications** and **Protected branches**; **Storage**; **Import from Workhub 1** (macOS). |
 | **Appearance** | Light, dark or system; the **Terminal color scheme** (a catalog of schemes, optionally applied across the whole app); terminal font and size; **App text size** and **Conversation text size**. Text sizes are kept on this computer, not in the shared settings. |
 | **Profiles** | Profiles and their folders, accounts, connections, modules, AI review, links and environment. See [Profiles](profiles.md). Also the Help and setup entries. |
-| **Connections** | Code host, chat and Health connections: kind, provider, endpoint, secret and extra `key=value` options. Each profile picks at most one of each kind. |
+| **Connections** | Code host, chat, Health and calendar connections: kind, provider, endpoint, secret and extra `key=value` options. Each profile picks at most one of each kind, except calendars, which a profile picks (one or more) in **Plan**. |
 | **Trackers** | Jira and Linear. See [Tickets](tickets.md). |
 | **Health** | Elasticsearch connection and environments. See [Health](health.md). |
+| **Flow maps** | The Flow maps screen switch for the active profile, the maps folder (one JSON file per map, **Reveal folder**) and importing maps from JSON files. See [Flow maps](flow-maps.md). |
+| **Plan** | The Plan module for the active profile: calendars (private ICS addresses, tested and stored as secrets), how often they are read, the default reminder, reminder and brief rules, the brief prompt and people. See [Plan](plan.md). |
 | **Slack** | The watcher, channels and tracking hook. See [Slack](slack.md). |
 | **Agents** | Every agent Workhub can run, its accounts, the agent order and failover. See [Profiles](profiles.md#accounts). |
 | **Usage** | Usage reading, budgets and alerts. See [Usage and budgets](usage.md). |

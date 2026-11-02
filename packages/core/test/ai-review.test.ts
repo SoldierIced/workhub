@@ -36,7 +36,7 @@ import {
 } from '../src'
 import { claudeA, config, kiroWork, profile } from './fixtures'
 
-const settings: AiReviewSettings = { ...DEFAULT_AI_REVIEW_SETTINGS }
+const settings: AiReviewSettings = { ...DEFAULT_AI_REVIEW_SETTINGS, auto: true }
 
 const json = (value: unknown) => `Summary for humans.\n\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``
 
@@ -55,8 +55,8 @@ const start = (prev?: BranchReview, sha = 'sha1', trigger: 'auto' | 'manual' = '
   startRound(prev, { devIdentity: 'dev-1', profileId: 'acme', repoRoot: '/r', branch: 'feat/x', base: 'develop', baseRef: 'origin/develop', sha, trigger, reviewerAgentKey: 'kiro', uncommitted: false, now: 1 }, settings)
 
 describe('AI review settings', () => {
-  it('defaults to on and automatic, and the schema fills missing fields without a version bump', () => {
-    expect(aiReviewSettings(undefined)).toMatchObject({ enabled: true, auto: true, maxRounds: 3, idleSeconds: 60, baseBranch: 'develop', reviewerAgent: null, reviewerModel: '', reviewerEffort: '' })
+  it('defaults to on and manual, and the schema fills missing fields without a version bump', () => {
+    expect(aiReviewSettings(undefined)).toMatchObject({ enabled: true, auto: false, maxRounds: 3, idleSeconds: 60, baseBranch: 'develop', reviewerAgent: null, reviewerModel: '', reviewerEffort: '', reviewerSession: 'same' })
     const parsedConfig = configSchema.parse({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', aiReview: { maxRounds: 99, idleSeconds: 1 } }] })
     expect(parsedConfig.profiles[0]?.aiReview).toEqual({ ...DEFAULT_AI_REVIEW_SETTINGS, maxRounds: 10, idleSeconds: 10 })
     expect(configSchema.parse({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P' }] }).profiles[0]?.aiReview).toBeUndefined()
@@ -144,6 +144,7 @@ describe('decideAutoReview', () => {
   it.each<[Partial<AutoTriggerInput>, string]>([
     [{ settings: { ...settings, enabled: false } }, 'disabled'],
     [{ settings: { ...settings, auto: false } }, 'manualOnly'],
+    [{ settings: DEFAULT_AI_REVIEW_SETTINGS }, 'manualOnly'],
     [{ sessionAutoOff: true }, 'sessionOff'],
     [{ isReviewerSession: true }, 'reviewer'],
     [{ state: 'busy' }, 'notIdle'],

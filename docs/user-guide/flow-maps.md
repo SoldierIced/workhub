@@ -29,6 +29,10 @@ Three ways to add one:
     -H 'content-type: application/json' --data-binary @checkout.json
   ```
 
+On Windows the session has `WORKHUB_URL` and `WORKHUB_TOKEN` instead of `WORKHUB_SOCKET` (a loopback
+port with a token made at each launch): replace `--unix-socket "$WORKHUB_SOCKET" http://workhub` with
+`-H "Authorization: Bearer $WORKHUB_TOKEN" "$WORKHUB_URL"` in these examples.
+
   The answer is `{"ok":true,"id":…,"file":…}` or `{"ok":false,"errors":[…]}` naming the fields.
 
 ## Turning it on

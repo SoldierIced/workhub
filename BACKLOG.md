@@ -114,6 +114,20 @@ Status: `[x]` done on main · `[~]` in progress (branch) · `[ ]` pending.
 - [ ] Settings: sticky save bar with unsaved-changes guard; Activate/Delete in the form header
 - [ ] Profile default folder; "New session" starts the preferred agent there without asking
 
+## N. Plan and metric alerts — branch `feat/day-planning`
+
+- [x] Metric alert engine (`core/alerts`): daily series per profile, five rules, lifecycle, Health → Alerts tab, Home card, notifications, demo source
+- [x] Plan part 1: calendars (private ICS), agenda, reminders and rules, meeting briefs, people, Home "Next meetings"
+- [x] Tracker capabilities `search` (`searchByQuery`) and `create` (`createIssue`) in Jira, Linear and the demo tracker
+- [x] Milestones tab: manual or tracker-counted progress, status against time (30 min refresh), Home "Milestones at risk"
+- [x] Inbox tab: approval queue (tracker issue, local task, decision), local tasks, decisions with search, filters, bulk edit; Home card and Plan badge
+- [x] Inbox producers: by hand, "Send to inbox" on metric alerts, `POST /v1/inbox` on the control endpoint
+- [x] Settings → Plan → Inbox: areas, criticality levels with tracker priority, tracker, project, issue types, description template, at-risk margin
+- [ ] GUI smoke test of milestones and the inbox with the dev build and demo data
+- [ ] More metric sources (product analytics, campaign tools)
+- [ ] Alert delivery to chat
+- [ ] Split the branch into chained pull requests (alerts, Plan part 1, tracker capabilities, milestones, inbox)
+
 ## Notes
 
 - Test every change in "Workhub 2 Dev" (`WORKHUB_DATA_DIR` under /tmp), never in the installed app.

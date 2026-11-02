@@ -1,4 +1,4 @@
-import { aiReviewSettings, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewLanguage } from '@workhub/core'
+import { aiReviewSettings, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewerSessionMode, type ReviewLanguage } from '@workhub/core'
 import { Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { Field, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
@@ -44,6 +44,16 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
         </Field>
         <Field label={t('aiReview.settings.reviewerEffort')} hint={t('aiReview.settings.reviewerEffortHint')}>
           <Input value={s.reviewerEffort} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerEffort: e.target.value })} onBlur={() => set({ reviewerEffort: s.reviewerEffort.trim() })} />
+        </Field>
+        <Field label={t('aiReview.settings.reviewerSession')} hint={t('aiReview.settings.reviewerSessionHint')}>
+          <Select
+            value={s.reviewerSession}
+            onChange={(v) => set({ reviewerSession: v as ReviewerSessionMode })}
+            options={[
+              { value: 'same', label: t('aiReview.settings.reviewerSession.same') },
+              { value: 'new', label: t('aiReview.settings.reviewerSession.new') }
+            ]}
+          />
         </Field>
         <Field label={t('aiReview.settings.baseBranch')} hint={t('aiReview.settings.baseBranchHint')}>
           <Input value={s.baseBranch} spellCheck={false} placeholder="develop" onChange={(e) => set({ baseBranch: e.target.value })} onBlur={() => set({ baseBranch: s.baseBranch.trim() || 'develop' })} />

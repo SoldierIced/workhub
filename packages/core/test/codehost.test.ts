@@ -187,9 +187,9 @@ describe('configurable protected branches', () => {
   it('parses a typed list and round-trips through the config', () => {
     expect(parseBranchList(' main, develop;\nmain  qa ,, ')).toEqual(['main', 'develop', 'qa'])
     expect(parseBranchList('  ')).toEqual([])
-    expect(appOptions(parseConfig({ version: 7, profiles: [] })).protectedBranches).toBeUndefined()
-    expect(appOptions(parseConfig({ version: 7, options: { protectedBranches: ['a', 'b'] }, profiles: [] })).protectedBranches).toEqual(['a', 'b'])
-    expect(() => parseConfig({ version: 7, options: { protectedBranches: [''] }, profiles: [] })).toThrow()
+    expect(appOptions(parseConfig({ version: 8, profiles: [] })).protectedBranches).toBeUndefined()
+    expect(appOptions(parseConfig({ version: 8, options: { protectedBranches: ['a', 'b'] }, profiles: [] })).protectedBranches).toEqual(['a', 'b'])
+    expect(() => parseConfig({ version: 8, options: { protectedBranches: [''] }, profiles: [] })).toThrow()
   })
 })
 

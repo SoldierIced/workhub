@@ -3,7 +3,7 @@
  * Secrets never live in the connection; `secretRef` points into the SecretStore.
  */
 
-export const CONNECTION_KINDS = ['codeHost', 'tracker', 'chat', 'health'] as const
+export const CONNECTION_KINDS = ['codeHost', 'tracker', 'chat', 'health', 'calendar'] as const
 export type ConnectionKind = (typeof CONNECTION_KINDS)[number]
 
 export interface Connection {
@@ -46,7 +46,9 @@ export const CONNECTION_PROVIDERS: readonly ConnectionProvider[] = [
   // Slack is read through the agent's own MCP server, as in Workhub 1: no token in Workhub.
   { id: 'slack', kind: 'chat', name: 'Slack (via agent MCP)', requiresSecret: false, requiresEndpoint: false, phase: 'P6' },
   { id: 'elastic-apm', kind: 'health', name: 'Elastic APM', requiresSecret: true, requiresEndpoint: true, phase: 'P6' },
-  { id: 'sentry', kind: 'health', name: 'Sentry', requiresSecret: true, requiresEndpoint: false, defaultEndpoint: 'https://sentry.io', phase: 'P6' }
+  { id: 'sentry', kind: 'health', name: 'Sentry', requiresSecret: true, requiresEndpoint: false, defaultEndpoint: 'https://sentry.io', phase: 'P6' },
+  // The calendar's private ICS address is the secret: it grants read access by itself, so it never goes in `endpoint`.
+  { id: 'ics', kind: 'calendar', name: 'Calendar (private ICS address)', requiresSecret: true, requiresEndpoint: false, phase: 'P7' }
 ]
 
 export function findProvider(id: string): ConnectionProvider | undefined {
@@ -56,6 +58,12 @@ export function findProvider(id: string): ConnectionProvider | undefined {
 export function providersOfKind(kind: ConnectionKind): ConnectionProvider[] {
   return CONNECTION_PROVIDERS.filter((p) => p.kind === kind)
 }
+
+/**
+ * Kinds a profile binds one connection of (`Profile.connections`). Calendars are picked as a list
+ * in the profile's Plan setup (`planner.calendarIds`) instead.
+ */
+export const PROFILE_CONNECTION_KINDS: readonly ConnectionKind[] = CONNECTION_KINDS.filter((k) => k !== 'calendar')
 
 /** The SecretStore key Workhub uses for a connection's secret. */
 export function connectionSecretRef(connectionId: string): string {

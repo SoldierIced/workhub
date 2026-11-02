@@ -1,6 +1,6 @@
 import { Brain, ExternalLink, FilePen, FileSearch, FileText, GitBranch, Globe, MoveRight, Power, PowerOff, RefreshCw, RotateCw, Settings, SquareTerminal, Ticket, Trash2, Wrench, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { sessionPullRequestUrls, sessionWork, visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
+import { freshTokens, sessionPullRequestUrls, sessionWork, visibleMonitorFields, type LocalChanges, type McpServerStatus, type PullRequestItem } from '@workhub/core'
 import { Badge, Button, IconButton, Spinner, StateDot } from '../../components/atoms'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -311,7 +311,8 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
           <MonitorSection id="tokens" title={t('monitor.tokens')}>
             <div className="flex flex-col gap-2.5">
               <div className="flex gap-2">
-                <MetricBox label={t('monitor.thisChat')} value={n(m.tokens?.total)} note={t('monitor.allTurns')} />
+                <MetricBox label={t('monitor.freshTokens')} value={n(freshTokens(m.tokens))} note={t('monitor.allTurns')} />
+                {m.tokens?.cacheRead !== undefined && <MetricBox label={t('monitor.cacheReads')} value={n(m.tokens.cacheRead)} note={t('monitor.cacheReadsNote')} />}
                 {fields.includes('cost') && m.cost && (
                   <MetricBox
                     label={t('monitor.cost')}

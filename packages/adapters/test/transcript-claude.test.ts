@@ -115,7 +115,7 @@ describe('Claude tool helpers', () => {
 
   it('finds ticket keys between underscores, as branch names write them', () => {
     expect(ticketKeys('hotfix_TEAM-45_duplicate-payment', ['TEAM'])).toEqual(['TEAM-45'])
-    expect(ticketKeys('feat/pay-126-savings and XPAY-1', ['PAY'])).toEqual(['PAY-126'])
+    expect(ticketKeys('feat/pay-126-filters and XPAY-1', ['PAY'])).toEqual(['PAY-126'])
   })
 
   it('tells the Jira tools that create or change a ticket from the ones that read', () => {
