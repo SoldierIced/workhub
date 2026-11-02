@@ -124,13 +124,17 @@ closes the review and tells the session so if you want. If the session is busy, 
 queued until it is idle. A reviewer session cannot receive comments.
 
 A tool the agent runs can open this window too. Every session (except reviewers) gets
-`WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (a local socket only your user can reach) in its
+`WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (a local socket only your user can reach; on Windows `WORKHUB_URL` and `WORKHUB_TOKEN`) in its
 environment:
 
 ```sh
 curl --unix-socket "$WORKHUB_SOCKET" -X POST "http://workhub/v1/sessions/$WORKHUB_SESSION/review" \
   -H 'content-type: application/json' -d '{"repos":[{"path":"/abs/path/to/repo","base":"origin/main"}]}'
 ```
+
+On Windows the session has `WORKHUB_URL` and `WORKHUB_TOKEN` instead of `WORKHUB_SOCKET` (a loopback
+port with a token made at each launch): replace `--unix-socket "$WORKHUB_SOCKET" http://workhub` with
+`-H "Authorization: Bearer $WORKHUB_TOKEN" "$WORKHUB_URL"` in these examples.
 
 `repos` is optional: the listed repositories are added to the ones Workhub finds in the session's
 folder, and `base` picks the branch to compare with. An open window reloads.

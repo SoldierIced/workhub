@@ -1,8 +1,13 @@
 /**
  * The local control endpoint: lets tools an agent runs inside a Workhub session ask Workhub for
- * something: "open the human review of my changes", store a flow map, read and update the plan. It is HTTP over a Unix socket in
- * the data folder (a named pipe on Windows), so only the user's own processes reach it; every
- * session gets `WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (the path) in its environment.
+ * something: "open the human review of my changes", store a flow map, read and update the plan.
+ *
+ * On macOS and Linux it is HTTP over a Unix socket in the data folder, so only the user's own
+ * processes reach it; every session gets `WORKHUB_SESSION` (its id) and `WORKHUB_SOCKET` (the path).
+ * On Windows Node cannot serve a Unix socket and curl cannot talk to a named pipe, so it is HTTP on
+ * a random loopback port guarded by a token made at each launch: sessions get `WORKHUB_URL` and
+ * `WORKHUB_TOKEN` instead, and every request sends `Authorization: Bearer $WORKHUB_TOKEN`. The
+ * `workhub-*` skills pick whichever the session has.
  *
  *   curl --unix-socket "$WORKHUB_SOCKET" -X POST "http://workhub/v1/sessions/$WORKHUB_SESSION/review" \
  *     -H 'content-type: application/json' -d '{"repos":[{"path":"/abs/repo","base":"origin/main"}]}'
@@ -27,7 +32,7 @@
  *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/milestones?session=$WORKHUB_SESSION"
  *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/people?session=$WORKHUB_SESSION"
  */
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, statSync, unlinkSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -62,7 +67,11 @@ export interface ControlDeps {
   log?: (message: string) => void
 }
 
-/** Where the endpoint listens for a data folder: a socket file in it, or a named pipe on Windows. */
+/**
+ * Where the socket endpoint listens for a data folder: a socket file in it (macOS and Linux). On
+ * Windows it is a named pipe, which Node serves but curl cannot reach, so the app uses the loopback
+ * endpoint there (`startLoopbackControlServer`); the pipe stays for tests and Node clients.
+ */
 export function controlSocketPath(dataDir: string, platform: NodeJS.Platform = process.platform): string {
   const hash = createHash('sha256').update(dataDir).digest('hex').slice(0, 16)
   if (platform === 'win32') return `\\\\.\\pipe\\workhub-control-${hash}`
@@ -72,8 +81,27 @@ export function controlSocketPath(dataDir: string, platform: NodeJS.Platform = p
 }
 
 /** The environment a session gets to reach the endpoint. */
-export function controlEnv(sessionId: string, socketPath: string): Record<string, string> {
-  return { WORKHUB_SESSION: sessionId, WORKHUB_SOCKET: socketPath }
+/** How sessions reach the endpoint: the socket path, or the loopback URL and its token (Windows); null before it listens. */
+export type ControlEndpoint = { socket: string } | { url: string; token: string }
+
+/** Whether this platform serves the endpoint on a loopback port with a token instead of a Unix socket. */
+export const usesLoopbackControl = (platform: NodeJS.Platform = process.platform) => platform === 'win32'
+
+/** A new token for the loopback endpoint (one per launch). */
+export const newControlToken = () => randomBytes(32).toString('hex')
+
+export function controlEnv(sessionId: string, endpoint: ControlEndpoint | null): Record<string, string> {
+  if (!endpoint) return { WORKHUB_SESSION: sessionId }
+  if ('socket' in endpoint) return { WORKHUB_SESSION: sessionId, WORKHUB_SOCKET: endpoint.socket }
+  return { WORKHUB_SESSION: sessionId, WORKHUB_URL: endpoint.url, WORKHUB_TOKEN: endpoint.token }
+}
+
+/** True when the request carries `Authorization: Bearer <token>` (compared in constant time). */
+export function hasControlToken(req: Pick<IncomingMessage, 'headers'>, token: string): boolean {
+  const header = req.headers.authorization ?? ''
+  const given = Buffer.from(header.startsWith('Bearer ') ? header.slice(7).trim() : '')
+  const want = Buffer.from(token)
+  return given.length === want.length && timingSafeEqual(given, want)
 }
 
 /** The repos of a review request, checked one by one; a string when the body is not one. */
@@ -244,6 +272,33 @@ export function startControlServer(socketPath: string, deps: ControlDeps): Promi
         }
       }
       resolve(server)
+    })
+  })
+}
+
+/**
+ * Starts the endpoint on a random port of 127.0.0.1, answering only requests with the token
+ * (Windows). A request a browser page sends carries an `Origin` and is refused too, so a web page
+ * cannot use the port even if it guessed the token. Resolves to null when it cannot listen.
+ */
+export function startLoopbackControlServer(token: string, deps: ControlDeps): Promise<{ server: Server; url: string } | null> {
+  const server = createServer((req, res) => {
+    if (req.headers.origin !== undefined || !hasControlToken(req, token)) return send(res, 401, { ok: false, error: 'missing or wrong token: send Authorization: Bearer $WORKHUB_TOKEN' })
+    handleControl(deps, req, res).catch((e: unknown) => send(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }))
+  })
+  return new Promise((resolve) => {
+    server.once('error', (e) => {
+      deps.log?.(`control endpoint not started: ${e.message}`)
+      resolve(null)
+    })
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close()
+        resolve(null)
+        return
+      }
+      resolve({ server, url: `http://127.0.0.1:${address.port}` })
     })
   })
 }

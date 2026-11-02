@@ -109,7 +109,7 @@ import { OwnerStarts } from './owner-starts'
 import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
 import { LocalReviewService, registerLocalReviewIpc } from './local-review'
-import { controlEnv, controlSocketPath, startControlServer } from './control-server'
+import { controlEnv, controlSocketPath, newControlToken, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
 import { createPlanControl } from './plan-control'
 import { FLOW_MAPS_FOLDER, saveFlowMap } from './flow-maps'
 import { registerFlowMapsIpc } from './flow-maps-ipc'
@@ -350,11 +350,15 @@ const tokenSpend = new TokenSpendService({
 const apiSpend = new ApiSpendService({ config: () => configuration.current(), home: homedir(), costs: (include) => tokenSpend.costs(include), ledger: costLedger })
 // The names the user gave sessions, by identity (Rename…).
 const sessionNames = new SessionNames(new StateFile(join(dataDir, 'session-names.json'), 300))
-// Tools an agent runs can ask Workhub for things (today: open "Review changes") over this socket.
+// Tools an agent runs can ask Workhub for things (review, flow maps, Plan): a Unix socket, or on
+// Windows a loopback port with a per-launch token, known once it listens.
+const loopbackControl = usesLoopbackControl()
 const controlSocket = controlSocketPath(dataDir)
+const controlToken = newControlToken()
+let controlEndpoint: ControlEndpoint | null = loopbackControl ? null : { socket: controlSocket }
 const sessions = new SessionManager({
   config: configuration,
-  sessionEnv: (sessionId) => controlEnv(sessionId, controlSocket),
+  sessionEnv: (sessionId) => controlEnv(sessionId, controlEndpoint),
   names: sessionNames,
   profileEnv: async (profileId, cwd) => {
     const config = await configuration.current()
@@ -1636,7 +1640,7 @@ const controlProfiles = {
   }
 }
 void app.whenReady().then(async () => {
-  controlServer = await startControlServer(controlSocket, {
+  const controlDeps: ControlDeps = {
     openReview: (sessionId, repos) => {
       const v = sessions.list().find((s) => s.id === sessionId)
       if (!v) return { ok: false, status: 404, error: 'unknown session' }
@@ -1654,7 +1658,12 @@ void app.whenReady().then(async () => {
       profile: async (profileId) => (await configuration.current()).profiles.find((p) => p.id === profileId)
     }),
     log: (m) => diagnostics.log.warn(m)
-  })
+  }
+  if (loopbackControl) {
+    const started = await startLoopbackControlServer(controlToken, controlDeps)
+    controlServer = started?.server ?? null
+    if (started) controlEndpoint = { url: started.url, token: controlToken }
+  } else controlServer = await startControlServer(controlSocket, controlDeps)
   if (!firstInstance) return
   try {
     await configuration.load()

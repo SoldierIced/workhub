@@ -186,7 +186,8 @@ Items come from:
 - **Send to inbox** on a metric alert (**Health → Alerts**, see [Health](health.md#alerts)): a
   pending bug with the alert's details.
 - **Agents and automations**, through Workhub's local control endpoint. A session has
-  `WORKHUB_SOCKET` and `WORKHUB_SESSION` in its environment:
+  `WORKHUB_SESSION` and `WORKHUB_SOCKET` in its environment (on Windows `WORKHUB_URL` and
+  `WORKHUB_TOKEN`; see [Agents and the plan](#agents-and-the-plan)):
 
   ```sh
   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/inbox \
@@ -259,6 +260,10 @@ curl --unix-socket "$WORKHUB_SOCKET" -X PATCH http://workhub/v1/inbox/<id> \
   -H 'content-type: application/json' \
   -d '{"session":"'"$WORKHUB_SESSION"'","status":"done","note":"Sent in the release thread"}'
 ```
+
+On Windows the session has `WORKHUB_URL` and `WORKHUB_TOKEN` instead of `WORKHUB_SOCKET` (a loopback
+port with a token made at each launch): replace `--unix-socket "$WORKHUB_SOCKET" http://workhub` with
+`-H "Authorization: Bearer $WORKHUB_TOKEN" "$WORKHUB_URL"` in these examples.
 
 What an agent cannot do: approve an item. Turning a task or bug into a tracker issue stays your
 action on the Inbox tab; an agent only proposes items, keeps, closes, discards or reopens them and

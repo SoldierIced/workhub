@@ -51,7 +51,11 @@ hop of an existing flow, or asks to fix a map that Workhub lists as invalid.
    invalid fields if any:
 
    ```sh
+   # macOS and Linux (WORKHUB_SOCKET):
    curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/flow-maps \
+     -H 'content-type: application/json' --data-binary @<map>.json
+   # Windows (WORKHUB_URL and WORKHUB_TOKEN):
+   curl -H "Authorization: Bearer $WORKHUB_TOKEN" -X POST "$WORKHUB_URL/v1/flow-maps" \
      -H 'content-type: application/json' --data-binary @<map>.json
    ```
 

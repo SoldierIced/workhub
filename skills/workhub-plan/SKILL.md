@@ -20,14 +20,26 @@ section of `docs/user-guide/plan.md` in the Workhub repository.
 
 ## Before calling
 
-The session environment has `WORKHUB_SOCKET` (the endpoint) and `WORKHUB_SESSION` (this session's
-id). Pass the session on every call: the answer is about the profile this session runs in. Without
-`WORKHUB_SOCKET` you are not in a Workhub session: say so and stop; do not look for the socket.
+The session environment has `WORKHUB_SESSION` (this session's id) and the endpoint:
+`WORKHUB_SOCKET` (a Unix socket, macOS and Linux) or `WORKHUB_URL` and `WORKHUB_TOKEN` (a loopback
+port and its token, Windows). Pass the session on every call: the answer is about the profile this
+session runs in. With none of them you are not in a Workhub session: say so and stop; do not look
+for the endpoint.
+
+`W` works on both (bash, including Git Bash on Windows): it calls `http://workhub/...` over the
+socket, or rewrites it to `$WORKHUB_URL` with the token.
 
 ```sh
-W() { curl -s --unix-socket "$WORKHUB_SOCKET" "$@"; }
+W() {
+  if [ -n "$WORKHUB_URL" ]; then # Windows: a loopback port and a token
+    local a=() x; for x in "$@"; do a+=("${x/http:\/\/workhub/$WORKHUB_URL}"); done
+    curl -s -H "Authorization: Bearer $WORKHUB_TOKEN" "${a[@]}"
+  else curl -s --unix-socket "$WORKHUB_SOCKET" "$@"; fi
+}
 S="session=$WORKHUB_SESSION"
 ```
+
+From PowerShell use `curl.exe -s -H "Authorization: Bearer $env:WORKHUB_TOKEN" "$env:WORKHUB_URL/v1/..."`.
 
 Every answer is JSON with `ok`. `ok: false` carries `error`: tell the user in one line. An answer
 with `enabled: false` or a `reason` means Plan is off in the profile or has no calendar: tell the
