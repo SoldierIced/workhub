@@ -69,6 +69,38 @@ New session marks an agent **not installed**, with how to install it, when its c
 
 Claude Code needs no separate install; sign in with a Claude account from the setup check.
 
+## A Plan calendar fails
+
+On the Plan screen and in **Settings → Plan → Calendars**, a calendar that cannot be read shows why.
+**Test calendar** runs the same read.
+
+| Message | Likely cause and fix |
+|---|---|
+| "the address was refused (it may have been reset)" | The calendar service answered 401, 403, 404 or 410. The private address was reset or revoked. Copy the current address from the calendar service and paste it again. |
+| "the address does not return a calendar" | The link answered, but not with an `.ics` calendar. Check that you copied the ICS (secret iCal) address, not the page address. |
+| "the calendar is too large (over 5 MB)" | Workhub refuses a calendar over 5 MB. Use a smaller calendar. |
+| "the calendar could not be reached" | The host did not answer, or the address does not start with `https://` or `webcal://`. Check the network and the address. |
+| "no address is stored" | The calendar has no saved address. Paste it again and **Save calendar**. |
+
+Some organizations turn private addresses off. If yours does, the option is missing in the calendar
+service or the address is refused, and Workhub cannot read that calendar. See
+[Plan](user-guide/plan.md#adding-a-calendar).
+
+## An agent cannot reach Workhub
+
+Agents talk to Workhub through its local control endpoint (Plan, flow maps, review). Every session
+gets these environment variables:
+
+- `WORKHUB_SESSION`: the session id.
+- macOS and Linux: `WORKHUB_SOCKET`, the path of a Unix socket.
+- Windows: `WORKHUB_URL` and `WORKHUB_TOKEN`. The endpoint is a loopback HTTP port with a
+  per-launch token; send `Authorization: Bearer $WORKHUB_TOKEN`.
+
+If calls fail with "no such file", "connection refused" or a rejected token, the session probably
+started before Workhub restarted and holds old values. The socket path, the port and the token can
+change on each launch. Start a new session. Also check that the session runs inside Workhub: a
+terminal opened outside it has none of these variables.
+
 ## Updates
 
 - Update checks are off by default. Turn on **Settings → General → Updates → Check for updates**, or
@@ -101,7 +133,7 @@ Verify the download against its `.sha256` file if you want to be sure it is the 
 - Quitting with a live Shell session can print `Error: AttachConsole failed` from node-pty's
   `conpty_console_list_agent.js`. It is a harmless race in node-pty's Windows kill path (the shell is
   already gone) and does not affect the app.
-- Windows and Linux builds are produced by CI but have not been tested on real machines yet; please
+- Windows and Linux builds are produced by CI but are still untested on real machines; please
   report what you find.
 - Running the tests from source without administrator rights or Developer Mode skips the
   symbolic-link test.
