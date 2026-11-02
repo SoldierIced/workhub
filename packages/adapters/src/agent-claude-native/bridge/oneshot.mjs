@@ -7,7 +7,9 @@
 // passes no tool names). Anything not on it is denied, and every denial is reported in `deniedTools`.
 //
 // stdin (one JSON line):
-//   {"prompt","cwd","configDir"?,"model"?,"maxTurns"?,"systemPrompt"?,"timeoutSeconds"?}
+//   {"prompt","cwd","configDir"?,"model"?,"maxTurns"?,"systemPrompt"?,"timeoutSeconds"?,"bare"?}
+// `bare: true` (the chat's Listen summaries): no settings, plugins, MCP servers or connectors at all,
+// so the run is the prompt alone; with no tools of any kind, nothing can be called.
 // stdout (one JSON line, last line):
 //   {"ok","result","isError","subtype","errorMessage"?,"rateLimited","resetsAt"?,"costUsd"?,"durationMs","slackTools":[string],"deniedTools":[string]}
 import { execFileSync } from "node:child_process";
@@ -193,8 +195,12 @@ async function run(request) {
   // Cost: loading the user's settings brings every MCP server, plugin, skill and CLAUDE.md
   // (~120k tokens of context per run, measured). When the account has the official Slack plugin,
   // load only that plugin: it reuses the account's Slack login and costs ~4k tokens per run.
-  const slackPlugin = findSlackPlugin(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"));
-  if (slackPlugin) {
+  const slackPlugin = request.bare ? undefined : findSlackPlugin(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"));
+  if (request.bare) {
+    // Only the prompt: no user settings (MCP servers, plugins, skills, CLAUDE.md) and no claude.ai connectors.
+    options.settingSources = [];
+    options.env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
+  } else if (slackPlugin) {
     options.settingSources = [];
     options.plugins = [{ type: "local", path: slackPlugin }];
     // Write tools are also refused by the permission layers; leaving them out keeps their definitions out of the context.

@@ -147,6 +147,8 @@ export const setupEn = {
   'voice.sample': 'Hello, this is how Claude’s replies will sound with this voice.',
   'voice.unsupported': 'This system has no voices Workhub can use.',
   'voice.shortcutNote': 'Stop speaking: {keys}',
+  'voice.listenModel': 'Summary model',
+  'voice.listenModelHint': 'The chat’s Listen button summarizes a long agent message with this Claude model before reading it, on the session’s Claude account. Each summary is a small paid query; a small model such as haiku costs the least. Empty: haiku.',
   'voice.session.on': 'Stop reading replies aloud',
   'voice.session.off': 'Read replies aloud',
   // Notifications master switch

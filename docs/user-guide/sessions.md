@@ -57,6 +57,21 @@ stays in the current view.
 - **Timestamps**: every message shows the day and hour it was sent; hover for the full date with
   seconds.
 - Permission requests appear in the conversation; answer them there.
+- **Long messages**: a message of yours taller than about 25 lines on screen (a pasted log or
+  crash report, even one with no line breaks) is shown collapsed; **Show more** opens it, **Show less** folds it again. Long lines
+  wrap inside the bubble, and code blocks and tables in replies scroll inside themselves.
+- **Listen**: next to **Copy** under each agent message. A short message (under about 400
+  characters once code, links and formatting are left out) is read aloud as it is. A longer one is
+  first summarized into a few spoken sentences, in the message's language, by a small Claude model
+  (**haiku** by default, **Settings → General → Voice → Summary model**) on the session's Claude
+  account (Claude's default account for other agents). Each summary is one small paid query that
+  spends a few hundred to a few thousand tokens of that account; it is not counted in the
+  token spend on Home. While it summarizes, the button shows a spinner (click to cancel); while it
+  reads, click it to **Pause** and again to **Resume**, and **Stop listening** ends it. One thing
+  is read at a time: starting another message stops the current one. If the summary fails (no
+  Claude login, a limit reached, a timeout after about 45 seconds), a notice says so and the start
+  of the message is read instead. The voice and speed are those of **Settings → General → Voice**;
+  with **System voice**, a voice of the app's language is used when one is installed.
 - **Idle notice**: agents keep the conversation's prompt in a cache for a few minutes (Claude: 5
   minutes or 1 hour, renewed by each request). When you come back to a session that has been idle
   past that, a notice above the composer says the next message sends the whole context again at

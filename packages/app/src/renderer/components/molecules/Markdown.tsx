@@ -41,7 +41,7 @@ const COMPONENTS: Components = {
 function CodeBlock({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLPreElement>(null)
   return (
-    <div className="group/code relative">
+    <div className="group/code relative max-w-full min-w-0">
       <pre ref={ref}>{children}</pre>
       <CopyButton text={() => ref.current?.innerText ?? ''} className="absolute top-1 right-1 bg-surface/80 opacity-70 group-hover/code:opacity-100" />
     </div>

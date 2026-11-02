@@ -46,6 +46,7 @@ import type { FlowMapsApi } from './flow-maps-api'
 import type { PlanApi } from './plan-api'
 import type { PlannerApi } from './planner-api'
 import type { MetricAlertsApi } from './metric-alerts-api'
+import type { ListenApi } from './listen-api'
 import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
 import type { TicketsApi } from './tickets-api'
@@ -434,6 +435,7 @@ export interface HubApi {
   plan: PlanApi
   planner: PlannerApi
   metricAlerts: MetricAlertsApi
+  listen: ListenApi
   prEvents: PrEventsApi
   links: LinksApi
   slack: SlackApi

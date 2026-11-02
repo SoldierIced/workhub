@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Square, Volume2 } from 'lucide-react'
-import { appOptions, DEFAULT_SPEECH_RATE, SPEECH_RATE_RANGE, type Result, type WorkhubConfig } from '@workhub/core'
-import { Button, Select, Switch } from '../components/atoms'
+import { appOptions, DEFAULT_LISTEN_MODEL, DEFAULT_SPEECH_RATE, SPEECH_RATE_RANGE, type Result, type WorkhubConfig } from '@workhub/core'
+import { Button, Input, Select, Switch } from '../components/atoms'
 import { SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { usePlatform } from '../lib/platform'
@@ -28,6 +28,12 @@ export function VoiceSettingsGroup({ config, editable, run }: { config: WorkhubC
   const speakingId = useSpeakingId()
   const [rate, setRate] = useState(options.speechRate)
   useEffect(() => setRate(options.speechRate), [options.speechRate])
+  const [model, setModel] = useState(options.listenModel)
+  useEffect(() => setModel(options.listenModel), [options.listenModel])
+  const saveModel = () => {
+    const next = model.trim()
+    if (next !== options.listenModel) save({ listenModel: next })
+  }
   const known = voices.some((v) => v.name === options.speechVoice)
   const save = (patch: Parameters<typeof window.hub.config.saveOptions>[0]) => void run(() => window.hub.config.saveOptions(patch))
   const voiceList = voiceOptions(voices)
@@ -64,6 +70,18 @@ export function VoiceSettingsGroup({ config, editable, run }: { config: WorkhubC
           // One write when the thumb is let go, not one per step of the drag.
           onPointerUp={() => rate !== options.speechRate && save({ speechRate: rate })}
           onKeyUp={() => rate !== options.speechRate && save({ speechRate: rate })}
+        />
+      </SettingRow>
+      <SettingRow label={t('voice.listenModel')} hint={t('voice.listenModelHint')}>
+        <Input
+          aria-label={t('voice.listenModel')}
+          value={model}
+          placeholder={DEFAULT_LISTEN_MODEL}
+          disabled={!editable}
+          maxLength={100}
+          onChange={(e) => setModel(e.target.value)}
+          onBlur={saveModel}
+          onKeyDown={(e) => e.key === 'Enter' && saveModel()}
         />
       </SettingRow>
       <div className="flex justify-end py-3">

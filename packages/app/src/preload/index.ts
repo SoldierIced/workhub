@@ -181,6 +181,10 @@ const api: HubApi = {
     bulkEdit: (profileId, ids, patch) => ipcRenderer.invoke('planner:bulkEdit', profileId, ids, patch),
     onChanged: (cb) => subscribe<[string]>('planner:changed', cb)
   },
+  listen: {
+    summarize: (requestId, sessionId, text) => ipcRenderer.invoke('listen:summarize', requestId, sessionId, text),
+    cancel: (requestId) => ipcRenderer.send('listen:cancel', requestId)
+  },
   metricAlerts: {
     list: (profileId) => ipcRenderer.invoke('metricAlerts:list', profileId),
     setStatus: (profileId, key, action) => ipcRenderer.invoke('metricAlerts:setStatus', profileId, key, action),

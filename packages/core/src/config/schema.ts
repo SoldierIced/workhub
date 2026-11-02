@@ -102,6 +102,11 @@ export interface AppOptions {
   speechVoice: string
   /** Speaking speed in words per minute (`SPEECH_RATE_RANGE`). */
   speechRate: number
+  /**
+   * The model that summarizes a long agent message before the chat's Listen button reads it
+   * (a Claude model alias or id; empty: `DEFAULT_LISTEN_MODEL`). Each summary is a small paid query.
+   */
+  listenModel: string
   /** The first-run welcome window was shown (or the user already had profiles). */
   welcomeDone: boolean
   /**
@@ -122,8 +127,10 @@ export interface AppOptions {
 /** Words per minute the voice speaks at (Workhub 1's range). */
 export const SPEECH_RATE_RANGE = [120, 300] as const
 export const DEFAULT_SPEECH_RATE = 190
+/** The cheap model a long message is summarized with before it is read aloud. */
+export const DEFAULT_LISTEN_MODEL = 'haiku'
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, welcomeDone: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, listenModel: DEFAULT_LISTEN_MODEL, welcomeDone: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   return { ...DEFAULT_OPTIONS, ...config.options }
@@ -513,6 +520,7 @@ export const configSchema = z.object({
       readAloud: z.boolean().default(false),
       speechVoice: z.string().max(200).default(''),
       speechRate: z.number().int().min(SPEECH_RATE_RANGE[0]).max(SPEECH_RATE_RANGE[1]).default(DEFAULT_SPEECH_RATE),
+      listenModel: z.string().trim().max(100).regex(/^[\w.:@\-[\]]*$/).default(DEFAULT_LISTEN_MODEL),
       welcomeDone: z.boolean().default(false),
       protectedBranches: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
       notificationsPausedUntil: z.number().int().nonnegative().optional(),

@@ -238,6 +238,8 @@
   color: var(--wh-text-muted);
 }
 .markdown :not(pre) > code {
+  /* A long identifier or path wraps instead of widening the chat column. */
+  overflow-wrap: anywhere;
   font-family: var(--font-mono);
   font-size: 0.88em;
   padding: 0.1em 0.35em;
@@ -245,6 +247,8 @@
   background: var(--wh-surface-hover);
 }
 .markdown pre {
+  /* Code keeps its lines and scrolls inside its own box; it never widens the page. */
+  max-width: 100%;
   font-family: var(--font-mono);
   font-size: 0.85em;
   line-height: 1.5;
@@ -255,6 +259,7 @@
   overflow-x: auto;
 }
 .markdown table {
+  max-width: 100%;
   border-collapse: collapse;
   font-size: 0.92em;
   display: block;
@@ -270,6 +275,7 @@
   font-weight: 600;
 }
 .markdown a {
+  overflow-wrap: anywhere;
   color: var(--wh-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
