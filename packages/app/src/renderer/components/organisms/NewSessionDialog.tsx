@@ -1,7 +1,7 @@
 import { AgentIcon } from '../atoms/AgentIcon'
 import { FolderOpen } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { pickAgent, type EffectiveAgent, type Profile } from '@workhub/core'
+import { pickAgent, worktreeDefault, worktreeSettings, type EffectiveAgent, type Profile } from '@workhub/core'
 import { newSessionProfile } from '../../lib/folders'
 import { useI18n } from '../../i18n/I18nProvider'
 import { installHintKey } from '../../lib/agents'
@@ -12,8 +12,9 @@ import { Button } from '../atoms/Button'
 import { IconButton } from '../atoms/IconButton'
 import { Input } from '../atoms/Input'
 import { Select } from '../atoms/Select'
+import { Switch } from '../atoms/Switch'
 import { Dialog } from '../molecules/Dialog'
-import { Field } from '../molecules/Field'
+import { Field, SwitchRow } from '../molecules/Field'
 import { RefreshButton } from '../molecules/RefreshButton'
 import { errorText } from '../../lib/errorText'
 import { permissionModeLabel } from '../../lib/sessionHeader'
@@ -76,6 +77,16 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [model, setModel] = useState('')
   const [modeId, setModeId] = useState('')
+  // Worktree: defaulted from the folder's profile (and the folder's own option) until the user flips it.
+  const [worktreeChoice, setWorktreeChoice] = useState<boolean | null>(null)
+  const [branch, setBranch] = useState('')
+  const useWorktree = worktreeChoice ?? worktreeDefault(owner, cwd, home)
+  const branchPrefix = worktreeSettings(owner).branchPrefix
+  useEffect(() => {
+    if (!open) return
+    setWorktreeChoice(null)
+    setBranch('')
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -143,7 +154,17 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
     setBusy(true)
     try {
       // Nothing picked: the main process falls back to the account's defaults, then the agent's.
-      const view = await window.hub.sessions.start({ profileId: sessionProfileId, agentKey, cwd, cols: 100, rows: 30, ...(model ? { model } : {}), ...(modeId ? { modeId } : {}) })
+      const view = await window.hub.sessions.start({
+        profileId: sessionProfileId,
+        agentKey,
+        cwd,
+        cols: 100,
+        rows: 30,
+        ...(model ? { model } : {}),
+        ...(modeId ? { modeId } : {}),
+        // Asked for here: a folder outside a repository is an error the dialog shows; a default is not.
+        ...(useWorktree ? { worktree: { ...(branch.trim() ? { branch: branch.trim() } : {}), ...(worktreeChoice === null ? { optional: true } : {}) } } : {})
+      })
       if (configurable) {
         rememberModel(agentKey, model || null)
         rememberMode(agentKey, modeId || null)
@@ -269,6 +290,14 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
           </div>
         </Field>
         {otherProfile && owner && <p className="-mt-2 text-xs text-subtle">{t('newSession.otherProfile', { name: owner.name })}</p>}
+        <SwitchRow label={t('newSession.worktree')} hint={t('newSession.worktreeHint')}>
+          <Switch checked={useWorktree} onChange={setWorktreeChoice} aria-label={t('newSession.worktree')} />
+        </SwitchRow>
+        {useWorktree && (
+          <Field label={t('newSession.branch')} hint={branchPrefix ? t('newSession.branchPrefix', { prefix: branchPrefix }) : undefined}>
+            <Input aria-label={t('newSession.branch')} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={t('newSession.branchPlaceholder')} spellCheck={false} />
+          </Field>
+        )}
         {error && (
           <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
             {error}

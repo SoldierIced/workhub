@@ -14,6 +14,7 @@ import { REVIEW_LANGUAGES, REVIEWER_SESSION_MODES } from '../ai-review/types'
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
 import { AGENT_MILESTONE_MODES, MILESTONE_MARGIN_RANGE } from '../milestones'
 import { INBOX_LIMITS } from '../inbox/types'
+import { DEFAULT_WORKTREE_SETTINGS, WORKTREE_CLOSE_MODES } from '../worktrees/settings'
 import { DEFAULT_PLANNER_REFRESH_MINUTES, DEFAULT_REMINDER_LEAD_MINUTES, MAX_LEAD_MINUTES, MAX_PLANNER_REFRESH_MINUTES, MIN_PLANNER_REFRESH_MINUTES } from '../calendar/types'
 
 /**
@@ -367,7 +368,16 @@ const planner = z.object({
   agentMilestones: z.enum(AGENT_MILESTONE_MODES).optional()
 })
 
-const folderOptions = z.object({ onlyGitRepos: z.boolean().optional(), subfoldersAreProjects: z.boolean().optional() })
+const folderOptions = z.object({ onlyGitRepos: z.boolean().optional(), subfoldersAreProjects: z.boolean().optional(), worktrees: z.boolean().optional() })
+
+// Optional with defaults on every field, so it needs no config version bump: an older file simply has none.
+const worktrees = z.object({
+  enabled: z.boolean().default(DEFAULT_WORKTREE_SETTINGS.enabled),
+  location: z.string().trim().max(1000).default(DEFAULT_WORKTREE_SETTINGS.location),
+  branchPrefix: z.string().trim().max(100).default(DEFAULT_WORKTREE_SETTINGS.branchPrefix),
+  baseRef: z.string().trim().max(200).default(DEFAULT_WORKTREE_SETTINGS.baseRef),
+  onClose: z.enum(WORKTREE_CLOSE_MODES).default(DEFAULT_WORKTREE_SETTINGS.onClose)
+})
 
 const profile = z.object({
   id,
@@ -389,6 +399,7 @@ const profile = z.object({
   health: healthSettings.optional(),
   slackArchiveMinutes: z.number().int().min(1).optional(),
   aiReview: aiReview.optional(),
+  worktrees: worktrees.optional(),
   accountFailover: z.enum(['ask', 'automatic', 'off']).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   planner: planner.optional()

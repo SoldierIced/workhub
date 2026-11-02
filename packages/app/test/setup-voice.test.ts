@@ -149,6 +149,9 @@ describe('profile environment', () => {
     })
     expect(prunedFolderOptions(undefined, ['/a'])).toBeUndefined()
   })
+  it('keeps a folder\'s worktree choice, and drops it once it follows the profile again', () => {
+    expect(prunedFolderOptions({ '/a': { worktrees: false }, '/b': { worktrees: undefined } }, ['/a', '/b'])).toEqual({ '/a': { worktrees: false } })
+  })
   it('saves "Automatic" as an unset subfolder switch', () => {
     expect(prunedFolderOptions({ '/a': { onlyGitRepos: true, subfoldersAreProjects: undefined }, '/b': { subfoldersAreProjects: undefined } }, ['/a', '/b'])).toEqual({
       '/a': { onlyGitRepos: true }

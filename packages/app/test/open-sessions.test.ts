@@ -74,6 +74,12 @@ describe('open sessions across launches', () => {
     expect(readSavedSessions(null)).toEqual([])
   })
 
+  it('keeps the worktree a session runs in, and drops a malformed one', () => {
+    const worktree = { repoRoot: '/repo', path: '/_worktrees/repo-x', branch: 'x' }
+    expect(savedSessionOf(view('w', { worktree }), 'app')?.worktree).toEqual(worktree)
+    expect(readSavedSessions({ sessions: [saved('w', { worktree }), { ...saved('v'), worktree: { path: '/x' } }] })).toEqual([saved('w', { worktree }), saved('v')])
+  })
+
   it('reopens in sidebar order: top level, then each group in place, the rest after', () => {
     const groups: SessionGroups = {
       groups: [{ id: 'g', name: 'G', collapsed: false, members: [{ key: 'c', title: 'c', agentKey: 'claude', cwd: '/c' }, { key: 'a', title: 'a', agentKey: 'claude', cwd: '/a' }] }],

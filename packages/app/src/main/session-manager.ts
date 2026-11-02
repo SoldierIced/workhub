@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { dirname, join, relative, isAbsolute } from 'node:path'
 import {
   ActiveClock,
   accountAgent,
   BUILTIN_AGENTS,
   canSetModel,
   canSetSessionMode,
+  containingFolder,
   consoleCommand,
   defaultStartMode,
   hasSessionControls,
@@ -15,6 +18,10 @@ import {
   launchEnvironment,
   resolveEffectiveAgents,
   sessionScreens,
+  worktreeBranch,
+  worktreeFolderName,
+  worktreeSettings,
+  worktreesLocation,
   type AgentAccount,
   type AgentAdapterKind,
   type AgentDefinition,
@@ -28,6 +35,9 @@ import {
   type SessionHistorySource,
   type SessionOrigin,
   type SessionModeOption,
+  type SessionWorktree,
+  type Worktrees,
+  type WorktreeStatus,
   type SubagentConversation,
   type TranscriptReader,
   type WorkhubConfig
@@ -111,7 +121,12 @@ export interface SessionManagerDeps {
   names?: SessionNameStore
   /** A session reported its models and modes: remembered so the next session can offer them before it starts. */
   onAgentOptions?: (agentId: string, accountId: string | null, options: { models: ModelOption[]; modes: SessionModeOption[] }) => void
+  /** Creates and removes the worktrees of sessions that ask for one; without it they start in the folder. */
+  worktrees?: Worktrees
 }
+
+/** What closing a session with its worktree did: `blocked` when the worktree has work removing it would lose (nothing was closed). */
+export type CloseWorktreeResult = { ok: true } | { ok: false; blocked: WorktreeStatus }
 
 const SHELL = BUILTIN_AGENTS.find((a) => a.id === 'shell')!
 
@@ -178,14 +193,20 @@ export class SessionManager {
    * `internal` is for the main process only (never the renderer's IPC input): extra environment
    * for the agent process, e.g. the AI review's push block.
    */
-  async start(asked: StartSessionInput, internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean } = {}): Promise<SessionView> {
+  async start(
+    asked: StartSessionInput,
+    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; worktree?: SessionWorktree } = {}
+  ): Promise<SessionView> {
     const config = await this.deps.config.current()
     // A session belongs to the profile that owns its folder (its AI review, links and environment
     // follow it), whatever profile was active when it was opened, as long as that profile offers the agent.
+    // Decided on the folder asked for, so a worktree placed outside the profile's folders stays in it.
     const owner = asked.readOnly ? undefined : owningProfile(asked.cwd, config.profiles, homedir())
-    const input: StartSessionInput = owner && owner.id !== asked.profileId && resolveChoice(config, owner.id, asked.agentKey) ? { ...asked, profileId: owner.id } : asked
-    const choice = resolveChoice(config, input.profileId, input.agentKey)
-    if (!choice) throw new Error(`agent "${input.agentKey}" is not offered by this profile`)
+    const owned: StartSessionInput = owner && owner.id !== asked.profileId && resolveChoice(config, owner.id, asked.agentKey) ? { ...asked, profileId: owner.id } : asked
+    const choice = resolveChoice(config, owned.profileId, owned.agentKey)
+    if (!choice) throw new Error(`agent "${owned.agentKey}" is not offered by this profile`)
+    const placed = await this.placeInWorktree(owned, config, internal)
+    const input: StartSessionInput = { ...owned, cwd: placed.cwd }
     const { account } = choice
     // An account can run another build of the agent (its own command).
     const agent = accountAgent(choice.agent, account)
@@ -231,6 +252,7 @@ export class SessionManager {
       modelControl: canSetModel(runtime),
       modeControl: canSetSessionMode(runtime),
       ...(input.readOnly ? { readOnly: true } : {}),
+      ...(placed.worktree ? { worktree: placed.worktree } : {}),
       ...(internal.origin ? { origin: internal.origin } : {}),
       ...(input.resumeAgentSessionId || input.identity ? { resumed: true } : {})
     }
@@ -268,6 +290,55 @@ export class SessionManager {
       (err: unknown) => this.update(view.id, { state: 'error', error: err instanceof Error ? err.message : String(err) })
     )
     return view
+  }
+
+  /**
+   * Where a new session runs: a new worktree of the folder's repository when the session asks for
+   * one (never for a reviewer, a reopened or a resumed session), else the folder asked for. The
+   * folder's place inside the repository is kept (`repo/src` starts in `<worktree>/src`).
+   */
+  private async placeInWorktree(input: StartSessionInput, config: WorkhubConfig, internal: { restored?: boolean; worktree?: SessionWorktree }): Promise<{ cwd: string; worktree?: SessionWorktree }> {
+    if (internal.worktree) return { cwd: input.cwd, worktree: internal.worktree }
+    const asked = input.worktree
+    const worktrees = this.deps.worktrees
+    if (!asked || !worktrees || input.readOnly || internal.restored || input.resumeAgentSessionId || input.identity) return { cwd: input.cwd }
+    const repoRoot = await worktrees.repoRootOf(input.cwd)
+    if (!repoRoot) {
+      if (asked.optional) return { cwd: input.cwd }
+      throw new Error(`${input.cwd} is not in a git repository, so it cannot get a worktree`)
+    }
+    const home = homedir()
+    const profile = config.profiles.find((p) => p.id === input.profileId)
+    const settings = worktreeSettings(profile)
+    const branch = worktreeBranch(settings, asked.branch, randomUUID().slice(0, 8))
+    const folder = (profile && containingFolder(repoRoot, profile, home)?.path) ?? dirname(repoRoot)
+    const path = join(worktreesLocation(settings, { folder, repo: repoRoot }, home), worktreeFolderName(repoRoot, branch))
+    if (existsSync(path)) throw new Error(`${path} already exists: pick another branch name`)
+    await worktrees.create(repoRoot, { path, branch, base: settings.baseRef })
+    const inside = relative(repoRoot, input.cwd)
+    const cwd = inside && !inside.startsWith('..') && !isAbsolute(inside) ? join(path, inside) : path
+    return { cwd: existsSync(cwd) ? cwd : path, worktree: { repoRoot, path, branch } }
+  }
+
+  /**
+   * Closes a session and removes the worktree Workhub created for it (its branch stays). Without
+   * `force`, a worktree with uncommitted changes or unpushed commits is left alone and the session
+   * stays open: the answer says what it holds, so the user can confirm.
+   */
+  async closeRemovingWorktree(id: string, force: boolean): Promise<CloseWorktreeResult> {
+    const worktree = this.sessions.get(id)?.view.worktree
+    const worktrees = this.deps.worktrees
+    if (!worktree || !worktrees) {
+      await this.close(id)
+      return { ok: true }
+    }
+    if (!force) {
+      const status = await worktrees.status(worktree.path)
+      if (status.dirty || status.unpushed > 0) return { ok: false, blocked: status }
+    }
+    await this.close(id)
+    await worktrees.remove(worktree.repoRoot, worktree.path, { force })
+    return { ok: true }
   }
 
   /** The engine a session runs (its shell shows over the chat or the console); undefined when it is not open. */

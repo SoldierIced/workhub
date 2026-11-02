@@ -13,7 +13,8 @@ declares what it supports, and the screen shows only the controls that agent has
   **Agent**, **Folder** (**Choose a folder**), **Model**, **Agent** (the persona, for agents like
   Kiro and OpenCode) and **Mode** (permission or approval mode). The lists come from what the agent
   reports, so a new agent shows its models and modes after its first session (**List again**
-  refreshes them).
+  refreshes them). **Use a worktree** and **Branch** start the session in its own git worktree;
+  see [Worktree per session](profiles.md#worktree-per-session).
 - In the sidebar, the **Folders** section lists the profile's folders, **Favorites**, **Recent**
   and **All folders**, with a filter. **New session in {folder}** starts one there.
 - From a pull request or ticket, **Open session** or **New session about this ticket** start one
@@ -115,7 +116,8 @@ that wake the session, and **Stop**. On a narrow window the secondary controls f
 - **Rename**: **Rename…** in the session's menu, or double-click its name. Leave the name empty to
   show the agent's name again.
 - **Close**: the close button on the row. A session that is working asks first (**Stop and
-  close**). The conversation stays in History.
+  close**). A session in a worktree Workhub created offers to keep or remove the worktree. The
+  conversation stays in History.
 - **Reopen sessions on launch** (**Settings → General → Sessions**): the sessions that were open
   when Workhub quit come back in the sidebar, in their groups and windows, and resume their
   conversations. Nothing is sent to the agents again.

@@ -16,7 +16,7 @@ Edit profiles in **Settings → Profiles**. Changes are applied with the save ba
 | Symbol, Colour | The icon of the profile in the sidebar (default: the first letter of its name) and the colour that marks its sessions down the left edge of their rows. |
 | Folders | One per line. New sessions offer them first, and the pull request search falls back to their repositories. |
 | Default folder | Where **New session** starts without asking: one of the folders, **Home folder**, or **Another folder…**. Empty means the first folder. |
-| Folder options | Per folder: **Only git repos**, and **Each subfolder is its own project** (**Automatic**, **On** or **Off**). With it on, sessions in a subfolder group under a project named after it; Automatic splits this way unless the folder is itself a git repository. |
+| Folder options | Per folder: **Only git repos**, and **Each subfolder is its own project** (**Automatic**, **On** or **Off**). With it on, sessions in a subfolder group under a project named after it; Automatic splits this way unless the folder is itself a git repository. **Worktree for new sessions** (**As the profile**, **On** or **Off**) overrides the profile's worktree setting for sessions in that folder. |
 | Accounts | The agent accounts offered when you start a session in this profile. |
 | Agents offered | Which agents appear in the **New session** menu. |
 | Agent order | The first agent is the default, and the one Workhub picks on its own (opening a session from a pull request or ticket, asking Claude to review). |
@@ -24,8 +24,35 @@ Edit profiles in **Settings → Profiles**. Changes are applied with the save ba
 | Optional modules | **Health**, **Chat watcher** (the Slack screen), **Automations**, **Flow maps** and **Plan** (meetings, reminders, briefs, people; see [Plan](plan.md)). Off hides their screens. |
 | Account failover | **Ask**, **Automatic** or **Off**: what a session does when its Claude account reaches its usage limit or your ceiling. See [Usage and budgets](usage.md). |
 | AI review | Settings for the [review before PR](review-before-pr.md) feature. |
+| Worktrees | Whether new sessions on a git repository start in their own worktree and branch, where the worktrees go, the branch prefix, the branch new ones start from and what closing a session does. See [Worktree per session](#worktree-per-session). |
 | Slack | How long a thread stays quiet before it folds into **Archived**. See [Slack](slack.md). |
 | Also owns everything outside every profile's folders | Sessions in folders no profile lists belong to this profile. Only one profile can have it. |
+
+## Worktree per session
+
+Several agents working in one checkout step on each other's changes. With worktrees, a new session
+on a git repository gets its own `git worktree` and branch, and runs there instead of the folder
+itself. It is off by default.
+
+- **New sessions start in a worktree** sets the profile's default. A folder can override it under
+  **Folder options**; the deepest folder that sets it wins. The **New session** dialog shows the
+  choice as **Use a worktree**, with a **Branch** field, and you can flip it for one session.
+  ⌘/Ctrl+T follows the default and names the branch after the session.
+- **Location**: where worktrees go. `${folder}` is the profile folder holding the repository (the
+  repository's parent folder when no profile folder holds it), `${repo}` the repository. Empty means
+  `${folder}/_worktrees`; each worktree is `<repository>-<branch>`. The `_worktrees` folder is not
+  listed as a project. A worktree inside the repository itself is added to the repository's
+  `.git/info/exclude`.
+- **Branch prefix** goes before every new branch name (`feat/`); **New branches start from** is a
+  ref such as `origin/develop`, empty for the repository's default branch. A branch that already
+  exists is checked out instead.
+- Repository hooks run in a session's worktree, as in any checkout you make.
+- The session stays in the profile of the folder you started it from, wherever the worktree is.
+- Reviewers, resumed sessions and sessions reopened at launch never get a new worktree; a reopened
+  session comes back in its worktree.
+- **When a session closes**: **Ask whether to remove it** (the default) offers **Close and keep
+  worktree** or **Close and remove worktree**. Removing one with uncommitted changes or commits no
+  remote has asks again. **Keep it without asking** never offers it. Branches are never deleted.
 
 ## Accounts
 

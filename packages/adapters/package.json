@@ -29,6 +29,7 @@
     "./calendar-ics": "./src/calendar-ics/index.ts",
     "./pr-events-json": "./src/pr-events-json/index.ts",
     "./git-review": "./src/git-review/index.ts",
+    "./git-worktree": "./src/git-worktree/index.ts",
     "./token-spend": "./src/token-spend/index.ts",
     "./listen-summary": "./src/listen-summary/index.ts"
   },

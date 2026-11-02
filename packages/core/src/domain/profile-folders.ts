@@ -132,7 +132,8 @@ export function profileRootFor(path: string, profile: Pick<Profile, 'folders'>, 
 /** The child folders a profile folder lists: visible ones, only git repositories when the folder asks for that, sorted by name. */
 export function visibleChildren(children: readonly FolderChild[], options: FolderOptions): string[] {
   return children
-    .filter((c) => !c.name.startsWith('.') && (!options.onlyGitRepos || c.isGitRepo === true))
+    // `_worktrees` holds the worktrees of sessions (see `worktreeSettings`), not a project.
+    .filter((c) => !c.name.startsWith('.') && c.name !== '_worktrees' && (!options.onlyGitRepos || c.isGitRepo === true))
     .map((c) => c.name)
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
     .slice(0, PROJECT_CHILDREN_CAP)
