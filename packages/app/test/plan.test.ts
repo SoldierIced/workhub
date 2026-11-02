@@ -252,6 +252,17 @@ describe('BriefService', () => {
     expect(service.views('work')[event().id]).toMatchObject({ phase: 'preparing', sessionId: 's1' })
   })
 
+  it('shows a brief started before the app restarted as ready once its session waits for a prompt', async () => {
+    const { service, live, deps } = setup()
+    await service.brief('work', event(), { automationId: 'a1' })
+    expect(service.views('work')[event().id]?.phase).toBe('preparing')
+    // A new run of the app: the same record and session, no turn counted in this run.
+    const restarted = new BriefService({ ...deps, startedAt: NOW + 60_000 })
+    expect(restarted.views('work')[event().id]).toMatchObject({ phase: 'ready', sessionId: 's1' })
+    live[0] = { ...live[0]!, state: 'busy' }
+    expect(restarted.views('work')[event().id]?.phase).toBe('preparing')
+  })
+
   it('never starts the same brief twice: a second ask opens the first session, even while it starts', async () => {
     const { service, started } = setup()
     const [a, b] = await Promise.all([service.brief('work', event(), { automationId: 'a1' }), service.brief('work', event(), { automationId: 'a1' })])
