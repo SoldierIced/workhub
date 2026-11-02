@@ -89,7 +89,8 @@ ones.
 **Send to inbox.** When the profile has the [Plan](plan.md) module on, an open alert also offers
 **Send to inbox**: it adds a pending **bug** to Plan's inbox with the alert's metric, subject,
 values, period and link, and a new alert becomes tracked. It never creates a ticket by itself: the
-item waits for you to approve it (which creates the issue), keep it as a local task, or discard it.
+item waits under **To review** for you to choose **Create ticket** (which creates the issue), **Local
+task**, or discard it.
 Sending the same alert again while its item is open does not add a second one.
 
 **Settings → Health → Alert rules** holds the thresholds, the business days, the minimum severity

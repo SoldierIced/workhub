@@ -5,7 +5,7 @@ export const plannerEn = {
   'topNav.inboxPending.one': '{count} item to review (inbox or milestones)',
   'topNav.inboxPending.other': '{count} items to review (inbox or milestones)',
   'metricAlerts.action.sendToInbox': 'Send to inbox',
-  'metricAlerts.action.sendToInboxHint': "Adds a pending bug with this alert's details to Plan's inbox. Nothing reaches the tracker until you approve it.",
+  'metricAlerts.action.sendToInboxHint': "Adds a pending bug with this alert's details to Plan's inbox. Nothing reaches the tracker until you choose Create ticket.",
   'metricAlerts.sentToInbox': 'Sent to the inbox, to review',
 
   'planner.milestones.intro': 'Periods of work with their progress against the time gone. Progress is typed by hand, counted from a tracker query, or weighed from the pieces it is made of.',
@@ -143,7 +143,7 @@ export const plannerEn = {
   'planner.home.open': 'Open',
 
   'planner.settings.inbox': 'Inbox',
-  'planner.settings.inboxHelp': 'How inbox items are filed, and where approved tasks and bugs become issues. Decisions are recorded in Workhub, never sent to the tracker.',
+  'planner.settings.inboxHelp': 'How inbox items are filed, and where tasks and bugs become issues when you choose Create ticket. Decisions are recorded in Workhub, never sent to the tracker.',
   'planner.settings.areas': 'Areas',
   'planner.settings.areasHint': 'Comma-separated, e.g. the teams or parts of the product you file work under.',
   'planner.settings.criticalities': 'Criticality levels',
@@ -158,7 +158,7 @@ export const plannerEn = {
   'planner.settings.priority.3': '3 · Medium',
   'planner.settings.priority.4': '4 · Low',
   'planner.settings.tracker': 'Tracker for new issues',
-  'planner.settings.trackerHint': 'Approved items become issues here.',
+  'planner.settings.trackerHint': 'Create ticket files the issues here.',
   'planner.settings.trackerDefault': "The profile's tracker",
   'planner.settings.project': 'Project',
   'planner.settings.projectHint': 'Jira: the project key. Linear: the team key.',
