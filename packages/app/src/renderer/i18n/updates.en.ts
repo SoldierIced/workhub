@@ -8,10 +8,15 @@ export const updatesEn = {
   'updates.version': 'This is version {version}.',
   'updates.none': 'You are on the latest version ({version}).',
   'updates.available': 'Version {version} is available.',
-  'updates.downloading': 'Downloading version {version}…',
-  'updates.install': 'Download and restart',
+  'updates.downloading': 'Downloading and installing version {version}…',
+  'updates.install': 'Install update',
   'updates.download': 'Download the new version',
+  'updates.ready': 'Version {version} is installed. It runs after a restart.',
+  'updates.restartNow': 'Restart now',
+  'updates.later': 'Later',
+  'updates.readyTitle': 'Update installed',
+  'updates.readyBody': 'Version {version} is installed. Restart now, or keep working: it starts the next time you open Workhub.',
   'updates.error': 'Could not check for updates: {message}',
   'updates.unsupported': 'Updates are only checked in the installed app.',
-  'updates.macNote': 'This build is not signed, so macOS cannot install updates by itself: download the new version and replace the app.'
+  'updates.macNote': 'When the app cannot write to its folder (for example it is not in Applications), download the new version and replace the app.'
 } as const

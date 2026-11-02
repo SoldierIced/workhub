@@ -105,10 +105,13 @@ terminal opened outside it has none of these variables.
 
 - Update checks are off by default. Turn on **Settings → General → Updates → Check for updates**, or
   press **Check now**. Updates are only checked in the installed app, not in a development run.
-- **macOS**: an unsigned app cannot replace itself. Workhub announces the new version and opens the
-  release page; download it and replace the app in Applications.
-- **Windows** and the **Linux AppImage**: **Download and restart** installs the new version. Other
-  Linux installs (the `.deb`) update by installing the new package.
+- **Install update** downloads and installs the new version, then asks to **Restart now** or
+  **Later** (it starts the next time you open Workhub). On Windows and the Linux AppImage, **Later**
+  installs it when the app quits.
+- **macOS**: the app replaces its own bundle, as the install script does, after checking the
+  download's checksum. When it cannot write to its folder (it is not in Applications, or the folder
+  is read-only) it opens the release page instead; download it and replace the app.
+- Other Linux installs (the `.deb`) update by installing the new package.
 - "Could not check for updates" means GitHub could not be reached or the release has no update
   metadata; check the network.
 

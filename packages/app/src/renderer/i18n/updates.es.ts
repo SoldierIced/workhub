@@ -10,10 +10,15 @@ export const updatesEs: Record<keyof typeof updatesEn, string> = {
   'updates.version': 'Esta es la versión {version}.',
   'updates.none': 'Tienes la última versión ({version}).',
   'updates.available': 'Hay una versión nueva: {version}.',
-  'updates.downloading': 'Descargando la versión {version}…',
-  'updates.install': 'Descargar y reiniciar',
+  'updates.downloading': 'Descargando e instalando la versión {version}…',
+  'updates.install': 'Instalar actualización',
   'updates.download': 'Descargar la versión nueva',
+  'updates.ready': 'La versión {version} está instalada. Se usa después de reiniciar.',
+  'updates.restartNow': 'Reiniciar ahora',
+  'updates.later': 'Más tarde',
+  'updates.readyTitle': 'Actualización instalada',
+  'updates.readyBody': 'La versión {version} está instalada. Reinicia ahora o sigue trabajando: arranca la próxima vez que abras Workhub.',
   'updates.error': 'No se pudo buscar actualizaciones: {message}',
   'updates.unsupported': 'Las actualizaciones solo se buscan en la app instalada.',
-  'updates.macNote': 'Esta versión no está firmada, así que macOS no puede instalar actualizaciones solo: descarga la versión nueva y reemplaza la app.'
+  'updates.macNote': 'Si la app no puede escribir en su carpeta (por ejemplo, no está en Aplicaciones), descarga la versión nueva y reemplaza la app.'
 }

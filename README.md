@@ -144,9 +144,9 @@ folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`). 
 ### Updates
 
 Settings > General > Updates has a **Check for updates** switch, off by default: nothing contacts
-GitHub unless you turn it on or press **Check now**. On Windows and Linux AppImage the app can
-download and install the new version. On macOS an unsigned app cannot replace itself, so it only
-announces the new version and opens the release page.
+GitHub unless you turn it on or press **Check now**. **Install update** downloads and installs the
+new version on macOS, Windows and the Linux AppImage, then asks whether to restart now or later.
+Elsewhere (the `.deb`, or a macOS app outside a writable folder) it opens the release page.
 
 ## First run
 

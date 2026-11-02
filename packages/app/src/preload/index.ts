@@ -119,6 +119,7 @@ const api: HubApi = {
     status: () => ipcRenderer.invoke('updates:status'),
     check: () => ipcRenderer.invoke('updates:check'),
     install: () => ipcRenderer.invoke('updates:install'),
+    restart: () => ipcRenderer.invoke('updates:restart'),
     onChanged: (cb) => subscribe<[UpdateStatus]>('updates:changed', cb)
   },
   codeHost: {

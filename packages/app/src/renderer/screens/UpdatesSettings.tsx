@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Result, WorkhubConfig } from '@workhub/core'
 import type { UpdateStatus } from '@shared/updates-api'
 import { Button, Switch } from '../components/atoms'
-import { SwitchRow } from '../components/molecules'
+import { Dialog, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { useAsyncAction } from '../lib/useAsyncAction'
 
@@ -21,10 +21,19 @@ export function UpdatesSettings({
   const install = useAsyncAction(() => window.hub.updates.install())
   const check = useAsyncAction(() => window.hub.updates.check())
 
+  // Once an install finishes, ask whether to restart now or later (asked once per install).
+  const [asking, setAsking] = useState(false)
+  const previous = useRef<UpdateStatus['state'] | null>(null)
+
   useEffect(() => {
     void window.hub.updates.status().then(setStatus)
     return window.hub.updates.onChanged(setStatus)
   }, [])
+
+  useEffect(() => {
+    if (status?.state === 'ready' && previous.current === 'downloading') setAsking(true)
+    previous.current = status?.state ?? null
+  }, [status?.state])
 
   const line = !status
     ? ''
@@ -36,11 +45,13 @@ export function UpdatesSettings({
           ? t('updates.available', { version: status.version ?? '' })
           : status.state === 'downloading'
             ? t('updates.downloading', { version: status.version ?? '' })
-            : status.state === 'error'
-              ? t('updates.error', { message: status.message ?? '' })
-              : status.state === 'unsupported'
-                ? t('updates.unsupported')
-                : t('updates.version', { version: status.currentVersion })
+            : status.state === 'ready'
+              ? t('updates.ready', { version: status.version ?? '' })
+              : status.state === 'error'
+                ? t('updates.error', { message: status.message ?? '' })
+                : status.state === 'unsupported'
+                  ? t('updates.unsupported')
+                  : t('updates.version', { version: status.currentVersion })
 
   return (
     <>
@@ -55,11 +66,28 @@ export function UpdatesSettings({
           {status?.state === 'available' && (
             <Button disabled={install.pending} onClick={() => install.run()}>{status.canInstall ? t('updates.install') : t('updates.download')}</Button>
           )}
-          <Button disabled={!status || status.state === 'unsupported' || status.state === 'checking' || status.state === 'downloading' || check.pending} onClick={() => check.run()}>
+          {status?.state === 'ready' && <Button onClick={() => void window.hub.updates.restart()}>{t('updates.restartNow')}</Button>}
+          <Button disabled={!status || status.state === 'unsupported' || status.state === 'checking' || status.state === 'downloading' || status.state === 'ready' || check.pending} onClick={() => check.run()}>
             {t('updates.checkNow')}
           </Button>
         </div>
       </div>
+      <Dialog
+        open={asking}
+        onOpenChange={setAsking}
+        title={t('updates.readyTitle')}
+        description={t('updates.readyBody', { version: status?.version ?? '' })}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setAsking(false)}>
+              {t('updates.later')}
+            </Button>
+            <Button onClick={() => void window.hub.updates.restart()}>{t('updates.restartNow')}</Button>
+          </>
+        }
+      >
+        {null}
+      </Dialog>
     </>
   )
 }
