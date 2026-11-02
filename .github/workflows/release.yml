@@ -80,6 +80,15 @@ jobs:
               if command -v shasum >/dev/null; then shasum -a 256 "$f" > "../release-files/$f.sha256"; else sha256sum "$f" > "../release-files/$f.sha256"; fi ;;
             esac
           done
+          # The same installers under names without the version, so README links of the form
+          # releases/latest/download/Workhub-2-win-x64.exe always fetch the newest one. latest*.yml
+          # keep pointing at the versioned files, which the in-app updater reads.
+          for f in *-"${TAG#v}"-*.dmg *-"${TAG#v}"-*.zip *-"${TAG#v}"-*.exe *-"${TAG#v}"-*.AppImage *-"${TAG#v}"-*.deb; do
+            [ -e "$f" ] || continue
+            stable="${f/-${TAG#v}-/-}"
+            cp "$f" "../release-files/$stable"
+            (cd ../release-files && if command -v shasum >/dev/null; then shasum -a 256 "$stable" > "$stable.sha256"; else sha256sum "$stable" > "$stable.sha256"; fi)
+          done
           ls -l ../release-files
       # electron-updater reads latest*.yml (latest-mac.yml, latest.yml, latest-linux.yml): every OS
       # writes its own name, so the three artifacts never overwrite each other.
@@ -102,21 +111,21 @@ jobs:
           path: release-files
           merge-multiple: true
       # release-please has already created the draft release (with its changelog as the notes); a
-      # manual tag has none yet, so it is created here. Either way a version with a suffix
-      # (2.0.0-alpha.2) is marked as a pre-release: electron-updater offers pre-releases only to
-      # installs that run a pre-release themselves (allowPrerelease, see
-      # packages/app/src/main/updates.ts), and GitHub never makes a pre-release the "latest" one.
+      # manual tag has none yet, so it is created here. Every release, alpha ones included, is
+      # marked as the latest and not as a pre-release: GitHub's releases/latest/download/<file>
+      # links (the README's download links and the one-line installers) only follow the "latest"
+      # release, and GitHub never makes a pre-release the latest. The version keeps its suffix
+      # (2.0.0-alpha.N), so a future stable install never takes an alpha as an update: semver puts
+      # 2.0.0-alpha.N below 2.0.0 (see packages/app/src/main/updates.ts).
       - name: Create or find the draft release and upload the files
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: release-files
         run: |
-          prerelease=false
-          case "$TAG" in *-*) prerelease=true ;; esac
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Workhub 2 ${TAG#v}" --prerelease="$prerelease"
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Workhub 2 ${TAG#v}" --prerelease=false --latest
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Workhub 2 ${TAG#v}" --generate-notes --prerelease="$prerelease"
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Workhub 2 ${TAG#v}" --generate-notes --prerelease=false --latest
           fi
           shopt -s nullglob
           files=(*)
