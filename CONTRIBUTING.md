@@ -82,8 +82,9 @@ Versions and the [CHANGELOG](CHANGELOG.md) come from the Conventional Commits on
    calls `.github/workflows/release.yml`, which builds the macOS, Windows and Linux installers and
    attaches them, with `.sha256` files and the `latest*.yml` update metadata, to the draft.
 3. **Publish.** When the `release-please` workflow is green, open the draft on the Releases page,
-   check the files and the notes, and publish it. Every release, alpha ones included, is marked as
-   the **latest** (not as a pre-release), because the README's download links and the one-line
+   check the files and the notes, and publish it as the **latest** (`gh release edit v<version>
+   --draft=false --latest`; a draft cannot be marked latest before). Every release, alpha ones
+   included, is the latest and not a pre-release, because the README's download links and the one-line
    installers use `releases/latest/download/<file>`, which only follows the latest release. Each
    installer is attached twice: with the version in its name (read by the in-app updater through
    `latest*.yml`) and without it (`Workhub-2-win-x64.exe`, `Workhub-2-mac-arm64.dmg`, …, for those
