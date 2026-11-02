@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.8](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.7...v2.0.0-alpha.8) (2026-11-02)
+
+
+### Bug Fixes
+
+* notificaciones por automatización, brief tras reinicio y orden de Personas ([#16](https://github.com/SoldierIced/workhub/issues/16)) ([b3bb100](https://github.com/SoldierIced/workhub/commit/b3bb100724c0908e06bf50a364136ee3795cc5c3))
+
 ## [2.0.0-alpha.7](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.6...v2.0.0-alpha.7) (2026-11-02)
 
 
