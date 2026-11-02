@@ -9,6 +9,7 @@ import { dropOnSessionsTitle, isWorking, SessionList } from './components/organi
 import { RenameSessionDialog } from './components/organisms/RenameSessionDialog'
 import { CloseSessionDialog } from './components/organisms/CloseSessionDialog'
 import { closeAsks } from './lib/closeSession'
+import { UpdatePromptDialog } from './components/organisms/UpdatePromptDialog'
 import { ResumeSheet } from './components/organisms/ResumeSheet'
 import { DetachedSessionNotice } from './screens/sessions/DetachedSessionNotice'
 import { useDetachedSessions } from './lib/windows'
@@ -516,6 +517,7 @@ function Shell() {
       <SubagentSheet />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
       <RenameSessionDialog session={renaming} onClose={() => setRenaming(null)} />
+      <UpdatePromptDialog />
       <ResumeSheet folder={resumeFolder} profileId={activeProfileId} onClose={() => setResumeFolder(null)} onOpened={openSession} />
       {closing && <CloseSessionDialog session={closing} working={isWorking(closing)} onDone={() => setClosing(null)} onError={(message) => toast(message, 'danger')} />}
     </div>

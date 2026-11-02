@@ -25,4 +25,8 @@ export interface UpdatesApi {
   /** Restarts into an update that is `ready`. */
   restart(): Promise<void>
   onChanged(cb: (status: UpdateStatus) => void): () => void
+  /** Never prompt again for this version (a newer one still prompts). */
+  skip(version: string): Promise<void>
+  /** An automatic check found a newer version and the once-a-day prompt is due. */
+  onPrompt(cb: (status: UpdateStatus) => void): () => void
 }

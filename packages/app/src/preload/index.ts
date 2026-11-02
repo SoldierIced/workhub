@@ -121,7 +121,9 @@ const api: HubApi = {
     check: () => ipcRenderer.invoke('updates:check'),
     install: () => ipcRenderer.invoke('updates:install'),
     restart: () => ipcRenderer.invoke('updates:restart'),
-    onChanged: (cb) => subscribe<[UpdateStatus]>('updates:changed', cb)
+    onChanged: (cb) => subscribe<[UpdateStatus]>('updates:changed', cb),
+    skip: (version) => ipcRenderer.invoke('updates:skip', version),
+    onPrompt: (cb) => subscribe<[UpdateStatus]>('updates:prompt', cb)
   },
   codeHost: {
     lists: (profileId, force) => ipcRenderer.invoke('codeHost:lists', profileId, force),
