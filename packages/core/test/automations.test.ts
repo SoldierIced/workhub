@@ -389,6 +389,28 @@ describe('new session each run (Workhub 1 bugs)', () => {
     expect(engine.ignoresChat(old.identity)).toBe(true)
     expect(engine.wakeBlocked('someone-else')).toBeNull()
   })
+
+  it('lets an automation choose which of its sessions\' notifications go out', async () => {
+    const { world, engine, old } = await firstRun()
+    // Default: failures only.
+    expect(engine.notifies(old.identity, 'replied')).toBe(false)
+    expect(engine.notifies(old.identity, 'needsAnswer')).toBe(false)
+    expect(engine.notifies(old.identity, 'error')).toBe(true)
+    world.defs[0] = { ...world.defs[0]!, notify: 'always' }
+    expect(engine.notifies(old.identity, 'replied')).toBe(true)
+    world.defs[0] = { ...world.defs[0]!, notify: 'never' }
+    expect(engine.notifies(old.identity, 'error')).toBe(false)
+    // A session outside any automation is not filtered.
+    expect(engine.notifies('someone-else', 'replied')).toBe(true)
+    // Never: a failed run sends no notice either (it still backs off).
+    engine.runNow('a1')
+    await engine.tick()
+    world.live.at(-1)!.state = 'error'
+    world.live.at(-1)!.error = 'boom'
+    await engine.tick()
+    expect(world.notices).toEqual([])
+    expect(engine.health(world.defs[0]!)).toBe('failing')
+  })
 })
 
 describe('one session per automation while the app runs', () => {
@@ -503,7 +525,7 @@ describe('config version 5 (chat watcher and automations)', () => {
     expect(migrateConfig({ version: 4, profiles: [] })).toEqual({ version: 8, profiles: [] })
     const parsed = parseConfig({ version: 8, chatWatcher: { enabled: true, channels: [{ id: 'C01', name: 'reviews' }] }, automations: [{ id: 'a', name: 'A', agentKey: 'shell' }] })
     expect(chatWatcherSettings(parsed)).toMatchObject({ enabled: true, model: 'haiku', intervalMinutes: 10, channels: [{ id: 'C01', name: 'reviews', purpose: '' }] })
-    expect(parsed.automations?.[0]).toMatchObject({ sessionPolicy: 'reuse', receivesChatReplies: true, limits: { maxRuns: 6, perMinutes: 5, maxPerDay: 60 } })
+    expect(parsed.automations?.[0]).toMatchObject({ sessionPolicy: 'reuse', receivesChatReplies: true, notify: 'failures', limits: { maxRuns: 6, perMinutes: 5, maxPerDay: 60 } })
     const base = emptyConfig()
     expect(setChatWatcher(base, { ...chatWatcherSettings(base), channels: [{ id: 'C1', name: 'a', purpose: '' }, { id: 'C1', name: 'b', purpose: '' }] }).ok).toBe(false)
     expect(saveAutomation(base, newAutomation('x', { profileId: 'missing' })).ok).toBe(false)

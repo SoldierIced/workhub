@@ -27,6 +27,34 @@ export const LEVEL_LABEL: Record<StatusLevel, MessageKey> = {
 /** Which Settings switch (an `AppOptions` key) turns the notification of each kind off. */
 export const NOTIFY_OPTION = { replied: 'notifyReplied', needsAnswer: 'notifyNeedsAnswer', error: 'notifyError' } as const satisfies Record<AttentionKind, string>
 
+/** How much of the agent's words a notification shows. */
+export const NOTIFY_SNIPPET = 160
+
+/** A Markdown text as one short line: no code blocks, marks or link addresses, cut at `max` characters. */
+export function snippet(text: string, max = NOTIFY_SNIPPET): string {
+  const line = text
+    .replace(/```[\s\S]*?(```|$)/g, ' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`>#]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line
+}
+
+/**
+ * What a session's notification says besides its kind: the start of the agent's last reply, the
+ * question it waits on, or the error. Empty when there is nothing to quote.
+ */
+export function attentionDetail(items: readonly { kind: string; text?: string; title?: string; answer?: string }[], kind: AttentionKind): string {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!
+    if (kind === 'replied' && item.kind === 'agent' && item.text?.trim()) return snippet(item.text)
+    if (kind === 'needsAnswer' && item.kind === 'permission' && item.answer === undefined && item.title) return snippet(item.title)
+    if (kind === 'error' && item.kind === 'error' && item.text?.trim()) return snippet(item.text)
+  }
+  return ''
+}
+
 export const NOTIFY_BODY: Record<AttentionKind, MessageKey> = {
   replied: 'notify.replied',
   needsAnswer: 'notify.needsAnswer',

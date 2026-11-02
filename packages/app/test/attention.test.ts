@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { NO_CAPABILITIES, type AgentEvent, type SessionState } from '@workhub/core'
 import type { SessionView } from '../src/shared/api'
-import { containsBell } from '../src/renderer/lib/attention'
+import { attentionDetail, containsBell, snippet } from '../src/renderer/lib/attention'
 import { listSessions } from '../src/renderer/lib/sessionGroups'
 import { awaitingAnswer, getSessions, onAttention, onChanged, onEvent, setViewing, type SessionData } from '../src/renderer/store'
 
@@ -78,6 +78,21 @@ describe('unseen flag in the store', () => {
     expect(getSessions()[id]!.unseen).toBeUndefined()
   })
 
+  it('notifies once until the session is viewed, however many turns end meanwhile', () => {
+    const id = 'chain'
+    onChanged(view(id, 'ready'))
+    for (let i = 0; i < 4; i++) {
+      onChanged(view(id, 'busy'))
+      onChanged(view(id, 'ready'))
+    }
+    expect(seen).toEqual([[id, 'replied']])
+    setViewing(id)
+    setViewing(null)
+    onChanged(view(id, 'busy'))
+    onChanged(view(id, 'ready'))
+    expect(seen).toEqual([[id, 'replied'], [id, 'replied']])
+  })
+
   it('flags nothing while the session is the one on screen', () => {
     const id = 'watched'
     onChanged(view(id, 'ready'))
@@ -118,5 +133,21 @@ describe('unseen flag in the store', () => {
     expect(getSessions()[id]!.unseen).toBeUndefined()
     onEvent({ sessionId: `${id}:console`, type: 'output', data: 'done\u0007' })
     expect(getSessions()[id]!.unseen).toBe('replied')
+  })
+})
+
+describe('notification detail', () => {
+  it('quotes the start of the last reply as one plain line', () => {
+    const items = [{ kind: 'agent', text: 'old' }, { kind: 'user', text: 'go' }, { kind: 'agent', text: '**Done.** Fixed the `retry` in [callback](https://example.com/x).\n\n```ts\ncode\n```\nNext: tests.' }]
+    expect(attentionDetail(items, 'replied')).toBe('Done. Fixed the retry in callback. Next: tests.')
+  })
+  it('quotes the open question or the error, and nothing when there is none', () => {
+    expect(attentionDetail([{ kind: 'permission', title: 'Run npm test?' }], 'needsAnswer')).toBe('Run npm test?')
+    expect(attentionDetail([{ kind: 'permission', title: 'Old?', answer: 'yes' }], 'needsAnswer')).toBe('')
+    expect(attentionDetail([{ kind: 'error', text: 'Rate limited' }], 'error')).toBe('Rate limited')
+    expect(attentionDetail([], 'replied')).toBe('')
+  })
+  it('cuts long text', () => {
+    expect(snippet('x'.repeat(300), 10)).toBe('xxxxxxxxx…')
   })
 })

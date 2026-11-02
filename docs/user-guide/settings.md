@@ -27,7 +27,10 @@ telemetry. See [SECURITY.md](../../SECURITY.md) for what is stored where.
 ## Notifications
 
 Notifications are shown by your operating system when a session you are not looking at replies, asks
-something or fails. **Show notifications** is the master switch; it silences every notification
+something or fails. Each one quotes the start of the reply, the question or the error. A session
+notifies once until you look at it (more turns meanwhile do not add notifications; an error or a
+question after a reply still does), and its newest notification replaces the older one. Sessions of an [automation](automations.md) notify
+only when they fail unless its **Notifications** field says otherwise. **Show notifications** is the master switch; it silences every notification
 below it. **Pause notifications** (here or in the menu bar icon) silences all of them for 1 hour or
 until tomorrow. If the system does not let Workhub show notifications, Settings says so and offers
 **Turn on**. The app icon badge counts the sessions that need you (Dock on macOS, taskbar on Windows,

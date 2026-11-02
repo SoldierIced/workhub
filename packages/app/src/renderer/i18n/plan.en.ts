@@ -60,6 +60,7 @@ export const planEn = {
   'plan.people.add': 'Add person',
   'plan.people.empty': 'Nobody yet. Add the people you meet to match them to attendees by email.',
   'plan.people.newName': 'person',
+  'plan.people.editTitle': 'Edit details',
   'plan.people.newTitle': 'New person',
   'plan.people.next': 'Next: {time}',
   'plan.people.noNext': 'No meeting coming up',

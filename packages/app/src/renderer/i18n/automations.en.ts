@@ -122,6 +122,11 @@ export const automationsEn = {
   'automations.field.usage': 'Wait above 5 h usage (%)',
   'automations.field.timeout': 'Run timeout (minutes)',
   'automations.field.hours': 'Hours',
+  'automations.field.notify': 'Notifications',
+  'automations.field.notifyHint': 'Failures: only when a run fails or its session errors. Always: also when the agent replies or asks. Applies on top of Settings → General → Notifications.',
+  'automations.notify.failures': 'Only failures',
+  'automations.notify.always': 'Always',
+  'automations.notify.never': 'Never',
   'automations.field.receivesReplies': 'Replies to its Slack messages wake its session',
   'automations.field.receivesRepliesHint': 'Off: threads its sessions write in are not followed.',
   'automations.field.enabled': 'On'

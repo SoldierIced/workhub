@@ -20,7 +20,7 @@ import type { SessionIntent } from '@shared/links-api'
 import { usageGroups } from './lib/home'
 import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
-import { NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
+import { attentionDetail, NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
 import { readPrefs } from './lib/prefs'
 import { useAppearance } from './lib/appearance'
 import { historyLookupKeys, listSessions, lookUpHistory, memberOf, sessionLabel, updateGroups } from './lib/sessionGroups'
@@ -180,7 +180,9 @@ function Shell() {
         // An AI reviewer's turns are reported by the review itself (Review panel and its notices).
         if (!data || data.view.readOnly || !options[NOTIFY_OPTION[kind]]) return
         const group = groupOf(stored, sessionIdentity(data.view))
-        window.hub.notifications.show({ title: notificationTitle(sessionLabel(data), group?.name), body: tr(NOTIFY_BODY[kind]), sessionId: id, kind })
+        // The kind, then what the agent said (or asks, or failed with), so the notification says what happened.
+        const detail = attentionDetail(data.items, kind)
+        window.hub.notifications.show({ title: notificationTitle(sessionLabel(data), group?.name), body: detail ? `${tr(NOTIFY_BODY[kind])}: ${detail}` : tr(NOTIFY_BODY[kind]), sessionId: id, kind })
       }),
     []
   )

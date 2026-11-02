@@ -61,6 +61,8 @@ export interface BriefServiceDeps {
   resumes: (config: WorkhubConfig, agentKey: string) => boolean
   now?: () => number
   wait?: (ms: number) => Promise<void>
+  /** When this run of the app started (the service's creation by default): a turn counted before it is gone. */
+  startedAt?: number
 }
 
 /**
@@ -72,10 +74,12 @@ export class BriefService {
   private readonly starting = new Set<string>()
   private readonly now: () => number
   private readonly wait: (ms: number) => Promise<void>
+  private readonly startedAt: number
 
   constructor(private readonly deps: BriefServiceDeps) {
     this.now = deps.now ?? Date.now
     this.wait = deps.wait ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
+    this.startedAt = deps.startedAt ?? this.now()
   }
 
   /** The briefs of a profile by event id, with where each one is now. */
@@ -86,7 +90,10 @@ export class BriefService {
       if (b.profileId !== profileId) continue
       const session = live.find((s) => (b.sessionId && s.id === b.sessionId) || (b.identity && s.identity === b.identity))
       const open = session && session.state !== 'stopped' && session.state !== 'error'
-      const phase: PlanBrief['phase'] = b.status === 'failed' ? 'failed' : b.status === 'starting' ? 'preparing' : !open ? 'closed' : session.state === 'ready' && session.turnsEnded > 0 ? 'ready' : 'preparing'
+      // Turns are counted in memory: a brief started before this run (the app restarted, the session
+      // came back) has its answer already, so a session waiting for a prompt is ready.
+      const answered = session ? session.turnsEnded > 0 || b.at < this.startedAt : false
+      const phase: PlanBrief['phase'] = b.status === 'failed' ? 'failed' : b.status === 'starting' ? 'preparing' : !open ? 'closed' : session.state === 'ready' && answered ? 'ready' : 'preparing'
       out[b.eventId] = { eventId: b.eventId, phase, at: b.at, ...(open ? { sessionId: session.id } : {}), ...(b.error ? { error: b.error } : {}) }
     }
     return out

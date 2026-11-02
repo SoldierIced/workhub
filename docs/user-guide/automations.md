@@ -27,6 +27,7 @@ ready-made one that runs on each pull request posted in your review channels.
 | **Run timeout (minutes)** | Gives up on a run that takes too long. |
 | **Hours** | The window in which it may run. |
 | **Only when the skill has pending work** | Reads the skill's JSON **State file** first (no tokens) and starts a run only when something is queued, its head moved, or a claim is older than 60 minutes. |
+| **Notifications** | **Only failures** (default): a notification when a run fails or its session errors. **Always**: also when its session replies or asks. **Never**: none. The switches in **Settings → General** still apply on top. |
 | **Replies to its Slack messages wake its session** | Off: threads its sessions write in are not followed. |
 
 ## Running and watching

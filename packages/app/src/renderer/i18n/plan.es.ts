@@ -61,6 +61,7 @@ export const planEs: Record<keyof typeof planEn, string> = {
   'plan.people.add': 'Agregar persona',
   'plan.people.empty': 'Todavía no hay nadie. Agregá a las personas con las que te reunís para asociarlas a los asistentes por email.',
   'plan.people.newName': 'persona',
+  'plan.people.editTitle': 'Editar datos',
   'plan.people.newTitle': 'Nueva persona',
   'plan.people.next': 'Próxima: {time}',
   'plan.people.noNext': 'Ninguna reunión próxima',

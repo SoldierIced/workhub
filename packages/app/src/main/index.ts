@@ -1150,11 +1150,14 @@ function showSessionNotification(n: SessionNotification): void {
   if (!n || typeof n.title !== 'string' || typeof n.sessionId !== 'string') return
   const kind = isNotificationKind(n.kind) ? n.kind : 'replied'
   const route = n.route && TRAY_ROUTES.includes(n.route) ? n.route : undefined
+  // An automation's sessions follow its own Notify setting (default: only failures).
+  const view = sessions.list().find((s) => s.id === n.sessionId)
+  if (view && (kind === 'replied' || kind === 'needsAnswer' || kind === 'error') && !automations.notifies(sessionIdentity(view), kind)) return
   void notifier.show(kind, n, () => {
     if (route) return navigate(route)
     showMain()
     send('notifications:open', n.sessionId)
-  }, { sessionId: n.sessionId })
+  }, { sessionId: n.sessionId }, `session:${n.sessionId}`)
 }
 
 /** A usage alert (worded by the renderer); a click brings the window up on Home. */

@@ -94,6 +94,10 @@ class FakeNotification implements NotificationLike {
   show() {
     this.shown = true
   }
+  closed = false
+  close() {
+    this.closed = true
+  }
 }
 
 describe('notifier', () => {
@@ -115,6 +119,15 @@ describe('notifier', () => {
     FakeNotification.made[0]!.handlers['click']!()
     expect(open).toHaveBeenCalledOnce()
     expect(n.recent()).toEqual([])
+  })
+
+  it('replaces the previous notification under the same key', async () => {
+    FakeNotification.made = []
+    const n = make()
+    await n.show('replied', { title: 'a' }, () => {}, {}, 'session:s1')
+    await n.show('replied', { title: 'b' }, () => {}, {}, 'session:s2')
+    await n.show('replied', { title: 'c' }, () => {}, {}, 'session:s1')
+    expect(FakeNotification.made.map((f) => f.closed)).toEqual([true, false, false])
   })
 
   it('honours the kind switch and the pause', async () => {

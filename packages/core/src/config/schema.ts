@@ -461,7 +461,8 @@ const automation = z.object({
   sessionPolicy: z.enum(['reuse', 'newEachRun']).default('reuse'),
   clearContext: z.boolean().optional(),
   runTimeoutMinutes: z.number().int().min(1).default(30),
-  receivesChatReplies: z.boolean().default(true)
+  receivesChatReplies: z.boolean().default(true),
+  notify: z.enum(['failures', 'always', 'never']).default('failures')
 })
 
 /** A percentage from the config: rounded and clamped into 1..100 (a hand-edited value never keeps the config from loading). */

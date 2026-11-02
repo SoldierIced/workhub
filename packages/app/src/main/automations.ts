@@ -243,6 +243,11 @@ export class AutomationService {
     return (await this.open(a, identity)).id
   }
 
+  /** Whether the session may notify this kind, under its automation's Notify setting. */
+  notifies(identity: string, kind: 'replied' | 'needsAnswer' | 'error'): boolean {
+    return this.engine.notifies(identity, kind)
+  }
+
   setViewing(sessionId: string | null): void {
     this.deps.driver.setViewing(sessionId)
   }
