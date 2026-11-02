@@ -1,6 +1,7 @@
 import type { AiReviewSettings } from '../ai-review/types'
 import type { HealthSettings } from '../health/types'
 import type { PlannerSettings } from '../calendar/types'
+import type { WorktreeSettings } from '../worktrees/settings'
 import type { ConnectionKind } from './connection'
 
 /** Optional modules (PLAN section 4): each one adds its screens only when enabled in a profile. */
@@ -69,6 +70,8 @@ export interface Profile {
   slackArchiveMinutes?: number
   /** AI review before a pull request (see `aiReviewSettings` for the defaults). */
   aiReview?: AiReviewSettings
+  /** Worktree per session (see `worktreeSettings` for the defaults). */
+  worktrees?: WorktreeSettings
   /** What happens when a Claude account runs out of usage (see `failoverMode`; default `ask`). */
   accountFailover?: 'ask' | 'automatic' | 'off'
   /** The profile's colour (`#rrggbb`), down the left edge of its sessions in the sidebar. Unset: `profileColor` picks one. */
@@ -114,6 +117,8 @@ export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 export interface FolderOptions {
   onlyGitRepos?: boolean
   subfoldersAreProjects?: boolean
+  /** New sessions in this folder use a worktree (true) or not (false); unset: the profile's setting. */
+  worktrees?: boolean
 }
 
 /** Where the value of a profile's environment variable is kept (the secret store, never the config file). */
