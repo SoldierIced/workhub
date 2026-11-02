@@ -54,6 +54,9 @@ import { useSessionSlack } from '../../lib/slackLinks'
 import { Field } from '../molecules/Field'
 import type { SessionData } from '../../store'
 import { errorText } from '../../lib/errorText'
+import { closeAsks } from '../../lib/closeSession'
+import { currentConfig } from '../../configStore'
+import { CloseSessionDialog } from './CloseSessionDialog'
 
 export const SESSION_DRAG = 'application/x-workhub-session'
 
@@ -180,8 +183,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
 
   const closeNow = (data: SessionData) =>
     void window.hub.sessions.close(data.view.id).catch((e: unknown) => pushItem(data.view.id, 'error', t('sessions.closeFailed', { message: errorText(e) })))
-  /** Stops the session and drops it from the open sessions; a working one asks first. */
-  const requestClose = (data: SessionData) => (isWorking(data) ? setClosing(data) : closeNow(data))
+  /** Stops the session and drops it from the open sessions; a working one, or one in a worktree, asks first. */
+  const requestClose = (data: SessionData) => (closeAsks(data.view, isWorking(data), currentConfig()?.config.profiles ?? []) ? setClosing(data) : closeNow(data))
 
   // The menu reads the per-session read-aloud switches; a change re-renders it.
   useReadAloudVersion()
@@ -369,33 +372,7 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
       >
         {t('groups.new')}
       </Button>
-      {closing && (
-        <Dialog
-          open
-          onOpenChange={(o) => !o && setClosing(null)}
-          title={t('sessions.closeTitle', { name: closing.view.agentName })}
-          description={t('sessions.closeBody')}
-          footer={
-            <>
-              <Button variant="ghost" onClick={() => setClosing(null)}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="danger"
-                data-testid="confirm-close-session"
-                onClick={() => {
-                  closeNow(closing)
-                  setClosing(null)
-                }}
-              >
-                {t('sessions.closeConfirm')}
-              </Button>
-            </>
-          }
-        >
-          {null}
-        </Dialog>
-      )}
+      {closing && <CloseSessionDialog session={closing} working={isWorking(closing)} onDone={() => setClosing(null)} onError={(message) => pushItem(closing.view.id, 'error', message)} />}
       <GroupDialog
         dialog={dialog}
         closedLost={dialog?.kind === 'delete' ? dialog.group.members.filter((m) => !live.has(m.key)).length : 0}

@@ -69,6 +69,7 @@ const api: HubApi = {
     onPromptSettled: (cb) => subscribe<[string, number]>('sessions:promptSettled', cb),
     setMode: (id, mode, options) => ipcRenderer.invoke('sessions:setMode', id, mode, options),
     close: (id) => ipcRenderer.invoke('sessions:close', id),
+    closeRemovingWorktree: (id, force) => ipcRenderer.invoke('sessions:closeRemovingWorktree', id, force),
     setModel: (id, model) => ipcRenderer.invoke('sessions:setModel', id, model),
     setAgentMode: (id, modeId) => ipcRenderer.invoke('sessions:setAgentMode', id, modeId),
     mcp: (id, action, server) => ipcRenderer.send('sessions:mcp', id, action, server),

@@ -1,5 +1,5 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
-import type { ChromeProfile } from '@workhub/core'
+import type { ChromeProfile, SessionWorktree, WorktreeStatus } from '@workhub/core'
 import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type { ProfileEnvApi, SetupApi, SystemNotificationsApi } from './setup-api'
 import type {
@@ -109,6 +109,8 @@ export function terminalChannel(sessionId: string, channel: 'console' | 'shell')
 /** A session as the renderer sees it. */
 export interface SessionView extends Session {
   label: string
+  /** The worktree Workhub created for this session; closing it can remove it. */
+  worktree?: SessionWorktree
   /** The name the user gave the session (Rename…, `/rename`), kept across restarts; else it shows its agent's name. */
   name?: string
   /** The title the agent gave the conversation (Claude's, an ACP agent's `session_info_update`); a name the user gave wins. */
@@ -176,6 +178,12 @@ export interface StartSessionInput {
   modeId?: string
   /** An AI reviewer: the agent's most read-only mode, chat only (see `StartSessionRequest.readOnly`). */
   readOnly?: boolean
+  /**
+   * Start in a new git worktree of the folder's repository (Settings → Profiles → Worktrees), on
+   * `branch` (the profile's prefix is added; empty: named after the session). `optional`: start in
+   * the folder itself when it is not in a repository, instead of failing.
+   */
+  worktree?: { branch?: string; optional?: boolean }
 }
 
 /** A past session, plus its agent and account names for the history screen. */
@@ -264,6 +272,12 @@ export interface SessionsApi {
   setMode(id: string, mode: SessionMode, options?: SetModeOptions): Promise<void>
   /** Stops the session if it runs and drops it from the open sessions (it stays in History). */
   close(id: string): Promise<void>
+  /**
+   * Closes the session and removes the worktree Workhub created for it (its branch stays). Without
+   * `force`, a worktree with uncommitted changes or unpushed commits is kept, the session stays
+   * open and the answer says what it holds.
+   */
+  closeRemovingWorktree(id: string, force: boolean): Promise<{ ok: true } | { ok: false; blocked: WorktreeStatus }>
   setModel(id: string, modelId: string | null): Promise<void>
   /** Switches the session's agent mode (an id of `availableModes`). */
   setAgentMode(id: string, modeId: string): Promise<void>

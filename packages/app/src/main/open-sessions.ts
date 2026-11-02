@@ -6,7 +6,7 @@
  * same folder); nothing is ever prompted again. The sidebar order and groups live in the config
  * (keyed by identity), so restored sessions land at their old places.
  */
-import { effectiveAgentKey, type SessionGroups } from '@workhub/core'
+import { effectiveAgentKey, type SessionGroups, type SessionWorktree } from '@workhub/core'
 import type { SessionMode, SessionView, StartSessionInput } from '../shared/api'
 
 export interface SavedOpenSession {
@@ -23,6 +23,8 @@ export interface SavedOpenSession {
   /** The agent's own session id, resumed when its conversation still exists. */
   agentSessionId?: string
   model?: string
+  /** The worktree Workhub created for the session (its `cwd` is inside it), so closing it later can still offer to remove it. */
+  worktree?: SessionWorktree
 }
 
 export interface SavedOpenSessions {
@@ -42,7 +44,7 @@ export interface OpenSessionsDeps {
   /** The engine a session runs (the shell shows over one of them). */
   engineOf(id: string): 'app' | 'console' | undefined
   /** Starts a stored session again (`SessionManager.start` with `restored`: it resumes only a conversation that still exists). */
-  start(input: StartSessionInput): Promise<SessionView>
+  start(input: StartSessionInput, extra: { worktree?: SessionWorktree }): Promise<SessionView>
   setMode(id: string, mode: SessionMode): Promise<void>
   /** Whether the session's folder is still there. */
   folderExists(path: string): Promise<boolean>
@@ -67,7 +69,8 @@ export function savedSessionOf(view: SessionView, engine: 'app' | 'console' | un
     mode: view.mode,
     engine: engine ?? (view.mode === 'console' ? 'console' : 'app'),
     ...(view.agentSessionId ? { agentSessionId: view.agentSessionId } : {}),
-    ...(view.currentModelId ? { model: view.currentModelId } : {})
+    ...(view.currentModelId ? { model: view.currentModelId } : {}),
+    ...(view.worktree ? { worktree: view.worktree } : {})
   }
 }
 
@@ -88,6 +91,8 @@ export function readSavedSessions(raw: unknown): SavedOpenSession[] {
     const engine = r['engine'] === 'console' ? 'console' : r['engine'] === 'app' ? 'app' : mode === 'console' ? 'console' : 'app'
     const agentSessionId = str(r['agentSessionId'])
     const model = str(r['model'])
+    const w = r['worktree'] && typeof r['worktree'] === 'object' ? (r['worktree'] as Record<string, unknown>) : undefined
+    const worktree = w && str(w['repoRoot']) && str(w['path']) && str(w['branch']) ? { repoRoot: str(w['repoRoot'])!, path: str(w['path'])!, branch: str(w['branch'])! } : undefined
     out.push({
       identity,
       agentKey,
@@ -96,7 +101,8 @@ export function readSavedSessions(raw: unknown): SavedOpenSession[] {
       mode,
       engine,
       ...(agentSessionId ? { agentSessionId } : {}),
-      ...(model ? { model } : {})
+      ...(model ? { model } : {}),
+      ...(worktree ? { worktree } : {})
     })
   }
   return out
@@ -176,7 +182,7 @@ export class OpenSessions {
           mode: s.engine,
           ...(s.agentSessionId ? { resumeAgentSessionId: s.agentSessionId } : { identity: s.identity }),
           ...(s.model ? { model: s.model } : {})
-        })
+        }, s.worktree ? { worktree: s.worktree } : {})
         if (s.mode === 'shell') await this.deps.setMode(view.id, 'shell').catch((err: unknown) => this.deps.log?.('could not reopen the shell of a restored session', err))
       } catch (err) {
         this.deps.log?.(`could not reopen session ${s.identity}`, err)

@@ -18,6 +18,7 @@ import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } fro
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
 import { GitReview, LocalChanges } from '@workhub/adapters/git-review'
+import { GitWorktrees } from '@workhub/adapters/git-worktree'
 import { JsonPrEventStore } from '@workhub/adapters/pr-events-json'
 import { DemoCalendarSource, IcsCalendarSource } from '@workhub/adapters/calendar-ics'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
@@ -360,6 +361,7 @@ const controlToken = newControlToken()
 let controlEndpoint: ControlEndpoint | null = loopbackControl ? null : { socket: controlSocket }
 const sessions = new SessionManager({
   config: configuration,
+  worktrees: new GitWorktrees(),
   sessionEnv: (sessionId) => controlEnv(sessionId, controlEndpoint),
   names: sessionNames,
   profileEnv: async (profileId, cwd) => {
@@ -400,7 +402,7 @@ const openSessions = new OpenSessions({
   store: new StateFile<SavedOpenSessions>(join(dataDir, 'open-sessions.json'), 500),
   list: () => sessions.list(),
   engineOf: (id) => sessions.engineOf(id),
-  start: (input) => sessions.start(input, { restored: true }),
+  start: (input, extra) => sessions.start(input, { restored: true, ...extra }),
   setMode: (id, mode) => sessions.setMode(id, mode),
   folderExists: (path) => stat(path).then((s) => s.isDirectory(), () => false),
   enabled: async () => appOptions(await configuration.current()).reopenSessions,
@@ -993,6 +995,7 @@ function registerIpc(): void {
   ipc.handle('sessions:withdrawPrompt', (e, id: string, token: unknown) => typeof token === 'number' && sessions.withdrawPrompt(id, `${e.sender.id}:${token}`))
   ipc.handle('sessions:setMode', (_e, id: string, mode: SessionMode, options?: { now?: unknown }) => sessions.setMode(id, mode, { now: options?.now === true }))
   ipc.handle('sessions:close', (_e, id: string) => sessions.close(id))
+  ipc.handle('sessions:closeRemovingWorktree', (_e, id: string, force: boolean) => sessions.closeRemovingWorktree(id, force === true))
   ipc.handle('sessions:setModel', (_e, id: string, model: string | null) => sessions.setModel(id, model))
   ipc.handle('sessions:setAgentMode', (_e, id: string, modeId: string) => {
     if (typeof modeId !== 'string' || !modeId) throw new Error('a mode id is required')

@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { ENV_NAME, type ChromeProfile, type FolderOptions, type Profile } from '@workhub/core'
+import { ENV_NAME, worktreeSettings, type ChromeProfile, type FolderOptions, type Profile, type WorktreeSettings } from '@workhub/core'
 import { Button, Input, Select, Switch } from '../components/atoms'
 import { Field, HelpTip, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
@@ -184,7 +184,8 @@ export function prunedFolderOptions(options: Profile['folderOptions'], folders: 
     if (!keep.has(folder)) continue
     const set: FolderOptions = {
       ...(typeof o.onlyGitRepos === 'boolean' ? { onlyGitRepos: o.onlyGitRepos } : {}),
-      ...(typeof o.subfoldersAreProjects === 'boolean' ? { subfoldersAreProjects: o.subfoldersAreProjects } : {})
+      ...(typeof o.subfoldersAreProjects === 'boolean' ? { subfoldersAreProjects: o.subfoldersAreProjects } : {}),
+      ...(typeof o.worktrees === 'boolean' ? { worktrees: o.worktrees } : {})
     }
     if (Object.keys(set).length) out[folder] = set
   }
@@ -197,6 +198,9 @@ export function prunedFolderOptions(options: Profile['folderOptions'], folders: 
  * plain on/off switch would show "off" for a folder that is in fact split.
  */
 const subfolderMode = (value: boolean | undefined): 'auto' | 'on' | 'off' => (value === undefined ? 'auto' : value ? 'on' : 'off')
+
+/** A folder's worktree choice: unset follows the profile. */
+const folderWorktreeMode = (value: boolean | undefined): 'profile' | 'on' | 'off' => (value === undefined ? 'profile' : value ? 'on' : 'off')
 
 /** Profile fields of Workhub 1's profile settings: symbol, folder switches, link browser, "owns outside" and variables. */
 export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onChange: (profile: Profile) => void; env: EnvDraft }) {
@@ -256,8 +260,24 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
                 ]}
               />
             </SwitchRow>
+            <SwitchRow label={t('profileExtra.folderWorktrees')} hint={t('profileExtra.folderWorktreesHint')}>
+              <Select
+                className="w-44"
+                aria-label={t('profileExtra.folderWorktrees')}
+                value={folderWorktreeMode(form.folderOptions?.[folder]?.worktrees)}
+                onChange={(v) => setFolder(folder, { worktrees: v === 'on' ? true : v === 'off' ? false : undefined })}
+                options={[
+                  { value: 'profile', label: t('profileExtra.folderWorktreesProfile') },
+                  { value: 'on', label: t('profileExtra.folderWorktreesOn') },
+                  { value: 'off', label: t('profileExtra.folderWorktreesOff') }
+                ]}
+              />
+            </SwitchRow>
           </div>
         ))}
+      </FieldGroup>
+      <FieldGroup legend={t('profileExtra.worktrees')} help={t('profileExtra.worktreesHelp')}>
+        <WorktreeFields form={form} onChange={onChange} />
       </FieldGroup>
       <FieldGroup legend={t('profileExtra.links')}>
         <div className="flex flex-col gap-3 py-2">
@@ -271,6 +291,45 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
         <EnvFields env={env} />
       </FieldGroup>
     </>
+  )
+}
+
+// --- Worktrees ----------------------------------------------------------------------------------
+
+/** The profile's worktree settings: the default for new sessions, where they go, the branch names and what closing does. */
+function WorktreeFields({ form, onChange }: { form: Profile; onChange: (profile: Profile) => void }) {
+  const { t } = useI18n()
+  const settings = worktreeSettings(form)
+  const set = (patch: Partial<WorktreeSettings>) => onChange({ ...form, worktrees: { ...settings, ...patch } })
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <SwitchRow label={t('profileExtra.worktreesEnabled')} hint={t('profileExtra.worktreesEnabledHint')}>
+        <Switch checked={settings.enabled} onChange={(on) => set({ enabled: on })} />
+      </SwitchRow>
+      <Field label={t('profileExtra.worktreesLocation')} hint={t('profileExtra.worktreesLocationHint')}>
+        <Input value={settings.location} placeholder="${folder}/_worktrees" spellCheck={false} onChange={(e) => set({ location: e.target.value })} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t('profileExtra.worktreesPrefix')} hint={t('profileExtra.worktreesPrefixHint')}>
+          <Input value={settings.branchPrefix} placeholder="feat/" spellCheck={false} onChange={(e) => set({ branchPrefix: e.target.value })} />
+        </Field>
+        <Field label={t('profileExtra.worktreesBase')} hint={t('profileExtra.worktreesBaseHint')}>
+          <Input value={settings.baseRef} placeholder="origin/main" spellCheck={false} onChange={(e) => set({ baseRef: e.target.value })} />
+        </Field>
+      </div>
+      <SwitchRow label={t('profileExtra.worktreesOnClose')}>
+        <Select
+          className="w-56"
+          aria-label={t('profileExtra.worktreesOnClose')}
+          value={settings.onClose}
+          onChange={(v) => set({ onClose: v === 'keep' ? 'keep' : 'ask' })}
+          options={[
+            { value: 'ask', label: t('profileExtra.worktreesOnCloseAsk') },
+            { value: 'keep', label: t('profileExtra.worktreesOnCloseKeep') }
+          ]}
+        />
+      </SwitchRow>
+    </div>
   )
 }
 

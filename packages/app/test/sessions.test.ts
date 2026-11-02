@@ -11,7 +11,8 @@ import {
   type HistoryMessage,
   type StartSessionRequest,
   type TranscriptReader,
-  type WorkhubConfig
+  type WorkhubConfig,
+  type Worktrees
 } from '@workhub/core'
 import { claudeAccounts } from '../src/main/claude-accounts'
 import { resolveChoice, SessionManager, ticketPrefixes, type SessionManagerDeps } from '../src/main/session-manager'
@@ -707,5 +708,77 @@ describe('SessionManager prompt gate', () => {
     const resumed = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' })
     const sameIdentity = await manager.start({ profileId: null, agentKey: 'opencode', cwd: '/tmp/demo', identity: 'old' })
     expect([fresh.resumed, resumed.resumed, sameIdentity.resumed]).toEqual([undefined, true, true])
+  })
+})
+
+describe('SessionManager worktrees', () => {
+  const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+  const config = (): WorkhubConfig => ({
+    ...emptyConfig(),
+    profiles: [
+      { id: 'work', name: 'Work', connections: {}, accountIds: [], modules: mods, folders: ['/w'], worktrees: { enabled: true, location: '', branchPrefix: 'feat/', baseRef: 'develop', onClose: 'ask' } }
+    ]
+  })
+  const fake = (over: Partial<Worktrees> = {}) => {
+    const created: { repoRoot: string; path: string; branch: string; base?: string }[] = []
+    const removed: [string, string, boolean][] = []
+    const worktrees: Worktrees = {
+      repoRootOf: vi.fn(async (p: string) => (p.startsWith('/w/acme') ? '/w/acme' : null)),
+      create: vi.fn(async (repoRoot, o) => void created.push({ repoRoot, ...o })),
+      status: vi.fn(async () => ({ dirty: false, unpushed: 0, branch: 'feat/login' })),
+      remove: vi.fn(async (repoRoot, path, o) => void removed.push([repoRoot, path, o.force])),
+      ...over
+    }
+    return { worktrees, created, removed }
+  }
+
+  it('starts a session that asks for one in a new worktree next to the repository, keeping the subfolder', async () => {
+    const { worktrees, created } = fake()
+    const { manager } = setup(config(), false, { worktrees })
+    const view = await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme/src', worktree: { branch: 'login' } })
+    expect(created).toEqual([{ repoRoot: '/w/acme', path: '/w/_worktrees/acme-feat-login', branch: 'feat/login', base: 'develop' }])
+    expect(view.worktree).toEqual({ repoRoot: '/w/acme', path: '/w/_worktrees/acme-feat-login', branch: 'feat/login' })
+    // The subfolder does not exist in the fake worktree, so the session starts at its root.
+    expect(view.cwd).toBe('/w/_worktrees/acme-feat-login')
+    expect(view.profileId).toBe('work')
+  })
+
+  it('never creates one unasked, for a reviewer, a resumed or a reopened session', async () => {
+    const { worktrees, created } = fake()
+    const { manager } = setup(config(), false, { worktrees })
+    await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme' })
+    await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: {}, readOnly: true })
+    await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: {}, resumeAgentSessionId: 'abc' })
+    const restored = await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/_worktrees/acme-x' }, { restored: true, worktree: { repoRoot: '/w/acme', path: '/w/_worktrees/acme-x', branch: 'x' } })
+    expect(created).toEqual([])
+    expect(restored.worktree?.branch).toBe('x')
+  })
+
+  it('fails outside a repository unless the worktree is optional', async () => {
+    const { worktrees } = fake()
+    const { manager } = setup(config(), false, { worktrees })
+    await expect(manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/notes', worktree: {} })).rejects.toThrow(/not in a git repository/)
+    const view = await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/notes', worktree: { optional: true } })
+    expect(view.cwd).toBe('/w/notes')
+    expect(view.worktree).toBeUndefined()
+  })
+
+  it('keeps a worktree with work in it unless forced, and removes a clean one on close', async () => {
+    const dirty = fake({ status: vi.fn(async () => ({ dirty: true, unpushed: 2, branch: 'feat/a' })) })
+    const a = setup(config(), false, { worktrees: dirty.worktrees })
+    const view = await a.manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: { branch: 'a' } })
+    await flush()
+    expect(await a.manager.closeRemovingWorktree(view.id, false)).toEqual({ ok: false, blocked: { dirty: true, unpushed: 2, branch: 'feat/a' } })
+    expect(a.manager.list()).toHaveLength(1)
+    expect(await a.manager.closeRemovingWorktree(view.id, true)).toEqual({ ok: true })
+    expect(a.manager.list()).toHaveLength(0)
+    expect(dirty.removed).toEqual([['/w/acme', '/w/_worktrees/acme-feat-a', true]])
+
+    const clean = fake()
+    const b = setup(config(), false, { worktrees: clean.worktrees })
+    const other = await b.manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: { branch: 'b' } })
+    await flush()
+    expect(await b.manager.closeRemovingWorktree(other.id, false)).toEqual({ ok: true })
+    expect(clean.removed).toEqual([['/w/acme', '/w/_worktrees/acme-feat-b', false]])
   })
 })

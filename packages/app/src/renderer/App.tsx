@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, pickAgent, profileDefaultFolder, refreshMembers, sessionIdentity, setGroupCollapsed, type EffectiveAgent, type GroupMember } from '@workhub/core'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, pickAgent, profileDefaultFolder, refreshMembers, sessionIdentity, setGroupCollapsed, worktreeDefault, type EffectiveAgent, type GroupMember } from '@workhub/core'
 import type { SessionView, WorkspaceFolder } from '@shared/api'
-import { Button, TooltipProvider } from './components/atoms'
-import { Dialog, ToastProvider, useToast } from './components/molecules'
+import { TooltipProvider } from './components/atoms'
+import { ToastProvider, useToast } from './components/molecules'
 import { NewSessionDialog, Sidebar, Toolbar } from './components/organisms'
 import { TopNav } from './components/organisms/TopNav'
 import { dropOnSessionsTitle, isWorking, SessionList } from './components/organisms/SessionList'
 import { RenameSessionDialog } from './components/organisms/RenameSessionDialog'
+import { CloseSessionDialog } from './components/organisms/CloseSessionDialog'
+import { closeAsks } from './lib/closeSession'
 import { ResumeSheet } from './components/organisms/ResumeSheet'
 import { DetachedSessionNotice } from './screens/sessions/DetachedSessionNotice'
 import { useDetachedSessions } from './lib/windows'
 import type { MenuCommand } from '@shared/windows-api'
-import { refreshConfig, useConfig } from './configStore'
+import { currentConfig, refreshConfig, useConfig } from './configStore'
 import { I18nProvider, useI18n } from './i18n/I18nProvider'
 import { setComposerDraft } from './lib/drafts'
 import { runIntent, type IntentDeps } from './lib/links'
@@ -272,7 +274,9 @@ function Shell() {
       const installed = agent ? await window.hub.agents.availability().then((m) => m[agent.agent.id] !== false, () => true) : false
       if (!plan || !installed) return newSession(null, agentKey)
       try {
-        const view = await window.hub.sessions.start({ profileId, agentKey: plan.agentKey, cwd: plan.cwd, cols: 100, rows: 30 })
+        // The profile (or the folder) may start sessions in a worktree; a folder outside a repository starts as is.
+        const worktree = worktreeDefault(p, plan.cwd, h) ? { worktree: { optional: true } } : {}
+        const view = await window.hub.sessions.start({ profileId, agentKey: plan.agentKey, cwd: plan.cwd, cols: 100, rows: 30, ...worktree })
         openSession(view.id)
       } catch (e) {
         toast(errorText(e), 'danger')
@@ -303,7 +307,7 @@ function Shell() {
             return void quickSession(command.agentKey)
           case 'closeSession':
             if (current) {
-              if (isWorking(current)) setClosing(current)
+              if (closeAsks(current.view, isWorking(current), currentConfig()?.config.profiles ?? [])) setClosing(current)
               else void window.hub.sessions.close(current.view.id)
             }
             return
@@ -513,32 +517,7 @@ function Shell() {
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
       <RenameSessionDialog session={renaming} onClose={() => setRenaming(null)} />
       <ResumeSheet folder={resumeFolder} profileId={activeProfileId} onClose={() => setResumeFolder(null)} onOpened={openSession} />
-      {closing && (
-        <Dialog
-          open
-          onOpenChange={(o) => !o && setClosing(null)}
-          title={t('sessions.closeTitle', { name: closing.view.name || closing.view.agentName })}
-          description={t('sessions.closeBody')}
-          footer={
-            <>
-              <Button variant="ghost" onClick={() => setClosing(null)}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  void window.hub.sessions.close(closing.view.id)
-                  setClosing(null)
-                }}
-              >
-                {t('sessions.closeConfirm')}
-              </Button>
-            </>
-          }
-        >
-          {null}
-        </Dialog>
-      )}
+      {closing && <CloseSessionDialog session={closing} working={isWorking(closing)} onDone={() => setClosing(null)} onError={(message) => toast(message, 'danger')} />}
     </div>
   )
 }
