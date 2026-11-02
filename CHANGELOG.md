@@ -4,6 +4,18 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.7](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.6...v2.0.0-alpha.7) (2026-11-02)
+
+
+### Features
+
+* **chat:** escuchar respuestas del agente y mensajes largos legibles ([356daa5](https://github.com/SoldierIced/workhub/commit/356daa5738c3dbf7bff0e73cb982360fd8391203))
+* **chat:** listen to agent replies with a cheap-model summary and wrap long messages ([5417ea5](https://github.com/SoldierIced/workhub/commit/5417ea5c566bea0be3ffff57a3132921e90433a3))
+* **install:** add one-line installers and latest-version download links ([6a5caca](https://github.com/SoldierIced/workhub/commit/6a5caca595c4f537f065a320e638619203699637))
+* **install:** instaladores de una línea y links a la última versión ([fc308a5](https://github.com/SoldierIced/workhub/commit/fc308a59d1a65473036f0cc029792985a2ef860b))
+* **plan:** item windows, milestone pieces with weights and task-ticket sync ([3afd8fb](https://github.com/SoldierIced/workhub/commit/3afd8fb2378c808b62c2467ea40458bece6f219e))
+* **plan:** ventanas de detalle, hitos por piezas y tareas vinculadas a tickets ([7411706](https://github.com/SoldierIced/workhub/commit/74117068d71086f9647dd5af1fb0029ea12eca30))
+
 ## [2.0.0-alpha.6](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.5...v2.0.0-alpha.6) (2026-11-02)
 
 
