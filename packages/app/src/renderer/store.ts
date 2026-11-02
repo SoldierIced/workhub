@@ -107,7 +107,10 @@ function raise(id: string, kind: AttentionKind): void {
   if (!s) return
   const onScreen = isOnScreen(id)
   const unseen = raiseAttention(s.unseen, kind, onScreen)
-  if (unseen !== s.unseen) set({ ...sessions, [id]: { ...s, unseen } })
+  if (unseen === s.unseen) return
+  set({ ...sessions, [id]: { ...s, unseen } })
+  // One notification until the session is looked at: more turns of the same kind (an agent that
+  // goes on by itself, its background tasks) only raise it again when the kind gets stronger.
   if (!onScreen) for (const l of attentionListeners) l(id, kind)
 }
 
