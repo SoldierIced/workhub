@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react'
+import { useMemo, useRef, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '../../lib/cn'
@@ -15,7 +15,8 @@ export function safeHref(href: string | undefined): string | null {
   }
 }
 
-const COMPONENTS: Components = {
+/** The renderers of a text whose links open the way `profileId` opens links (its browser), or the default one. */
+const componentsFor = (profileId: string | null | undefined): Components => ({
   a: ({ href, children }) => {
     const target = safeHref(href)
     if (!target) return <span>{children}</span>
@@ -25,7 +26,7 @@ const COMPONENTS: Components = {
         title={target}
         onClick={(e) => {
           e.preventDefault()
-          window.hub.openExternal(target)
+          window.hub.openExternal(target, profileId)
         }}
       >
         {children}
@@ -35,7 +36,9 @@ const COMPONENTS: Components = {
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   // Images in a reply would load remote content; show their alt text and address instead.
   img: ({ alt, src }) => <span className="text-muted">{alt || (typeof src === 'string' ? src : '')}</span>
-}
+})
+
+const COMPONENTS = componentsFor(null)
 
 /** A fenced code block with its own copy button in the corner. */
 function CodeBlock({ children }: { children: ReactNode }) {
@@ -50,13 +53,32 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
 /**
  * An agent's reply as Markdown: GitHub tables, code blocks and links. Raw HTML in the text is
- * dropped (`skipHtml`), never rendered.
+ * dropped (`skipHtml`), never rendered; images show as text. `profileId` opens links in that
+ * profile's browser.
  */
-export function Markdown({ text, className }: { text: string; className?: string }) {
+/**
+ * Keeps single line breaks as breaks (plain notes and alert details are written line by line),
+ * outside fenced code blocks. Markdown alone would join those lines into one paragraph.
+ */
+export function hardBreaks(text: string): string {
+  let fenced = false
+  return text
+    .split('\n')
+    .map((line, i, lines) => {
+      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+      const next = lines[i + 1]
+      const joinsNext = !fenced && line.trim() !== '' && next !== undefined && next.trim() !== '' && !/^\s*(```|~~~)/.test(next)
+      return joinsNext && !line.endsWith('  ') ? `${line}  ` : line
+    })
+    .join('\n')
+}
+
+export function Markdown({ text, className, profileId, breaks }: { text: string; className?: string; profileId?: string | null; breaks?: boolean }) {
+  const components = useMemo(() => (profileId ? componentsFor(profileId) : COMPONENTS), [profileId])
   return (
     <div className={cn('markdown min-w-0 break-words', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={COMPONENTS}>
-        {text}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={components}>
+        {breaks ? hardBreaks(text) : text}
       </ReactMarkdown>
     </div>
   )

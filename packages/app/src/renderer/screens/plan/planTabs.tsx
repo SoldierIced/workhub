@@ -2,6 +2,7 @@ import { CalendarDays, Flag, Inbox, Users, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Profile } from '@workhub/core'
 import type { PlanView } from '@shared/plan-api'
+import type { PlanItemKind } from '@shared/plan-item-window'
 import type { MessageKey } from '../../i18n/translate'
 import { InboxTab } from './InboxTab'
 import { MilestonesTab } from './MilestonesTab'
@@ -22,6 +23,8 @@ export interface PlanTabContext {
   /** Opens a link the way the profile opens links (a call link). */
   openLink: (url: string) => void
   openSettings: (tab?: string) => void
+  /** Opens an inbox item or a milestone in a window of its own (or brings its window to the front). */
+  openItem: (kind: PlanItemKind, id: string) => void
 }
 
 /**

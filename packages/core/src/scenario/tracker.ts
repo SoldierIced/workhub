@@ -170,3 +170,13 @@ export const PRODUCT_QUERY_RESULTS: Readonly<Record<string, readonly TicketSumma
     t('NOTE-72', 'Document the changelog process')
   ]
 }
+
+/** The tickets the scenario's inbox items were sent to (approved before the demo starts). */
+export const PRODUCT_INBOX_TICKETS: readonly TicketSummary[] = [t('NOTE-255', 'Add the cancellation reason to the analytics events', 'progress'), t('WEB-34', 'Calendar integration drops recurring events', 'todo')]
+
+/** A demo ticket by key, with the state the demo tracker starts with; undefined for a key it does not know. */
+export function productTicket(key: string): TicketSummary | undefined {
+  const assigned = PRODUCT_ASSIGNED.find((a) => a.key === key)
+  if (assigned) return { key, title: assigned.title, ...productTicketStatus(assigned.state), url: `https://demo.example.com/browse/${key}` }
+  return [...Object.values(PRODUCT_QUERY_RESULTS).flat(), ...PRODUCT_INBOX_TICKETS].find((s) => s.key === key)
+}

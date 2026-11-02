@@ -13,6 +13,7 @@ import {
   productMilestoneCounts,
   productMilestones,
   productProfile,
+  productTicketStates,
   type ConfigurationService
 } from '@workhub/core'
 import type { MetricAlertsState } from './metric-alerts'
@@ -52,7 +53,8 @@ export function seedScenarioState(dataDir: string, now: number = Date.now()): st
     const milestones = productMilestones(localDay(now))
     // The pending bug is drafted from the front-end error alert, as "Send to inbox" would.
     const alert = metrics.alerts.find((a) => a.key === PRODUCT_ALERT_KEYS.risingError)
-    const state: PlannerState = { profiles: { [PRODUCT_PROFILE_ID]: { milestones, counts: productMilestoneCounts(milestones, now), errors: {}, inbox: productInbox(now, alert), proposals: [] } } }
+    const inbox = productInbox(now, alert)
+    const state: PlannerState = { profiles: { [PRODUCT_PROFILE_ID]: { milestones, counts: productMilestoneCounts(milestones, now), errors: {}, inbox, proposals: [], tickets: productTicketStates(milestones, inbox, now) } } }
     writeJson(plannerPath, state)
     written.push(plannerPath)
   }

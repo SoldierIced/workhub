@@ -80,7 +80,8 @@ Then follow [Getting started](docs/user-guide/getting-started.md).
   subjects, rate changes, missing data; track, snooze, resolve) from a source-agnostic engine.
 - **Plan** (module): today's and tomorrow's meetings from your calendars (private ICS address),
   reminders and reminder rules, meeting briefs prepared by an agent, and the people you meet;
-  milestones with progress against time (typed or counted from a tracker query); and an inbox
+  milestones with progress against time (typed, counted from a tracker query, or weighed from
+  their pieces: tickets, local tasks and links); and an inbox
   where items from you, metric alerts and agents wait for approval before becoming tickets, local
   tasks or recorded decisions.
 
@@ -212,8 +213,8 @@ everything below is synthetic.
 |---|---|
 | Home | Next meetings, open metric alerts, milestones at risk, pending inbox items, tickets in progress |
 | Plan | Today and tomorrow: a daily standup, a 1:1, an activation metrics review, a roadmap check-in, refinement and a support sync, with attendees from the people list. One meeting starts about ten minutes after launch, so a reminder appears quickly |
-| Plan, milestones | Six milestones, one in every status (on track, at risk, late, not started, done) and one tracked by hand |
-| Plan, inbox | Items that came from meetings waiting for approval, local tasks (overdue, due today, critical), approved items with demo tickets, decisions, and items linked to people |
+| Plan, milestones | Seven milestones, one in every status (on track, at risk, late, not started, done), one tracked by hand and one made of pieces (two tickets in different states, a local task and a link) |
+| Plan, inbox | Items that came from meetings waiting to be reviewed, local tasks (overdue, due today, critical), approved items followed in the tracker with demo tickets, a local task linked to a demo ticket, decisions, and items linked to people |
 | Health, alerts | A signup funnel (one step drops more than 10 points, another 5 to 10), cancellation reasons (one rising for days, one jumping, one new), front-end errors, a key event with missing data, in mixed states (new, tracking, snoozed, proposing to resolve), next to the Elastic-style signals |
 
 Briefs never start by themselves in the demo: when a brief rule matches, a notification says it

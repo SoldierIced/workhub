@@ -67,6 +67,8 @@ export const planEn = {
   'plan.people.pickHint': 'Choose a person on the left, or add one, to see your meetings with them and prepare a 1:1.',
   'plan.people.oneOnOne': 'Prepare 1:1',
   'plan.people.remove': 'Remove {name}',
+  'plan.people.confirmDelete': 'Delete “{name}” from your people?',
+  'plan.people.confirmDeleteBody': 'Their meetings stay in your calendar; their notes and the details briefs use are removed.',
   'plan.people.save': 'Save',
   'plan.people.saved': 'Saved',
   'plan.people.saveFailed': 'The person could not be saved',

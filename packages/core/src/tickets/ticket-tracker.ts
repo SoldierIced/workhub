@@ -35,6 +35,12 @@ export interface TicketTracker {
    * Linear: a project name or id (`project:` optional), or `team:KEY label:Name`.
    */
   searchByQuery?(query: string, options?: SearchOptions): Promise<TicketSummary[]>
+  /**
+   * Tickets by key, any status, in as few requests as the tracker allows (Plan reads the tickets of
+   * milestone pieces and linked inbox items with it). Keys the tracker does not know are left out.
+   * Jira: one JQL `key in (...)` search; Linear: one filtered issues query.
+   */
+  readTickets?(keys: readonly string[]): Promise<TicketSummary[]>
   /** Creates an issue (`capabilities.create`). */
   createIssue?(input: CreateIssueInput): Promise<CreatedIssue>
 }

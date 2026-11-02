@@ -2,10 +2,12 @@
  * The Plan work bridge: milestones and the inbox of a profile. Every argument is checked here; the
  * renderer is not trusted with shapes.
  */
-import { INBOX_ACTIONS, INBOX_KINDS, INBOX_LIMITS, isDay, parseInboxProposal, parseInboxProposals, parseMilestone, type InboxAction, type InboxBulkPatch, type InboxKind, type InboxSource, type MetricAlert } from '@workhub/core'
+import type { BrowserWindow } from 'electron'
+import { INBOX_ACTIONS, INBOX_KINDS, INBOX_LIMITS, isDay, parseInboxProposal, parseInboxProposals, parseMilestone, parsePlanLinks, parseTicketKey, PIECE_LIMITS, type InboxAction, type InboxBulkPatch, type InboxKind, type InboxSource, type MetricAlert } from '@workhub/core'
+import { parsePlanItemTarget, planItemHash, planItemKey } from '../shared/plan-item-window'
 import type { InboxAddResult, InboxEdit } from '../shared/planner-api'
 import type { IpcRegistrar } from './ipc-guard'
-import { resolveControlProfile, type ControlProfileDeps } from './plan-control'
+import { parseTicketLink, resolveControlProfile, type ControlProfileDeps } from './plan-control'
 import type { PlannerService } from './planner-service'
 
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200
@@ -49,6 +51,14 @@ export function parseInboxEdit(value: unknown): InboxEdit | null {
     if (!Array.isArray(v['people']) || v['people'].length > INBOX_LIMITS.people || !v['people'].every(isId)) return null
     out.people = v['people'] as string[]
   }
+  const fields = parseBulkPatch({ due: v['due'], area: v['area'], criticality: v['criticality'] })
+  if (!fields) return null
+  Object.assign(out, fields)
+  if (v['links'] !== undefined) {
+    const links = parsePlanLinks(v['links'])
+    if (typeof links === 'string') return null
+    out.links = links
+  }
   return out
 }
 
@@ -57,6 +67,8 @@ export interface PlannerIpcExtras {
   alert?: (profileId: string, key: string) => Promise<MetricAlert | undefined>
   /** Tells the alert engine it was sent (a new alert becomes tracked). */
   alertSent?: (profileId: string, key: string) => Promise<unknown>
+  /** Creates the window of an inbox item or milestone for its hash (`planItemHash`). */
+  createWindow?: (hash: string, title: string) => BrowserWindow
 }
 
 export function registerPlannerIpc(ipc: IpcRegistrar, service: PlannerService, extras: PlannerIpcExtras = {}): void {
@@ -82,6 +94,15 @@ export function registerPlannerIpc(ipc: IpcRegistrar, service: PlannerService, e
     if (!isId(profileId)) throw new Error('bad request')
     return service.refreshMilestones(profileId)
   })
+  ipc.handle('planner:lookupTicket', (_e, profileId: unknown, key: unknown, connectionId: unknown) => {
+    const k = parseTicketKey(key)
+    if (!isId(profileId) || !k || (connectionId !== undefined && connectionId !== null && !(typeof connectionId === 'string' && connectionId.length <= PIECE_LIMITS.connectionId))) return BAD
+    return service.lookupTicket(profileId, k, typeof connectionId === 'string' && connectionId ? connectionId : undefined)
+  })
+  ipc.handle('planner:linkTicket', (_e, profileId: unknown, id: unknown, ticket: unknown) => {
+    const parsed = parseTicketLink(ticket)
+    return isId(profileId) && isId(id) && parsed !== undefined ? service.linkItemTicket(profileId, id, parsed) : BAD
+  })
   ipc.handle('planner:addItem', (_e, profileId: unknown, proposal: unknown, force: unknown) => {
     const parsed = parseInboxProposal(proposal)
     if (!isId(profileId)) return BAD
@@ -99,6 +120,23 @@ export function registerPlannerIpc(ipc: IpcRegistrar, service: PlannerService, e
     const parsed = parseBulkPatch(patch)
     if (!isId(profileId) || !Array.isArray(ids) || ids.length > INBOX_LIMITS.items || !ids.every(isId) || !parsed) return BAD
     return service.bulkEdit(profileId, ids, parsed)
+  })
+  // One window per item: opening it again focuses the one already open (and asking to edit it opens its form there).
+  const windows = new Map<string, BrowserWindow>()
+  ipc.on('planner:openWindow', (_e, target: unknown) => {
+    const parsed = parsePlanItemTarget(target)
+    if (!parsed || !extras.createWindow) return
+    const key = planItemKey(parsed)
+    const open = windows.get(key)
+    if (open && !open.isDestroyed()) {
+      if (open.isMinimized()) open.restore()
+      open.focus()
+      if ('edit' in parsed && parsed.edit) open.webContents.send('planner:edit')
+      return
+    }
+    const w = extras.createWindow(planItemHash(parsed), 'Plan')
+    windows.set(key, w)
+    w.on('closed', () => windows.delete(key))
   })
 }
 

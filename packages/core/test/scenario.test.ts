@@ -24,6 +24,11 @@ import {
   productMilestoneCounts,
   productMilestones,
   productProfile,
+  productTicketStates,
+  PRODUCT_INBOX_IDS,
+  pieceTally,
+  pieceViews,
+  ticketStateKey,
   validateConfig,
   type WorkhubConfig
 } from '../src'
@@ -107,11 +112,34 @@ describe('team-lead scenario: milestones', () => {
       const today = localDay(now)
       const milestones = productMilestones(today)
       const counts = productMilestoneCounts(milestones, now)
+      const inbox = productInbox(now)
+      const tickets = productTicketStates(milestones, inbox, now)
       expect(milestones.flatMap(milestoneProblems)).toEqual([])
-      const statuses = Object.fromEntries(milestones.map((m) => [m.id, milestoneStatus(m, counts[m.id], today).status]))
+      const weighed = (m: (typeof milestones)[number]) =>
+        m.source.kind === 'items' ? pieceTally(pieceViews(m.source.items, { ticket: (c, k) => tickets[ticketStateKey(c, k)], task: (id) => inbox.find((i) => i.id === id) })) : counts[m.id]
+      const statuses = Object.fromEntries(milestones.map((m) => [m.id, milestoneStatus(m, weighed(m), today).status]))
       expect(statuses).toEqual(PRODUCT_MILESTONE_EXPECTED)
     }
     expect(new Set(Object.values(PRODUCT_MILESTONE_EXPECTED))).toEqual(new Set(['onTrack', 'atRisk', 'late', 'notStarted', 'done']))
+  })
+
+  it('include one made of two tickets in different states, a local task and a link, all known to the demo', () => {
+    const now = NOW
+    const milestones = productMilestones(TODAY)
+    const m = milestones.find((x) => x.source.kind === 'items')!
+    if (m.source.kind !== 'items') throw new Error('no pieces milestone')
+    const inbox = productInbox(now)
+    const tickets = productTicketStates(milestones, inbox, now)
+    const v = pieceViews(m.source.items, { ticket: (c, k) => tickets[ticketStateKey(c, k)], task: (id) => inbox.find((i) => i.id === id) })
+    expect(v.map((x) => [x.piece.kind, x.state])).toEqual([
+      ['ticket', 'done'],
+      ['ticket', 'inProgress'],
+      ['task', 'todo'],
+      ['link', 'done']
+    ])
+    expect(pieceTally(v)).toMatchObject({ total: 14, done: 5 })
+    // The linked task's ticket and the approved items' tickets are known too.
+    for (const key of ['NOTE-252', 'NOTE-255', 'WEB-34']) expect(tickets[ticketStateKey(PRODUCT_TRACKER_ID, key)]?.category).toBeDefined()
   })
 
   it('include one manual and tracker ones for NOTE, WEB and OPS', () => {
@@ -146,9 +174,11 @@ describe('team-lead scenario: inbox', () => {
     expect(groups.tasks.due.some((i) => i.due! < TODAY)).toBe(true)
     expect(groups.tasks.due.some((i) => i.due === TODAY)).toBe(true)
     expect(groups.tasks.urgent.some((i) => i.criticality === 'Critical')).toBe(true)
-    expect(groups.tasks.rest.length).toBeGreaterThanOrEqual(2)
-    expect(groups.closed.filter((i) => i.status === 'ticket').map((i) => i.ticket?.key)).toEqual(expect.arrayContaining([expect.stringMatching(/^(NOTE|WEB)-\d+$/)]))
-    expect(groups.closed.filter((i) => i.status === 'ticket')).toHaveLength(2)
+    expect(groups.tasks.rest.length).toBeGreaterThanOrEqual(1)
+    // Approved items stay in the tracker group with their tickets, next to the local task linked to one.
+    expect(groups.tasks.tracker.filter((i) => i.status === 'ticket').map((i) => i.ticket?.key).sort()).toEqual(['NOTE-255', 'WEB-34'])
+    expect(groups.tasks.tracker.find((i) => i.id === PRODUCT_INBOX_IDS.experimentPlan)).toMatchObject({ status: 'local', ticket: { key: 'NOTE-252' } })
+    expect(groups.closed).toEqual([])
     expect(groups.decisions).toHaveLength(2)
   })
 

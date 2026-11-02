@@ -2,6 +2,7 @@ import {
   PRODUCT_ASSIGNED,
   PRODUCT_QUERY_RESULTS,
   TrackerError,
+  productTicket,
   isTicketKey,
   pullRequestUrlsIn,
   searchLimit,
@@ -232,6 +233,27 @@ export class DemoTracker implements TicketTracker {
     if (!query.trim()) throw new TrackerError('The query is empty')
     const known = this.product ? PRODUCT_QUERY_RESULTS[query.trim()] : undefined
     return known ? known.slice(0, searchLimit(options)) : demoSearch(query, searchLimit(options))
+  }
+
+  /** Tickets by key: the seeded ones with their current state, the scenario's query results, and the issues created in this run. */
+  async readTickets(keys: readonly string[]): Promise<TicketSummary[]> {
+    const out: TicketSummary[] = []
+    for (const key of new Set(keys.map((k) => k.trim().toUpperCase()))) {
+      const seed = this.seeds.find((s) => s.key === key)
+      if (seed) {
+        const t = this.ticket(seed)
+        out.push({ key, title: t.title, status: t.status, category: t.category, ...(t.url ? { url: t.url } : {}) })
+        continue
+      }
+      const known = this.product ? productTicket(key) : undefined
+      if (known) {
+        out.push(known)
+        continue
+      }
+      const created = this.created.find((c) => c.key === key)
+      if (created) out.push({ key, title: created.title, status: STATES.todo!.name, category: 'todo', ...(created.url ? { url: created.url } : {}) })
+    }
+    return out
   }
 
   async createIssue(input: CreateIssueInput): Promise<CreatedIssue> {

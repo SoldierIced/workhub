@@ -11,9 +11,12 @@ import {
   DEFAULT_INBOX_ISSUE_TYPE,
   DEFAULT_MILESTONE_MARGIN,
   findDuplicate,
+  followsTicket,
   inboxSettings,
   INBOX_LIMITS,
+  linkTicket,
   localDay,
+  markTicketDone,
   MAX_MILESTONE_PROPOSALS,
   MAX_SEARCH_RESULTS,
   MILESTONE_LIMITS,
@@ -21,26 +24,35 @@ import {
   moduleScreens,
   moveInboxItem,
   newInboxItem,
+  pieceTally,
+  pieceViews,
   plannerSettings,
   priorityOf,
   renderInboxDescription,
   sortMilestones,
+  ticketStateKey,
+  trackedState,
   withTicket,
   type InboxAction,
   type InboxBulkPatch,
   type InboxItem,
   type InboxProposal,
   type InboxSource,
+  type InboxTicket,
   type MetricAlert,
   type Milestone,
   type MilestoneCounts,
   type MilestoneProposal,
+  type PlanEditor,
+  type PlanLink,
   type Profile,
-  type TicketTracker
+  type TicketSummary,
+  type TicketTracker,
+  type TrackedTicket
 } from '@workhub/core'
 import type { InboxAddResult, InboxEdit, MilestoneView, PlannerResult, PlannerView } from '../shared/planner-api'
 
-/** Tracker milestones are counted again this often (and on demand). */
+/** Tracker milestones are counted, and the tickets of pieces and linked items read, again this often (and on demand). */
 export const MILESTONE_REFRESH_MS = 30 * 60_000
 const FIRST_DELAY_MS = 20_000
 
@@ -54,13 +66,19 @@ export interface PlannerProfileState {
   inbox: InboxItem[]
   /** Milestone changes agents asked for, waiting for the user (`agentMilestones: 'ask'`). */
   proposals: MilestoneProposal[]
+  /**
+   * What the tracker last said about the tickets of milestone pieces and of inbox items that follow
+   * one, by `ticketStateKey` (connection id, empty for the profile's tracker, and key). Files from
+   * before pieces have none.
+   */
+  tickets: Record<string, TrackedTicket>
 }
 
 export interface PlannerState {
   profiles: Record<string, PlannerProfileState>
 }
 
-const EMPTY_PROFILE: PlannerProfileState = { milestones: [], counts: {}, errors: {}, inbox: [], proposals: [] }
+const EMPTY_PROFILE: PlannerProfileState = { milestones: [], counts: {}, errors: {}, inbox: [], proposals: [], tickets: {} }
 
 export type TrackerLookup = (profileId: string, connectionId?: string) => Promise<{ tracker: TicketTracker } | { error: string }>
 
@@ -85,7 +103,9 @@ export const PLANNER_ERRORS = {
   tooMany: 'Too many milestones',
   unknownMilestone: 'The milestone does not exist',
   unknownProposal: 'The proposal no longer exists',
-  tooLong: `The note would make the detail longer than ${INBOX_LIMITS.detail} characters`
+  tooLong: `The note would make the detail longer than ${INBOX_LIMITS.detail} characters`,
+  noLink: 'Only a local task or bug can be linked to a ticket',
+  noRead: 'This tracker cannot read tickets by key'
 } as const
 
 /** What an agent may change on an item (`PATCH /v1/inbox/:id`): local moves and fields, never a tracker issue. */
@@ -97,11 +117,44 @@ export interface InboxUpdate {
   criticality?: string | null
   /** Appended to the detail as a new paragraph. */
   note?: string
+  /** Replaces the item's links; null or empty clears them. */
+  links?: PlanLink[] | null
+  /** Links a local task or bug to an existing ticket by key; null unlinks it. Never creates a ticket. */
+  ticket?: { key: string; connectionId?: string } | null
 }
 
 export type InboxUpdateResult = { ok: true; item: InboxItem } | { ok: false; error: string; reason: 'moduleOff' | 'unknown' | 'notAllowed' | 'tooLong' }
 
+/** The inbox items milestone pieces point at: kept past the inbox's retention so the milestones' progress holds. */
+function pieceItemIds(milestones: readonly Milestone[]): Set<string> {
+  const ids = new Set<string>()
+  for (const m of milestones) if (m.source.kind === 'items') for (const p of m.source.items) if (p.kind === 'task') ids.add(p.itemId)
+  return ids
+}
+
+/** The connection (empty for the profile's tracker) whose tracker holds an item's ticket. */
+const itemTicketConnection = (ticket: InboxTicket, inboxConnection: string) => ticket.connectionId ?? inboxConnection
+
+/** The tickets to read, by connection (empty for the profile's tracker): those of milestone pieces and of the items that follow one. */
+function ticketRefs(p: Pick<PlannerProfileState, 'milestones' | 'inbox'>, inboxConnection: string): Map<string, Set<string>> {
+  const refs = new Map<string, Set<string>>()
+  const add = (connection: string, key: string) => {
+    const keys = refs.get(connection) ?? new Set<string>()
+    keys.add(key)
+    refs.set(connection, keys)
+  }
+  for (const m of p.milestones) if (m.source.kind === 'items') for (const piece of m.source.items) if (piece.kind === 'ticket') add(piece.connectionId ?? '', piece.key)
+  for (const item of p.inbox) if (followsTicket(item)) add(itemTicketConnection(item.ticket!, inboxConnection), item.ticket!.key)
+  return refs
+}
+
 const planner = (p: Profile) => moduleScreens(p.modules).includes('planner')
+
+/** The item with its links replaced; an empty list or null drops them. */
+function withLinks(item: InboxItem, links: readonly PlanLink[] | null): InboxItem {
+  const { links: _old, ...rest } = item
+  return links && links.length > 0 ? { ...rest, links: [...links] } : rest
+}
 
 /** Whatever is stored, as a well-formed state (an older or hand-edited file keeps what it can). */
 function cleanState(raw: PlannerState, now: number): PlannerState {
@@ -112,8 +165,9 @@ function cleanState(raw: PlannerState, now: number): PlannerState {
       milestones: Array.isArray(p.milestones) ? p.milestones : [],
       counts: p.counts && typeof p.counts === 'object' ? p.counts : {},
       errors: p.errors && typeof p.errors === 'object' ? p.errors : {},
-      inbox: Array.isArray(p.inbox) ? cleanupInbox(p.inbox, now) : [],
-      proposals: Array.isArray(p.proposals) ? p.proposals : []
+      inbox: Array.isArray(p.inbox) ? cleanupInbox(p.inbox, now, pieceItemIds(Array.isArray(p.milestones) ? p.milestones : [])) : [],
+      proposals: Array.isArray(p.proposals) ? p.proposals : [],
+      tickets: p.tickets && typeof p.tickets === 'object' && !Array.isArray(p.tickets) ? p.tickets : {}
     }
   }
   return { profiles }
@@ -121,8 +175,9 @@ function cleanState(raw: PlannerState, now: number): PlannerState {
 
 /**
  * Plan's milestones and inbox for every profile: keeps them in a state file, counts tracker
- * milestones every 30 minutes, and turns approved inbox items into tracker issues. Everything that
- * changes state runs one at a time, so a double click never creates two issues.
+ * milestones and reads the tickets of pieces and linked items every 30 minutes (an item whose
+ * ticket is done is marked done), and turns approved inbox items into tracker issues. Everything
+ * that changes state runs one at a time, so a double click never creates two issues.
  */
 export class PlannerService {
   private state: PlannerState
@@ -173,16 +228,19 @@ export class PlannerService {
 
   private put(profileId: string, next: Partial<PlannerProfileState>): void {
     const current = this.of(profileId)
-    this.state.profiles[profileId] = { ...current, ...next, inbox: cleanupInbox(next.inbox ?? current.inbox, this.now()) }
+    this.state.profiles[profileId] = { ...current, ...next, inbox: cleanupInbox(next.inbox ?? current.inbox, this.now(), pieceItemIds(next.milestones ?? current.milestones)) }
     this.deps.store.save(this.state)
     this.deps.changed(profileId)
   }
 
-  /** Counts the tracker milestones of every profile with Plan on whose count is due. */
+  /** Counts the tracker milestones, and reads the tickets, of every profile with Plan on whose count is due. */
   tick(): Promise<void> {
     return this.serial(async () => {
       try {
-        for (const p of (await this.deps.profiles()).filter(planner)) await this.count(p.id, false)
+        for (const p of (await this.deps.profiles()).filter(planner)) {
+          await this.count(p.id, false)
+          await this.readTickets(p, false)
+        }
       } catch {
         // The next tick tries again.
       }
@@ -193,19 +251,45 @@ export class PlannerService {
     const profile = await this.profile(profileId)
     const today = localDay(this.now())
     const enabled = profile !== undefined && planner(profile)
-    if (!profile || !enabled) return { enabled: false, milestones: [], inbox: [], proposals: [], agentMilestones: DEFAULT_AGENT_MILESTONE_MODE, tracker: { search: false, create: false }, today }
+    if (!profile || !enabled) return { enabled: false, milestones: [], inbox: [], itemTickets: {}, proposals: [], agentMilestones: DEFAULT_AGENT_MILESTONE_MODE, tracker: { search: false, create: false }, today }
     const settings = plannerSettings(profile)
     const margin = settings.milestoneMargin ?? DEFAULT_MILESTONE_MARGIN
+    const inboxConnection = inboxSettings(settings).trackerConnectionId
     const p = this.of(profileId)
+    const items = new Map(p.inbox.map((i) => [i.id, i]))
     const rows: MilestoneView[] = p.milestones.map((m) => {
+      if (m.source.kind === 'items') {
+        const pieces = pieceViews(m.source.items, { ticket: (connectionId, key) => p.tickets[ticketStateKey(connectionId, key)], task: (id) => items.get(id) })
+        return { milestone: m, ...milestoneStatus(m, pieceTally(pieces), today, margin), pieces }
+      }
       const key = countsKey(m)
       const counts = key !== null && p.counts[m.id]?.key === key ? p.counts[m.id] : undefined
       const error = key !== null ? p.errors[m.id] : undefined
       return { milestone: m, ...milestoneStatus(m, counts, today, margin), ...(counts ? { counts } : {}), ...(error ? { error } : {}) }
     })
-    const found = await this.deps.tracker(profileId, inboxSettings(settings).trackerConnectionId || undefined)
+    const itemTickets: Record<string, TrackedTicket> = {}
+    for (const i of p.inbox) {
+      const known = i.ticket && p.tickets[ticketStateKey(itemTicketConnection(i.ticket, inboxConnection), i.ticket.key)]
+      if (known) itemTickets[i.id] = known
+    }
+    const found = await this.deps.tracker(profileId, inboxConnection || undefined)
     const tracker = 'error' in found ? { search: false, create: false, error: found.error } : { search: Boolean(found.tracker.capabilities.search && found.tracker.searchByQuery), create: Boolean(found.tracker.capabilities.create && found.tracker.createIssue) }
-    return { enabled, milestones: sortMilestones(rows), inbox: p.inbox, proposals: p.proposals, agentMilestones: settings.agentMilestones ?? DEFAULT_AGENT_MILESTONE_MODE, tracker, today }
+    return { enabled, milestones: sortMilestones(rows), inbox: p.inbox, itemTickets, proposals: p.proposals, agentMilestones: settings.agentMilestones ?? DEFAULT_AGENT_MILESTONE_MODE, tracker, today }
+  }
+
+  /** A ticket by key as its tracker answers it now (the milestone editor shows its title); null when the tracker does not know it. */
+  async lookupTicket(profileId: string, key: string, connectionId?: string): Promise<{ ok: true; ticket: TicketSummary | null } | { ok: false; error: string }> {
+    const profile = await this.profile(profileId)
+    if (!profile || !planner(profile)) return { ok: false, error: PLANNER_ERRORS.moduleOff }
+    const found = await this.deps.tracker(profileId, connectionId || undefined)
+    if ('error' in found) return { ok: false, error: found.error }
+    if (!found.tracker.readTickets) return { ok: false, error: PLANNER_ERRORS.noRead }
+    try {
+      const read = await found.tracker.readTickets([key])
+      return { ok: true, ticket: read.find((t) => t.key.toUpperCase() === key.toUpperCase()) ?? null }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
   }
 
   // Milestones
@@ -215,10 +299,12 @@ export class PlannerService {
       const profile = await this.profile(profileId)
       if (!profile || !planner(profile)) return { ok: false, error: PLANNER_ERRORS.moduleOff }
       const p = this.of(profileId)
-      const exists = p.milestones.some((m) => m.id === milestone.id)
-      if (!exists && p.milestones.length >= MILESTONE_LIMITS.items) return { ok: false, error: PLANNER_ERRORS.tooMany }
-      this.put(profileId, { milestones: exists ? p.milestones.map((m) => (m.id === milestone.id ? milestone : m)) : [...p.milestones, milestone] })
+      const current = p.milestones.find((m) => m.id === milestone.id)
+      if (!current && p.milestones.length >= MILESTONE_LIMITS.items) return { ok: false, error: PLANNER_ERRORS.tooMany }
+      const saved = this.stamp({ ...milestone, createdAt: current?.createdAt ?? this.now() }, 'user')
+      this.put(profileId, { milestones: current ? p.milestones.map((m) => (m.id === milestone.id ? saved : m)) : [...p.milestones, saved] })
       if (milestone.source.kind === 'tracker') await this.count(profileId, false, milestone.id)
+      if (milestone.source.kind === 'items') await this.readTickets(profile, false)
       return { ok: true }
     })
   }
@@ -239,7 +325,12 @@ export class PlannerService {
     const counts = Object.fromEntries(Object.entries(p.counts).filter(([id]) => kept.has(id)))
     const errors = Object.fromEntries(Object.entries(p.errors).filter(([id]) => kept.has(id)))
     this.put(profileId, { milestones, counts, errors })
-    if (countId && milestones.find((m) => m.id === countId)?.source.kind === 'tracker') await this.count(profileId, false, countId)
+    const kind = countId ? milestones.find((m) => m.id === countId)?.source.kind : undefined
+    if (kind === 'tracker') await this.count(profileId, false, countId)
+    if (kind === 'items') {
+      const profile = await this.profile(profileId)
+      if (profile) await this.readTickets(profile, false)
+    }
   }
 
   /**
@@ -258,11 +349,13 @@ export class PlannerService {
       const p = this.of(profileId)
       const before = p.milestones.find((m) => m.id === change.milestoneId)
       if (change.action !== 'create' && !before) return { ok: false, error: PLANNER_ERRORS.unknownMilestone, reason: 'unknown' }
+      // Marked as the agent's change, whether applied now or later by the user.
+      const milestone = change.milestone ? this.stamp({ ...change.milestone, createdAt: before?.createdAt ?? this.now() }, 'agent') : undefined
       const proposal: MilestoneProposal = {
         id: this.newId(),
         action: change.action,
         milestoneId: change.milestoneId,
-        ...(change.milestone ? { milestone: change.milestone } : {}),
+        ...(milestone ? { milestone } : {}),
         ...(before ? { before } : {}),
         source,
         createdAt: this.now()
@@ -271,7 +364,7 @@ export class PlannerService {
         const next = applyMilestoneProposal(p.milestones, proposal)
         if (typeof next === 'string') return { ok: false, error: next, reason: 'conflict' }
         await this.setMilestones(profileId, next, change.action === 'delete' ? undefined : change.milestoneId)
-        return { ok: true, applied: true, ...(change.milestone ? { milestone: change.milestone } : {}) }
+        return { ok: true, applied: true, ...(milestone ? { milestone } : {}) }
       }
       this.put(profileId, { proposals: [...p.proposals, proposal].slice(-MAX_MILESTONE_PROPOSALS) })
       return { ok: true, applied: false, proposal }
@@ -300,7 +393,10 @@ export class PlannerService {
   refreshMilestones(profileId: string): Promise<PlannerView> {
     return this.serial(async () => {
       const profile = await this.profile(profileId)
-      if (profile && planner(profile)) await this.count(profileId, true)
+      if (profile && planner(profile)) {
+        await this.count(profileId, true)
+        await this.readTickets(profile, true)
+      }
       return this.view(profileId)
     })
   }
@@ -335,6 +431,69 @@ export class PlannerService {
     const ids = new Set(this.of(profileId).milestones.map((m) => m.id))
     const keep = <T>(r: Record<string, T>) => Object.fromEntries(Object.entries(r).filter(([id]) => ids.has(id)))
     this.put(profileId, { counts: keep(counts), errors: keep(errors) })
+  }
+
+  /**
+   * Reads the tickets of the profile's milestone pieces and of the inbox items that follow one: one
+   * request per connection with every key due (missing, older than the refresh, failed last time,
+   * or all when `force`d). A tracker that cannot read by key leaves the state unknown. An item whose
+   * ticket turned done since the last read is marked done (once: an item reopened by hand stays open).
+   * States no piece or item points at any more are dropped.
+   */
+  private async readTickets(profile: Profile, force: boolean): Promise<void> {
+    if (!planner(profile)) return
+    const profileId = profile.id
+    const inboxConnection = inboxSettings(plannerSettings(profile)).trackerConnectionId
+    const before = this.of(profileId).tickets
+    const refs = ticketRefs(this.of(profileId), inboxConnection)
+    const tickets: Record<string, TrackedTicket> = {}
+    for (const [connection, keys] of refs) for (const key of keys) {
+      const k = ticketStateKey(connection, key)
+      if (before[k]) tickets[k] = before[k]
+    }
+    let touched = Object.keys(tickets).length !== Object.keys(before).length
+    const now = this.now()
+    for (const [connection, keys] of refs) {
+      const due = [...keys].filter((key) => {
+        const t = tickets[ticketStateKey(connection, key)]
+        return force || !t || t.error !== undefined || now - t.checkedAt >= MILESTONE_REFRESH_MS
+      })
+      if (due.length === 0) continue
+      touched = true
+      const found = await this.deps.tracker(profileId, connection || undefined)
+      try {
+        if ('error' in found) throw new Error(found.error)
+        if (!found.tracker.readTickets) {
+          for (const key of due) tickets[ticketStateKey(connection, key)] = { key, checkedAt: this.now(), unsupported: true }
+          continue
+        }
+        const read = new Map((await found.tracker.readTickets(due)).map((t) => [t.key.toUpperCase(), t]))
+        const at = this.now()
+        for (const key of due) {
+          const k = ticketStateKey(connection, key)
+          const t = read.get(key)
+          tickets[k] = t ? { key, title: t.title, status: t.status, category: t.category, ...(t.url ? { url: t.url } : {}), checkedAt: at } : { key, ...(tickets[k]?.title ? { title: tickets[k]!.title } : {}), checkedAt: at, missing: true }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        for (const key of due) {
+          const k = ticketStateKey(connection, key)
+          tickets[k] = { ...(tickets[k] ?? { key }), checkedAt: tickets[k]?.checkedAt ?? this.now(), error: message }
+        }
+      }
+    }
+    if (!touched) return
+    let closed = false
+    const inbox = this.of(profileId).inbox.map((item) => {
+      if (!followsTicket(item)) return item
+      const k = ticketStateKey(itemTicketConnection(item.ticket!, inboxConnection), item.ticket!.key)
+      if (trackedState(tickets[k]) !== 'done' || trackedState(before[k]) === 'done') return item
+      const done = markTicketDone(item, this.now())
+      if (!done) return item
+      closed = true
+      return this.stamp(done, 'tracker')
+    })
+    this.put(profileId, { tickets, ...(closed ? { inbox } : {}) })
   }
 
   // Inbox
@@ -389,24 +548,29 @@ export class PlannerService {
     })
   }
 
+  /** The user's edit of one item (the Plan screen or an item's window). */
   editItem(profileId: string, id: string, edit: InboxEdit): Promise<PlannerResult> {
     return this.serial(async () => {
       const p = this.of(profileId)
       const item = p.inbox.find((i) => i.id === id)
       if (!item) return { ok: false, error: PLANNER_ERRORS.unknown }
-      const next: InboxItem = { ...item, ...(edit.title !== undefined ? { title: edit.title } : {}), ...(edit.detail !== undefined ? { detail: edit.detail } : {}), ...(edit.kind ? { kind: edit.kind } : {}) }
+      let next: InboxItem = { ...item, ...(edit.title !== undefined ? { title: edit.title } : {}), ...(edit.detail !== undefined ? { detail: edit.detail } : {}), ...(edit.kind ? { kind: edit.kind } : {}) }
       if (edit.people !== undefined) {
         if (edit.people.length > 0) next.people = edit.people
         else delete next.people
       }
-      this.put(profileId, { inbox: p.inbox.map((i) => (i.id === id ? next : i)) })
+      if (edit.links !== undefined) next = withLinks(next, edit.links)
+      const { due, area, criticality } = edit
+      next = bulkEditInbox([next], [id], { ...(due !== undefined ? { due } : {}), ...(area !== undefined ? { area } : {}), ...(criticality !== undefined ? { criticality } : {}) })[0]!
+      this.put(profileId, { inbox: p.inbox.map((i) => (i.id === id ? this.stamp(next, 'user') : i)) })
       return { ok: true }
     })
   }
 
   bulkEdit(profileId: string, ids: readonly string[], patch: InboxBulkPatch): Promise<PlannerResult> {
     return this.serial(async () => {
-      this.put(profileId, { inbox: bulkEditInbox(this.of(profileId).inbox, ids, patch) })
+      const selected = new Set(ids)
+      this.put(profileId, { inbox: bulkEditInbox(this.of(profileId).inbox, ids, patch).map((i) => (selected.has(i.id) ? this.stamp(i, 'user') : i)) })
       return { ok: true }
     })
   }
@@ -418,7 +582,7 @@ export class PlannerService {
       const now = this.now()
       const local = applyInboxAction(item, action, now)
       if (local) {
-        this.replace(profileId, local)
+        this.replace(profileId, this.stamp(local, 'user'))
         return { ok: true }
       }
       if (action !== 'approve' || item.status !== 'pending' || item.kind === 'decision') return { ok: false, error: PLANNER_ERRORS.notAllowed }
@@ -438,7 +602,8 @@ export class PlannerService {
           description: renderInboxDescription(settings.descriptionTemplate, item),
           ...(priority ? { priority } : {})
         })
-        this.replace(profileId, withTicket(item, created, this.now()))
+        this.replace(profileId, this.stamp(withTicket(item, { ...created, ...(settings.trackerConnectionId ? { connectionId: settings.trackerConnectionId } : {}) }), 'user'))
+        await this.readTickets(profile, false)
         return { ok: true, ticket: created }
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -455,16 +620,60 @@ export class PlannerService {
       if (!item) return { ok: false, error: PLANNER_ERRORS.unknown, reason: 'unknown' }
       let next: InboxItem | null = update.status ? moveInboxItem(item, update.status, this.now()) : item
       if (!next) return { ok: false, error: `${PLANNER_ERRORS.notAllowed}: ${item.status} → ${update.status}`, reason: 'notAllowed' }
-      const { note, status: _status, ...fields } = update
+      const { note, status: _status, links, ticket, ...fields } = update
       if (Object.keys(fields).length > 0) next = bulkEditInbox([next], [id], fields)[0]!
+      if (links !== undefined) next = withLinks(next, links)
+      if (ticket !== undefined) {
+        const linked = linkTicket(next, ticket)
+        if (!linked) return { ok: false, error: PLANNER_ERRORS.noLink, reason: 'notAllowed' }
+        next = linked
+      }
       if (note) {
         const detail = next.detail ? `${next.detail}\n\n${note}` : note
         if (detail.length > INBOX_LIMITS.detail) return { ok: false, error: PLANNER_ERRORS.tooLong, reason: 'tooLong' }
         next = { ...next, detail }
       }
-      if (next !== item) this.replace(profileId, next)
+      if (next !== item) {
+        next = this.stamp(next, 'agent')
+        this.replace(profileId, next)
+      }
+      if (ticket) {
+        // A linked ticket already done marks the item done at once.
+        this.forgetTicket(profileId, ticket.key)
+        await this.readTickets(profile, false)
+        next = this.of(profileId).inbox.find((i) => i.id === id) ?? next
+      }
       return { ok: true, item: next }
     })
+  }
+
+  /** The user links a local task or bug to an existing ticket by key, or unlinks it (null). */
+  linkItemTicket(profileId: string, id: string, ticket: { key: string; connectionId?: string } | null): Promise<PlannerResult> {
+    return this.serial(async () => {
+      const profile = await this.profile(profileId)
+      if (!profile || !planner(profile)) return { ok: false, error: PLANNER_ERRORS.moduleOff }
+      const item = this.of(profileId).inbox.find((i) => i.id === id)
+      if (!item) return { ok: false, error: PLANNER_ERRORS.unknown }
+      const next = linkTicket(item, ticket)
+      if (!next) return { ok: false, error: PLANNER_ERRORS.noLink }
+      this.replace(profileId, this.stamp(next, 'user'))
+      if (ticket) {
+        this.forgetTicket(profileId, ticket.key)
+        await this.readTickets(profile, false)
+      }
+      return { ok: true }
+    })
+  }
+
+  /** Drops what is stored of a ticket just linked, so its next read counts as new: a ticket already done marks the item done. */
+  private forgetTicket(profileId: string, key: string): void {
+    const tickets = Object.fromEntries(Object.entries(this.of(profileId).tickets).filter(([k]) => !k.endsWith(`|${key}`)))
+    this.put(profileId, { tickets })
+  }
+
+  /** The item or milestone marked as changed now by `by`. */
+  private stamp<T extends { updatedAt?: number; updatedBy?: PlanEditor }>(value: T, by: PlanEditor): T {
+    return { ...value, updatedAt: this.now(), updatedBy: by }
   }
 
   private replace(profileId: string, item: InboxItem): void {

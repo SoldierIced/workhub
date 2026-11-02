@@ -55,7 +55,9 @@ and moved occurrences), all-day events and time zones are handled; cancelled eve
 that are rooms are left out. A calendar larger than 5 MB is refused.
 
 **Read again every** (default 15 minutes) sets how often the calendars are read again. **Refresh**
-on the Plan screen reads at once (at most every 30 seconds).
+on the Plan screen reads at once (the calendars at most every 30 seconds). It is there even
+without a calendar: it also reads the inbox and the milestones again. Changes an agent makes show up
+on their own; Refresh is the manual fallback.
 
 ## The Plan screen
 
@@ -65,8 +67,35 @@ others), and its brief: **Prepare brief**, **Preparing…**, **Brief ready** or 
 
 **Inbox** and **Milestones** are described below; they work without a calendar.
 
+### Item details
+
+Click the title of an inbox item or a milestone to open its details in a window of its own; the
+Plan screen stays as it was. Each item has one window: clicking its title again brings that window
+to the front. The window updates on its own when you, another window or an agent changes the item.
+
+The details show:
+
+- For an inbox item: its kind, status, source, area, criticality, due date, people and its tracker
+  ticket (created on approval, or linked by you) with the ticket's state. A local task or bug
+  without a ticket shows **Link ticket** (see [Tasks and tickets](#tasks-and-tickets)). For a
+  milestone: its status, dates, progress against the time gone, how it is counted and the latest
+  ticket counts, or its pieces with their state, weight and share.
+- The **detail** of an item or the **notes** of a milestone as Markdown: headings, lists, tables,
+  `code`, **bold** and links. Raw HTML is not rendered and images show as text.
+- **Links**: the item's link and up to 20 labelled links (a doc, a dashboard, a pull request).
+  Links open in the profile's browser. Only `http://` and `https://` addresses are accepted.
+- **History**: when it was created, when it was last changed and whether you or an agent changed
+  it, and when it closed.
+
+**Edit** changes what is yours to change: for an item its kind, title, detail, area, criticality,
+due date, people and links; for a milestone everything its form has, links included. A milestone
+you edit here is saved at once, whatever **Milestone changes by agents** says (that setting only
+applies to agents). If the item changes while you edit it, the form says so; saving keeps your
+version. Saving or **Cancel** (or **Esc**) goes back to the details.
+
 **People** lists the people you added, with their next meeting. Pick one to edit them, see your
-meetings with them in the next two weeks, and **Prepare 1:1** (see below).
+meetings with them in the next two weeks, and **Prepare 1:1** (see below). The trash next to a
+person asks before it removes them.
 
 When a calendar cannot be read, the screen says which one and why (unreachable, address refused or
 reset, not a calendar, too large, no address stored) and keeps the events of its last good read.
@@ -136,10 +165,15 @@ the open inbox items that involve the person.
 A milestone is a named period of work, with a start and an end date (both included), and its
 progress, which is either:
 
-- **Typed by hand**: a percentage you update, or
+- **Typed by hand**: a percentage you update,
 - **Counted from a tracker query**: done tickets over all the tickets the query finds, any status.
   The query uses the profile's tracker, or another tracker connection you pick. It is counted when
-  you save the milestone, every 30 minutes, and on **Count again**.
+  you save the milestone, every 30 minutes, and on **Count again**, or
+- **Made of pieces**: a list of tickets, local tasks and links, each with a weight (see
+  [Pieces](#pieces)).
+
+You can switch a milestone from one kind to another in its form; the pieces you added stay in the
+form while you try another kind, and are saved only with **Made of pieces**.
 
 | Tracker | Query |
 |---|---|
@@ -151,33 +185,85 @@ and, for a counted one, the counts and when they were read:
 
 | Status | When |
 |---|---|
-| **Done** | All the work is done (100 %, or every ticket of the query done). |
+| **Done** | All the work is done (100 %, every ticket of the query done, or every piece done). |
 | **Not started** | Before its start date. |
 | **Late** | Past its end date and not done. |
-| **At risk** | Progress is behind the share of time gone by more than the margin (default 10 points, **Settings → Plan → Inbox → At-risk margin**), or a counted milestone has started and its query finds no ticket. |
+| **At risk** | Progress is behind the share of time gone by more than the margin (default 10 points, **Settings → Plan → Inbox → At-risk margin**), or a counted milestone has started and its query finds no ticket, or a milestone made of pieces has started with no pieces. |
 | **On track** | Otherwise. |
+
+**Add milestone** opens the form of a new milestone in a window; saving creates it and closes the
+window, **Cancel** (or **Esc**) closes it without saving. The pencil on a milestone opens its window
+in the edit form (or switches the window already open to it); saving goes back to its details. The
+trash asks before it deletes the milestone.
 
 The list is ordered by status (late first), then by end date. A failed count keeps the last good
 one and says why. Milestones are stored per profile in `planner-state.json` in the data folder, not
-in the settings.
+in the settings. A counted or pieces milestone shows 100 % only when it is done.
+
+### Pieces
+
+A milestone made of pieces lists what it takes to finish it. A piece is one of:
+
+| Piece | Done when | Its state |
+|---|---|---|
+| **Ticket** (by key, e.g. `ABC-12`) | The tracker puts it in a done status. | To do, In progress or Done, read from the tracker; **Unknown** until it is read, when the tracker does not know the key, or when the tracker cannot read tickets by key. An unknown ticket never counts as done. |
+| **Local task** (an inbox task or bug) | The item is **Done**. | Its inbox status: To review, Kept in Workhub, In the tracker, Done or Discarded. A discarded task is not done. |
+| **Link** (any web page) | You tick its box. | Done or To do. |
+
+Each piece has a **weight** from 1 to 10 (5 by default). Progress is the weight of the done pieces
+over the weight of all of them, and each piece shows its **share** of the milestone. For example,
+with a ticket of weight 2 and a link of weight 8, the link is 80 % of the milestone: ticking it
+alone makes the milestone 80 % done. With weights 3, 5, 4 and 2 (14 in all) and the pieces of
+weight 3 and 2 done, progress is 5 / 14 = 36 %. A milestone has at most 100 pieces.
+
+In the milestone's form, pick **Made of pieces** and:
+
+- **Add ticket**: type its key (letters, a dash and a number; it is upper-cased) and, when the
+  profile has more than one tracker, pick which. The form reads its title from the tracker; a key
+  the tracker does not know is added all the same and stays unknown.
+- **Add local task**: search your open tasks and bugs (to review or kept in Workhub) and pick one.
+- **Add link**: an `http(s)` address and an optional label.
+- Set each piece's **weight**; the trash removes a piece from the form (nothing is saved until
+  **Save milestone**).
+
+Tickets are read from the tracker when you save the milestone, every 30 minutes and on **Count
+again**, all the keys of one tracker in a single request (Jira: a `key in (…)` search; Linear: one
+filtered query). A failed read keeps the last good state and says why. A local task's state
+changes at once. The Milestones tab shows each milestone's first pieces (kind, key or title,
+state and share); its window lists them all, with their weight, when they were read, and the link
+boxes to tick. A task you finished stays in the inbox while a milestone is made of it, so its
+progress does not drop after the week **Closed this week** keeps items.
 
 ## Inbox
 
 The inbox collects things to act on. Every item is a **task**, a **bug** or a **decision**, with a
 title, a detail, where it came from, and optionally an area, a criticality, a due date and people.
-New items wait in **Pending approval**:
+New items wait in **To review**, with their actions in the card's header:
 
-- **Approve** a task or bug creates the issue in the tracker (see the settings below) and links it
-  from the item. **Approve** on a decision is **Record**: it goes to **Decisions**.
-- **Keep as task** keeps it in Workhub, under **My tasks**: overdue or due today first, then the
+- **Create ticket** (a task or bug) creates the issue in the tracker (see the settings below) and
+  links it from the item, which moves to **My tasks → In the tracker** (see
+  [Tasks and tickets](#tasks-and-tickets)). On a decision it is **Record**: it goes to **Decisions**.
+- **Local task** keeps it in Workhub, under **My tasks**: overdue or due today first, then the
   critical and high ones (levels mapped to priority 1 or 2), then the rest. **Done** closes a task
   and **Reopen** brings it back.
-- **Discard** closes it.
+- **Discard** (the ✕ button) closes it, after you confirm. A discarded item stays under **Closed
+  this week**, where **Reopen** brings it back.
 
-Nothing becomes a ticket without your approval. Closed items (done, discarded, sent to the tracker)
-stay under **Closed this week** for 7 days and are then removed; decisions stay. Filters narrow the
+Nothing becomes a ticket without your approval. Closed items (done or discarded) stay under
+**Closed this week** for 7 days and are then removed; decisions stay. Filters narrow the
 list by kind, area and status, and **Search** finds words in titles and details (handy for
-decisions). Select several items to set their area, criticality or due date at once.
+decisions).
+
+Select several items with their checkboxes to edit them at once. A bar titled **Edit N selected
+items** shows one labelled control per field, each starting on **Don't change**:
+
+- **Area**: an area to set, or **Clear area**.
+- **Criticality**: a level to set, or **Clear criticality**.
+- **Due date**: **Set a date** (then pick it in **New due date**) or **Clear due date**.
+
+**Apply** stays off until the choice would change at least one selected item, and then says how
+many (**Apply to 3 items**). **Clear selection** drops the selection and the choices. The bulk edit
+never discards or closes items.
 
 Items come from:
 
@@ -200,7 +286,9 @@ Items come from:
   The body is `{ "items": [...] }`, a list, or a single item. Each item takes `kind` (`task`,
   `bug` or `decision`; default `task`), `title` (required, at most 300 characters), `detail` (at most
   5000), `people` (names, emails or ids of your People; unknown ones are left out), `due`
-  (`YYYY-MM-DD`), and optionally `area`, `criticality` and an http(s) `link`. At most 20 items per
+  (`YYYY-MM-DD`), and optionally `area`, `criticality`, an http(s) `link` and `links`, a list of up
+  to 20 `{ "label": "…", "url": "https://…" }` (a bare address works too; the label is at most 200
+  characters). The detail may use Markdown. At most 20 items per
   request. The items go to the profile of `session`, else of `profile` (a profile id), else the
   active one, which must have Plan on. `source` names where they came from, and `"sourceType":
   "meeting"` marks them as meeting follow-ups. Items with the same title as an open one are
@@ -227,6 +315,26 @@ The issue gets the item's title, the description from the template and the prior
 criticality level. If the tracker refuses (a wrong project or issue type, no permission), the
 item stays pending and the error is shown.
 
+### Tasks and tickets
+
+A task or bug can follow a ticket in the tracker:
+
+- **Create ticket** creates one and links it to the item.
+- **Link ticket**, in the window of a task or bug kept in Workhub, links an existing ticket by key
+  (it never creates one). **Unlink** next to the ticket removes the link; an item created with
+  **Create ticket** and then unlinked becomes a plain local task.
+
+While it follows a ticket, the item shows under **My tasks → In the tracker** with the ticket's
+state, read with the milestones (when you link it, every 30 minutes and on **Count again** on the
+Milestones tab), from the inbox's tracker (**Tracker for new issues**). When the tracker says the
+ticket is done, the item is marked **Done** on its own; its history says it was marked done from
+the tracker. That happens once: if you reopen the item while its ticket is still done, it stays
+open. Linking a ticket that is already done marks the task done at once. **Done** closes an item
+in the tracker group by hand, for a tracker that cannot be read.
+
+Items sent to the tracker before this version keep their ticket and show in the same group; the
+first read marks those whose ticket is done as **Done**.
+
 ## Agents and the plan
 
 An agent running in a Workhub session can read your plan and keep the inbox up to date through the
@@ -238,12 +346,12 @@ off in the profile, the answers are empty and say why.
 | Endpoint | Answer |
 |---|---|
 | `GET /v1/plan/today` | Today's and tomorrow's events: title, start and end (ISO), attendees' names and emails, organizer, call link, a short description, and the brief's phase and session id when one was prepared. With no calendar, `state` and `reason` say why. |
-| `GET /v1/inbox` | Items, open ones first. Filters: `status` (`open`, the default, is pending and kept items; or `pending`, `local`, `done`, `discarded`, `ticket`, `all`), `kind`, `area`, `q` (words in the title or detail) and `limit` (50 by default, at most 200). Details are shortened to 1000 characters; `total` counts every match. |
+| `GET /v1/inbox` | Items, open ones first. Filters: `status` (`open`, the default, is pending and kept items and items in the tracker; or `pending`, `local`, `done`, `discarded`, `ticket`, `all`), `kind`, `area`, `q` (words in the title or detail) and `limit` (50 by default, at most 200). Details are shortened to 1000 characters; `total` counts every match. An item's `ticket` has its key and its last known `state` (`todo`, `inProgress`, `done` or `unknown`), with the tracker's `status`, `title`, `url` and `checkedAt` once read. |
 | `POST /v1/inbox` | Proposes pending items (see [Inbox](#inbox)). `added` lists the new ids, `duplicates` the ids of the open items they repeat. |
-| `PATCH /v1/inbox/:id` | Changes one item: `status` (`local` keeps it, `done`, `discarded`, `pending` brings a discarded one back), `due` (`YYYY-MM-DD`, or `null` to clear), `area`, `criticality`, and `note`, appended to the detail (at most 2000 characters). Answers with the item. |
-| `GET /v1/milestones` | Milestones with their status, progress and share of time gone, and the counts of tracker milestones. `agentChanges` says whether changes wait for you (`ask`) or apply at once (`allow`); `pending` lists the proposals not applied yet. |
-| `POST /v1/milestones` | Creates a milestone: `name`, `start` and `end` (`YYYY-MM-DD`), and either `progress` (0–100, typed by hand) or `query` (a tracker query, with an optional `connectionId`); `notes`, `link` and a short `reason` are optional. |
-| `PATCH /v1/milestones/:id` | Changes `name`, `start`, `end`, `progress` (a typed milestone) or `query` (a counted one), `notes` or `link` (`null` clears them). |
+| `PATCH /v1/inbox/:id` | Changes one item: `status` (`local` keeps it, `done`, `discarded`, `pending` brings a discarded one back), `due` (`YYYY-MM-DD`, or `null` to clear), `area`, `criticality`, `note`, appended to the detail (at most 2000 characters), `links`, which replaces the item's links (`null` clears them), and `ticket`: `{ "key": "ABC-12" }` links a local task or bug to an existing ticket (an optional `connectionId` picks the tracker), `null` unlinks it. Answers with the item. |
+| `GET /v1/milestones` | Milestones with their status, progress and share of time gone, the counts of tracker milestones, the `pieces` of a milestone made of pieces (each with its `kind`, `key`, `itemId` or `url`, `title`, `state`, `weight` and `share`), their notes (shortened to 1000 characters), links, and when and by whom (`user` or `agent`) they were last changed. `agentChanges` says whether changes wait for you (`ask`) or apply at once (`allow`); `pending` lists the proposals not applied yet. |
+| `POST /v1/milestones` | Creates a milestone: `name`, `start` and `end` (`YYYY-MM-DD`), and one of `progress` (0–100, typed by hand), `query` (a tracker query, with an optional `connectionId`) or `items`, its pieces: `{ "kind": "ticket", "key": "ABC-12" }`, `{ "kind": "task", "itemId": "…" }` or `{ "kind": "link", "url": "https://…", "label": "…", "done": false }`, each with an optional `weight` from 1 to 10 (5 by default), at most 100; `notes` (Markdown), `link`, `links` (as for inbox items) and a short `reason` are optional. |
+| `PATCH /v1/milestones/:id` | Changes `name`, `start`, `end`, `progress` (a typed milestone) or `query` (a counted one), `items` (replaces the pieces, and turns any milestone into one made of pieces), `notes`, `link` or `links` (`null` clears them; `links` replaces the whole list). |
 | `DELETE /v1/milestones/:id` | Deletes a milestone. |
 | `GET /v1/people` | Your people's names, emails and handles, to match attendees. Notes are not shared. |
 
@@ -266,10 +374,10 @@ port with a token made at each launch): replace `--unix-socket "$WORKHUB_SOCKET"
 `-H "Authorization: Bearer $WORKHUB_TOKEN" "$WORKHUB_URL"` in these examples.
 
 What an agent cannot do: approve an item. Turning a task or bug into a tracker issue stays your
-action on the Inbox tab; an agent only proposes items, keeps, closes, discards or reopens them and
-edits their date, area, criticality and detail. A
-change an item does not allow (a decision marked done, an item already sent to the tracker) is
-refused with the reason. Every change shows up at once in an open Plan screen.
+action on the Inbox tab; an agent only proposes items, keeps, closes, discards or reopens them,
+edits their date, area, criticality and detail, and links or unlinks an existing ticket. A
+change an item does not allow (a decision marked done, an item already sent to the tracker moved by
+status, a ticket linked to a pending item) is refused with the reason. Every change shows up at once in an open Plan screen.
 
 ### The `workhub-plan` skill
 
@@ -291,5 +399,7 @@ and approved inbox items create synthetic issues (kept in memory only). See the 
 
 `npm run demo` starts the dev build with all of this already set up in an isolated data folder
 (`.demo-data/`, wipe it with `npm run demo -- --reset`): a "Team lead (demo)" profile with
-people, meeting rules, milestones in every status and an inbox with items from meetings. Briefs
+people, meeting rules, milestones in every status (one made of pieces: two tickets in different
+states, a local task and a link) and an inbox with items from meetings, items in the tracker and a
+local task linked to a demo ticket. Briefs
 do not start by themselves in the demo; **Prepare brief** does start a real agent session.

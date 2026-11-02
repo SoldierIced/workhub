@@ -39,6 +39,8 @@ const LIST_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee', '
 const DETAIL_FIELDS = 'summary,status,issuetype,priority,assignee,reporter,created,updated,labels,description,comment,parent,subtasks'
 const AGILE_CONCURRENCY = 5
 const SEARCH_PAGE = 100
+/** A Jira issue key, safe to put in JQL as it is. */
+const JIRA_KEY = /^[A-Z][A-Z0-9_]*-\d+$/
 
 /** The generic priority (1 highest to 4 lowest) as Jira's default priority names. */
 export const JIRA_PRIORITY: Record<IssuePriority, string> = { 1: 'Highest', 2: 'High', 3: 'Medium', 4: 'Low' }
@@ -192,6 +194,33 @@ export class JiraTracker implements TicketTracker {
       if (!token || page['isLast'] === true || issues.length === 0) break
     }
     return out.slice(0, limit)
+  }
+
+  /**
+   * Tickets by key in one JQL search (`key in (...)`, 100 keys a page). Jira refuses the whole
+   * query when one key does not exist; then each key is read on its own and unknown ones are left out.
+   */
+  async readTickets(keys: readonly string[]): Promise<TicketSummary[]> {
+    const wanted = [...new Set(keys.map((k) => k.trim().toUpperCase()).filter((k) => JIRA_KEY.test(k)))]
+    const out: TicketSummary[] = []
+    for (let i = 0; i < wanted.length; i += SEARCH_PAGE) {
+      const chunk = wanted.slice(i, i + SEARCH_PAGE)
+      try {
+        out.push(...(await this.searchByQuery(`key in (${chunk.join(', ')})`, { limit: chunk.length })))
+      } catch (error) {
+        if (!(error instanceof TrackerError) || error.status !== 400) throw error
+        for (const key of chunk) {
+          try {
+            const issue = (await this.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { fields: 'summary,status' })) as Json
+            const f = issue['fields'] as Json | undefined
+            if (typeof issue['key'] === 'string' && f) out.push({ key: issue['key'], title: String(f['summary'] ?? ''), status: String(f['status']?.name ?? ''), category: statusCategoryOf(f['status']?.statusCategory?.key), url: `${this.site}/browse/${issue['key']}` })
+          } catch (inner) {
+            if (!(inner instanceof TrackerError) || inner.status !== 404) throw inner
+          }
+        }
+      }
+    }
+    return out
   }
 
   /** A new issue with a plain-paragraph (ADF) description. */

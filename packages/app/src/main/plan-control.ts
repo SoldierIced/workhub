@@ -5,7 +5,7 @@
  * human action in the UI. Every answer is short and capped; no secret (calendar addresses, notes)
  * leaves through it.
  */
-import { INBOX_KINDS, INBOX_LIMITS, INBOX_STATUSES, MILESTONE_LIMITS, filterInbox, isDay, isOpenItem, milestoneProblems, moduleScreens, patchMilestone, plannerSettings, type InboxItem, type Milestone, type MilestonePatch, type MilestoneProposal, type Profile } from '@workhub/core'
+import { INBOX_KINDS, INBOX_LIMITS, INBOX_STATUSES, MILESTONE_LIMITS, PIECE_LIMITS, PIECE_WEIGHT, filterInbox, isDay, isOpenItem, milestoneProblems, moduleScreens, parsePieces, parsePlanLinks, parseTicketKey, patchMilestone, plannerSettings, trackedState, type InboxItem, type Milestone, type MilestonePatch, type MilestoneProposal, type PieceView, type Profile, type TrackedTicket } from '@workhub/core'
 import { randomUUID } from 'node:crypto'
 import type { PlanView } from '../shared/plan-api'
 import type { ControlReply } from './control-server'
@@ -106,8 +106,54 @@ export function todayAnswer(view: PlanView, now: number): Record<string, unknown
   }
 }
 
-/** One inbox item as an agent sees it: people by name, dates as ISO, the detail capped. */
-export function itemAnswer(item: InboxItem, people: readonly { id: string; name: string }[], detailCap: number = CONTROL_TEXT_CAP.detail): Record<string, unknown> {
+/** A ticket to link (`{ key, connectionId? }`, the key checked and upper-cased) or null to unlink; undefined when it is neither. */
+export function parseTicketLink(value: unknown): { key: string; connectionId?: string } | null | undefined {
+  if (value === null) return null
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const v = value as Record<string, unknown>
+  const key = parseTicketKey(v['key'])
+  if (!key) return undefined
+  const conn = v['connectionId']
+  if (conn === undefined || conn === null || conn === '') return { key }
+  return typeof conn === 'string' && conn.trim() && conn.length <= PIECE_LIMITS.connectionId ? { key, connectionId: conn.trim() } : undefined
+}
+
+/** A ticket's last known state as an agent sees it. */
+function ticketStateAnswer(t: TrackedTicket | undefined): Record<string, unknown> {
+  if (!t) return { state: 'unknown' }
+  return {
+    state: trackedState(t),
+    ...(t.title ? { title: t.title } : {}),
+    ...(t.status ? { status: t.status } : {}),
+    ...(t.url ? { url: t.url } : {}),
+    checkedAt: iso(t.checkedAt),
+    ...(t.missing ? { missing: true } : {}),
+    ...(t.unsupported ? { unsupported: true } : {}),
+    ...(t.error ? { error: t.error } : {})
+  }
+}
+
+/** One piece of a milestone as an agent sees it: what it points at, its state, weight and share (0-100). */
+export function pieceAnswer(v: PieceView): Record<string, unknown> {
+  const p = v.piece
+  const what = p.kind === 'ticket' ? { key: p.key, ...(p.connectionId ? { connectionId: p.connectionId } : {}) } : p.kind === 'task' ? { itemId: p.itemId } : { url: p.url, label: p.label, done: p.done }
+  return {
+    kind: p.kind,
+    ...what,
+    title: v.title,
+    state: v.state,
+    ...(v.status ? { status: v.status } : {}),
+    ...(v.url && p.kind !== 'link' ? { url: v.url } : {}),
+    weight: p.weight,
+    share: v.share,
+    ...(v.checkedAt ? { checkedAt: iso(v.checkedAt) } : {}),
+    ...(v.error ? { error: v.error } : {}),
+    ...(v.missing ? { missing: true } : {})
+  }
+}
+
+/** One inbox item as an agent sees it: people by name, dates as ISO, the detail capped, its ticket with its last known state. */
+export function itemAnswer(item: InboxItem, people: readonly { id: string; name: string }[], detailCap: number = CONTROL_TEXT_CAP.detail, ticketState?: TrackedTicket): Record<string, unknown> {
   const names = (item.people ?? []).map((id) => people.find((p) => p.id === id)?.name ?? id)
   return {
     id: item.id,
@@ -120,10 +166,12 @@ export function itemAnswer(item: InboxItem, people: readonly { id: string; name:
     ...(item.due ? { due: item.due } : {}),
     ...(names.length > 0 ? { people: names } : {}),
     ...(item.link ? { link: item.link } : {}),
-    ...(item.ticket ? { ticket: item.ticket } : {}),
+    ...(item.links?.length ? { links: item.links } : {}),
+    ...(item.ticket ? { ticket: { ...item.ticket, ...ticketStateAnswer(ticketState), ...(item.ticket.url ? { url: item.ticket.url } : {}) } } : {}),
     source: { type: item.source.type, ...(item.source.label ? { label: item.source.label } : {}) },
     createdAt: iso(item.createdAt),
-    ...(item.closedAt ? { closedAt: iso(item.closedAt) } : {})
+    ...(item.closedAt ? { closedAt: iso(item.closedAt) } : {}),
+    ...(item.updatedAt ? { updatedAt: iso(item.updatedAt), ...(item.updatedBy ? { updatedBy: item.updatedBy } : {}) } : {})
   }
 }
 
@@ -145,9 +193,9 @@ export function parseInboxQuery(params: URLSearchParams): InboxQuery | string {
   return { status: status as InboxQuery['status'], ...(kind ? { kind: kind as InboxItem['kind'] } : {}), ...(area ? { area } : {}), ...(q ? { q } : {}), limit: Math.min(limit, CONTROL_INBOX_LIMIT.max) }
 }
 
-/** Newest first, open ones (pending, then local) before closed ones. */
+/** Newest first, open ones (pending, then local and in the tracker) before closed ones. */
 function inboxOrder(a: InboxItem, b: InboxItem): number {
-  const rank = (i: InboxItem) => (i.status === 'pending' ? 0 : i.status === 'local' ? 1 : 2)
+  const rank = (i: InboxItem) => (i.status === 'pending' ? 0 : i.status === 'local' || i.status === 'ticket' ? 1 : 2)
   return rank(a) - rank(b) || b.createdAt - a.createdAt
 }
 
@@ -180,7 +228,20 @@ export function parseInboxUpdate(body: unknown): InboxUpdate | string {
     if (note.length > CONTROL_NOTE_MAX) return `"note" is longer than ${CONTROL_NOTE_MAX} characters`
     if (note) out.note = note
   }
-  if (Object.keys(out).length === 0) return 'nothing to change: send status, due, area, criticality or note'
+  if (v['links'] !== undefined) {
+    if (v['links'] === null) out.links = null
+    else {
+      const links = parsePlanLinks(v['links'])
+      if (typeof links === 'string') return links
+      out.links = links
+    }
+  }
+  if (v['ticket'] !== undefined) {
+    const ticket = parseTicketLink(v['ticket'])
+    if (ticket === undefined) return '"ticket" must be { "key": "ABC-12" } (an existing ticket, linked to a local task or bug) or null to unlink; tickets are never created here'
+    out.ticket = ticket
+  }
+  if (Object.keys(out).length === 0) return 'nothing to change: send status, due, area, criticality, note, links or ticket'
   return out
 }
 
@@ -191,11 +252,19 @@ export function parseMilestoneCreate(body: unknown): Omit<Milestone, 'id'> | str
   const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '')
   const hasProgress = v['progress'] !== undefined
   const hasQuery = v['query'] !== undefined
-  if (hasProgress === hasQuery) return 'send either "progress" (0-100, typed by hand) or "query" (a tracker query to count)'
+  const hasItems = v['items'] !== undefined
+  if ([hasProgress, hasQuery, hasItems].filter(Boolean).length !== 1) return 'send one of "progress" (0-100, typed by hand), "query" (a tracker query to count) or "items" (the pieces it is made of)'
   if (hasProgress && (typeof v['progress'] !== 'number' || !Number.isFinite(v['progress']))) return '"progress" must be a number from 0 to 100'
   if (hasQuery && typeof v['query'] !== 'string') return '"query" must be a string'
-  const source: Milestone['source'] = hasProgress ? { kind: 'manual', progress: Math.round(v['progress'] as number) } : { kind: 'tracker', query: str(v['query']), ...(str(v['connectionId']) ? { connectionId: str(v['connectionId']) } : {}) }
-  const m: Milestone = { id: 'new', name: str(v['name']), start: str(v['start']), end: str(v['end']), source, ...(str(v['notes']) ? { notes: str(v['notes']) } : {}), ...(str(v['link']) ? { link: str(v['link']) } : {}) }
+  let source: Milestone['source']
+  if (hasItems) {
+    const items = parsePieces(v['items'])
+    if (typeof items === 'string') return `${items} (a piece is { "kind": "ticket", "key" } | { "kind": "task", "itemId" } | { "kind": "link", "url", "label"?, "done"? }, each with an optional "weight" ${PIECE_WEIGHT.min}-${PIECE_WEIGHT.max}, default ${PIECE_WEIGHT.default})`
+    source = { kind: 'items', items }
+  } else source = hasProgress ? { kind: 'manual', progress: Math.round(v['progress'] as number) } : { kind: 'tracker', query: str(v['query']), ...(str(v['connectionId']) ? { connectionId: str(v['connectionId']) } : {}) }
+  const links = v['links'] === undefined || v['links'] === null ? [] : parsePlanLinks(v['links'])
+  if (typeof links === 'string') return links
+  const m: Milestone = { id: 'new', name: str(v['name']), start: str(v['start']), end: str(v['end']), source, ...(str(v['notes']) ? { notes: str(v['notes']) } : {}), ...(str(v['link']) ? { link: str(v['link']) } : {}), ...(links.length > 0 ? { links } : {}) }
   const problems = milestoneProblems(m)
   if (problems.length > 0) return `not a valid milestone: ${problems.join(', ')} (name up to ${MILESTONE_LIMITS.name} characters, start and end as YYYY-MM-DD with start <= end, progress 0-100, link http(s))`
   const { id: _id, ...rest } = m
@@ -221,7 +290,20 @@ export function parseMilestonePatch(body: unknown): MilestonePatch | string {
     if (typeof v['progress'] !== 'number' || !Number.isFinite(v['progress'])) return '"progress" must be a number from 0 to 100'
     out.progress = v['progress']
   }
-  if (Object.keys(out).length === 0) return 'nothing to change: send name, start, end, progress, query, notes or link'
+  if (v['links'] !== undefined) {
+    if (v['links'] === null) out.links = null
+    else {
+      const links = parsePlanLinks(v['links'])
+      if (typeof links === 'string') return links
+      out.links = links
+    }
+  }
+  if (v['items'] !== undefined) {
+    const items = parsePieces(v['items'])
+    if (typeof items === 'string') return items
+    out.items = items
+  }
+  if (Object.keys(out).length === 0) return 'nothing to change: send name, start, end, progress, query, items, notes, link or links'
   return out
 }
 
@@ -269,7 +351,7 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
       const narrowed = filterInbox(view.inbox, { kind: query.kind ?? 'all', area: query.area ?? 'all', status: query.status === 'open' ? 'all' : query.status, ...(query.q ? { text: query.q } : {}) })
       const items = (query.status === 'open' ? narrowed.filter(isOpenItem) : narrowed).sort(inboxOrder)
       const people = plannerSettings(profile).people
-      return { status: 200, body: { ok: true, enabled: true, today: view.today, items: items.slice(0, query.limit).map((i) => itemAnswer(i, people)), total: items.length, ...(items.length > query.limit ? { truncated: true } : {}) } }
+      return { status: 200, body: { ok: true, enabled: true, today: view.today, items: items.slice(0, query.limit).map((i) => itemAnswer(i, people, CONTROL_TEXT_CAP.detail, view.itemTickets[i.id])), total: items.length, ...(items.length > query.limit ? { truncated: true } : {}) } }
     },
     async updateItem(id, body, params) {
       if (!/^[\w.:-]{1,200}$/.test(id)) return fail(400, 'bad item id')
@@ -280,7 +362,8 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
       const r = await deps.planner.updateItem(who.profileId, id, update)
       if (!r.ok) return fail(r.reason === 'unknown' ? 404 : r.reason === 'tooLong' ? 400 : 409, r.error)
       const profile = await deps.profile(who.profileId)
-      return { status: 200, body: { ok: true, item: itemAnswer(r.item, plannerSettings(profile).people, INBOX_LIMITS.detail) } }
+      const view = r.item.ticket ? await deps.planner.view(who.profileId) : undefined
+      return { status: 200, body: { ok: true, item: itemAnswer(r.item, plannerSettings(profile).people, INBOX_LIMITS.detail, view?.itemTickets[r.item.id]) } }
     },
     async milestones(params) {
       const who = await resolveControlProfile(deps, askOf(params))
@@ -305,8 +388,12 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
             elapsed: row.elapsed,
             source: row.milestone.source.kind,
             ...(row.counts ? { counts: { total: row.counts.total, todo: row.counts.todo, inProgress: row.counts.inProgress, done: row.counts.done, at: iso(row.counts.at) } } : {}),
+            ...(row.pieces ? { pieces: row.pieces.map(pieceAnswer) } : {}),
             ...(row.error ? { error: row.error } : {}),
-            ...(row.milestone.link ? { link: row.milestone.link } : {})
+            ...(row.milestone.notes ? { notes: cap(row.milestone.notes, CONTROL_TEXT_CAP.detail) } : {}),
+            ...(row.milestone.link ? { link: row.milestone.link } : {}),
+            ...(row.milestone.links?.length ? { links: row.milestone.links } : {}),
+            ...(row.milestone.updatedAt ? { updatedAt: iso(row.milestone.updatedAt), ...(row.milestone.updatedBy ? { updatedBy: row.milestone.updatedBy } : {}) } : {})
           }))
         }
       }

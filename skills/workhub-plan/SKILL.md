@@ -50,12 +50,12 @@ user the reason and that it is turned on in **Settings → Plan**.
 | Call | What it does |
 |---|---|
 | `W "http://workhub/v1/plan/today?$S"` | Today's and tomorrow's events: `title`, `start`/`end` (ISO), `attendees` (`name`, `email`), `organizer`, `meetingUrl`, a short `description`, and `brief` (`phase`, `sessionId`) when a brief was prepared. `state` + `reason` when there is nothing to read. |
-| `W "http://workhub/v1/inbox?$S&status=open"` | Inbox items, open ones first. `status`: `open` (default: pending and local), `pending`, `local`, `done`, `discarded`, `ticket`, `all`; also `kind` (`task`, `bug`, `decision`), `area`, `q` (words in title or detail), `limit` (default 50, at most 200). Items have `id`, `kind`, `status`, `title`, `detail` (shortened), `due`, `area`, `criticality`, `people` (names), `ticket`. |
+| `W "http://workhub/v1/inbox?$S&status=open"` | Inbox items, open ones first. `status`: `open` (default: pending, local and in the tracker), `pending`, `local`, `done`, `discarded`, `ticket`, `all`; also `kind` (`task`, `bug`, `decision`), `area`, `q` (words in title or detail), `limit` (default 50, at most 200). Items have `id`, `kind`, `status`, `title`, `detail` (shortened), `due`, `area`, `criticality`, `people` (names), `link`, `links`, `ticket` (`key`, `url`, and the ticket's `state`: `todo`, `inProgress`, `done` or `unknown`, with `status`, `title`, `checkedAt` once read), and `updatedAt`/`updatedBy` (`user`, `agent` or `tracker`) once changed. |
 | `W -X POST http://workhub/v1/inbox -H 'content-type: application/json' -d @-` | Proposes items (pending, waiting for the user's approval). Answer: `added` (new ids) and `duplicates` (ids of open items with the same title, which were not added). |
-| `W -X PATCH "http://workhub/v1/inbox/<id>" -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","status":"done"}'` | Changes one item: `status` (`local`, `done`, `discarded`, `pending`), `due` (`YYYY-MM-DD` or null), `area`, `criticality` (or null), `note` (appended to the detail, at most 2000 characters). Answer: the item. |
-| `W "http://workhub/v1/milestones?$S"` | Milestones: `name`, `start`, `end`, `status` (`late`, `atRisk`, `onTrack`, `notStarted`, `done`), `progress` and `elapsed` (0–100), `counts` for tracker milestones, `error` when the last count failed. |
-| `W -X POST http://workhub/v1/milestones -H 'content-type: application/json' -d @-` | Creates a milestone: `{"session","name","start","end","progress"}` (typed, 0–100) or `"query"` instead of `progress` (counted from the tracker); optional `notes`, `link`, `reason` (a short why, shown to the user). |
-| `W -X PATCH "http://workhub/v1/milestones/<id>" -H 'content-type: application/json' -d @-` | Changes `name`, `start`, `end`, `progress` (typed ones), `query` (counted ones), `notes`, `link` (null clears). Include `session` and `reason`. |
+| `W -X PATCH "http://workhub/v1/inbox/<id>" -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","status":"done"}'` | Changes one item: `status` (`local`, `done`, `discarded`, `pending`), `due` (`YYYY-MM-DD` or null), `area`, `criticality` (or null), `note` (appended to the detail, at most 2000 characters), `links` (replaces the list; null clears), `ticket` (`{"key":"ABC-12"}` links a `local` task or bug to an existing ticket, optional `connectionId`; null unlinks; never creates a ticket). Answer: the item. |
+| `W "http://workhub/v1/milestones?$S"` | Milestones: `name`, `start`, `end`, `status` (`late`, `atRisk`, `onTrack`, `notStarted`, `done`), `progress` and `elapsed` (0–100), `source` (`manual`, `tracker`, `items`), `counts` for tracker milestones, `pieces` for milestones made of pieces (`kind`, `key`/`itemId`/`url`, `title`, `state`, `weight`, `share` in %), `error` when the last count failed, `notes` (shortened), `link`, `links`, `updatedAt`/`updatedBy`. |
+| `W -X POST http://workhub/v1/milestones -H 'content-type: application/json' -d @-` | Creates a milestone: `{"session","name","start","end","progress"}` (typed, 0–100), or `"query"` instead of `progress` (counted from the tracker), or `"items"` (its pieces, see below); optional `notes` (Markdown), `link`, `links`, `reason` (a short why, shown to the user). |
+| `W -X PATCH "http://workhub/v1/milestones/<id>" -H 'content-type: application/json' -d @-` | Changes `name`, `start`, `end`, `progress` (typed ones), `query` (counted ones), `items` (replaces the pieces; turns any milestone into one made of pieces), `notes`, `link`, `links` (null clears; `links` replaces the whole list). Include `session` and `reason`. |
 | `W -X DELETE "http://workhub/v1/milestones/<id>?$S"` | Deletes a milestone. |
 | `W "http://workhub/v1/people?$S"` | People: `name`, `emails`, `handles`. Use it to match meeting attendees and to fill `people`. |
 
@@ -64,18 +64,43 @@ A proposal body (at most 20 items):
 ```json
 { "session": "<WORKHUB_SESSION>", "source": "Checkout refactor",
   "items": [ { "kind": "task", "title": "Add a retry to the payment callback",
-               "detail": "Found while refactoring; out of scope for PAY-123.",
+               "detail": "Found while refactoring; out of scope for PAY-123.\n\n- Happens on timeouts\n- See `callback.ts`",
+               "links": [ { "label": "Failing run", "url": "https://ci.example.com/runs/42" } ],
                "people": ["ana@example.com"], "due": "2026-11-10" } ] }
 ```
 
 `kind` is `task`, `bug` or `decision`; `title` is required (at most 300 characters); `detail`,
-`people` (names or emails), `due`, `area`, `criticality` and an http(s) `link` are optional. Add
-`"sourceType": "meeting"` for follow-ups of a meeting.
+`people` (names or emails), `due`, `area`, `criticality`, an http(s) `link` and `links` are
+optional. Add `"sourceType": "meeting"` for follow-ups of a meeting.
+
+A milestone made of pieces (`items`, at most 100) lists tickets, local tasks and links, each with
+an optional `weight` from 1 to 10 (default 5). Progress is the weight of the done pieces over the
+weight of all of them: with weights 2 and 8, the second piece is 80 % of the milestone. A ticket
+whose state is unknown never counts as done; a task counts only when its item is `done`.
+
+```json
+{ "session": "<WORKHUB_SESSION>", "name": "Reliable invites", "start": "2026-11-01", "end": "2026-11-30",
+  "reason": "Asked in the planning call",
+  "items": [ { "kind": "ticket", "key": "ABC-12", "weight": 3 },
+             { "kind": "task", "itemId": "<inbox item id>", "weight": 4 },
+             { "kind": "link", "url": "https://docs.example.com/spec", "label": "Spec", "done": false, "weight": 2 } ] }
+```
+
+An item with a ticket (created by the user on approval, or linked) is done on its own when the
+tracker says the ticket is done: do not mark it `done` yourself for that.
+
+`detail` (inbox) and `notes` (milestones) are shown as **Markdown**: use short paragraphs, lists,
+`code` and `[text](https://…)` links; raw HTML is dropped and images show as text. `links` is a
+list of at most 20 `{ "label": "…", "url": "https://…" }` (only http and https; a label is at most
+200 characters, a bare address string works too). Put the PR, the doc or the dashboard there instead
+of pasting addresses into the detail. The user sees who changed an item last (`updatedBy`).
 
 ## Rules
 
 - **Propose, do not file.** Put new work in the inbox; never create tracker tickets yourself, and
   never try to approve an item: turning an item into a ticket is the user's action in Workhub.
+  You may link a `local` task to a ticket that already exists (`ticket: {"key"}`) when the user
+  names it or the work clearly is that ticket.
   Leave `pending` items for the user to review: move one only when the user asks.
 - **Offer at the end.** When a task ends, offer in one line to log what came up: follow-ups,
   bugs left for later, decisions taken. Post them only when the user agrees, and list what you
@@ -104,4 +129,7 @@ A proposal body (at most 20 items):
 - **"Mark the beta at 60 %."** `PATCH milestones/<id>` with `progress` and a `reason`; report
   whether it was applied or waits for approval.
 - **"How is the beta going?"** Call `milestones`; give status, progress against time gone and,
-  for a counted one, done over total.
+  for a counted one, done over total; for one made of pieces, the pieces not done yet with their
+  state and share.
+- **"This task is ABC-12."** `PATCH inbox/<id>` with `{"ticket":{"key":"ABC-12"}}`; the item
+  then follows the ticket's state.

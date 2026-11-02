@@ -27,10 +27,26 @@ import {
   parseConfig,
   parseInboxProposals,
   parseMilestone,
+  parsePlanLinks,
+  PLAN_LINK_LIMITS,
   renderInboxDescription,
   searchLimit,
   sortMilestones,
   withTicket,
+  followsTicket,
+  isOpenItem,
+  linkTicket,
+  markTicketDone,
+  parsePieces,
+  parseTicketKey,
+  pieceShares,
+  pieceTally,
+  pieceViews,
+  piecesOk,
+  ticketStateKey,
+  trackedState,
+  type MilestonePiece,
+  type TrackedTicket,
   type InboxItem,
   type MetricAlert,
   type Milestone,
@@ -180,7 +196,50 @@ describe('inbox', () => {
     expect(applyInboxAction(done, 'reopen', 6)).toEqual(item({ status: 'local' }))
     expect(applyInboxAction(item({ status: 'discarded', closedAt: 3 }), 'reopen', 6)?.status).toBe('pending')
     expect(applyInboxAction(item({ status: 'ticket' }), 'discard', 6)).toBeNull()
-    expect(withTicket(item(), { key: 'PAY-123', url: 'https://tracker.example.com/PAY-123' }, 7)).toMatchObject({ status: 'ticket', ticket: { key: 'PAY-123' }, closedAt: 7 })
+    const sent = withTicket(item(), { key: 'PAY-123', url: 'https://tracker.example.com/PAY-123', connectionId: 'jira' })
+    expect(sent).toMatchObject({ status: 'ticket', ticket: { key: 'PAY-123', connectionId: 'jira' } })
+    // Still open: it is followed in the tracker until the ticket is done.
+    expect(sent.closedAt).toBeUndefined()
+    expect(availableInboxActions(sent)).toEqual(['done'])
+  })
+
+  it('links a local task or bug to an existing ticket, and unlinks it', () => {
+    const local = item({ status: 'local' })
+    const linked = linkTicket(local, { key: 'PAY-7' })!
+    expect(linked).toMatchObject({ status: 'local', ticket: { key: 'PAY-7' } })
+    expect(followsTicket(linked)).toBe(true)
+    expect(linkTicket(linked, null)).toEqual(local)
+    // Unlinking an item sent to the tracker keeps it as a local task.
+    expect(linkTicket(item({ status: 'ticket', ticket: { key: 'PAY-8' } }), null)).toMatchObject({ status: 'local' })
+    expect(linkTicket(item({ status: 'ticket', ticket: { key: 'PAY-8' } }), null)!.ticket).toBeUndefined()
+    expect(linkTicket(item(), { key: 'PAY-7' })).toBeNull()
+    expect(linkTicket(item({ status: 'done' }), { key: 'PAY-7' })).toBeNull()
+    expect(linkTicket(item({ kind: 'decision', status: 'local' }), { key: 'PAY-7' })).toBeNull()
+  })
+
+  it('marks an item that follows its ticket done, and nothing else', () => {
+    expect(markTicketDone(item({ status: 'ticket', ticket: { key: 'PAY-1' } }), 9)).toMatchObject({ status: 'done', closedAt: 9, ticket: { key: 'PAY-1' } })
+    expect(markTicketDone(item({ status: 'local', ticket: { key: 'PAY-1' } }), 9)?.status).toBe('done')
+    expect(markTicketDone(item({ status: 'local' }), 9)).toBeNull()
+    expect(markTicketDone(item({ status: 'done', ticket: { key: 'PAY-1' } }), 9)).toBeNull()
+  })
+
+  it('keeps items with a ticket open and in the tracker group, old ones included', () => {
+    // An item sent to the tracker before this change carries a closedAt: it still shows, and is not pruned.
+    const old = item({ id: 'old', status: 'ticket', ticket: { key: 'PAY-2' }, closedAt: 1 })
+    const linked = item({ id: 'linked', status: 'local', ticket: { key: 'PAY-3' }, due: '2026-10-01' })
+    const g = groupInbox([old, linked, item({ id: 'plain', status: 'local' })], '2026-11-01', LEVELS)
+    expect(g.tasks.tracker.map((i) => i.id)).toEqual(['linked', 'old'])
+    expect(g.tasks.due).toEqual([])
+    expect(g.closed).toEqual([])
+    expect(isOpenItem(old)).toBe(true)
+    expect(cleanupInbox([old], 100 * DAY).map((i) => i.id)).toEqual(['old'])
+  })
+
+  it('never prunes the items a milestone is made of', () => {
+    const now = 100 * DAY
+    const items = [item({ id: 'piece', status: 'done', closedAt: now - 30 * DAY }), item({ id: 'other', status: 'done', closedAt: now - 30 * DAY })]
+    expect(cleanupInbox(items, now, new Set(['piece'])).map((i) => i.id)).toEqual(['piece'])
   })
 
   it('moves an item to a status with local actions only, never to the tracker', () => {
@@ -325,5 +384,179 @@ describe('milestone changes by agents', () => {
     const parsed = parseConfig({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', planner: { agentMilestones: 'allow' } }] })
     expect(parsed.profiles[0]!.planner?.agentMilestones).toBe('allow')
     expect(() => parseConfig({ version: CONFIG_VERSION, profiles: [{ id: 'p', name: 'P', planner: { agentMilestones: 'always' } }] })).toThrow()
+  })
+})
+
+describe('plan links', () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => ({ label: `Doc ${i}`, url: `https://example.com/${i}` }))
+
+  it('parses labelled links and bare addresses, trimmed and without repeats', () => {
+    expect(parsePlanLinks([{ label: '  Design   doc ', url: ' https://example.com/design ' }, 'https://example.com/board', { url: 'https://example.com/design' }])).toEqual([
+      { label: 'Design doc', url: 'https://example.com/design' },
+      { label: 'https://example.com/board', url: 'https://example.com/board' }
+    ])
+    expect(parsePlanLinks([])).toEqual([])
+    expect(parsePlanLinks(many(PLAN_LINK_LIMITS.items))).toHaveLength(PLAN_LINK_LIMITS.items)
+  })
+
+  it('refuses addresses that are not http(s), too many links and long labels', () => {
+    expect(parsePlanLinks([{ label: 'x', url: 'javascript:alert(1)' }])).toMatch(/http\(s\)/)
+    expect(parsePlanLinks([{ label: 'x', url: 'ftp://example.com/file' }])).toMatch(/http\(s\)/)
+    expect(parsePlanLinks([{ label: 'x', url: 'https://example.com/a b' }])).toMatch(/http\(s\)/)
+    expect(parsePlanLinks([{ label: 'x' }])).toMatch(/url/)
+    expect(parsePlanLinks([{ label: 'x', url: `https://example.com/${'a'.repeat(PLAN_LINK_LIMITS.url)}` }])).toMatch(/http\(s\)/)
+    expect(parsePlanLinks([{ label: 'x'.repeat(PLAN_LINK_LIMITS.label + 1), url: 'https://example.com' }])).toMatch(/label/)
+    expect(parsePlanLinks([{ label: 3, url: 'https://example.com' }])).toMatch(/label/)
+    expect(parsePlanLinks(many(PLAN_LINK_LIMITS.items + 1))).toMatch(/at most 20/)
+    expect(parsePlanLinks('https://example.com')).toMatch(/list/)
+    expect(parsePlanLinks([null])).toMatch(/label/)
+  })
+
+  it('carries links in inbox proposals and new items, and refuses bad ones', () => {
+    const parsed = parseInboxProposals({ title: 'Check the dashboard', detail: '**Errors** went up', links: [{ label: 'Dashboard', url: 'https://example.com/d' }] })
+    expect(parsed).toMatchObject({ ok: true, items: [{ title: 'Check the dashboard', detail: '**Errors** went up', links: [{ label: 'Dashboard', url: 'https://example.com/d' }] }] })
+    const proposal = parsed.ok ? parsed.items[0]! : null
+    expect(newInboxItem(proposal!, { type: 'agent' }, 'i1', 1).links).toEqual([{ label: 'Dashboard', url: 'https://example.com/d' }])
+    expect(parseInboxProposals({ title: 'x', links: [{ url: 'file:///etc/passwd' }] })).toEqual({ ok: false, error: expect.stringMatching(/http\(s\)/) })
+    expect(parseInboxProposals({ title: 'x', links: many(21) })).toEqual({ ok: false, error: expect.stringMatching(/at most/) })
+    expect(parseInboxProposals({ title: 'x', links: [] })).toEqual({ ok: true, items: [{ kind: 'task', title: 'x', detail: '' }] })
+  })
+
+  it('checks milestone links and loads milestones stored before links existed', () => {
+    const old: Milestone = { id: 'm', name: 'M', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual', progress: 10 }, notes: 'n', link: 'https://example.com' }
+    expect(milestoneProblems(old)).toEqual([])
+    expect(parseMilestone(old)).toEqual(old)
+    expect(milestoneProblems({ ...old, links: [{ label: 'Spec', url: 'https://example.com/spec' }] })).toEqual([])
+    expect(milestoneProblems({ ...old, links: [{ label: 'Bad', url: 'mailto:a@example.com' }] })).toEqual(['links'])
+    expect(milestoneProblems({ ...old, links: many(21) })).toEqual(['links'])
+    expect(parseMilestone({ ...old, links: [{ label: ' Spec ', url: 'https://example.com/spec' }] })).toEqual({ ...old, links: [{ label: 'Spec', url: 'https://example.com/spec' }] })
+    expect(parseMilestone({ ...old, links: [{ url: 'nope' }] })).toBeNull()
+    // Dates and who changed it are never taken from the caller.
+    expect(parseMilestone({ ...old, createdAt: 1, updatedAt: 2, updatedBy: 'agent' })).toEqual(old)
+  })
+
+  it('patches milestone links and carries them through a proposal', () => {
+    const beta: Milestone = { id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual', progress: 30 } }
+    const links = [{ label: 'Board', url: 'https://example.com/board' }]
+    const next = patchMilestone(beta, { links })
+    expect(next).toEqual({ ...beta, links })
+    expect(patchMilestone({ ...beta, links }, { links: null })).toEqual(beta)
+    expect(patchMilestone({ ...beta, links }, { notes: 'x' })).toEqual({ ...beta, links, notes: 'x' })
+    const p: MilestoneProposal = { id: 'p', action: 'update', milestoneId: 'beta', milestone: next as Milestone, before: beta, source: {}, createdAt: 0 }
+    expect(applyMilestoneProposal([beta], p)).toEqual([{ ...beta, links }])
+  })
+})
+
+describe('milestone pieces', () => {
+  const pieces = (items: MilestonePiece[]): Milestone => ({ id: 'p', name: 'P', start: '2026-11-01', end: '2026-11-11', source: { kind: 'items', items } })
+  const ticketState = (key: string, category: TrackedTicket['category'], extra: Partial<TrackedTicket> = {}): TrackedTicket => ({ key, title: `Title ${key}`, status: category === 'done' ? 'Done' : 'Open', category, checkedAt: 1, ...extra })
+  const views = (items: MilestonePiece[], tickets: Record<string, TrackedTicket> = {}, inbox: Pick<InboxItem, 'id' | 'title' | 'status'>[] = []) =>
+    pieceViews(items, { ticket: (c, k) => tickets[ticketStateKey(c, k)], task: (id) => inbox.find((i) => i.id === id) })
+  const status = (items: MilestonePiece[], today: string, tickets: Record<string, TrackedTicket> = {}, inbox: Pick<InboxItem, 'id' | 'title' | 'status'>[] = []) => milestoneStatus(pieces(items), pieceTally(views(items, tickets, inbox)), today)
+
+  it('reads ticket keys as typed, upper-cased', () => {
+    expect(parseTicketKey(' abc-12 ')).toBe('ABC-12')
+    expect(parseTicketKey('MY_PROJ-7')).toBe('MY_PROJ-7')
+    for (const bad of ['ABC', '12-ABC', 'ABC-', 'A B-1', '', 42]) expect(parseTicketKey(bad)).toBeNull()
+  })
+
+  it('parses pieces with a default weight of 5 and refuses bad ones', () => {
+    expect(parsePieces([{ kind: 'ticket', key: 'abc-1' }, { kind: 'task', itemId: ' i1 ', weight: 10 }, { kind: 'link', url: 'https://docs.example.com/a', weight: 1 }])).toEqual([
+      { kind: 'ticket', key: 'ABC-1', weight: 5 },
+      { kind: 'task', itemId: 'i1', weight: 10 },
+      { kind: 'link', url: 'https://docs.example.com/a', label: 'https://docs.example.com/a', done: false, weight: 1 }
+    ])
+    expect(parsePieces([{ kind: 'ticket', key: 'ABC-1', connectionId: 'jira-2', weight: 3 }])).toEqual([{ kind: 'ticket', key: 'ABC-1', connectionId: 'jira-2', weight: 3 }])
+    expect(parsePieces([{ kind: 'ticket', key: 'ABC-1', weight: 0 }])).toMatch(/weight/)
+    expect(parsePieces([{ kind: 'ticket', key: 'ABC-1', weight: 11 }])).toMatch(/weight/)
+    expect(parsePieces([{ kind: 'ticket', key: 'ABC-1', weight: 2.5 }])).toMatch(/weight/)
+    expect(parsePieces([{ kind: 'ticket', key: 'nope' }])).toMatch(/key/)
+    expect(parsePieces([{ kind: 'task', itemId: '' }])).toMatch(/itemId/)
+    expect(parsePieces([{ kind: 'link', url: 'ftp://x' }])).toMatch(/url/)
+    expect(parsePieces([{ kind: 'link', url: 'https://x.example.com', done: 'yes' }])).toMatch(/done/)
+    expect(parsePieces([{ kind: 'other' }])).toMatch(/kind/)
+    expect(parsePieces([{ kind: 'ticket', key: 'ABC-1' }, { kind: 'ticket', key: 'abc-1' }])).toMatch(/twice/)
+    expect(parsePieces(Array.from({ length: 101 }, (_v, i) => ({ kind: 'ticket', key: `ABC-${i + 1}` })))).toMatch(/at most 100/)
+    expect(parsePieces('x')).toMatch(/list/)
+  })
+
+  it('checks a pieces milestone as a whole, and parses one from the renderer', () => {
+    expect(milestoneProblems(pieces([]))).toEqual([])
+    expect(milestoneProblems(pieces([{ kind: 'ticket', key: 'abc-1', weight: 5 }]))).toContain('pieces')
+    expect(piecesOk([{ kind: 'ticket', key: 'ABC-1', weight: 5 }])).toBe(true)
+    expect(piecesOk([{ weight: 5, key: 'ABC-1', kind: 'ticket' }])).toBe(true)
+    expect(piecesOk([{ kind: 'ticket', key: 'ABC-1' }])).toBe(false)
+    expect(parseMilestone({ id: 'x', name: 'X', start: '2026-11-01', end: '2026-11-30', source: { kind: 'items', items: [{ kind: 'ticket', key: 'abc-1' }] } })?.source).toEqual({ kind: 'items', items: [{ kind: 'ticket', key: 'ABC-1', weight: 5 }] })
+    expect(parseMilestone({ id: 'x', name: 'X', start: '2026-11-01', end: '2026-11-30', source: { kind: 'items', items: [{ kind: 'ticket', key: 'abc-1', weight: 99 }] } })).toBeNull()
+    expect(countsKey(pieces([]))).toBeNull()
+  })
+
+  it('weighs progress: done weights over all weights', () => {
+    const items: MilestonePiece[] = [
+      { kind: 'link', url: 'https://a.example.com', label: 'A', done: false, weight: 2 },
+      { kind: 'link', url: 'https://b.example.com', label: 'B', done: true, weight: 8 }
+    ]
+    expect(pieceShares(items)).toEqual([20, 80])
+    expect(views(items).map((v) => v.share)).toEqual([20, 80])
+    expect(status(items, '2026-11-06')).toMatchObject({ progress: 80, status: 'onTrack' })
+  })
+
+  it('counts an empty list as 0 % and at risk once started, like an empty query', () => {
+    expect(status([], '2026-10-30')).toEqual({ status: 'notStarted', progress: 0, elapsed: 0 })
+    expect(status([], '2026-11-02')).toMatchObject({ status: 'atRisk', progress: 0 })
+    expect(pieceTally([])).toEqual({ total: 0, done: 0, count: 0, doneCount: 0 })
+  })
+
+  it('never counts a ticket of unknown state as done', () => {
+    const items: MilestonePiece[] = [{ kind: 'ticket', key: 'ABC-1', weight: 5 }, { kind: 'ticket', key: 'ABC-2', weight: 5 }, { kind: 'ticket', key: 'ABC-3', weight: 5 }, { kind: 'ticket', key: 'ABC-4', weight: 5 }]
+    const tickets = {
+      '|ABC-1': ticketState('ABC-1', 'done'),
+      '|ABC-2': ticketState('ABC-2', 'done', { missing: true }),
+      '|ABC-3': ticketState('ABC-3', 'done', { unsupported: true })
+    }
+    const v = views(items, tickets)
+    expect(v.map((x) => x.state)).toEqual(['done', 'unknown', 'unknown', 'unknown'])
+    expect(v[0]!.title).toBe('Title ABC-1')
+    expect(v[3]!.title).toBe('ABC-4')
+    expect(v[1]!.error).toBe('missing')
+    expect(status(items, '2026-11-02', tickets).progress).toBe(25)
+    expect(trackedState(undefined)).toBe('unknown')
+    // A failed read keeps the last good state.
+    expect(trackedState(ticketState('ABC-5', 'inProgress', { error: 'offline' }))).toBe('inProgress')
+  })
+
+  it('reads a ticket from its own connection', () => {
+    const items: MilestonePiece[] = [{ kind: 'ticket', key: 'ABC-1', connectionId: 'jira-2', weight: 5 }]
+    expect(views(items, { '|ABC-1': ticketState('ABC-1', 'done') })[0]!.state).toBe('unknown')
+    expect(views(items, { 'jira-2|ABC-1': ticketState('ABC-1', 'done') })[0]!.state).toBe('done')
+  })
+
+  it('counts a local task as done only when its item is done', () => {
+    const items: MilestonePiece[] = [{ kind: 'task', itemId: 'a', weight: 5 }, { kind: 'task', itemId: 'b', weight: 5 }, { kind: 'task', itemId: 'c', weight: 5 }, { kind: 'task', itemId: 'gone', weight: 5 }]
+    const inbox = [
+      { id: 'a', title: 'A', status: 'done' as const },
+      { id: 'b', title: 'B', status: 'local' as const },
+      { id: 'c', title: 'C', status: 'discarded' as const }
+    ]
+    const v = views(items, {}, inbox)
+    expect(v.map((x) => [x.state, x.status])).toEqual([['done', 'done'], ['todo', 'local'], ['todo', 'discarded'], ['unknown', undefined]])
+    expect(v[3]!.missing).toBe(true)
+    expect(status(items, '2026-11-02', {}, inbox).progress).toBe(25)
+  })
+
+  it('is done, and only then 100 %, when every piece is done', () => {
+    const items: MilestonePiece[] = [{ kind: 'link', url: 'https://a.example.com', label: 'A', done: true, weight: 1 }, { kind: 'task', itemId: 'a', weight: 10 }]
+    expect(status(items, '2026-12-01', {}, [{ id: 'a', title: 'A', status: 'done' }])).toMatchObject({ status: 'done', progress: 100 })
+    // 199 of 200 rounds to 100 % but is not done.
+    const many: MilestonePiece[] = [{ kind: 'link', url: 'https://a.example.com', label: 'A', done: false, weight: 1 }, ...Array.from({ length: 20 }, (_v, i): MilestonePiece => ({ kind: 'link', url: `https://b${i}.example.com`, label: 'B', done: true, weight: 10 }))]
+    expect(status(many, '2026-11-12')).toMatchObject({ status: 'late', progress: 99 })
+  })
+
+  it('patches the pieces, converting another source, and keeps the other rules', () => {
+    const m = manual(10)
+    const next = patchMilestone(m, { items: [{ kind: 'ticket', key: 'ABC-1', weight: 3 }] })
+    expect(typeof next !== 'string' && next.source).toEqual({ kind: 'items', items: [{ kind: 'ticket', key: 'ABC-1', weight: 3 }] })
+    expect(patchMilestone(pieces([]), { progress: 3 })).toMatch(/made of pieces/)
+    expect(patchMilestone(m, { items: [], progress: 3 })).toMatch(/cannot go with/)
   })
 })
