@@ -16,7 +16,8 @@ describe('GitWorktrees on a real repository', () => {
 
   beforeAll(() => {
     Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' })
-    dir = realpathSync(mkdtempSync(join(tmpdir(), 'workhub-worktree-')))
+    // `native` also expands Windows short names (`RUNNER~1`), as git reports the path.
+    dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'workhub-worktree-')))
     const remote = join(dir, 'remote.git')
     repo = join(dir, 'work', 'acme')
     mkdirSync(repo, { recursive: true })

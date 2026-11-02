@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   emptyConfig,
@@ -712,6 +713,8 @@ describe('SessionManager prompt gate', () => {
 })
 
 describe('SessionManager worktrees', () => {
+  // Paths are joined with the platform's separator (`\\` on Windows).
+  const wt = (name: string) => join('/w/_worktrees', name)
   const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
   const config = (): WorkhubConfig => ({
     ...emptyConfig(),
@@ -736,10 +739,10 @@ describe('SessionManager worktrees', () => {
     const { worktrees, created } = fake()
     const { manager } = setup(config(), false, { worktrees })
     const view = await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme/src', worktree: { branch: 'login' } })
-    expect(created).toEqual([{ repoRoot: '/w/acme', path: '/w/_worktrees/acme-feat-login', branch: 'feat/login', base: 'develop' }])
-    expect(view.worktree).toEqual({ repoRoot: '/w/acme', path: '/w/_worktrees/acme-feat-login', branch: 'feat/login' })
+    expect(created).toEqual([{ repoRoot: '/w/acme', path: wt('acme-feat-login'), branch: 'feat/login', base: 'develop' }])
+    expect(view.worktree).toEqual({ repoRoot: '/w/acme', path: wt('acme-feat-login'), branch: 'feat/login' })
     // The subfolder does not exist in the fake worktree, so the session starts at its root.
-    expect(view.cwd).toBe('/w/_worktrees/acme-feat-login')
+    expect(view.cwd).toBe(wt('acme-feat-login'))
     expect(view.profileId).toBe('work')
   })
 
@@ -772,13 +775,13 @@ describe('SessionManager worktrees', () => {
     expect(a.manager.list()).toHaveLength(1)
     expect(await a.manager.closeRemovingWorktree(view.id, true)).toEqual({ ok: true })
     expect(a.manager.list()).toHaveLength(0)
-    expect(dirty.removed).toEqual([['/w/acme', '/w/_worktrees/acme-feat-a', true]])
+    expect(dirty.removed).toEqual([['/w/acme', wt('acme-feat-a'), true]])
 
     const clean = fake()
     const b = setup(config(), false, { worktrees: clean.worktrees })
     const other = await b.manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: { branch: 'b' } })
     await flush()
     expect(await b.manager.closeRemovingWorktree(other.id, false)).toEqual({ ok: true })
-    expect(clean.removed).toEqual([['/w/acme', '/w/_worktrees/acme-feat-b', false]])
+    expect(clean.removed).toEqual([['/w/acme', wt('acme-feat-b'), false]])
   })
 })
