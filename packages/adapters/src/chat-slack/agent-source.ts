@@ -72,6 +72,39 @@ export function toReadResult(outcome: OneshotOutcome | null): ChatReadResult {
   return { ...base, ok: true, digest }
 }
 
+/** Where and how `oneshot.mjs` runs. */
+export type OneshotRunOptions = Pick<SlackAgentSourceOptions, 'bridgeDir' | 'script' | 'nodeCommand'>
+
+/**
+ * Runs `oneshot.mjs` once with one request line and resolves with everything it printed on stdout
+ * (the caller parses it with `parseOneshotOutput`). The process is killed after `killAfterMs`, a
+ * last resort past the helper's own timeout, or as soon as `signal` aborts. Never rejects.
+ */
+export function runOneshot(options: OneshotRunOptions, line: string, killAfterMs: number, signal?: AbortSignal): Promise<string> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve('')
+    const child = spawn(options.nodeCommand ?? process.execPath, [join(options.bridgeDir, options.script ?? 'oneshot.mjs')], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true
+    })
+    let out = ''
+    const timer = setTimeout(() => child.kill(), killAfterMs)
+    const abort = () => child.kill()
+    signal?.addEventListener('abort', abort, { once: true })
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => (out += chunk))
+    child.on('error', () => resolve(out))
+    child.on('close', () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+      resolve(out)
+    })
+    child.stdin.on('error', () => undefined)
+    child.stdin.end(line + '\n')
+  })
+}
+
 /**
  * Reads Slack without a Slack app or token: one short headless Claude query per cycle (Haiku by
  * default) on the Slack connector of the chosen Claude account. The query has no built-in tools
@@ -96,22 +129,6 @@ export class SlackAgentChatSource implements ChatSource {
   }
 
   private run(line: string): Promise<string> {
-    return new Promise((resolve) => {
-      const child = spawn(this.options.nodeCommand ?? process.execPath, [join(this.options.bridgeDir, this.options.script ?? 'oneshot.mjs')], {
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-        stdio: ['pipe', 'pipe', 'ignore'],
-        windowsHide: true
-      })
-      let out = ''
-      const timer = setTimeout(() => child.kill(), ((this.options.timeoutSeconds ?? 300) + 30) * 1000)
-      child.stdout.setEncoding('utf8')
-      child.stdout.on('data', (chunk: string) => (out += chunk))
-      child.on('error', () => resolve(out))
-      child.on('close', () => {
-        clearTimeout(timer)
-        resolve(out)
-      })
-      child.stdin.end(line + '\n')
-    })
+    return runOneshot(this.options, line, ((this.options.timeoutSeconds ?? 300) + 30) * 1000)
   }
 }

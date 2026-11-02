@@ -40,6 +40,10 @@ and speed, **Test voice**, and choose whether new sessions start with it. A sess
 its sidebar menu) overrides the default. Sessions opened by automations, reviews or Slack start with
 it off. Stop speaking with ⌘/Ctrl+Alt+. .
 
+**Summary model** is the Claude model the chat's **Listen** button summarizes a long agent message
+with before reading it (empty: **haiku**). Each summary is a small paid query on the session's
+Claude account; a small model costs the least. See [Sessions](sessions.md#the-composer).
+
 ## Language
 
 The interface is available in English and Spanish. Agents answer in the language you write to them.

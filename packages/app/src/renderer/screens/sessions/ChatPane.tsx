@@ -1,8 +1,9 @@
-import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, ImagePlus, Info, ShieldAlert, Square, TriangleAlert, Webhook, X, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, ImagePlus, Info, LoaderCircle, Pause, Play, ShieldAlert, Square, TriangleAlert, Volume2, Webhook, X, type LucideIcon } from 'lucide-react'
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { filterSlashCommands, gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, slashQuery, type SlashCommandInfo, type SubagentSummary } from '@workhub/core'
+import { appOptions, filterSlashCommands, gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, slashQuery, type SlashCommandInfo, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
 import { CopyButton, Markdown } from '../../components/molecules'
+import { useToast } from '../../components/molecules/Toast'
 import { BrandMark, ToolCallCard } from '../../components/organisms'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
@@ -16,7 +17,9 @@ import { markPermission, openChatImage, pushItem, pushNotice, type ChatItem, typ
 import { runWorkhubCommand, sessionSlashCommands } from '../../lib/chatCommands'
 import { SlashCommandMenu, slashOptionId } from './SlashCommandMenu'
 import { followLog, isAtBottom, lastPromptId, type FollowMark } from '../../lib/chatScroll'
-import { refreshConfig } from '../../configStore'
+import { refreshConfig, useConfig } from '../../configStore'
+import { isLongMessage } from '../../lib/longMessage'
+import { listen, listenId, stopListening, toggleListen, useListenPhase, type ListenOutcome } from '../../lib/listen'
 import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useNow, useSessionCeilings, useUsageSettings } from '../../lib/usage'
 import { BudgetNotice } from './BudgetNotice'
@@ -87,6 +90,85 @@ function Disclosure({ icon: Icon, title, tone, children, testId }: { icon: Lucid
   )
 }
 
+/** Taller than this (px) a user message is collapsed to `max-h-80` (320px); the slack avoids hiding just a line or two. */
+const TALL_MESSAGE_PX = 400
+
+/** A user message; a very long one (a pasted log) is shown collapsed with Show more / Show less. */
+function UserText({ text }: { text: string }) {
+  const { t } = useI18n()
+  const box = useRef<HTMLDivElement>(null)
+  // A first guess from the text, then the real rendered height decides: one wrapped line with no
+  // breaks (a pasted JSON) can be as tall as many short lines.
+  const [long, setLong] = useState(() => isLongMessage(text))
+  const [expanded, setExpanded] = useState(false)
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    const measure = () => setLong(el.scrollHeight > TALL_MESSAGE_PX)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [text])
+  const collapsed = long && !expanded
+  return (
+    <div className="flex max-w-[80%] min-w-0 flex-col items-end gap-1">
+      <div
+        ref={box}
+        className={cn(
+          'max-w-full min-w-0 rounded-xl rounded-br-sm bg-accent-soft px-3.5 py-2 whitespace-pre-wrap text-text [overflow-wrap:anywhere]',
+          // Collapsed: the first lines, fading out at the bottom.
+          collapsed && 'max-h-80 overflow-hidden [mask-image:linear-gradient(to_bottom,black_calc(100%-3rem),transparent)]'
+        )}
+        data-testid="user-message"
+      >
+        {text}
+      </div>
+      {long && (
+        <button type="button" aria-expanded={expanded} className="text-xs text-muted hover:text-text focus-visible:outline-2 focus-visible:outline-accent" onClick={() => setExpanded(!expanded)}>
+          {expanded ? t('chat.showLess') : t('chat.showMore')}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Listen to an agent message: short ones are read as they are, long ones summarized first by a
+ * cheap model (Settings → General → Voice). Click again to cancel the summary, pause or resume;
+ * the stop button shows while it plays or is paused.
+ */
+function ListenButton({ sessionId, itemId, text }: { sessionId: string; itemId: number; text: string }) {
+  const { t, locale } = useI18n()
+  const toast = useToast()
+  const snap = useConfig()
+  const phase = useListenPhase(listenId(sessionId, itemId))
+  const start = () => {
+    const options = appOptions(snap?.config ?? { options: undefined })
+    void listen({ sessionId, itemId, markdown: text, voice: { voice: options.speechVoice, wpm: options.speechRate, lang: locale } }).then((outcome: ListenOutcome) => {
+      if (outcome.kind === 'fallback') toast(t(outcome.failure === 'noAccount' ? 'chat.listenNoAccount' : outcome.failure === 'timeout' ? 'chat.listenTimeout' : 'chat.listenFailed'), 'danger')
+      else if (outcome.kind === 'silent') toast(t('chat.listenSilent'), 'danger')
+    })
+  }
+  const label = phase === 'summarizing' ? t('chat.listenCancel') : phase === 'playing' ? t('chat.listenPause') : phase === 'paused' ? t('chat.listenResume') : t('chat.listen')
+  const icon =
+    phase === 'summarizing' ? (
+      <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+    ) : phase === 'playing' ? (
+      <Pause className="size-3.5" aria-hidden />
+    ) : phase === 'paused' ? (
+      <Play className="size-3.5" aria-hidden />
+    ) : (
+      <Volume2 className="size-3.5" aria-hidden />
+    )
+  return (
+    <>
+      <IconButton size="sm" className={cn('size-6', phase !== 'idle' && 'text-accent')} label={label} icon={icon} aria-busy={phase === 'summarizing' || undefined} onClick={() => toggleListen(phase, start)} data-testid="listen-button" />
+      {(phase === 'playing' || phase === 'paused') && <IconButton size="sm" className="size-6" label={t('chat.listenStop')} icon={<Square className="size-3" aria-hidden />} onClick={stopListening} data-testid="listen-stop" />}
+    </>
+  )
+}
+
 interface ChatBlockProps {
   item: ChatItem
   onAnswer: (requestId: string, optionId: string | null, label: string) => void
@@ -105,7 +187,7 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
   switch (item.kind) {
     case 'user':
       return (
-        <div className="flex flex-col items-end gap-1.5">
+        <div className="flex min-w-0 flex-col items-end gap-1.5">
           {Array.isArray(item.images) && (
             <div className="flex flex-wrap justify-end gap-1.5">
               {item.images.map((src, i) => (
@@ -125,7 +207,7 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
             </div>
           )}
           {typeof item.images === 'number' && <span className="text-xs text-subtle">{tn('chat.images', item.images)}</span>}
-          {item.text && <div className="max-w-[80%] rounded-xl rounded-br-sm bg-accent-soft px-3.5 py-2 whitespace-pre-wrap text-text">{item.text}</div>}
+          {item.text && <UserText text={item.text} />}
           <SentAt at={item.at} align="right" />
         </div>
       )
@@ -138,6 +220,7 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
             <div className="flex items-center gap-1">
               <SentAt at={item.at} align="left" />
               <CopyButton text={() => item.text} />
+              <ListenButton sessionId={sessionId} itemId={item.id} text={item.text} />
             </div>
           </div>
         </div>
@@ -145,7 +228,7 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
     case 'thought':
       return (
         <Disclosure icon={Brain} title={t('chat.thinking')}>
-          <div className="whitespace-pre-wrap italic">{item.text}</div>
+          <div className="whitespace-pre-wrap italic [overflow-wrap:anywhere]">{item.text}</div>
         </Disclosure>
       )
     case 'notice':
@@ -179,8 +262,8 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
             <ShieldAlert className="size-4" aria-hidden />
             {t('chat.permissionRequested')}
           </div>
-          <div className="mt-1 text-sm text-text">{item.title}</div>
-          {item.detail && <pre className="mt-1 max-h-32 overflow-auto font-mono text-xs whitespace-pre-wrap text-muted">{item.detail}</pre>}
+          <div className="mt-1 text-sm text-text [overflow-wrap:anywhere]">{item.title}</div>
+          {item.detail && <pre className="mt-1 max-h-32 overflow-auto font-mono text-xs whitespace-pre-wrap text-muted [overflow-wrap:anywhere]">{item.detail}</pre>}
           {item.answer ? (
             <div className="mt-2 text-sm text-muted">{item.answer === '—' ? t('chat.permissionWithdrawn') : t('chat.answered', { answer: item.answer })}</div>
           ) : (
@@ -202,7 +285,7 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
         <div>
           <div role="alert" className="flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span className="whitespace-pre-wrap">{item.text}</span>
+            <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{item.text}</span>
           </div>
           <SentAt at={item.at} align="left" />
         </div>
@@ -570,7 +653,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       <div ref={log} onScroll={onLogScroll} className="min-h-0 flex-1 overflow-y-auto text-[length:var(--wh-chat-font-size,13px)]" aria-live="polite" aria-label={t('chat.log')} role="log">
-        <div className="flex w-full flex-col gap-3.5 px-6 py-5">
+        <div className="flex w-full min-w-0 flex-col gap-3.5 px-6 py-5">
           {data.items.length === 0 && !v.origin && <p className="py-10 text-center text-sm text-subtle">{t('chat.empty')}</p>}
           {replayAt < 0 && originLine}
           {data.items.map((i, n) => (
@@ -582,7 +665,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
           {queued.length > 0 && (
             <ul className="flex flex-col items-end gap-1.5" aria-label={t('chat.queuedList')} data-testid="queued-prompts">
               {queued.map((q) => (
-                <li key={q.id} className="flex max-w-[80%] flex-col items-end gap-1">
+                <li key={q.id} className="flex max-w-[80%] min-w-0 flex-col items-end gap-1">
                   {q.images.length > 0 && (
                     <div className="flex flex-wrap justify-end gap-1.5 opacity-70">
                       {q.images.map((src, i) => (
@@ -590,8 +673,8 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
                       ))}
                     </div>
                   )}
-                  <div className="flex items-start gap-1.5">
-                    <div className="rounded-xl rounded-br-sm border border-dashed border-border px-3.5 py-2 whitespace-pre-wrap text-muted">
+                  <div className="flex min-w-0 items-start gap-1.5">
+                    <div className="max-h-80 min-w-0 overflow-y-auto rounded-xl rounded-br-sm border border-dashed border-border px-3.5 py-2 whitespace-pre-wrap text-muted [overflow-wrap:anywhere]">
                       {q.text || <span className="text-subtle">{tn('chat.images', q.images.length)}</span>}
                     </div>
                     <IconButton size="sm" label={t('chat.removeQueued')} icon={<X className="size-3" />} onClick={() => removeQueuedPrompt(v.id, q.id)} className="mt-1" />

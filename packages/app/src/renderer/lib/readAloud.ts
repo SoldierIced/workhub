@@ -50,47 +50,100 @@ export function lastFinishedReply(items: readonly ChatItem[]): { turnId: number;
 // --- Speaking -------------------------------------------------------------------------------
 
 let speakingId: string | null = null
+let paused = false
 let current: SpeechSynthesisUtterance | null = null
+/** One snapshot per change, so `useSpeech` re-renders only when something changed. */
+let speechState: SpeechState = { id: null, paused: false }
 const speakingListeners = new Set<() => void>()
-const emitSpeaking = () => speakingListeners.forEach((l) => l())
+const emitSpeaking = () => {
+  if (speechState.id !== speakingId || speechState.paused !== paused) speechState = { id: speakingId, paused }
+  speakingListeners.forEach((l) => l())
+}
+
+/** What the one voice of this window is doing: the id of what it reads (null: silent) and whether it is paused. */
+export interface SpeechState {
+  id: string | null
+  paused: boolean
+}
 
 const synth = (): SpeechSynthesis | null => (typeof speechSynthesis === 'undefined' ? null : speechSynthesis)
 
 export function stopSpeaking(): void {
-  synth()?.cancel()
+  const s = synth()
+  s?.cancel()
+  // Chromium keeps a paused queue paused after cancel: the next speech would never start.
+  if (paused) s?.resume()
   current = null
-  if (speakingId !== null) {
+  if (speakingId !== null || paused) {
     speakingId = null
+    paused = false
     emitSpeaking()
   }
 }
 
+/** Pauses what is being read; `resumeSpeaking` goes on from there. */
+export function pauseSpeaking(): void {
+  const s = synth()
+  if (!s || speakingId === null || paused) return
+  s.pause()
+  paused = true
+  emitSpeaking()
+}
+
+export function resumeSpeaking(): void {
+  const s = synth()
+  if (!s || speakingId === null || !paused) return
+  s.resume()
+  paused = false
+  emitSpeaking()
+}
+
 /** What a request for `id` speaks with. */
 export interface SpeakOptions {
-  /** What the speech was started for: a session ("reply:<id>") or "voice-test". */
+  /** What the speech was started for: a session ("reply:<id>"), a chat message ("listen:…") or "voice-test". */
   id: string
   /** A voice name; empty: the system voice. */
   voice: string
   wpm: number
+  /** The language to read in ("es", "en") when no voice is named: a voice of that language is picked when there is one. */
+  lang?: string
+}
+
+/**
+ * The voice to read with: the one named, else the system's default voice for `lang`, else any
+ * voice of `lang` (a local one first), else none (the system voice).
+ */
+export function pickVoice<V extends Pick<SpeechSynthesisVoice, 'name' | 'lang' | 'default' | 'localService'>>(voices: readonly V[], name: string, lang?: string): V | undefined {
+  if (name) {
+    const named = voices.find((v) => v.name === name)
+    if (named) return named
+  }
+  if (!lang) return undefined
+  const base = lang.toLowerCase().split(/[-_]/)[0]
+  const matching = voices.filter((v) => v.lang.toLowerCase().split(/[-_]/)[0] === base)
+  return matching.find((v) => v.default) ?? matching.find((v) => v.localService) ?? matching[0]
 }
 
 /** Reads `markdown` aloud (cleaned of code, links and marks); a new request stops the one in progress. Returns whether anything was spoken. */
-export function speak(markdown: string, { id, voice, wpm }: SpeakOptions): boolean {
+export function speak(markdown: string, { id, voice, wpm, lang }: SpeakOptions): boolean {
   const s = synth()
   const text = speechText(markdown)
   if (!s || !text) return false
   s.cancel()
+  if (paused) s.resume()
+  paused = false
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.rate = wpmToRate(wpm)
-  const chosen = voice ? s.getVoices().find((v) => v.name === voice) : undefined
+  const chosen = pickVoice(s.getVoices(), voice, lang)
   if (chosen) {
     utterance.voice = chosen
     utterance.lang = chosen.lang
-  }
+  } else if (lang) utterance.lang = lang
   const done = () => {
     if (current !== utterance) return
     current = null
     speakingId = null
+    paused = false
     emitSpeaking()
   }
   utterance.onend = done
@@ -100,6 +153,17 @@ export function speak(markdown: string, { id, voice, wpm }: SpeakOptions): boole
   emitSpeaking()
   s.speak(utterance)
   return true
+}
+
+/** The voice's state (what it reads, paused or not), for controls that pause and resume. */
+export function useSpeech(): SpeechState {
+  return useSyncExternalStore(
+    (l) => {
+      speakingListeners.add(l)
+      return () => speakingListeners.delete(l)
+    },
+    () => speechState
+  )
 }
 
 export function useSpeakingId(): string | null {

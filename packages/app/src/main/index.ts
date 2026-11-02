@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { AcpRuntime, agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
 import { CLAUDE_PERMISSION_MODES, ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
 import { DemoChatSource, SlackAgentChatSource, SlackTrackingHook } from '@workhub/adapters/chat-slack'
+import { ListenSummarizer } from '@workhub/adapters/listen-summary'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
@@ -94,6 +95,7 @@ import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } f
 import { AgentReviewService, registerAgentReviewIpc } from './agent-review'
 import { AiReviewService, registerAiReviewIpc, reviewBudgetGate } from './ai-review'
 import { claudeConfigDirOf } from './claude-accounts'
+import { registerListenIpc } from './listen-ipc'
 import { CodeHostService, registerCodeHostIpc } from './codehost'
 import { ContinuityService, type ContinuityDeps } from './continuity'
 import { HealthService } from './health-service'
@@ -1054,6 +1056,14 @@ function registerIpc(): void {
   })
   registerMetricAlertsIpc(ipc, metricAlerts)
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
+  // The chat's Listen button: a long agent message is summarized (one small Haiku query) before it is read aloud.
+  const listenSummarizer = new ListenSummarizer({ bridgeDir, cwd: dataDir })
+  registerListenIpc(ipc, {
+    summarize: (request) => listenSummarizer.summarize(request),
+    config: () => configuration.current(),
+    session: (id) => sessions.list().find((v) => v.id === id) ?? null,
+    home: homedir()
+  })
   registerAiReviewIpc(ipc, aiReview)
   registerAgentReviewIpc(ipc, agentReview)
   registerLocalReviewIpc(ipc, localReview, { openWindow: openLocalReviewWindow, openPath: (path) => shell.openPath(path) })

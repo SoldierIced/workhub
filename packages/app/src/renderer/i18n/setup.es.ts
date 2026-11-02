@@ -144,6 +144,8 @@ export const setupEs: Record<keyof typeof setupEn, string> = {
   'voice.sample': 'Hola, así van a sonar las respuestas de Claude con esta voz.',
   'voice.unsupported': 'Este sistema no tiene voces que Workhub pueda usar.',
   'voice.shortcutNote': 'Dejar de hablar: {keys}',
+  'voice.listenModel': 'Modelo del resumen',
+  'voice.listenModelHint': 'El botón Escuchar del chat resume un mensaje largo del agente con este modelo de Claude antes de leerlo, en la cuenta de Claude de la sesión. Cada resumen es una consulta paga pequeña; un modelo chico como haiku es el más económico. Vacío: haiku.',
   'voice.session.on': 'Dejar de leer las respuestas en voz alta',
   'voice.session.off': 'Leer las respuestas en voz alta',
   'notify.master': 'Mostrar notificaciones',
