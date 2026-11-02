@@ -8,7 +8,7 @@ import { DEFAULT_PLANNER_SETTINGS, TrackerError, type MetricAlert, type PlannerS
 import { controlSocketPath, startControlServer } from '../src/main/control-server'
 import { addControlInboxItems, parseBulkPatch, parseInboxEdit } from '../src/main/planner-ipc'
 import { PLANNER_ERRORS, PlannerService, type PlannerState } from '../src/main/planner-service'
-import { formToInboxSettings, formToMilestone, formToProposal, inboxActionLabel, inboxSettingsToForm, milestoneFormProblem, milestoneId, milestonesAtRisk, milestoneToForm } from '../src/renderer/lib/planner'
+import { BULK_CLEAR, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, formToInboxSettings, formToMilestone, formToProposal, inboxActionLabel, inboxSettingsToForm, linksToRows, milestoneFormProblem, milestoneId, milestonesAtRisk, milestoneToForm, pieceTaskChoices, plainPreview, rowsToLinks } from '../src/renderer/lib/planner'
 import { en } from '../src/renderer/i18n/en'
 import { es } from '../src/renderer/i18n/es'
 
@@ -187,7 +187,67 @@ describe('PlannerService inbox', () => {
   })
 })
 
+describe('PlannerService links and history', () => {
+  const links = [{ label: 'Runbook', url: 'https://example.com/runbook' }]
+
+  it('loads state stored before links and history existed', async () => {
+    const old = {
+      profiles: {
+        work: {
+          milestones: [{ id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual', progress: 30 }, notes: 'n', link: 'https://example.com' }],
+          counts: {},
+          errors: {},
+          inbox: [{ id: 'i1', kind: 'task', title: 'Old item', detail: 'x', source: { type: 'manual' }, status: 'local', createdAt: NOW - 1000 }],
+          proposals: []
+        }
+      }
+    }
+    const service = new PlannerService({ profiles: async () => [profile()], store: { load: () => old as unknown as PlannerState, save: () => undefined }, tracker: async () => ({ error: 'none' }), changed: () => undefined, now: () => NOW })
+    const view = await service.view('work')
+    expect(view.inbox).toEqual(old.profiles.work.inbox)
+    expect(view.milestones[0]!.milestone).toEqual(old.profiles.work.milestones[0])
+    expect(await service.editItem('work', 'i1', { links })).toEqual({ ok: true })
+    expect((await service.view('work')).inbox[0]).toMatchObject({ title: 'Old item', links, updatedAt: NOW, updatedBy: 'user' })
+  })
+
+  it('marks edits in Workhub as the user\'s and changes through the endpoint as an agent\'s', async () => {
+    const { service, setNow } = setup()
+    await service.addItem('work', { kind: 'task', title: 'a', detail: '', links })
+    expect((await service.view('work')).inbox[0]).toMatchObject({ links, createdAt: NOW })
+    expect((await service.view('work')).inbox[0]).not.toHaveProperty('updatedAt')
+    setNow(NOW + 1000)
+    await service.editItem('work', 'id1', { detail: '# Plan\n- one', due: '2026-11-12', area: 'Docs', criticality: null, links: [] })
+    let item = (await service.view('work')).inbox[0]!
+    expect(item).toMatchObject({ detail: '# Plan\n- one', due: '2026-11-12', area: 'Docs', updatedAt: NOW + 1000, updatedBy: 'user' })
+    expect(item).not.toHaveProperty('links')
+    setNow(NOW + 2000)
+    const r = await service.updateItem('work', 'id1', { links, area: null })
+    expect(r).toMatchObject({ ok: true, item: { links, updatedAt: NOW + 2000, updatedBy: 'agent' } })
+    item = (await service.view('work')).inbox[0]!
+    expect(item).not.toHaveProperty('area')
+    setNow(NOW + 3000)
+    await service.bulkEdit('work', ['id1'], { due: null })
+    expect((await service.view('work')).inbox[0]).toMatchObject({ updatedAt: NOW + 3000, updatedBy: 'user' })
+  })
+
+  it('keeps when a milestone was created and marks who changed it last', async () => {
+    const { service, setNow } = setup()
+    const beta = { id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual' as const, progress: 30 }, links }
+    await service.saveMilestone('work', beta)
+    setNow(NOW + 5000)
+    await service.saveMilestone('work', { ...beta, notes: '**Shipped** the beta' })
+    expect((await service.view('work')).milestones[0]!.milestone).toEqual({ ...beta, notes: '**Shipped** the beta', createdAt: NOW, updatedAt: NOW + 5000, updatedBy: 'user' })
+  })
+})
+
 describe('Plan IPC parsers', () => {
+  it('checks links and fields of a single item edit', () => {
+    expect(parseInboxEdit({ links: [{ label: ' Doc ', url: 'https://example.com/doc' }], due: '', area: 'Docs', criticality: null })).toEqual({ links: [{ label: 'Doc', url: 'https://example.com/doc' }], due: null, area: 'Docs', criticality: null })
+    expect(parseInboxEdit({ links: [{ url: 'javascript:alert(1)' }] })).toBeNull()
+    expect(parseInboxEdit({ links: Array.from({ length: 21 }, (_, i) => `https://example.com/${i}`) })).toBeNull()
+    expect(parseInboxEdit({ due: 'tomorrow' })).toBeNull()
+  })
+
   it('checks bulk patches and edits field by field', () => {
     expect(parseBulkPatch({ area: 'Mobile', criticality: null, due: '2026-11-10' })).toEqual({ area: 'Mobile', criticality: null, due: '2026-11-10' })
     expect(parseBulkPatch({ due: 'soon' })).toBeNull()
@@ -220,6 +280,8 @@ describe('POST /v1/inbox', () => {
     expect(proposed[1]![2]).toEqual({ type: 'meeting' })
     await addControlInboxItems(deps(proposed), { title: 'c', kind: 'decision' })
     expect(proposed[2]![0]).toBe('home')
+    await addControlInboxItems(deps(proposed), { session: 's1', title: 'd', detail: '## Steps\n1. Open it', links: [{ label: 'Board', url: 'https://example.com/board' }] })
+    expect(proposed[3]![1]).toEqual([{ kind: 'task', title: 'd', detail: '## Steps\n1. Open it', links: [{ label: 'Board', url: 'https://example.com/board' }] }])
   })
 
   it('refuses bad bodies, unknown sessions and profiles', async () => {
@@ -227,6 +289,7 @@ describe('POST /v1/inbox', () => {
     expect(await addControlInboxItems(deps(proposed), { items: [] })).toEqual({ ok: false, status: 400, error: 'no items' })
     expect(await addControlInboxItems(deps(proposed), { session: 'zz', title: 'a' })).toEqual({ ok: false, status: 404, error: 'unknown session' })
     expect(await addControlInboxItems(deps(proposed), { profile: 'nope', title: 'a' })).toEqual({ ok: false, status: 404, error: 'unknown profile' })
+    expect(await addControlInboxItems(deps(proposed), { title: 'a', links: [{ label: 'x', url: 'ftp://example.com' }] })).toMatchObject({ ok: false, status: 400 })
     expect(proposed).toEqual([])
   })
 
@@ -274,6 +337,18 @@ describe('Plan renderer helpers', () => {
     expect(milestoneId('Beta launch', ['beta-launch'])).toBe('beta-launch-2')
   })
 
+  it('turns link rows into links and names a bad row', () => {
+    const m = { id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual' as const, progress: 0 }, links: [{ label: 'Spec', url: 'https://example.com/spec' }, { label: 'https://example.com/b', url: 'https://example.com/b' }] }
+    const form = milestoneToForm(m, '2026-11-06')
+    expect(form.links).toEqual([{ label: 'Spec', url: 'https://example.com/spec' }, { label: '', url: 'https://example.com/b' }])
+    expect(formToMilestone(form, 'beta')).toEqual(m)
+    expect(rowsToLinks([{ label: '', url: '' }, { label: ' A ', url: ' https://example.com/a ' }])).toEqual([{ label: 'A', url: 'https://example.com/a' }])
+    expect(rowsToLinks([{ label: 'A', url: '' }])).toBeNull()
+    expect(rowsToLinks([{ label: 'A', url: 'example.com' }])).toBeNull()
+    expect(milestoneFormProblem({ ...form, links: [{ label: 'A', url: 'example.com' }] })).toBe('planner.links.problem')
+    expect(linksToRows(undefined)).toEqual([])
+  })
+
   it('lists late and at-risk milestones for Home', () => {
     const row = (status: 'late' | 'atRisk' | 'onTrack') => ({ milestone: { id: status } as never, status, progress: 0, elapsed: 0 })
     expect(milestonesAtRisk([row('late'), row('onTrack'), row('atRisk')]).map((r) => r.status)).toEqual(['late', 'atRisk'])
@@ -291,5 +366,246 @@ describe('Plan renderer helpers', () => {
       expect(es[inboxActionLabel(action, 'decision')]).toBeTruthy()
     }
     for (const p of [1, 2, 3, 4]) expect(es[`planner.settings.priority.${p}` as keyof typeof es]).toBeTruthy()
+  })
+
+  it('sends only what the bulk edit bar changes, and counts the items it would change', () => {
+    expect(bulkFormToPatch(EMPTY_BULK_FORM)).toEqual({})
+    expect(bulkFormToPatch({ ...EMPTY_BULK_FORM, area: 'Payments', criticality: BULK_CLEAR })).toEqual({ area: 'Payments', criticality: null })
+    expect(bulkFormToPatch({ ...EMPTY_BULK_FORM, due: 'clear', dueDate: '2026-11-20' })).toEqual({ due: null })
+    expect(bulkFormToPatch({ ...EMPTY_BULK_FORM, due: 'set', dueDate: '2026-11-20' })).toEqual({ due: '2026-11-20' })
+    // A date to set but not picked yet changes nothing.
+    expect(bulkFormToPatch({ ...EMPTY_BULK_FORM, due: 'set', dueDate: '' })).toEqual({})
+
+    const items = [{ area: 'Payments', due: '2026-11-20' }, { criticality: 'High' }, {}]
+    expect(bulkChangeCount(items, {})).toBe(0)
+    expect(bulkChangeCount(items, { area: 'Payments' })).toBe(2)
+    expect(bulkChangeCount(items, { area: null })).toBe(1)
+    expect(bulkChangeCount(items, { criticality: null, due: null })).toBe(2)
+    expect(bulkChangeCount([items[0]!], { area: 'Payments', due: '2026-11-20' })).toBe(0)
+  })
+})
+
+describe('plainPreview', () => {
+  it('drops Markdown marks and keeps the words and lines', () => {
+    expect(plainPreview('**What happens**\n- The `callback` times out\n- See [the run](https://ci.example.com/1), *pending*')).toBe('What happens\n- The callback times out\n- See the run, pending')
+    expect(plainPreview('## Title\n\n> quoted')).toBe('Title\n\nquoted')
+    expect(plainPreview('snake_case_name stays')).toBe('snake_case_name stays')
+  })
+})
+
+/** A tracker whose tickets' states the test sets; every read by key is recorded (one call per connection). */
+function fakeTracker(states: Record<string, 'todo' | 'inProgress' | 'done'>, over: { noRead?: boolean } = {}) {
+  const tracker = new DemoTracker()
+  const reads: string[][] = []
+  if (over.noRead) Object.assign(tracker, { readTickets: undefined })
+  else
+    tracker.readTickets = async (keys) => {
+      reads.push([...keys])
+      return keys.filter((k) => states[k]).map((k) => ({ key: k, title: `Title ${k}`, status: states[k] === 'done' ? 'Done' : states[k] === 'todo' ? 'To Do' : 'In Review', category: states[k]!, url: `https://tracker.example.com/${k}` }))
+    }
+  return { tracker, reads }
+}
+
+describe('PlannerService pieces and linked tickets', () => {
+  const HALF_HOUR = 30 * 60_000
+  const pieces = { id: 'p', name: 'Pieces', start: '2026-11-01', end: '2026-11-11', source: { kind: 'items' as const, items: [] as import('@workhub/core').MilestonePiece[] } }
+
+  it('reads the tickets of a pieces milestone in one call per connection, and weighs its progress', async () => {
+    const { tracker, reads } = fakeTracker({ 'ABC-1': 'done', 'ABC-2': 'inProgress', 'ABC-3': 'done' })
+    const { service, lookups, setNow } = setup({ tracker })
+    await service.addItem('work', { kind: 'task', title: 'Local piece', detail: '' })
+    const items = [
+      { kind: 'ticket' as const, key: 'ABC-1', weight: 2 },
+      { kind: 'ticket' as const, key: 'ABC-2', weight: 3 },
+      { kind: 'ticket' as const, key: 'ABC-9', weight: 1 },
+      { kind: 'ticket' as const, key: 'ABC-3', connectionId: 'jira-2', weight: 2 },
+      { kind: 'task' as const, itemId: 'id1', weight: 1 },
+      { kind: 'link' as const, url: 'https://docs.example.com/spec', label: 'Spec', done: true, weight: 1 }
+    ]
+    expect(await service.saveMilestone('work', { ...pieces, source: { kind: 'items', items } })).toEqual({ ok: true })
+    expect(reads.map((r) => r.sort())).toEqual([['ABC-1', 'ABC-2', 'ABC-9'], ['ABC-3']])
+    expect(lookups).toContain('jira-2')
+    let row = (await service.view('work')).milestones[0]!
+    expect(row.pieces!.map((v) => [v.piece.kind, v.state, v.share])).toEqual([
+      ['ticket', 'done', 20],
+      ['ticket', 'inProgress', 30],
+      ['ticket', 'unknown', 10],
+      ['ticket', 'done', 20],
+      ['task', 'todo', 10],
+      ['link', 'done', 10]
+    ])
+    expect(row.pieces![0]).toMatchObject({ title: 'Title ABC-1', status: 'Done', url: 'https://tracker.example.com/ABC-1', checkedAt: NOW })
+    expect(row.pieces![2]!.error).toBe('missing')
+    // Done: 2 + 2 + 1 of 10.
+    expect(row).toMatchObject({ progress: 50, elapsed: 50, status: 'onTrack' })
+    // A local task's state counts at once.
+    await service.act('work', 'id1', 'keep')
+    await service.act('work', 'id1', 'done')
+    expect((await service.view('work')).milestones[0]!.progress).toBe(60)
+    // Fresh reads are not repeated; after the refresh period they are, and "Count again" forces them.
+    await service.tick()
+    expect(reads).toHaveLength(2)
+    setNow(NOW + HALF_HOUR)
+    await service.tick()
+    expect(reads).toHaveLength(4)
+    await service.refreshMilestones('work')
+    expect(reads).toHaveLength(6)
+    row = (await service.view('work')).milestones[0]!
+    expect(row.pieces![0]!.checkedAt).toBe(NOW + HALF_HOUR)
+  })
+
+  it('leaves the state unknown when the tracker cannot read by key, and keeps the last good one on a failure', async () => {
+    const { tracker } = fakeTracker({}, { noRead: true })
+    const { service, saved } = setup({ tracker })
+    await service.saveMilestone('work', { ...pieces, source: { kind: 'items', items: [{ kind: 'ticket', key: 'ABC-1', weight: 5 }] } })
+    expect((await service.view('work')).milestones[0]!.pieces![0]).toMatchObject({ state: 'unknown', error: 'unsupported' })
+    expect((await service.view('work')).milestones[0]).toMatchObject({ progress: 0, status: 'atRisk' })
+    expect(saved().profiles.work!.tickets['|ABC-1']).toMatchObject({ unsupported: true })
+
+    const good = fakeTracker({ 'ABC-1': 'done' })
+    const second = setup({ tracker: good.tracker })
+    await second.service.saveMilestone('work', { ...pieces, source: { kind: 'items', items: [{ kind: 'ticket', key: 'ABC-1', weight: 5 }] } })
+    good.tracker.readTickets = async () => {
+      throw new TrackerError('Jira answered 500')
+    }
+    const view = await second.service.refreshMilestones('work')
+    expect(view.milestones[0]!.pieces![0]).toMatchObject({ state: 'done', error: 'Jira answered 500' })
+    expect(view.milestones[0]!.status).toBe('done')
+  })
+
+  it('marks a linked local task done when its ticket is done, once', async () => {
+    const states: Record<string, 'todo' | 'inProgress' | 'done'> = { 'ABC-5': 'inProgress' }
+    const { tracker, reads } = fakeTracker(states)
+    const { service, setNow } = setup({ tracker })
+    await service.addItem('work', { kind: 'task', title: 'Follow the rollout', detail: '' })
+    await service.act('work', 'id1', 'keep')
+    expect(await service.linkItemTicket('work', 'id1', { key: 'ABC-5' })).toEqual({ ok: true })
+    // The tracker group of the inbox shows it with its state.
+    let view = await service.view('work')
+    expect(view.inbox[0]).toMatchObject({ status: 'local', ticket: { key: 'ABC-5' } })
+    expect(view.itemTickets['id1']).toMatchObject({ category: 'inProgress', title: 'Title ABC-5' })
+    // The inbox's tracker (none set here: the profile's) was read.
+    expect(reads).toEqual([['ABC-5']])
+    states['ABC-5'] = 'done'
+    setNow(NOW + HALF_HOUR)
+    await service.tick()
+    view = await service.view('work')
+    expect(view.inbox[0]).toMatchObject({ status: 'done', closedAt: NOW + HALF_HOUR, updatedBy: 'tracker' })
+    // Reopened by hand, it stays open while the ticket stays done.
+    await service.act('work', 'id1', 'reopen')
+    await service.refreshMilestones('work')
+    expect((await service.view('work')).inbox[0]!.status).toBe('local')
+    // Unlinked, it is a plain local task again.
+    expect(await service.linkItemTicket('work', 'id1', null)).toEqual({ ok: true })
+    expect((await service.view('work')).inbox[0]!.ticket).toBeUndefined()
+    expect((await service.view('work')).itemTickets).toEqual({})
+  })
+
+  it('marks a task done at once when it is linked to a ticket already done, and refuses to link a pending item', async () => {
+    const { tracker } = fakeTracker({ 'ABC-6': 'done' })
+    const { service } = setup({ tracker })
+    await service.addItem('work', { kind: 'task', title: 'Already shipped', detail: '' })
+    expect(await service.linkItemTicket('work', 'id1', { key: 'ABC-6' })).toEqual({ ok: false, error: PLANNER_ERRORS.noLink })
+    await service.act('work', 'id1', 'keep')
+    expect(await service.linkItemTicket('work', 'id1', { key: 'ABC-6' })).toEqual({ ok: true })
+    expect((await service.view('work')).inbox[0]).toMatchObject({ status: 'done', updatedBy: 'tracker' })
+  })
+
+  it('keeps an approved item open with its ticket, and marks it done when the ticket is', async () => {
+    const tracker = new DemoTracker()
+    const { service, setNow } = setup({ tracker })
+    await service.addItem('work', { kind: 'bug', title: 'Crash on save', detail: '' })
+    await service.act('work', 'id1', 'approve')
+    let item = (await service.view('work')).inbox[0]!
+    expect(item).toMatchObject({ status: 'ticket', ticket: { key: 'PAY-900' } })
+    expect(item.closedAt).toBeUndefined()
+    expect((await service.view('work')).itemTickets['id1']).toMatchObject({ category: 'todo' })
+    const read = tracker.readTickets.bind(tracker)
+    tracker.readTickets = async (keys) => (await read(keys)).map((t) => ({ ...t, status: 'Done', category: 'done' as const }))
+    setNow(NOW + HALF_HOUR)
+    await service.tick()
+    item = (await service.view('work')).inbox[0]!
+    expect(item).toMatchObject({ status: 'done', closedAt: NOW + HALF_HOUR, updatedBy: 'tracker' })
+  })
+
+  it('loads a state file from before pieces, and follows its old approved items', async () => {
+    const { tracker } = fakeTracker({ 'PAY-1': 'done', 'PAY-2': 'inProgress' })
+    const old = {
+      profiles: {
+        work: {
+          milestones: [{ id: 'm', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual', progress: 30 } }],
+          counts: {},
+          errors: {},
+          proposals: [],
+          inbox: [
+            // Sent to the tracker three weeks ago: closed then, kept now that it is followed.
+            { id: 'a', kind: 'task', title: 'Old one', detail: '', source: { type: 'manual' }, status: 'ticket', ticket: { key: 'PAY-1' }, createdAt: NOW - 30 * 86_400_000, closedAt: NOW - 21 * 86_400_000 },
+            { id: 'b', kind: 'task', title: 'Still open', detail: '', source: { type: 'manual' }, status: 'ticket', ticket: { key: 'PAY-2' }, createdAt: NOW - 30 * 86_400_000, closedAt: NOW - 21 * 86_400_000 }
+          ]
+        }
+      }
+    }
+    const service = new PlannerService({
+      profiles: async () => [profile()],
+      store: { load: () => old as unknown as PlannerState, save: () => undefined },
+      tracker: async () => ({ tracker }),
+      changed: () => undefined,
+      now: () => NOW
+    })
+    let view = await service.view('work')
+    expect(view.milestones[0]).toMatchObject({ status: 'atRisk', progress: 30 })
+    expect(view.inbox.map((i) => [i.id, i.status])).toEqual([['a', 'ticket'], ['b', 'ticket']])
+    expect(view.itemTickets).toEqual({})
+    await service.tick()
+    view = await service.view('work')
+    expect(view.inbox.map((i) => [i.id, i.status])).toEqual([['a', 'done'], ['b', 'ticket']])
+    expect(view.itemTickets['b']).toMatchObject({ category: 'inProgress' })
+  })
+
+  it('keeps a done task a milestone is made of past the inbox retention', async () => {
+    const { service, setNow } = setup()
+    await service.addItem('work', { kind: 'task', title: 'Piece', detail: '' })
+    await service.addItem('work', { kind: 'task', title: 'Other', detail: '' })
+    for (const id of ['id1', 'id2']) {
+      await service.act('work', id, 'keep')
+      await service.act('work', id, 'done')
+    }
+    await service.saveMilestone('work', { ...pieces, source: { kind: 'items', items: [{ kind: 'task', itemId: 'id1', weight: 5 }] } })
+    setNow(NOW + 8 * 86_400_000)
+    await service.addItem('work', { kind: 'task', title: 'New', detail: '' })
+    const view = await service.view('work')
+    expect(view.inbox.map((i) => i.id)).toEqual(['id1', 'id3'])
+    expect(view.milestones[0]!.pieces![0]!.state).toBe('done')
+  })
+
+  it('looks a ticket up for the editor', async () => {
+    const { tracker } = fakeTracker({ 'ABC-1': 'todo' })
+    const { service } = setup({ tracker })
+    expect(await service.lookupTicket('work', 'ABC-1')).toEqual({ ok: true, ticket: expect.objectContaining({ key: 'ABC-1', title: 'Title ABC-1' }) })
+    expect(await service.lookupTicket('work', 'ABC-2')).toEqual({ ok: true, ticket: null })
+    const none = setup({ tracker: fakeTracker({}, { noRead: true }).tracker })
+    expect(await none.service.lookupTicket('work', 'ABC-1')).toEqual({ ok: false, error: PLANNER_ERRORS.noRead })
+  })
+
+  it('edits pieces in the renderer form and converts between sources', () => {
+    const form = milestoneToForm({ ...pieces, source: { kind: 'items', items: [{ kind: 'ticket', key: 'ABC-1', weight: 7 }] } }, '2026-11-06')
+    expect(form).toMatchObject({ kind: 'items', pieces: [{ kind: 'ticket', key: 'ABC-1', weight: 7 }] })
+    expect(formToMilestone(form, 'p').source).toEqual({ kind: 'items', items: [{ kind: 'ticket', key: 'ABC-1', weight: 7 }] })
+    expect(formToMilestone({ ...form, kind: 'manual', progress: '40' }, 'p').source).toEqual({ kind: 'manual', progress: 40 })
+    expect(milestoneFormProblem({ ...form, pieces: [{ kind: 'ticket', key: 'ABC-1', weight: 7 }, { kind: 'ticket', key: 'ABC-1', weight: 2 }] })).toBe('planner.milestone.problem.pieces')
+    expect(milestoneFormProblem({ ...form, pieces: [] })).toBeNull()
+  })
+
+  it('offers the open tasks and bugs not already pieces, searched by title', () => {
+    const base = { detail: '', source: { type: 'manual' as const } }
+    const inbox = [
+      { ...base, id: 'a', kind: 'task' as const, title: 'Write the spec', status: 'local' as const, createdAt: 1 },
+      { ...base, id: 'b', kind: 'bug' as const, title: 'Fix the invite', status: 'pending' as const, createdAt: 2 },
+      { ...base, id: 'c', kind: 'decision' as const, title: 'Use cursors', status: 'local' as const, createdAt: 3 },
+      { ...base, id: 'd', kind: 'task' as const, title: 'Old one', status: 'done' as const, createdAt: 4 },
+      { ...base, id: 'e', kind: 'task' as const, title: 'Taken', status: 'local' as const, createdAt: 5 }
+    ]
+    expect(pieceTaskChoices(inbox, [{ kind: 'task', itemId: 'e', weight: 5 }], '').map((i) => i.id)).toEqual(['b', 'a'])
+    expect(pieceTaskChoices(inbox, [], 'SPEC').map((i) => i.id)).toEqual(['a'])
   })
 })

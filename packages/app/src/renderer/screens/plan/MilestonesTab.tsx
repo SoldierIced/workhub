@@ -1,16 +1,17 @@
 import { Bot, Check, ExternalLink, Flag, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
-import type { Connection, Milestone, MilestoneProposal } from '@workhub/core'
+import type { Connection, InboxItem, Milestone, MilestoneProposal } from '@workhub/core'
 import type { MilestoneView } from '@shared/planner-api'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
-import { Card, CardBody, CardHeader, EmptyState, Field, RefreshButton, useToast } from '../../components/molecules'
-import { useConfig } from '../../configStore'
+import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, Field, RefreshButton, useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { errorText } from '../../lib/errorText'
-import { formToMilestone, milestoneFormProblem, milestoneId, milestoneToForm, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, type MilestoneForm } from '../../lib/planner'
+import { milestoneFormProblem, milestoneId, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, plainPreview, type MilestoneForm } from '../../lib/planner'
 import { relativeTime } from '../../lib/pullRequests'
 import { usePlanner } from '../../plannerStore'
+import { LinksEditor } from './LinksEditor'
+import { PiecesEditor, PiecesList } from './MilestonePieces'
 import type { PlanTabContext } from './planTabs'
 
 /** A local `YYYY-MM-DD` as a date. */
@@ -30,7 +31,10 @@ export function MilestoneBar({ row, label }: { row: Pick<MilestoneView, 'progres
   )
 }
 
-function MilestoneEditor({ initial, takenIds, trackers, canSearch, onSave, onCancel }: { initial: MilestoneForm; takenIds: string[]; trackers: Connection[]; canSearch: boolean; onSave: (form: MilestoneForm, id: string) => Promise<boolean>; onCancel: () => void }) {
+/** Pieces shown on a milestone's row of the Milestones tab; the rest are counted, and listed in its window. */
+const ROW_PIECES = 5
+
+export function MilestoneEditor({ profileId, inbox, initial, takenIds, trackers, canSearch, onSave, onCancel }: { profileId: string; inbox: readonly InboxItem[]; initial: MilestoneForm; takenIds: string[]; trackers: Connection[]; canSearch: boolean; onSave: (form: MilestoneForm, id: string) => Promise<boolean>; onCancel: () => void }) {
   const { t } = useI18n()
   const [form, setForm] = useState(initial)
   const [problem, setProblem] = useState<MessageKey | null>(null)
@@ -48,7 +52,16 @@ function MilestoneEditor({ initial, takenIds, trackers, canSearch, onSave, onCan
     }
   }
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-accent/40 p-3" data-testid="milestone-editor">
+    <div
+      className="flex flex-col gap-3 rounded-md border border-accent/40 p-3"
+      data-testid="milestone-editor"
+      onKeyDown={(e) => {
+        // Esc cancels the form (in an edit window it goes back to the details; a new milestone's window closes).
+        if (e.key !== 'Escape' || e.defaultPrevented) return
+        e.preventDefault()
+        onCancel()
+      }}
+    >
       <div className="grid grid-cols-2 gap-3">
         <Field label={t('planner.milestone.name')} className="col-span-2">
           <Input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder={t('planner.milestone.namePlaceholder')} />
@@ -62,10 +75,11 @@ function MilestoneEditor({ initial, takenIds, trackers, canSearch, onSave, onCan
         <Field label={t('planner.milestone.source')}>
           <Select
             value={form.kind}
-            onChange={(v) => set({ kind: v === 'tracker' ? 'tracker' : 'manual' })}
+            onChange={(v) => set({ kind: v === 'tracker' ? 'tracker' : v === 'items' ? 'items' : 'manual' })}
             options={[
               { value: 'manual', label: t('planner.milestone.source.manual') },
-              ...(canSearch || form.kind === 'tracker' ? [{ value: 'tracker', label: t('planner.milestone.source.tracker') }] : [])
+              ...(canSearch || form.kind === 'tracker' ? [{ value: 'tracker', label: t('planner.milestone.source.tracker') }] : []),
+              { value: 'items', label: t('planner.milestone.source.items') }
             ]}
           />
         </Field>
@@ -73,10 +87,18 @@ function MilestoneEditor({ initial, takenIds, trackers, canSearch, onSave, onCan
           <Field label={t('planner.milestone.progress')}>
             <Input type="number" min={0} max={100} value={form.progress} onChange={(e) => set({ progress: e.target.value })} />
           </Field>
-        ) : (
+        ) : form.kind === 'tracker' ? (
           <Field label={t('planner.milestone.connection')}>
             <Select value={form.connectionId} onChange={(v) => set({ connectionId: v })} options={[{ value: '', label: t('planner.milestone.connectionDefault') }, ...trackers.map((c) => ({ value: c.id, label: c.name || c.id }))]} />
           </Field>
+        ) : (
+          <div />
+        )}
+        {form.kind === 'items' && (
+          <div className="col-span-2 flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-muted">{t('planner.pieces.title')}</span>
+            <PiecesEditor profileId={profileId} pieces={form.pieces} onChange={(pieces) => set({ pieces })} inbox={inbox} trackers={trackers} />
+          </div>
         )}
         {form.kind === 'tracker' && (
           <Field label={t('planner.milestone.query')} hint={t('planner.milestone.queryHint')} className="col-span-2">
@@ -86,8 +108,12 @@ function MilestoneEditor({ initial, takenIds, trackers, canSearch, onSave, onCan
         <Field label={t('planner.milestone.link')} className="col-span-2">
           <Input value={form.link} onChange={(e) => set({ link: e.target.value })} placeholder="https://" spellCheck={false} />
         </Field>
-        <Field label={t('planner.milestone.notes')} className="col-span-2">
-          <Textarea rows={3} value={form.notes} onChange={(e) => set({ notes: e.target.value })} />
+        <div className="col-span-2 flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-muted">{t('planner.links.title')}</span>
+          <LinksEditor rows={form.links} onChange={(links) => set({ links })} />
+        </div>
+        <Field label={t('planner.milestone.notes')} hint={t('planner.detail.markdownHint')} className="col-span-2">
+          <Textarea rows={5} value={form.notes} onChange={(e) => set({ notes: e.target.value })} />
         </Field>
       </div>
       {problem && (
@@ -107,9 +133,9 @@ function MilestoneEditor({ initial, takenIds, trackers, canSearch, onSave, onCan
   )
 }
 
-/** One line of what a milestone is: its dates and its progress (typed or counted). */
-function milestoneLine(m: Milestone, short: (day: string) => string, t: ReturnType<typeof useI18n>['t']): string {
-  const progress = m.source.kind === 'manual' ? t('planner.proposal.progress', { progress: m.source.progress }) : t('planner.proposal.query', { query: m.source.query })
+/** One line of what a milestone is: its dates and its progress (typed, counted or made of pieces). */
+function milestoneLine(m: Milestone, short: (day: string) => string, t: ReturnType<typeof useI18n>['t'], tn: ReturnType<typeof useI18n>['tn']): string {
+  const progress = m.source.kind === 'manual' ? t('planner.proposal.progress', { progress: m.source.progress }) : m.source.kind === 'tracker' ? t('planner.proposal.query', { query: m.source.query }) : tn('planner.proposal.pieces', m.source.items.length)
   return `${t('planner.milestone.dates', { start: short(m.start), end: short(m.end) })} · ${progress}`
 }
 
@@ -121,7 +147,7 @@ const PROPOSAL_TITLE: Record<MilestoneProposal['action'], MessageKey> = {
 
 /** Milestone changes agents asked for, waiting for the user to apply or reject them. */
 function ProposalsCard({ profileId, proposals, short }: { profileId: string; proposals: MilestoneProposal[]; short: (day: string) => string }) {
-  const { t, locale } = useI18n()
+  const { t, tn, locale } = useI18n()
   const toast = useToast()
   const [busy, setBusy] = useState<string | null>(null)
   const resolve = async (id: string, accept: boolean) => {
@@ -148,8 +174,8 @@ function ProposalsCard({ profileId, proposals, short }: { profileId: string; pro
                 <Bot className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
                 <div className="min-w-0 flex-1 text-sm">
                   <p className="font-medium">{t(PROPOSAL_TITLE[p.action], { name })}</p>
-                  {p.before && p.action === 'update' && <p className="text-xs text-subtle line-through">{milestoneLine(p.before, short, t)}</p>}
-                  {p.milestone && <p className="text-xs text-muted">{milestoneLine(p.milestone, short, t)}</p>}
+                  {p.before && p.action === 'update' && <p className="text-xs text-subtle line-through">{milestoneLine(p.before, short, t, tn)}</p>}
+                  {p.milestone && <p className="text-xs text-muted">{milestoneLine(p.milestone, short, t, tn)}</p>}
                   <p className="text-xs text-subtle">
                     {p.source.label ? `${p.source.label} · ` : ''}
                     {relativeTime(p.createdAt, Date.now(), locale)}
@@ -172,61 +198,40 @@ function ProposalsCard({ profileId, proposals, short }: { profileId: string; pro
   )
 }
 
-/** Milestones: periods of work with their progress against time, worst first. */
-export function MilestonesTab({ profile }: PlanTabContext) {
+/** Milestones: periods of work with their progress against time, worst first. Details and the editor open in windows of their own. */
+export function MilestonesTab({ profile, openItem }: PlanTabContext) {
   const { t, formatDate, locale } = useI18n()
   const toast = useToast()
-  const snap = useConfig()
-  const { view, loading, refresh, reload } = usePlanner(profile.id, true)
-  const [editing, setEditing] = useState<MilestoneForm | null>(null)
-  const trackers = (snap?.config.connections ?? []).filter((c) => c.kind === 'tracker')
+  const { view, loading, refresh } = usePlanner(profile.id, true)
+  // The milestone whose Delete waits for the user's confirmation.
+  const [deleting, setDeleting] = useState<Milestone | null>(null)
   const rows = view?.milestones ?? []
-  const today = view?.today ?? ''
   const short = (day: string) => formatDate(dayDate(day), { day: 'numeric', month: 'short' })
 
-  const save = async (form: MilestoneForm, id: string) => {
+  const remove = async (id: string) => {
     try {
-      const r = await window.hub.planner.saveMilestone(profile.id, formToMilestone(form, id))
-      if (!r.ok) {
-        toast(r.error, 'danger')
-        return false
-      }
-      setEditing(null)
-      await reload()
-      return true
+      const r = await window.hub.planner.deleteMilestone(profile.id, id)
+      if (!r.ok) toast(r.error, 'danger')
     } catch (e) {
       toast(errorText(e), 'danger')
-      return false
     }
-  }
-  const remove = async (id: string) => {
-    const r = await window.hub.planner.deleteMilestone(profile.id, id)
-    if (!r.ok) toast(r.error, 'danger')
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="flex-1 text-sm text-muted">{t('planner.milestones.intro')}</p>
-        {rows.some((r) => r.milestone.source.kind === 'tracker') && <RefreshButton variant="button" label={t('planner.milestones.refresh')} loading={loading} onRefresh={refresh} />}
-        <Button size="sm" variant="primary" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => setEditing(milestoneToForm(undefined, today))}>
+        {rows.some((r) => r.milestone.source.kind === 'tracker' || (r.milestone.source.kind === 'items' && r.milestone.source.items.some((p) => p.kind === 'ticket'))) && <RefreshButton variant="button" label={t('planner.milestones.refresh')} loading={loading} onRefresh={refresh} />}
+        <Button size="sm" variant="primary" icon={<Plus className="size-3.5" aria-hidden />} onClick={() => window.hub.planner.openWindow({ profileId: profile.id, kind: 'milestone', new: true })}>
           {t('planner.milestones.add')}
         </Button>
       </div>
       {(view?.proposals.length ?? 0) > 0 && <ProposalsCard profileId={profile.id} proposals={view!.proposals} short={short} />}
-      {editing && (
-        <Card>
-          <CardHeader title={editing.id ? t('planner.milestone.editTitle') : t('planner.milestone.newTitle')} />
-          <CardBody>
-            <MilestoneEditor key={editing.id ?? 'new'} initial={editing} takenIds={rows.map((r) => r.milestone.id)} trackers={trackers} canSearch={view?.tracker.search ?? false} onSave={save} onCancel={() => setEditing(null)} />
-          </CardBody>
-        </Card>
-      )}
       {!view ? (
         <p className="flex items-center gap-2 py-6 text-sm text-muted" role="status">
           <Spinner /> {t('plan.loading')}
         </p>
-      ) : rows.length === 0 && !editing ? (
+      ) : rows.length === 0 ? (
         <EmptyState compact icon={<Flag className="size-5" aria-hidden />} title={t('planner.milestones.empty')} description={t('planner.milestones.emptyHint')} />
       ) : (
         <ul className="rounded-lg border border-border bg-surface shadow-sm" data-testid="milestones">
@@ -237,7 +242,9 @@ export function MilestonesTab({ profile }: PlanTabContext) {
                 <div className="flex flex-wrap items-center gap-3">
                   <Badge tone={MILESTONE_STATUS_TONE[row.status]}>{t(MILESTONE_STATUS_LABEL[row.status])}</Badge>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-semibold">{m.name}</p>
+                    <button type="button" className="block max-w-full truncate rounded-sm text-left text-base font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" title={t('planner.detail.open')} onClick={() => openItem('milestone', m.id)}>
+                      {m.name}
+                    </button>
                     <p className="flex flex-wrap gap-x-2 text-xs text-muted">
                       <span className="tabular-nums">{t('planner.milestone.dates', { start: short(m.start), end: short(m.end) })}</span>
                       <span className="tabular-nums">{t('planner.milestone.progressOf', { progress: row.progress, elapsed: row.elapsed })}</span>
@@ -248,8 +255,8 @@ export function MilestonesTab({ profile }: PlanTabContext) {
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     {m.link && <Button size="sm" variant="ghost" icon={<ExternalLink className="size-3.5" aria-hidden />} aria-label={t('planner.milestone.openLink')} title={t('planner.milestone.openLink')} onClick={() => window.hub.openExternal(m.link!, profile.id)} />}
-                    <Button size="sm" variant="ghost" icon={<Pencil className="size-3.5" aria-hidden />} aria-label={t('planner.milestone.edit', { name: m.name })} onClick={() => setEditing(milestoneToForm(m, today))} />
-                    <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" aria-hidden />} aria-label={t('planner.milestone.remove', { name: m.name })} onClick={() => void remove(m.id)} />
+                    <Button size="sm" variant="ghost" icon={<Pencil className="size-3.5" aria-hidden />} aria-label={t('planner.milestone.edit', { name: m.name })} title={t('planner.milestone.edit', { name: m.name })} onClick={() => window.hub.planner.openWindow({ profileId: profile.id, kind: 'milestone', id: m.id, edit: true })} />
+                    <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" aria-hidden />} aria-label={t('planner.milestone.remove', { name: m.name })} title={t('planner.milestone.remove', { name: m.name })} onClick={() => setDeleting(m)} />
                   </div>
                 </div>
                 <MilestoneBar row={row} label={t('planner.milestone.barLabel', { name: m.name, progress: row.progress, elapsed: row.elapsed })} />
@@ -258,12 +265,22 @@ export function MilestonesTab({ profile }: PlanTabContext) {
                     {t('planner.milestone.countFailed', { message: row.error })}
                   </p>
                 )}
-                {m.notes && <p className="whitespace-pre-wrap text-sm text-muted">{m.notes}</p>}
+                {row.pieces && <PiecesList pieces={row.pieces} profileId={profile.id} compact limit={ROW_PIECES} />}
+                {m.notes && <p className="line-clamp-2 whitespace-pre-wrap text-sm text-muted">{plainPreview(m.notes)}</p>}
               </li>
             )
           })}
         </ul>
       )}
+      <ConfirmDeleteDialog
+        name={deleting?.name ?? ''}
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={t('planner.milestone.confirmDelete', { name: deleting?.name ?? '' })}
+        onConfirm={() => {
+          if (deleting) void remove(deleting.id)
+        }}
+      />
     </div>
   )
 }

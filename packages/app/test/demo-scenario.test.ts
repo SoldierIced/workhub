@@ -66,8 +66,10 @@ describe('seedScenarioState', () => {
     const planner = JSON.parse(readFileSync(join(dir, PLANNER_STATE_FILE), 'utf8')) as PlannerState
     const metrics = JSON.parse(readFileSync(join(dir, METRIC_ALERTS_FILE), 'utf8')) as MetricAlertsState
     const p = planner.profiles[PRODUCT_PROFILE_ID]!
-    expect(p.milestones).toHaveLength(6)
+    expect(p.milestones).toHaveLength(7)
     expect(Object.keys(p.counts)).toHaveLength(5)
+    // The pieces' tickets and those of the items in the tracker are seeded, so they show before the first read.
+    expect(Object.keys(p.tickets).sort()).toEqual(['acme-notes-tracker-demo|NOTE-252', 'acme-notes-tracker-demo|NOTE-255', 'acme-notes-tracker-demo|WEB-34', '|NOTE-238', '|NOTE-253'])
     expect(p.inbox.some((i) => i.source.type === 'alert')).toBe(true)
     expect(metrics.profiles[PRODUCT_PROFILE_ID]!.alerts.length).toBeGreaterThan(8)
     writeFileSync(join(dir, PLANNER_STATE_FILE), '{"profiles":{}}')
@@ -91,10 +93,18 @@ describe('the seeded scenario through the services', () => {
     const demo = new DemoTracker('jira', { scenario: 'team-lead' })
     const service = new PlannerService({ profiles, store: { load: () => stored, save: () => undefined }, tracker: async () => ({ tracker: demo }), changed: () => undefined, now: () => NOW })
     const statuses = (view: Awaited<ReturnType<typeof service.view>>) => Object.fromEntries(view.milestones.map((m) => [m.milestone.id, m.status]))
-    const expected = { 'ms-sso': 'onTrack', 'ms-activation': 'atRisk', 'ms-billing': 'late', 'ms-offline': 'notStarted', 'ms-docs': 'done', 'ms-offsite': 'onTrack' }
+    const expected = { 'ms-sso': 'onTrack', 'ms-activation': 'atRisk', 'ms-billing': 'late', 'ms-offline': 'notStarted', 'ms-docs': 'done', 'ms-offsite': 'onTrack', 'ms-invites': 'onTrack' }
     expect(statuses(await service.view(PRODUCT_PROFILE_ID))).toEqual(expected)
     expect(statuses(await service.refreshMilestones(PRODUCT_PROFILE_ID))).toEqual(expected)
     const view = await service.view(PRODUCT_PROFILE_ID)
+    expect(view.milestones.find((m) => m.milestone.id === 'ms-invites')).toMatchObject({ progress: 36 })
+    expect(view.milestones.find((m) => m.milestone.id === 'ms-invites')!.pieces!.map((p) => p.state)).toEqual(['done', 'inProgress', 'todo', 'done'])
+    // After a read from the demo tracker, the items in the tracker are still open with their tickets' states.
+    expect(view.inbox.filter((i) => i.ticket).map((i) => [i.ticket!.key, i.status, view.itemTickets[i.id]?.category]).sort()).toEqual([
+      ['NOTE-252', 'local', 'todo'],
+      ['NOTE-255', 'ticket', 'inProgress'],
+      ['WEB-34', 'ticket', 'todo']
+    ])
     expect(view.tracker).toMatchObject({ search: true, create: true })
     expect(view.inbox.filter((i) => i.status === 'pending')).toHaveLength(4)
   })

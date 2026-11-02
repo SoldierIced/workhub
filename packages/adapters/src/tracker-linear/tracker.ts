@@ -193,6 +193,38 @@ export class LinearTracker implements TicketTracker {
     return out.slice(0, limit)
   }
 
+  /**
+   * Issues by identifier (`ENG-12`) in one filtered query: the team key and the number, OR-ed per
+   * team. Identifiers Linear does not know are left out.
+   */
+  async readTickets(keys: readonly string[]): Promise<TicketSummary[]> {
+    const byTeam = new Map<string, Set<number>>()
+    for (const raw of keys) {
+      const m = /^([A-Z][A-Z0-9_]*)-(\d+)$/.exec(raw.trim().toUpperCase())
+      if (!m) continue
+      const numbers = byTeam.get(m[1]!) ?? new Set<number>()
+      numbers.add(Number(m[2]))
+      byTeam.set(m[1]!, numbers)
+    }
+    if (byTeam.size === 0) return []
+    const teams = [...byTeam].map(([key, numbers]) => ({ team: { key: { eq: key } }, number: { in: [...numbers] } }))
+    const filter = teams.length === 1 ? teams[0] : { or: teams }
+    const out: TicketSummary[] = []
+    let after: string | null = null
+    for (;;) {
+      const data = await this.query(
+        `query($filter: IssueFilter, $first: Int!, $after: String) { issues(filter: $filter, first: $first, after: $after) { nodes { identifier title url state { name type } } pageInfo { hasNextPage endCursor } } }`,
+        { filter, first: 100, after }
+      )
+      const nodes = (data['issues']?.nodes as Json[] | undefined) ?? []
+      for (const n of nodes) out.push({ key: String(n['identifier']), title: String(n['title'] ?? ''), status: String(n['state']?.name ?? ''), category: linearCategory(n['state']?.type), ...(typeof n['url'] === 'string' ? { url: n['url'] } : {}) })
+      const page = data['issues']?.pageInfo as Json | undefined
+      after = page?.['hasNextPage'] && typeof page['endCursor'] === 'string' ? page['endCursor'] : null
+      if (!after || nodes.length === 0) break
+    }
+    return out
+  }
+
   /** A new issue in the team with key `input.project`; labels are matched by name in that team, unknown ones skipped. */
   async createIssue(input: CreateIssueInput): Promise<CreatedIssue> {
     const teamKey = input.project.trim().toUpperCase()

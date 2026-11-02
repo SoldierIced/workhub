@@ -13,8 +13,10 @@ import {
   type InboxKind,
   type InboxProposal,
   type InboxSettings,
-  type InboxSource
+  type InboxSource,
+  type InboxTicket
 } from './types'
+import { parsePlanLinks } from './links'
 
 /** A profile's inbox setup with the defaults filled in. */
 export function inboxSettings(planner: { inbox?: Partial<InboxSettings> } | null | undefined): InboxSettings {
@@ -22,9 +24,17 @@ export function inboxSettings(planner: { inbox?: Partial<InboxSettings> } | null
   return { ...DEFAULT_INBOX_SETTINGS, ...s, issueTypes: { ...DEFAULT_INBOX_SETTINGS.issueTypes, ...s.issueTypes } }
 }
 
-/** Pending or kept: an item still to act on. */
+/** Pending, kept, or in the tracker and not done yet: an item still to act on. */
 export function isOpenItem(item: Pick<InboxItem, 'status'>): boolean {
-  return item.status === 'pending' || item.status === 'local'
+  return item.status === 'pending' || item.status === 'local' || item.status === 'ticket'
+}
+
+/**
+ * A task or bug whose ticket the tracker decides on: one sent to the tracker (`ticket`), or a local
+ * one linked to an existing ticket. It becomes done when the ticket is (`markTicketDone`).
+ */
+export function followsTicket(item: Pick<InboxItem, 'status' | 'kind' | 'ticket'>): boolean {
+  return item.ticket !== undefined && item.kind !== 'decision' && (item.status === 'ticket' || item.status === 'local')
 }
 
 /** A title reduced for comparison: lower case, no accents, punctuation as spaces, single spaces. */
@@ -58,11 +68,14 @@ export function priorityOf(criticality: string | undefined, levels: readonly Cri
 export interface InboxGroups {
   /** Waiting for approval, newest first. */
   pending: InboxItem[]
-  /** Local tasks and bugs: overdue or due today, then critical and high, then the rest. */
-  tasks: { due: InboxItem[]; urgent: InboxItem[]; rest: InboxItem[] }
+  /**
+   * Local tasks and bugs: overdue or due today, then critical and high, then the rest; and those
+   * whose ticket the tracker decides on (`followsTicket`), until it is done.
+   */
+  tasks: { due: InboxItem[]; urgent: InboxItem[]; rest: InboxItem[]; tracker: InboxItem[] }
   /** Recorded decisions, newest first. */
   decisions: InboxItem[]
-  /** Closed in the last week (done, discarded, sent to the tracker), newest first. */
+  /** Closed in the last week (done, discarded), newest first. */
   closed: InboxItem[]
 }
 
@@ -71,9 +84,10 @@ const newest = (a: InboxItem, b: InboxItem) => b.createdAt - a.createdAt
 const newestClosed = (a: InboxItem, b: InboxItem) => (b.closedAt ?? b.createdAt) - (a.closedAt ?? a.createdAt)
 
 export function groupInbox(items: readonly InboxItem[], today: string, levels: readonly CriticalityLevel[]): InboxGroups {
-  const groups: InboxGroups = { pending: [], tasks: { due: [], urgent: [], rest: [] }, decisions: [], closed: [] }
+  const groups: InboxGroups = { pending: [], tasks: { due: [], urgent: [], rest: [], tracker: [] }, decisions: [], closed: [] }
   for (const item of items) {
     if (item.status === 'pending') groups.pending.push(item)
+    else if (followsTicket(item)) groups.tasks.tracker.push(item)
     else if (item.status === 'local' && item.kind === 'decision') groups.decisions.push(item)
     else if (item.status === 'local') {
       if (item.due && item.due <= today) groups.tasks.due.push(item)
@@ -85,17 +99,21 @@ export function groupInbox(items: readonly InboxItem[], today: string, levels: r
   groups.tasks.due.sort(byDueThenNewest)
   groups.tasks.urgent.sort(byDueThenNewest)
   groups.tasks.rest.sort(byDueThenNewest)
+  groups.tasks.tracker.sort(byDueThenNewest)
   groups.decisions.sort(newest)
   groups.closed.sort(newestClosed)
   return groups
 }
 
-/** Drops closed items older than a week, then the oldest closed ones beyond `INBOX_LIMITS.items`. */
-export function cleanupInbox(items: readonly InboxItem[], now: number): InboxItem[] {
-  const kept = items.filter((i) => isOpenItem(i) || i.closedAt === undefined || now - i.closedAt < INBOX_RETENTION_MS)
+/**
+ * Drops closed items older than a week, then the oldest closed ones beyond `INBOX_LIMITS.items`.
+ * Items in `keep` (the tasks a milestone is made of) are never dropped, so its progress holds.
+ */
+export function cleanupInbox(items: readonly InboxItem[], now: number, keep: ReadonlySet<string> = new Set()): InboxItem[] {
+  const kept = items.filter((i) => isOpenItem(i) || keep.has(i.id) || i.closedAt === undefined || now - i.closedAt < INBOX_RETENTION_MS)
   if (kept.length <= INBOX_LIMITS.items) return kept
   const extra = kept.length - INBOX_LIMITS.items
-  const drop = new Set(kept.filter((i) => !isOpenItem(i)).sort((a, b) => (a.closedAt ?? a.createdAt) - (b.closedAt ?? b.createdAt)).slice(0, extra).map((i) => i.id))
+  const drop = new Set(kept.filter((i) => !isOpenItem(i) && !keep.has(i.id)).sort((a, b) => (a.closedAt ?? a.createdAt) - (b.closedAt ?? b.createdAt)).slice(0, extra).map((i) => i.id))
   return kept.filter((i) => !drop.has(i.id))
 }
 
@@ -110,7 +128,8 @@ export function availableInboxActions(item: Pick<InboxItem, 'status' | 'kind'>):
     case 'discarded':
       return ['reopen']
     case 'ticket':
-      return []
+      // Closed by hand when the tracker cannot say (it is done on its own once the ticket is).
+      return ['done']
   }
 }
 
@@ -160,9 +179,31 @@ export function moveInboxItem(item: InboxItem, target: InboxItem['status'], now:
   return next
 }
 
-/** An approved task or bug once its tracker issue exists. */
-export function withTicket(item: InboxItem, ticket: { key: string; url?: string }, now: number): InboxItem {
-  return { ...item, status: 'ticket', ticket: { key: ticket.key, ...(ticket.url ? { url: ticket.url } : {}) }, closedAt: now }
+/** An approved task or bug once its tracker issue exists: it stays open until the ticket is done. */
+export function withTicket(item: InboxItem, ticket: InboxTicket): InboxItem {
+  const { closedAt: _closed, ...open } = item
+  return { ...open, status: 'ticket', ticket: { key: ticket.key, ...(ticket.url ? { url: ticket.url } : {}), ...(ticket.connectionId ? { connectionId: ticket.connectionId } : {}) } }
+}
+
+/**
+ * A local task or bug linked to an existing ticket (`ticket`), or unlinked (null). Null when the
+ * item cannot be: only local tasks and bugs are linked; an item sent to the tracker that is
+ * unlinked goes back to a local task. Linking never creates a ticket.
+ */
+export function linkTicket(item: InboxItem, ticket: InboxTicket | null): InboxItem | null {
+  if (item.kind === 'decision') return null
+  const { ticket: _old, ...rest } = item
+  if (ticket === null) {
+    if (item.status === 'ticket') return { ...rest, status: 'local' }
+    return item.status === 'local' ? rest : null
+  }
+  if (item.status !== 'local') return null
+  return { ...rest, ticket: { key: ticket.key, ...(ticket.url ? { url: ticket.url } : {}), ...(ticket.connectionId ? { connectionId: ticket.connectionId } : {}) } }
+}
+
+/** An item that follows its ticket, marked done because the tracker says the ticket is; null when it does not follow one. */
+export function markTicketDone(item: InboxItem, now: number): InboxItem | null {
+  return followsTicket(item) ? { ...item, status: 'done', closedAt: now } : null
 }
 
 /** Sets area, criticality or due on the items with these ids. */
@@ -223,6 +264,8 @@ export function parseInboxProposal(value: unknown): InboxProposal | string {
   if (people !== undefined && (!Array.isArray(people) || people.length > INBOX_LIMITS.people || people.some((p) => typeof p !== 'string' || p.length > 320))) return `"people" must be a list of at most ${INBOX_LIMITS.people} names, emails or ids`
   const link = v['link']
   if (link !== undefined && (typeof link !== 'string' || !/^https?:\/\//i.test(link) || link.length > 2000)) return '"link" must be an http(s) address'
+  const links = v['links'] === undefined || v['links'] === null ? [] : parsePlanLinks(v['links'])
+  if (typeof links === 'string') return links
   const short = (x: unknown) => (typeof x === 'string' && x.trim() && x.length <= 200 ? x.trim() : undefined)
   const area = short(v['area'])
   const criticality = short(v['criticality'])
@@ -234,7 +277,8 @@ export function parseInboxProposal(value: unknown): InboxProposal | string {
     ...(typeof v['due'] === 'string' ? { due: v['due'] } : {}),
     ...(area ? { area } : {}),
     ...(criticality ? { criticality } : {}),
-    ...(typeof link === 'string' ? { link } : {})
+    ...(typeof link === 'string' ? { link } : {}),
+    ...(links.length > 0 ? { links } : {})
   }
 }
 
@@ -280,6 +324,7 @@ export function newInboxItem(proposal: InboxProposal, source: InboxSource, id: s
     ...(proposal.due ? { due: proposal.due } : {}),
     ...(ids.length > 0 ? { people: ids } : {}),
     ...(proposal.link ? { link: proposal.link } : {}),
+    ...(proposal.links && proposal.links.length > 0 ? { links: proposal.links } : {}),
     status: 'pending',
     createdAt: now
   }

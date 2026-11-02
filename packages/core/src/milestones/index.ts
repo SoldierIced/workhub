@@ -1,10 +1,15 @@
 /**
- * Plan milestones: a named period of work whose progress is typed by hand or counted from a tracker
- * query. Pure: the main process fetches the counts and stores the list (`planner-state.json`).
+ * Plan milestones: a named period of work whose progress is typed by hand, counted from a tracker
+ * query, or weighed from its pieces (tickets, local tasks, links). Pure: the main process fetches
+ * the counts and the tickets' states and stores the list (`planner-state.json`).
  */
 import { daysBetween, isDay } from '../alerts/days'
+import { parsePlanLinks, planLinksOk, type PlanEditor, type PlanLink } from '../inbox/links'
+import { parsePieces, piecesOk, type MilestonePiece } from './pieces'
 
-export type MilestoneSource = { kind: 'manual'; progress: number } | { kind: 'tracker'; connectionId?: string; query: string }
+export * from './pieces'
+
+export type MilestoneSource = { kind: 'manual'; progress: number } | { kind: 'tracker'; connectionId?: string; query: string } | { kind: 'items'; items: MilestonePiece[] }
 
 export interface Milestone {
   id: string
@@ -13,8 +18,15 @@ export interface Milestone {
   start: string
   end: string
   source: MilestoneSource
+  /** Markdown. */
   notes?: string
   link?: string
+  /** More labelled links; at most `PLAN_LINK_LIMITS.items`. */
+  links?: PlanLink[]
+  /** Epoch ms of its creation and of its last change, and who made that change (set by the Plan service). */
+  createdAt?: number
+  updatedAt?: number
+  updatedBy?: PlanEditor
 }
 
 /** What a tracker query counted for a milestone, and when. */
@@ -51,26 +63,29 @@ const clamp100 = (n: number) => Math.min(100, Math.max(0, Math.round(Number.isFi
 
 /**
  * Where a milestone stands on `today`:
- * - done: all its work is done (manual 100 %, or every ticket of the query done);
+ * - done: all its work is done (manual 100 %, every ticket of the query done, or every piece done);
  * - notStarted: before its start;
  * - late: past its end and not done;
- * - atRisk: progress behind the share of time gone by more than `margin` points, or a tracker
- *   milestone that started and whose query finds no ticket;
+ * - atRisk: progress behind the share of time gone by more than `margin` points, or a counted
+ *   milestone that started with nothing to count (a query that finds no ticket, no pieces);
  * - onTrack: otherwise.
- * A tracker milestone not counted yet counts as 0 % done.
+ * `counts` is the query's count of a tracker milestone (not counted yet: 0 % done), or the weights
+ * of a pieces milestone (`pieceTally`: `total` all weights, `done` those of the done pieces).
+ * A counted milestone shows 100 % only when it is done.
  */
 export function milestoneStatus(m: Pick<Milestone, 'start' | 'end' | 'source'>, counts: Pick<MilestoneCounts, 'total' | 'done'> | undefined, today: string, margin = DEFAULT_MILESTONE_MARGIN): MilestoneProgress {
-  const tracker = m.source.kind === 'tracker'
-  const progress = m.source.kind === 'manual' ? clamp100(m.source.progress) : counts && counts.total > 0 ? clamp100((counts.done / counts.total) * 100) : 0
+  const manual = m.source.kind === 'manual' ? clamp100(m.source.progress) : null
+  const counted = manual === null
+  const done = manual !== null ? manual >= 100 : Boolean(counts && counts.total > 0 && counts.done >= counts.total)
+  const progress = manual ?? (done ? 100 : counts && counts.total > 0 ? Math.min(99, clamp100((counts.done / counts.total) * 100)) : 0)
   const span = daysBetween(m.start, m.end)
   const gone = daysBetween(m.start, today)
   const elapsed = gone < 0 ? 0 : span <= 0 ? 100 : clamp100((gone / span) * 100)
-  const done = tracker ? Boolean(counts && counts.total > 0 && counts.done >= counts.total) : progress >= 100
   let status: MilestoneStatusKind
   if (done) status = 'done'
   else if (gone < 0) status = 'notStarted'
   else if (daysBetween(m.end, today) > 0) status = 'late'
-  else if ((tracker && counts !== undefined && counts.total === 0) || elapsed - progress > margin) status = 'atRisk'
+  else if ((counted && counts !== undefined && counts.total === 0) || elapsed - progress > margin) status = 'atRisk'
   else status = 'onTrack'
   return { status, progress, elapsed }
 }
@@ -91,9 +106,12 @@ export function milestoneProblems(m: Milestone): string[] {
   if (isDay(m.start) && isDay(m.end) && daysBetween(m.start, m.end) < 0) problems.push('order')
   if (m.source.kind === 'manual') {
     if (!Number.isFinite(m.source.progress) || m.source.progress < 0 || m.source.progress > 100) problems.push('progress')
+  } else if (m.source.kind === 'items') {
+    if (!piecesOk(m.source.items)) problems.push('pieces')
   } else if (!m.source.query.trim() || m.source.query.length > MILESTONE_LIMITS.query) problems.push('query')
   if (m.notes !== undefined && m.notes.length > MILESTONE_LIMITS.notes) problems.push('notes')
   if (m.link !== undefined && m.link !== '' && (!/^https?:\/\//i.test(m.link) || m.link.length > MILESTONE_LIMITS.link)) problems.push('link')
+  if (m.links !== undefined && !planLinksOk(m.links)) problems.push('links')
   return problems
 }
 
@@ -106,8 +124,15 @@ export function parseMilestone(value: unknown): Milestone | null {
   let source: MilestoneSource
   if (src?.['kind'] === 'manual' && typeof src['progress'] === 'number') source = { kind: 'manual', progress: Math.round(src['progress']) }
   else if (src?.['kind'] === 'tracker' && typeof src['query'] === 'string') source = { kind: 'tracker', query: src['query'].trim(), ...(str(src['connectionId']) ? { connectionId: str(src['connectionId']) } : {}) }
-  else return null
-  const m: Milestone = { id: str(v['id']), name: str(v['name']), start: str(v['start']), end: str(v['end']), source, ...(str(v['notes']) ? { notes: str(v['notes']) } : {}), ...(str(v['link']) ? { link: str(v['link']) } : {}) }
+  else if (src?.['kind'] === 'items') {
+    const items = parsePieces(src['items'])
+    if (typeof items === 'string') return null
+    source = { kind: 'items', items }
+  } else return null
+  const links = v['links'] === undefined || v['links'] === null ? [] : parsePlanLinks(v['links'])
+  if (typeof links === 'string') return null
+  // The dates and who changed it are the Plan service's to set, never taken from the caller.
+  const m: Milestone = { id: str(v['id']), name: str(v['name']), start: str(v['start']), end: str(v['end']), source, ...(str(v['notes']) ? { notes: str(v['notes']) } : {}), ...(str(v['link']) ? { link: str(v['link']) } : {}), ...(links.length > 0 ? { links } : {}) }
   return milestoneProblems(m).length === 0 ? m : null
 }
 
@@ -143,28 +168,41 @@ export interface MilestoneProposal {
   createdAt: number
 }
 
-/** Fields an agent may change on a milestone; a progress applies to a manual one, a query to a tracker one. */
+/**
+ * Fields an agent may change on a milestone; a progress applies to a manual one, a query to a
+ * tracker one. `items` replaces the pieces, and turns any milestone into one made of pieces.
+ */
 export interface MilestonePatch {
   name?: string
   start?: string
   end?: string
   progress?: number
   query?: string
+  items?: MilestonePiece[]
   notes?: string | null
   link?: string | null
+  /** Replaces the list; null or empty clears it. */
+  links?: PlanLink[] | null
 }
 
 /** The milestone with a patch applied; a string says why it cannot be (the result is checked as a whole). */
 export function patchMilestone(m: Milestone, patch: MilestonePatch): Milestone | string {
-  if (patch.progress !== undefined && m.source.kind !== 'manual') return '"progress" applies to a milestone typed by hand; this one is counted from a tracker query'
-  if (patch.query !== undefined && m.source.kind !== 'tracker') return '"query" applies to a milestone counted from a tracker; this one is typed by hand'
+  const kindName = { manual: 'typed by hand', tracker: 'counted from a tracker query', items: 'made of pieces' }[m.source.kind]
+  if (patch.items !== undefined && (patch.progress !== undefined || patch.query !== undefined)) return '"items" cannot go with "progress" or "query"'
+  if (patch.progress !== undefined && m.source.kind !== 'manual') return `"progress" applies to a milestone typed by hand; this one is ${kindName}`
+  if (patch.query !== undefined && m.source.kind !== 'tracker') return `"query" applies to a milestone counted from a tracker; this one is ${kindName}`
   const source: MilestoneSource =
-    m.source.kind === 'manual'
-      ? { kind: 'manual', progress: patch.progress !== undefined ? Math.round(patch.progress) : m.source.progress }
-      : { ...m.source, ...(patch.query !== undefined ? { query: patch.query.trim() } : {}) }
-  const { notes: _n, link: _l, ...rest } = m
+    patch.items !== undefined
+      ? { kind: 'items', items: patch.items }
+      : m.source.kind === 'manual'
+        ? { kind: 'manual', progress: patch.progress !== undefined ? Math.round(patch.progress) : m.source.progress }
+        : m.source.kind === 'tracker'
+          ? { ...m.source, ...(patch.query !== undefined ? { query: patch.query.trim() } : {}) }
+          : m.source
+  const { notes: _n, link: _l, links: _ls, ...rest } = m
   const notes = patch.notes === undefined ? m.notes : patch.notes?.trim() || undefined
   const link = patch.link === undefined ? m.link : patch.link?.trim() || undefined
+  const links = patch.links === undefined ? m.links : patch.links ?? undefined
   const next: Milestone = {
     ...rest,
     ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
@@ -172,7 +210,8 @@ export function patchMilestone(m: Milestone, patch: MilestonePatch): Milestone |
     ...(patch.end !== undefined ? { end: patch.end.trim() } : {}),
     source,
     ...(notes ? { notes } : {}),
-    ...(link ? { link } : {})
+    ...(link ? { link } : {}),
+    ...(links && links.length > 0 ? { links } : {})
   }
   const problems = milestoneProblems(next)
   return problems.length === 0 ? next : `not a valid milestone: ${problems.join(', ')}`

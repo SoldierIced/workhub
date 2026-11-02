@@ -4,6 +4,7 @@
  * is recorded; or it is kept as a local task, or discarded. Nothing becomes a ticket without approval.
  */
 import type { IssuePriority } from '../tickets/types'
+import type { PlanEditor, PlanLink } from './links'
 
 export const INBOX_KINDS = ['task', 'bug', 'decision'] as const
 export type InboxKind = (typeof INBOX_KINDS)[number]
@@ -11,8 +12,10 @@ export type InboxKind = (typeof INBOX_KINDS)[number]
 export const INBOX_STATUSES = ['pending', 'ticket', 'local', 'discarded', 'done'] as const
 /**
  * - pending: waiting for approval;
- * - ticket: approved and created in the tracker (`ticket` says where);
- * - local: kept in Workhub (a local task, or an approved decision);
+ * - ticket: approved and created in the tracker (`ticket` says where); still open, it becomes
+ *   `done` on its own once the tracker says the ticket is done;
+ * - local: kept in Workhub (a local task, or an approved decision); a task may be linked to an
+ *   existing ticket (`ticket`), and is then done the same way;
  * - discarded, done: closed; pruned a week after `closedAt`.
  */
 export type InboxStatus = (typeof INBOX_STATUSES)[number]
@@ -44,11 +47,24 @@ export interface InboxItem {
   people?: string[]
   /** A web link with more context (the alert's dashboard). */
   link?: string
+  /** More labelled links (docs, dashboards, pull requests); at most `PLAN_LINK_LIMITS.items`. */
+  links?: PlanLink[]
   status: InboxStatus
-  ticket?: { key: string; url?: string }
+  /** The tracker issue: created on approval, or an existing one linked to a local task. */
+  ticket?: InboxTicket
   /** Epoch ms. */
   createdAt: number
   closedAt?: number
+  /** Epoch ms of the last change after it was added, and who made it. */
+  updatedAt?: number
+  updatedBy?: PlanEditor
+}
+
+/** An item's tracker issue; without `connectionId` it is in the inbox's tracker (Settings → Plan → Inbox), else the profile's. */
+export interface InboxTicket {
+  key: string
+  url?: string
+  connectionId?: string
 }
 
 /** A criticality level of a profile and the tracker priority it maps to. */
@@ -125,4 +141,5 @@ export interface InboxProposal {
   area?: string
   criticality?: string
   link?: string
+  links?: PlanLink[]
 }

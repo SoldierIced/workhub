@@ -254,6 +254,30 @@ describe('JiraTracker search and create', () => {
     await expect(tracker.searchByQuery('  ')).rejects.toThrow(/empty/)
   })
 
+  it('reads tickets by key in one JQL search', async () => {
+    const { tracker, calls } = make({ 'GET /rest/api/3/search/jql': () => ({ body: { issues: [issue('PAY-1', status('Done', 'done')), issue('PAY-2', status('In Review', 'indeterminate'))], isLast: true } }) })
+    const found = await tracker.readTickets(['pay-1', 'PAY-2', 'PAY-2', 'not a key; DROP'])
+    expect(found.map((t) => [t.key, t.category, t.title])).toEqual([
+      ['PAY-1', 'done', 'Summary of PAY-1'],
+      ['PAY-2', 'inProgress', 'Summary of PAY-2']
+    ])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.url.searchParams.get('jql')).toBe('key in (PAY-1, PAY-2)')
+    expect(await tracker.readTickets([])).toEqual([])
+    expect(calls).toHaveLength(1)
+  })
+
+  it('reads keys one by one when Jira refuses the batch for an unknown key, leaving that key out', async () => {
+    const { tracker, calls } = make({
+      'GET /rest/api/3/search/jql': () => ({ status: 400, body: { errorMessages: ["An issue with key 'PAY-404' does not exist for field 'key'."] } }),
+      'GET /rest/api/3/issue/PAY-1': () => ({ body: issue('PAY-1', status('To Do', 'new')) })
+    })
+    const found = await tracker.readTickets(['PAY-1', 'PAY-404'])
+    expect(found.map((t) => [t.key, t.category])).toEqual([['PAY-1', 'todo']])
+    expect(calls.map((c) => c.url.pathname)).toEqual(['/rest/api/3/search/jql', '/rest/api/3/issue/PAY-1', '/rest/api/3/issue/PAY-404'])
+    expect(calls[1]!.url.searchParams.get('fields')).toBe('summary,status')
+  })
+
   it('creates an issue with an ADF description, a mapped priority and labels without spaces', async () => {
     const { tracker, calls } = make({ 'POST /rest/api/3/issue': () => ({ status: 201, body: { id: '10001', key: 'PAY-124' } }) })
     const created = await tracker.createIssue({ project: 'PAY', issueType: 'Bug', title: 'Checkout errors jumped', description: 'Value 90.\n\nSource: alert', priority: 2, labels: ['from inbox'] })

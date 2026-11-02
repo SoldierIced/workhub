@@ -68,6 +68,8 @@ export const planEs: Record<keyof typeof planEn, string> = {
   'plan.people.pickHint': 'Elegí una persona a la izquierda, o agregá una, para ver tus reuniones con ella y preparar un 1:1.',
   'plan.people.oneOnOne': 'Preparar 1:1',
   'plan.people.remove': 'Quitar a {name}',
+  'plan.people.confirmDelete': '¿Eliminar a “{name}” de tus personas?',
+  'plan.people.confirmDeleteBody': 'Sus reuniones siguen en tu calendario; se pierden sus notas y sus datos para los briefs.',
   'plan.people.save': 'Guardar',
   'plan.people.saved': 'Guardado',
   'plan.people.saveFailed': 'No se pudo guardar la persona',

@@ -164,6 +164,19 @@ describe('GET and PATCH /v1/inbox', () => {
     expect((await planner.view('work')).inbox[0]).not.toHaveProperty('due')
   })
 
+  it('takes links on an item, marks the change as an agent\'s and lists them', async () => {
+    const { planner, control } = setup()
+    await planner.propose('work', [{ kind: 'task', title: 'Write the docs', detail: '', links: [{ label: 'Draft', url: 'https://example.com/draft' }] }], { type: 'agent' })
+    expect(((await control.inbox(q())).body['items'] as unknown[])[0]).toMatchObject({ links: [{ label: 'Draft', url: 'https://example.com/draft' }] })
+    const links = [{ label: 'Pull request', url: 'https://example.com/pr/1' }]
+    expect(await control.updateItem('id1', { links }, q('session=s1'))).toMatchObject({ status: 200, body: { item: { links, updatedAt: new Date(NOW).toISOString(), updatedBy: 'agent' } } })
+    expect((await planner.view('work')).inbox[0]).toMatchObject({ links, updatedBy: 'agent' })
+    expect((await control.updateItem('id1', { links: null }, q())).body['item']).not.toHaveProperty('links')
+    expect(parseInboxUpdate({ links: [{ url: 'ssh://example.com' }] })).toMatch(/http\(s\)/)
+    expect(parseInboxUpdate({ links: 'https://example.com' })).toMatch(/list/)
+    expect((await control.updateItem('id1', { links: [{ url: 'nope' }] }, q())).status).toBe(400)
+  })
+
   it('refuses unknown items, moves with no local path, full details and Plan off', async () => {
     const { planner, control } = setup()
     await planner.propose('work', [{ kind: 'decision', title: 'Use cursor pagination', detail: 'x'.repeat(INBOX_LIMITS.detail - 10) }], { type: 'agent' })
@@ -187,7 +200,7 @@ describe('GET /v1/milestones and /v1/people', () => {
       today: '2026-11-06',
       agentChanges: 'ask',
       pending: [],
-      milestones: [{ id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', status: 'atRisk', progress: 30, elapsed: 50, source: 'manual' }]
+      milestones: [{ id: 'beta', name: 'Beta', start: '2026-11-01', end: '2026-11-11', status: 'atRisk', progress: 30, elapsed: 50, source: 'manual', updatedAt: new Date(NOW).toISOString(), updatedBy: 'user' }]
     })
     expect((await control.milestones(q('session=s2'))).body).toMatchObject({ enabled: false, milestones: [] })
   })
@@ -219,7 +232,7 @@ describe('milestone changes by agents', () => {
     expect((await control.changeMilestone('beta', 'DELETE', { session: 's1' }, q())).status).toBe(202)
     expect(changed).toEqual(['work', 'work', 'work'])
     let view = await planner.view('work')
-    expect(view.milestones.map((r) => r.milestone)).toEqual([beta])
+    expect(view.milestones.map((r) => r.milestone)).toEqual([{ ...beta, createdAt: NOW, updatedAt: NOW, updatedBy: 'user' }])
     expect(view.proposals.map((p) => [p.action, p.milestoneId, p.source.label])).toEqual([
       ['create', expect.any(String), 'From the planning call'],
       ['update', 'beta', undefined],
@@ -241,6 +254,29 @@ describe('milestone changes by agents', () => {
     expect(view.milestones.map((r) => r.milestone.name).sort()).toEqual(['Beta', 'GA'])
     expect(view.proposals).toEqual([])
     expect(await planner.resolveProposal('work', create.id, true)).toMatchObject({ ok: false })
+  })
+
+  it('carries links through proposals, marked as the agent\'s change', async () => {
+    const { planner, control } = setup()
+    await planner.saveMilestone('work', beta)
+    const links = [{ label: 'Board', url: 'https://example.com/board' }]
+    const created = await control.changeMilestone(null, 'POST', { session: 's1', name: 'GA', start: '2026-11-10', end: '2026-11-30', progress: 0, notes: '## Scope\n- api', links }, q())
+    expect(created.status).toBe(202)
+    expect((await control.changeMilestone('beta', 'PATCH', { session: 's1', links }, q())).status).toBe(202)
+    let view = await planner.view('work')
+    expect(view.proposals.map((p) => p.milestone)).toEqual([
+      expect.objectContaining({ name: 'GA', notes: '## Scope\n- api', links, createdAt: NOW, updatedAt: NOW, updatedBy: 'agent' }),
+      expect.objectContaining({ id: 'beta', links, createdAt: NOW, updatedBy: 'agent' })
+    ])
+    for (const p of view.proposals) expect(await planner.resolveProposal('work', p.id, true)).toEqual({ ok: true })
+    view = await planner.view('work')
+    expect(view.milestones.map((r) => [r.milestone.name, r.milestone.links, r.milestone.updatedBy])).toEqual([
+      ['Beta', links, 'agent'],
+      ['GA', links, 'agent']
+    ])
+    expect((await control.milestones(q())).body['milestones']).toEqual([expect.objectContaining({ name: 'Beta', links, updatedBy: 'agent' }), expect.objectContaining({ name: 'GA', notes: '## Scope\n- api', links })])
+    expect((await control.changeMilestone('beta', 'PATCH', { links: [{ url: 'javascript:void(0)' }] }, q())).status).toBe(400)
+    expect((await control.changeMilestone(null, 'POST', { name: 'X', start: '2026-11-10', end: '2026-11-30', progress: 0, links: Array.from({ length: 21 }, (_, i) => `https://example.com/${i}`) }, q())).status).toBe(400)
   })
 
   it('applies changes at once when the profile allows it', async () => {
@@ -337,5 +373,59 @@ describe('Plan endpoints over the control socket', () => {
     } finally {
       server?.close()
     }
+  })
+})
+
+describe('pieces and ticket links through the control endpoint', () => {
+  const body = { session: 's1', name: 'Invites', start: '2026-11-01', end: '2026-11-11', items: [{ kind: 'ticket', key: 'demo-101', weight: 3 }, { kind: 'link', url: 'https://docs.example.com/spec', label: 'Spec', done: true }] }
+
+  it('proposes a milestone made of pieces, and lists its pieces with state, weight and share once applied', async () => {
+    const { planner, control } = setup()
+    const created = await control.changeMilestone(null, 'POST', body, q())
+    expect(created).toMatchObject({ status: 202, body: { pending: true } })
+    let view = await planner.view('work')
+    expect(view.proposals[0]!.milestone!.source).toEqual({ kind: 'items', items: [{ kind: 'ticket', key: 'DEMO-101', weight: 3 }, { kind: 'link', url: 'https://docs.example.com/spec', label: 'Spec', done: true, weight: 5 }] })
+    expect(await planner.resolveProposal('work', view.proposals[0]!.id, true)).toEqual({ ok: true })
+    const answer = (await control.milestones(q())).body['milestones'] as Record<string, unknown>[]
+    expect(answer[0]).toMatchObject({
+      name: 'Invites',
+      source: 'items',
+      progress: 63,
+      pieces: [
+        { kind: 'ticket', key: 'DEMO-101', state: 'inProgress', weight: 3, share: 38, title: expect.any(String), status: 'In Progress', url: expect.stringContaining('DEMO-101') },
+        { kind: 'link', url: 'https://docs.example.com/spec', label: 'Spec', done: true, state: 'done', weight: 5, share: 63 }
+      ]
+    })
+    // PATCH replaces the pieces (again as a proposal), and refuses bad ones.
+    const id = String(answer[0]!['id'])
+    expect((await control.changeMilestone(id, 'PATCH', { session: 's1', items: [{ kind: 'ticket', key: 'DEMO-98', weight: 10 }] }, q())).status).toBe(202)
+    view = await planner.view('work')
+    expect(view.proposals[0]!.milestone!.source).toEqual({ kind: 'items', items: [{ kind: 'ticket', key: 'DEMO-98', weight: 10 }] })
+    expect((await control.changeMilestone(id, 'PATCH', { items: [{ kind: 'ticket', key: 'DEMO-98', weight: 11 }] }, q())).status).toBe(400)
+    expect((await control.changeMilestone(id, 'PATCH', { progress: 50 }, q())).body).toMatchObject({ error: expect.stringMatching(/made of pieces/) })
+  })
+
+  it('applies a pieces milestone at once when allowed, and refuses a body with two sources or a bad piece', async () => {
+    const p = profile()
+    const { planner, control } = setup([{ ...p, planner: { ...p.planner!, agentMilestones: 'allow' } }])
+    expect((await control.changeMilestone(null, 'POST', body, q())).body).toMatchObject({ applied: true })
+    expect((await planner.view('work')).milestones[0]!.pieces).toHaveLength(2)
+    expect((await control.changeMilestone(null, 'POST', { ...body, progress: 10 }, q())).body).toMatchObject({ error: expect.stringMatching(/one of/) })
+    expect((await control.changeMilestone(null, 'POST', { ...body, items: [{ kind: 'task' }] }, q())).body).toMatchObject({ error: expect.stringMatching(/itemId/) })
+  })
+
+  it('links a local task to an existing ticket, shows its state, and unlinks it; never on a pending item', async () => {
+    const { planner, control } = setup()
+    await planner.propose('work', [{ kind: 'task', title: 'Write the docs', detail: '' }], { type: 'agent' })
+    expect(await control.updateItem('id1', { ticket: { key: 'DEMO-101' } }, q())).toMatchObject({ status: 409 })
+    const linked = await control.updateItem('id1', { status: 'local', ticket: { key: 'demo-101' } }, q())
+    expect(linked).toMatchObject({ status: 200, body: { item: { status: 'local', ticket: { key: 'DEMO-101', state: 'inProgress', status: 'In Progress' } } } })
+    expect((await control.inbox(q())).body).toMatchObject({ items: [{ id: 'id1', ticket: { key: 'DEMO-101', state: 'inProgress' } }] })
+    const unlinked = await control.updateItem('id1', { ticket: null }, q())
+    expect(unlinked.status).toBe(200)
+    expect((unlinked.body['item'] as Record<string, unknown>)['ticket']).toBeUndefined()
+    expect((await control.updateItem('id1', { ticket: { key: 'not a key' } }, q())).body).toMatchObject({ error: expect.stringMatching(/never created/) })
+    expect(parseInboxUpdate({ ticket: 'DEMO-1' })).toMatch(/"ticket"/)
+    expect(parseInboxUpdate({ ticket: { key: 'demo-1', connectionId: 'jira-2' } })).toEqual({ ticket: { key: 'DEMO-1', connectionId: 'jira-2' } })
   })
 })

@@ -177,6 +177,21 @@ describe('LinearTracker search and create', () => {
     await expect(tracker.searchByQuery('team:ENG')).rejects.toThrow(/team:KEY label:Name/)
   })
 
+  it('reads issues by identifier in one query, the numbers OR-ed per team', async () => {
+    const { tracker, calls } = fakeLinear([['issues(filter', () => ({ data: { issues: { nodes: [node('ENG-1', { name: 'Done', type: 'completed' }), node('OPS-4', { name: 'In Progress', type: 'started' })], pageInfo: { hasNextPage: false } } } })]])
+    const found = await tracker.readTickets(['eng-1', 'ENG-2', 'OPS-4', 'bad'])
+    expect(found.map((t) => [t.key, t.category])).toEqual([
+      ['ENG-1', 'done'],
+      ['OPS-4', 'inProgress']
+    ])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.variables.filter).toEqual({ or: [{ team: { key: { eq: 'ENG' } }, number: { in: [1, 2] } }, { team: { key: { eq: 'OPS' } }, number: { in: [4] } }] })
+    await tracker.readTickets(['ENG-3'])
+    expect(calls[1]!.variables.filter).toEqual({ team: { key: { eq: 'ENG' } }, number: { in: [3] } })
+    expect(await tracker.readTickets(['nope'])).toEqual([])
+    expect(calls).toHaveLength(2)
+  })
+
   it('creates an issue in the team of a key, with its priority and known labels', async () => {
     const { tracker, calls } = fakeLinear([
       ['teams(filter', () => ({ data: { teams: { nodes: [{ id: 'team-1', labels: { nodes: [{ id: 'l-bug', name: 'Bug' }, { id: 'l-x', name: 'Other' }] } }] } } })],

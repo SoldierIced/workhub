@@ -51,8 +51,13 @@ Trackers declare optional capabilities too. `searchByQuery` (Jira: JQL through
 `/rest/api/3/search/jql`, paged up to a cap; Linear: a project, or a team key and a label) counts
 Plan's milestones, and `createIssue` (Jira: `POST /rest/api/3/issue` with an ADF description;
 Linear: `issueCreate` in a team found by key) turns approved inbox items into issues. Both take a
-generic priority from 1 (highest) to 4 that each adapter maps to its own scale. A tracker without
-them hides those features.
+generic priority from 1 (highest) to 4 that each adapter maps to its own scale. `readTickets` reads
+tickets by key in one request (Jira: a `key in (…)` JQL search, key by key when Jira refuses the
+batch for an unknown key; Linear: one issues query filtered by team key and number): Plan's
+service reads the tickets of milestone pieces and of inbox items that follow a ticket with it, in
+the same 30-minute cycle as the milestone counts, keeps their state in `planner-state.json` and
+marks an item done when its ticket turns done. A tracker without these hides those features (a
+ticket it cannot read stays in an unknown state, never counted as done).
 
 Agents declare their capabilities (app mode, transcript, usage, plan usage, history, hooks, models,
 MCP status and control, sub-agents, permission requests, image input, mid-turn input). The UI
@@ -77,6 +82,15 @@ never breaks the session.
   go to the default browser through the link service instead), `window.open` is denied and
   `<webview>` never attaches. This keeps a window that rendered untrusted Markdown (a pull request,
   a ticket) from becoming a remote page that still holds `window.hub`.
+- Secondary windows load the same renderer bundle and are routed by the URL hash
+  (`renderer/main.tsx`): a pull request (`#pr?…`), a ticket (`#/ticket?…`), a session or
+  sub-agent, a local review, the file viewer, a flow map, and a Plan inbox item or milestone
+  (`#plan-item?profile=…&kind=inbox|milestone&id=…`, `&edit=1` for its edit form, or
+  `#plan-item?profile=…&kind=milestone&new=1` for a new milestone; built and read by
+  `shared/plan-item-window.ts`). Main keeps one window per ticket, flow map or Plan item (an item's
+  view and edit form share it; a profile has one new-milestone window) and focuses it when it is
+  asked for again; asking to edit an item whose window is open sends it `planner:edit`. Plan
+  changes (`planner:changed`) go to every window, so an item's window stays live.
 - Web permissions (camera, microphone, geolocation, notifications and so on) are denied by default;
   only sanitized clipboard writes from the app's own renderer are allowed.
 - Secrets are never in `config.json`, only `secretRef` keys that point into `secrets.json`, which is
@@ -91,8 +105,8 @@ never breaks the session.
   the session it names, else a named profile, else the active one. Bodies are capped at 256 KB and
   checked field by field. Endpoints: `POST /v1/sessions/:id/review` (open the human review),
   `POST /v1/flow-maps`, and Plan's (`plan-control.ts`): `GET /v1/plan/today`, `GET` and `POST
-  /v1/inbox`, `PATCH /v1/inbox/:id` (local moves and fields only: approving an item to the tracker
-  stays a human action in the UI), `GET /v1/milestones` and `GET /v1/people` (no notes), and the
+  /v1/inbox`, `PATCH /v1/inbox/:id` (local moves and fields, and linking an existing ticket:
+  approving an item to the tracker stays a human action in the UI), `GET /v1/milestones` and `GET /v1/people` (no notes), and the
   agent milestone changes `POST /v1/milestones`, `PATCH /v1/milestones/:id` and `DELETE
   /v1/milestones/:id`. With the profile's `agentMilestones: ask` (the default) they answer 202 with
   `pending: true` and wait as proposals on the Milestones tab; with `allow` they answer 200 with
@@ -114,7 +128,7 @@ running app.
 | `secrets.json` | Tokens, encrypted with `safeStorage`. |
 | `control.sock` | The control endpoint's socket (macOS and Linux only; a temp folder when the data folder's path is too long. On Windows the endpoint is a loopback port and has no file). |
 | `logs/` | `main.log` and rotated copies; see [Troubleshooting](troubleshooting.md#logs). |
-| State files (`*.json`) | Open sessions, session names and windows, agent options, token spend, usage alerts and budgets (including per-session), API spend ledger, Slack state, automation state, pull request events, health alerts, metric alerts (`metric-alerts.json`: daily series and alerts per profile), ticket watch, Plan (`calendar-state.json`: reminders already fired and meeting briefs started, pruned after a few days; `planner-state.json`: milestones, their last tracker counts and the inbox per profile, closed inbox items pruned after 7 days). Written through a small `StateFile` helper. They can hold session titles, repository names and Slack message text, and no credentials. |
+| State files (`*.json`) | Open sessions, session names and windows, agent options, token spend, usage alerts and budgets (including per-session), API spend ledger, Slack state, automation state, pull request events, health alerts, metric alerts (`metric-alerts.json`: daily series and alerts per profile), ticket watch, Plan (`calendar-state.json`: reminders already fired and meeting briefs started, pruned after a few days; `planner-state.json`: milestones, their last tracker counts, the last known state of the tickets of milestone pieces and linked inbox items, and the inbox per profile, closed inbox items pruned after 7 days unless a milestone is made of them). Written through a small `StateFile` helper. They can hold session titles, repository names and Slack message text, and no credentials. |
 | `ai-review/` | Read-only checkouts used by the review loop; its state is in `ai-review-state.json`. |
 | `pasted-images/` | Images pasted into prompts. |
 | `slack-hook/`, `kiro-usage/` | Support folders for the Slack tracking hook and the Kiro usage probe. |

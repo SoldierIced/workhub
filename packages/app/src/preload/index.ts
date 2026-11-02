@@ -174,11 +174,15 @@ const api: HubApi = {
     deleteMilestone: (profileId, id) => ipcRenderer.invoke('planner:deleteMilestone', profileId, id),
     resolveProposal: (profileId, id, accept) => ipcRenderer.invoke('planner:resolveProposal', profileId, id, accept),
     refreshMilestones: (profileId) => ipcRenderer.invoke('planner:refreshMilestones', profileId),
+    lookupTicket: (profileId, key, connectionId) => ipcRenderer.invoke('planner:lookupTicket', profileId, key, connectionId),
+    linkTicket: (profileId, id, ticket) => ipcRenderer.invoke('planner:linkTicket', profileId, id, ticket),
     addItem: (profileId, proposal, force) => ipcRenderer.invoke('planner:addItem', profileId, proposal, force),
     editItem: (profileId, id, edit) => ipcRenderer.invoke('planner:editItem', profileId, id, edit),
     act: (profileId, id, action) => ipcRenderer.invoke('planner:act', profileId, id, action),
     fromAlert: (profileId, alertKey) => ipcRenderer.invoke('planner:fromAlert', profileId, alertKey),
     bulkEdit: (profileId, ids, patch) => ipcRenderer.invoke('planner:bulkEdit', profileId, ids, patch),
+    openWindow: (target) => ipcRenderer.send('planner:openWindow', target),
+    onEditRequest: (cb) => subscribe<[]>('planner:edit', cb),
     onChanged: (cb) => subscribe<[string]>('planner:changed', cb)
   },
   listen: {

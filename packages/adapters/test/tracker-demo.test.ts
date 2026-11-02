@@ -56,6 +56,20 @@ describe('DemoTracker in the team-lead scenario', () => {
     }
   })
 
+  it('reads the scenario tickets by key with their current state, and leaves unknown keys out', async () => {
+    const demo = new DemoTracker('jira', { scenario: 'team-lead' })
+    const read = await demo.readTickets(['NOTE-253', 'note-238', 'NOTE-255', 'NOPE-1'])
+    expect(read.map((t) => [t.key, t.category])).toEqual([
+      ['NOTE-253', 'inProgress'],
+      ['NOTE-238', 'done'],
+      ['NOTE-255', 'inProgress']
+    ])
+    await demo.transition('NOTE-253', 'done')
+    expect((await demo.readTickets(['NOTE-253']))[0]?.category).toBe('done')
+    const created = await demo.createIssue({ project: 'NOTE', title: 'New one', description: '' })
+    expect((await demo.readTickets([created.key]))[0]).toMatchObject({ key: created.key, category: 'todo' })
+  })
+
   it('keeps the generic demo for other queries and for a tracker without a scenario', async () => {
     expect((await new DemoTracker('jira', { scenario: 'team-lead' }).searchByQuery('project = OTHER')).length).toBeGreaterThanOrEqual(4)
     expect((await new DemoTracker().listAssigned()).some((t) => t.key.startsWith('DEMO-'))).toBe(true)

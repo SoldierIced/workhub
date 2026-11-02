@@ -1082,7 +1082,8 @@ function registerIpc(): void {
   registerPlanIpc(ipc, { calendar, briefs })
   registerPlannerIpc(ipc, planner, {
     alert: async (profileId, key) => (await metricAlerts.list(profileId)).alerts.find((a) => a.key === key),
-    alertSent: (profileId, key) => metricAlerts.setStatus(profileId, key, { type: 'sendToInbox' })
+    alertSent: (profileId, key) => metricAlerts.setStatus(profileId, key, { type: 'sendToInbox' }),
+    createWindow: (hash, title) => createAuxWindow(hash, title, PLAN_ITEM_WINDOW_SIZE)
   })
   ipc.on('tray:state', (_e, state: TrayRendererState) => {
     if (isLocale(state?.locale) && state.locale !== trayLocale) {
@@ -1292,7 +1293,8 @@ const planner = new PlannerService({
   profiles: async () => (await configuration.current()).profiles,
   store: new StateFile<PlannerState>(join(dataDir, 'planner-state.json'), 500),
   tracker: (profileId, connectionId) => ticketService.trackerFor(profileId, connectionId),
-  changed: (profileId) => send('planner:changed', profileId)
+  // Every window: the main one, and the windows of single inbox items and milestones.
+  changed: (profileId) => BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.webContents.send('planner:changed', profileId))
 })
 
 const ticketWatcher = new TicketWatcher({
@@ -1431,6 +1433,7 @@ interface AuxWindowSize {
 
 const TICKET_WINDOW_SIZE: AuxWindowSize = { width: 820, height: 760, minWidth: 560, minHeight: 420 }
 const FILE_WINDOW_SIZE: AuxWindowSize = { width: 900, height: 760, minWidth: 420, minHeight: 320 }
+const PLAN_ITEM_WINDOW_SIZE: AuxWindowSize = { width: 720, height: 780, minWidth: 460, minHeight: 400 }
 
 /** A secondary window (a pull request, a ticket) on the same renderer, routed by its hash. */
 function createAuxWindow(hash: string, title: string, size: AuxWindowSize = TICKET_WINDOW_SIZE, bounds?: WindowBounds): BrowserWindow {

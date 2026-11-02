@@ -29,7 +29,7 @@ export function PlanScreen({ profile, onOpenSession, onOpenSettings }: PlanScree
   const [tab, setTab] = useState(PLAN_TABS[0]!.id)
   const [busy, setBusy] = useState<string | null>(null)
   usePlanTabRequests(setTab)
-  const { view: work } = usePlanner(profile?.id, enabled)
+  const { view: work, loading: workLoading, reload: reloadWork } = usePlanner(profile?.id, enabled)
   const pending = work?.inbox.filter((i) => i.status === 'pending').length ?? 0
 
   const run = async (key: string, call: () => Promise<BriefResult>) => {
@@ -61,7 +61,8 @@ export function PlanScreen({ profile, onOpenSession, onOpenSettings }: PlanScree
         brief: (eventId) => void run(`event:${eventId}`, () => window.hub.plan.brief(profile.id, eventId)),
         oneOnOne: (personId) => void run(`person:${personId}`, () => window.hub.plan.oneOnOne(profile.id, personId)),
         openLink: (url) => window.hub.openExternal(url, profile.id),
-        openSettings: onOpenSettings
+        openSettings: onOpenSettings,
+        openItem: (kind, id) => window.hub.planner.openWindow({ profileId: profile.id, kind, id })
       }
     : null
 
@@ -75,7 +76,8 @@ export function PlanScreen({ profile, onOpenSession, onOpenSettings }: PlanScree
           </div>
           {view?.state === 'demo' && <Badge tone="info">{t('plan.demo')}</Badge>}
           {live && view.updatedAt !== undefined && <span className="mt-1.5 text-sm text-subtle">{t('plan.updated', { time: relativeTime(view.updatedAt, Date.now(), locale) })}</span>}
-          {live && <RefreshButton variant="button" label={t('plan.refresh')} loading={loading} onRefresh={refresh} />}
+          {/* Always there: an agent may have added to the inbox or the milestones, which need no calendar. */}
+          {context && <RefreshButton variant="button" label={t('plan.refresh')} loading={loading || workLoading} onRefresh={() => Promise.all([refresh(), reloadWork()])} />}
         </header>
 
         {error && (

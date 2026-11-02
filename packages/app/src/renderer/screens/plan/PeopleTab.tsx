@@ -2,7 +2,7 @@ import { Plus, Sparkles, Trash2, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { meetingsWith, openItemsOf, plannerSettings, type Person } from '@workhub/core'
 import { Button, Spinner } from '../../components/atoms'
-import { Card, CardBody, CardHeader, EmptyState, useToast } from '../../components/molecules'
+import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, useToast } from '../../components/molecules'
 import { refreshConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
@@ -27,6 +27,8 @@ export function PeopleTab({ profile, view, now, busy, brief, oneOnOne, openLink 
   const [baseline, setBaseline] = useState(form)
   const [nameError, setNameError] = useState(false)
   const [saving, setSaving] = useState(false)
+  // The person whose Delete waits for the user's confirmation.
+  const [deleting, setDeleting] = useState<Person | null>(null)
   const { view: work } = usePlanner(profile.id, true)
 
   // The form follows the selection (and what was saved).
@@ -112,7 +114,7 @@ export function PeopleTab({ profile, view, now, busy, brief, oneOnOne, openLink 
                     <Button size="sm" icon={busy === `person:${current.id}` ? <Spinner /> : <Sparkles className="size-3.5" aria-hidden />} disabled={busy === `person:${current.id}`} onClick={() => oneOnOne(current.id)}>
                       {t('plan.people.oneOnOne')}
                     </Button>
-                    <Button size="sm" variant="ghost" aria-label={t('plan.people.remove', { name: current.name })} icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => void remove(current.id)} />
+                    <Button size="sm" variant="ghost" aria-label={t('plan.people.remove', { name: current.name })} title={t('plan.people.remove', { name: current.name })} icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => setDeleting(current)} />
                   </>
                 )
               }
@@ -161,6 +163,16 @@ export function PeopleTab({ profile, view, now, busy, brief, oneOnOne, openLink 
           )}
         </div>
       )}
+      <ConfirmDeleteDialog
+        name={deleting?.name ?? ''}
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={t('plan.people.confirmDelete', { name: deleting?.name ?? '' })}
+        description={t('plan.people.confirmDeleteBody')}
+        onConfirm={() => {
+          if (deleting) void remove(deleting.id)
+        }}
+      />
     </div>
   )
 }
