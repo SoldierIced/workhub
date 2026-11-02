@@ -82,9 +82,12 @@ Versions and the [CHANGELOG](CHANGELOG.md) come from the Conventional Commits on
    calls `.github/workflows/release.yml`, which builds the macOS, Windows and Linux installers and
    attaches them, with `.sha256` files and the `latest*.yml` update metadata, to the draft.
 3. **Publish.** When the `release-please` workflow is green, open the draft on the Releases page,
-   check the files and the notes, and publish it. A version with a suffix (`-alpha.N`, `-beta.N`)
-   is published as a pre-release: only installs that run a pre-release are offered it by the
-   in-app update check, and GitHub never shows it as the latest release.
+   check the files and the notes, and publish it. Every release, alpha ones included, is marked as
+   the **latest** (not as a pre-release), because the README's download links and the one-line
+   installers use `releases/latest/download/<file>`, which only follows the latest release. Each
+   installer is attached twice: with the version in its name (read by the in-app updater through
+   `latest*.yml`) and without it (`Workhub-2-win-x64.exe`, `Workhub-2-mac-arm64.dmg`, …, for those
+   links). The version keeps its suffix, so a stable install never takes an alpha as an update.
 
 The release pull request is opened by the workflow's own token, so it does not start the `ci`
 workflow. If a branch rule requires `ci`, close and reopen the pull request (or push a commit to
