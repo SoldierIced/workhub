@@ -867,6 +867,7 @@ function registerIpc(): void {
   ipc.handle('updates:status', () => updates.status())
   ipc.handle('updates:check', () => updates.check())
   ipc.handle('updates:install', () => updates.install())
+  ipc.handle('updates:restart', () => updates.restart())
   // Listing the history starts a process per account that reads every transcript's head: calls made
   // meanwhile share it, and the sidebar's lookups (several right after start-up) take one up to 10 s old.
   const namedHistory = new RecentCall(async () => {
