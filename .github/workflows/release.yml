@@ -112,9 +112,10 @@ jobs:
           merge-multiple: true
       # release-please has already created the draft release (with its changelog as the notes); a
       # manual tag has none yet, so it is created here. Every release, alpha ones included, is
-      # marked as the latest and not as a pre-release: GitHub's releases/latest/download/<file>
-      # links (the README's download links and the one-line installers) only follow the "latest"
-      # release, and GitHub never makes a pre-release the latest. The version keeps its suffix
+      # left as a draft that is not a pre-release, and is marked as the latest when it is published
+      # (GitHub refuses --latest on a draft): its releases/latest/download/<file> links (the
+      # README's download links and the one-line installers) only follow the "latest" release, and
+      # GitHub never makes a pre-release the latest. The version keeps its suffix
       # (2.0.0-alpha.N), so a future stable install never takes an alpha as an update: semver puts
       # 2.0.0-alpha.N below 2.0.0 (see packages/app/src/main/updates.ts).
       - name: Create or find the draft release and upload the files
@@ -123,9 +124,9 @@ jobs:
         working-directory: release-files
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Workhub 2 ${TAG#v}" --prerelease=false --latest
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Workhub 2 ${TAG#v}" --prerelease=false
           else
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Workhub 2 ${TAG#v}" --generate-notes --prerelease=false --latest
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Workhub 2 ${TAG#v}" --generate-notes --prerelease=false
           fi
           shopt -s nullglob
           files=(*)
