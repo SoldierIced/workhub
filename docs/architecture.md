@@ -45,7 +45,7 @@ adapter, not by reaching into a service from the UI.
 | Calendar source (`CalendarSource`; ICS parsing, recurrence and rules are pure code in `core/calendar`) | `calendar-ics` (private ICS address over https, 20 s timeout, 5 MB cap; also the demo source) |
 | `MetricSource` (daily samples for metric alerts) | Health's own read (`HealthMetricSource` in the main process), synthetic history in the Health demo |
 | Config and secrets | `config-json`, `secrets-electron` (Electron `safeStorage`) |
-| Other | `pr-events-json`, `git-review`, `token-spend`, `workhub1-import` |
+| Other | `pr-events-json`, `git-review`, `git-worktree`, `token-spend`, `workhub1-import` |
 
 Trackers declare optional capabilities too. `searchByQuery` (Jira: JQL through
 `/rest/api/3/search/jql`, paged up to a cap; Linear: a project, or a team key and a label) counts
