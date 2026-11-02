@@ -122,6 +122,11 @@ app can download and install the new version (**Download and restart**). On macO
 cannot replace itself, so Workhub only announces the new version and opens the release page: download
 it and replace the app.
 
+With **Check for updates** on, Workhub checks when it starts and every 6 hours while it runs. When
+it finds a newer version it asks, at most once a day: **Update now** (or **Download the new
+version** on a Mac that cannot replace the app), **Later** (asks again the next day) or **Skip this
+version** (never asks for that one again; a newer one does). **Check now** in Settings never asks.
+
 ## Menu bar and tray
 
 Closing the window can keep Workhub running in the menu bar (macOS), the notification area

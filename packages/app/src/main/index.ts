@@ -126,6 +126,7 @@ import { TicketService } from './tickets-service'
 import { spendSources, TokenSpendService } from './token-spend'
 import { ApiSpendService, CostLedger, spendAgentId, type CostLedgerState } from './api-spend'
 import { UpdateService } from './updates'
+import { readUpdatePromptState, shouldPromptUpdate, type UpdatePromptState } from './update-prompt'
 import { buildAppMenuTemplate } from './app-menu'
 import { SessionNames } from './session-names'
 import { OpenSessions, type SavedOpenSessions } from './open-sessions'
@@ -472,6 +473,24 @@ const usage = new AgentUsageService({
 const budgetOf = (agentId: string, accountId: string | null) => usage.budgetOf(agentId, accountId)
 
 const updates = new UpdateService((s) => send('updates:changed', s), (url) => openLink(null, url))
+// "A new version is available": after an automatic check, at most once a day, never for a skipped version.
+const updatePromptFile = new StateFile<UpdatePromptState>(join(dataDir, 'update-prompt.json'), 0)
+const saveUpdatePrompt = (patch: UpdatePromptState) => {
+  updatePromptFile.save({ ...readUpdatePromptState(updatePromptFile.load({})), ...patch })
+  updatePromptFile.flush()
+}
+/** While the app stays open (menu bar), the automatic check runs again this often. */
+const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000
+async function automaticUpdateCheck(): Promise<void> {
+  if (!appOptions(await configuration.current()).checkForUpdates) return
+  const status = await updates.check()
+  const state = readUpdatePromptState(updatePromptFile.load({}))
+  if (status.state !== 'available' || !shouldPromptUpdate(state, status.version, Date.now())) return
+  // With the window closed (menu bar only) the prompt waits for the next check.
+  if (!win || win.isDestroyed()) return
+  saveUpdatePrompt({ lastPromptAt: Date.now() })
+  send('updates:prompt', status)
+}
 
 // Slack watcher and automations (P6a). WORKHUB_DEMO_SLACK=1 reads synthetic Slack instead of
 // asking an agent, and never touches a Claude account's settings.
@@ -870,6 +889,9 @@ function registerIpc(): void {
   ipc.handle('updates:check', () => updates.check())
   ipc.handle('updates:install', () => updates.install())
   ipc.handle('updates:restart', () => updates.restart())
+  ipc.handle('updates:skip', (_e, version: unknown) => {
+    if (typeof version === 'string' && version) saveUpdatePrompt({ skippedVersion: version })
+  })
   // Listing the history starts a process per account that reads every transcript's head: calls made
   // meanwhile share it, and the sidebar's lookups (several right after start-up) take one up to 10 s old.
   const namedHistory = new RecentCall(async () => {
@@ -1717,7 +1739,11 @@ void app.whenReady().then(async () => {
   usage.start()
   tokenSpend.start()
   // Opt-in: nothing contacts GitHub unless the user turned this on (or presses "Check now").
-  if (app.isPackaged && appOptions(await configuration.current()).checkForUpdates) setTimeout(() => void updates.check(), 10_000)
+  // A version found by these automatic checks is announced in a prompt, at most once a day.
+  if (app.isPackaged) {
+    setTimeout(() => void automaticUpdateCheck(), 10_000)
+    setInterval(() => void automaticUpdateCheck(), UPDATE_RECHECK_MS)
+  }
   prEvents.start()
   slack.start()
   void automations.start()
