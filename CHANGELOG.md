@@ -4,6 +4,25 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.6](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.5...v2.0.0-alpha.6) (2026-11-02)
+
+
+### Features
+
+* **ai-review:** choose one reviewer for every round or a new one each round ([45e05b6](https://github.com/SoldierIced/workhub/commit/45e05b625bcdf399beebc81c4560fa287935eb2a))
+* **plan:** add the Plan module, metric alerts, agent access and a demo ([0a5574c](https://github.com/SoldierIced/workhub/commit/0a5574c0103455f217f86375ac1976b7e0187a39))
+* **plan:** let agents create, change and delete milestones, asking first by default ([72a2d2e](https://github.com/SoldierIced/workhub/commit/72a2d2e1cfa8ec60485c40c31f26690bb3078b45))
+* **plan:** módulo Plan, hitos editables por agentes, revisión manual y endpoint para Windows ([cfc2dbf](https://github.com/SoldierIced/workhub/commit/cfc2dbf1bd4035585997eb3807fd2905dc78119f))
+* **usage:** show fresh tokens and cache reads apart on Home and the monitor ([58b31a3](https://github.com/SoldierIced/workhub/commit/58b31a36c3dcae31488782241a8939a71b549bfe))
+
+
+### Bug Fixes
+
+* **ai-review:** document manual reviews as the default and pin it in tests ([a68d49d](https://github.com/SoldierIced/workhub/commit/a68d49d9bbb0a617dc8c53852f903252c6979ed8))
+* **ai-review:** make reviews manual by default ([00aed9a](https://github.com/SoldierIced/workhub/commit/00aed9a3467b5704d6a30393345216f320a49d99))
+* **ai-review:** stop calling the branch review loop automatic in its hint ([d3cf460](https://github.com/SoldierIced/workhub/commit/d3cf460187d79aeaa22936f8f6b8e18a2a90cdee))
+* **control:** reach the control endpoint on Windows through a loopback port and a token ([549ea24](https://github.com/SoldierIced/workhub/commit/549ea2485e016590e0e56b67d6fcc2ee39601492))
+
 ## [2.0.0-alpha.5](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.4...v2.0.0-alpha.5) (2026-11-01)
 
 
