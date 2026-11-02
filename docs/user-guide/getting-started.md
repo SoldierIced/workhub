@@ -17,6 +17,10 @@ Download the installer for your system from the
 to check the download. The builds are not signed with a paid certificate, so each system asks for
 one extra step the first time you open the app.
 
+A release is created as a **draft** and only its owner sees drafts until it is published. If no
+release is published yet, build from source: see the README, [macOS from source](../../README.md#install)
+and [Build installers](../../README.md#build-installers).
+
 | System | File | First launch |
 |---|---|---|
 | macOS (Apple Silicon) | `.dmg` or `.zip` | Drag **Workhub 2** to Applications. Gatekeeper blocks the first launch: open the app once, then go to **System Settings → Privacy & Security**, scroll to **Security** and click **Open Anyway**. Or run `xattr -dr com.apple.quarantine "/Applications/Workhub 2.app"`. |
@@ -24,6 +28,39 @@ one extra step the first time you open the app.
 | Linux (x64) | `.AppImage` or `.deb` | `chmod +x Workhub-2-*-linux-x64.AppImage && ./Workhub-2-*-linux-x64.AppImage`, or `sudo apt install ./Workhub-2-*-linux-x64.deb`. |
 
 Workhub 2 has its own app id and data folder, so it can run next to Workhub 1.
+
+### Windows from zero
+
+Windows is built by CI and has not been tested on real machines yet. Please report what you find.
+
+1. Install the prerequisites. Install [Git for Windows](https://gitforwindows.org/), which also
+   provides Git Bash; Workhub reads local changes and diffs with `git`. Install Node.js only if you
+   run an agent through `npx` (Codex does). Claude Code needs neither: its binary ships inside the
+   app.
+2. Download `Workhub-2-<version>-win-x64.exe` and its `.sha256` file from the Releases page.
+3. Check the download in PowerShell and compare the result with the `.sha256` file:
+   `Get-FileHash .\Workhub-2-<version>-win-x64.exe -Algorithm SHA256`
+4. Run the `.exe`. SmartScreen shows "Windows protected your PC": click **More info**, then **Run
+   anyway**. This is expected for every unsigned build. The installer lets you pick the folder and
+   installs per user, so it needs no administrator rights.
+5. Open Workhub 2, then **Help → Setup Check…**. Fix what it flags, and sign in with a Claude
+   account from the check.
+6. After you install a CLI (`gh`, `kiro-cli`, `opencode`, `gemini`), restart Workhub. Windows keeps
+   the `PATH` an app started with, so a running Workhub does not see the new program. See
+   [Troubleshooting](../troubleshooting.md#an-agent-is-not-found-on-path).
+
+The **Shell** view opens the shell named by the `COMSPEC` environment variable, else
+`powershell.exe`.
+
+## Uninstall
+
+- **Windows**: **Settings → Apps → Installed apps → Workhub 2 → Uninstall**.
+- **macOS**: delete **Workhub 2** from `/Applications`.
+
+Uninstalling leaves your data folder in place. To remove it too, delete it by hand:
+`%APPDATA%\Workhub 2` on Windows, `~/Library/Application Support/Workhub 2` on macOS. The folder
+holds your settings, encrypted secrets and logs. **Settings → General → Storage** shows the exact
+path.
 
 ## First run
 

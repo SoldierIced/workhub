@@ -83,15 +83,20 @@ never breaks the session.
   encrypted with `safeStorage`. Workhub refuses to store a secret when OS encryption is
   unavailable. GitHub and GitLab access reuses the `gh` and `glab` sign-ins; Slack goes through a
   Claude account's connector. See [SECURITY.md](../SECURITY.md).
-- The local control endpoint (`control-server.ts`) is HTTP over a Unix socket in the data folder
-  (mode `0600`; a named pipe on Windows), so only the user's own processes reach it. Every session
-  gets `WORKHUB_SOCKET` and `WORKHUB_SESSION` in its environment; a request acts on the profile of
+- The local control endpoint (`control-server.ts`) is HTTP. On macOS and Linux it listens on a Unix
+  socket in the data folder (mode `0600`) and sessions get `WORKHUB_SOCKET`. On Windows it listens
+  on a loopback HTTP port (127.0.0.1, random port) guarded by a per-launch token; sessions get
+  `WORKHUB_URL` and `WORKHUB_TOKEN`, and requests send `Authorization: Bearer $WORKHUB_TOKEN`. Either
+  way only the user's own processes reach it. Every session also gets `WORKHUB_SESSION`; a request acts on the profile of
   the session it names, else a named profile, else the active one. Bodies are capped at 256 KB and
   checked field by field. Endpoints: `POST /v1/sessions/:id/review` (open the human review),
   `POST /v1/flow-maps`, and Plan's (`plan-control.ts`): `GET /v1/plan/today`, `GET` and `POST
   /v1/inbox`, `PATCH /v1/inbox/:id` (local moves and fields only: approving an item to the tracker
-  stays a human action in the UI), `GET /v1/milestones` and `GET /v1/people` (no notes). Changes
-  go through the same services as the UI, which push change events to open windows. Agents learn
+  stays a human action in the UI), `GET /v1/milestones` and `GET /v1/people` (no notes), and the
+  agent milestone changes `POST /v1/milestones`, `PATCH /v1/milestones/:id` and `DELETE
+  /v1/milestones/:id`. With the profile's `agentMilestones: ask` (the default) they answer 202 with
+  `pending: true` and wait as proposals on the Milestones tab; with `allow` they answer 200 with
+  `applied: true`. Changes go through the same services as the UI, which push change events to open windows. Agents learn
   them from the skills in `skills/` (`workhub-flow-map`, `workhub-plan`).
 - Agents run with their own permission modes and MCP servers and can execute code on the machine.
   The effective permission mode of each session is shown in its header.
@@ -107,7 +112,7 @@ running app.
 |---|---|
 | `config.json` | Connections, accounts, profiles, options. Never secrets. |
 | `secrets.json` | Tokens, encrypted with `safeStorage`. |
-| `control.sock` | The control endpoint's socket (a temp folder when the data folder's path is too long; a named pipe on Windows). |
+| `control.sock` | The control endpoint's socket (macOS and Linux only; a temp folder when the data folder's path is too long. On Windows the endpoint is a loopback port and has no file). |
 | `logs/` | `main.log` and rotated copies; see [Troubleshooting](troubleshooting.md#logs). |
 | State files (`*.json`) | Open sessions, session names and windows, agent options, token spend, usage alerts and budgets (including per-session), API spend ledger, Slack state, automation state, pull request events, health alerts, metric alerts (`metric-alerts.json`: daily series and alerts per profile), ticket watch, Plan (`calendar-state.json`: reminders already fired and meeting briefs started, pruned after a few days; `planner-state.json`: milestones, their last tracker counts and the inbox per profile, closed inbox items pruned after 7 days). Written through a small `StateFile` helper. They can hold session titles, repository names and Slack message text, and no credentials. |
 | `ai-review/` | Read-only checkouts used by the review loop; its state is in `ai-review-state.json`. |

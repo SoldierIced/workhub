@@ -57,6 +57,18 @@ stays in the current view.
 - **Timestamps**: every message shows the day and hour it was sent; hover for the full date with
   seconds.
 - Permission requests appear in the conversation; answer them there.
+- **Idle notice**: agents keep the conversation's prompt in a cache for a few minutes (Claude: 5
+  minutes or 1 hour, renewed by each request). When you come back to a session that has been idle
+  past that, a notice above the composer says the next message sends the whole context again at
+  full price instead of a cheap cache read. The number is an estimate of the conversation's current
+  context size in tokens. When the agent reports a cost, the notice adds the estimated price at list
+  prices, and the price with a warm cache when it is known. For Claude the transcript says when the
+  cache expired, so the notice says "expired {time} ago"; for an agent that does not report it, the
+  notice guesses with the shortest lifetime (5 minutes) and says the cache "has likely expired". It
+  appears only for a context of 20,000 tokens or more (and, with a known cost, a resend over about
+  US$0.05), and never while the agent is working. It only informs: sending is never held. Close it
+  with the **x**; it stays closed until the conversation moves again, and it goes away by itself
+  when you send a message or the agent starts working.
 - If the session's account is past a usage ceiling, sending asks for confirmation (**Send
   anyway**), or offers to continue in another account. See [Usage and budgets](usage.md).
 

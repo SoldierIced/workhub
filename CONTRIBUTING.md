@@ -1,6 +1,7 @@
 # Contributing to Workhub 2
 
 Thanks for helping. This guide covers setup, checks and what a pull request should look like.
+Coding agents: read [AGENTS.md](AGENTS.md) first.
 
 ## Setup
 

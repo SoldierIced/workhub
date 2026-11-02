@@ -8,8 +8,9 @@ environment health around each task. Agents declare their capabilities and the U
 each one supports. Nothing personal or company-specific is in the code: every connection, profile
 and account is configuration loaded at runtime.
 
-Status: pre-release (`2.0.0-alpha.1`). macOS is the only platform exercised so far; Windows and
-Linux installers are built by CI and untested. See [PLAN.md](PLAN.md) for the scope and the
+Status: alpha (see [Releases](https://github.com/SoldierIced/workhub/releases) and
+[CHANGELOG.md](CHANGELOG.md) for the current version). macOS is the only platform tested so far;
+Windows and Linux installers are built by CI and untested. See [PLAN.md](PLAN.md) for the scope and the
 current status.
 
 ## Features
@@ -91,6 +92,10 @@ them for macOS (arm64 `.dmg` and `.zip`), Windows (x64 NSIS `.exe`) and Linux (x
 to Workhub 1. The builds are **not signed with a paid certificate**, so each OS asks for one extra
 step on the first launch. Every artifact has a `.sha256` file to check the download.
 
+A release is created as a **draft** and only its owner sees drafts until it is published. If the
+Releases page shows no published release, build from source instead (see **macOS from source**
+below and [Build installers](#build-installers)).
+
 **macOS**: open the `.dmg` and drag Workhub 2 to Applications (or unzip the `.zip`). The app is
 signed ad hoc and not notarized, so Gatekeeper blocks the first launch: open the app once, then go
 to System Settings > Privacy & Security, scroll to Security and click **Open Anyway**. Or run
@@ -106,6 +111,13 @@ then **Run anyway**. The installer lets you pick the folder and installs per use
 `/Applications` (named `WORKHUB_BUNDLE_NAME`, default `Workhub`). It refuses to replace a bundle
 that is another app, and quits and reopens only Workhub 2 (`WORKHUB_KEEP_RUNNING=1` swaps the
 bundle without quitting).
+
+### Agent skills
+
+The `skills/workhub-plan` and `skills/workhub-flow-map` folders teach an agent to use Workhub's local
+control endpoint. Workhub does not install them: copy or symlink them into your agent's skills
+folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`). See
+[Plan](docs/user-guide/plan.md#the-workhub-plan-skill).
 
 ### Updates
 
