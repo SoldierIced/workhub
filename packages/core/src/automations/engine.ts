@@ -3,6 +3,7 @@ import type { ChatMessage } from '../chat/types'
 import type { SessionState } from '../domain/session'
 import { chatTriggers, evaluatePendingGate, failureBackoffMs, limitWait, looksRateLimited, resetTimeIn, windowReason, type GateVerdict } from './rules'
 import {
+  automationNotifies,
   EMPTY_AUTOMATIONS_STATE,
   FAILURE_OUTCOMES,
   RUN_LOG_LIMIT,
@@ -175,6 +176,12 @@ export class AutomationEngine {
   automationOf(identity: string): AutomationDefinition | undefined {
     const id = this.state.owned[identity]
     return id ? this.host.definitions().find((a) => a.id === id) : undefined
+  }
+
+  /** Whether this session may notify this kind: sessions outside an automation always may. */
+  notifies(identity: string, kind: 'replied' | 'needsAnswer' | 'error'): boolean {
+    const a = this.automationOf(identity)
+    return !a || automationNotifies(a.notify, kind)
   }
 
   /** Why a chat reply must not wake this session (its automation is off, or takes no replies); null when it may. */
@@ -596,7 +603,7 @@ export class AutomationEngine {
     const now = this.host.now()
     const s = this.runState(a.id)
     const streak = s.failureStreak + 1
-    if (!s.notified) this.host.notify({ kind: 'failed', automationId: a.id, automationName: a.name, outcome, detail: reason.slice(0, 160) })
+    if (!s.notified && a.notify !== 'never') this.host.notify({ kind: 'failed', automationId: a.id, automationName: a.name, outcome, detail: reason.slice(0, 160) })
     const paused =
       outcome === 'rateLimited' && resetsAt && resetsAt > now
         ? { pausedUntil: resetsAt + 30_000, pauseReason: 'rateLimited' as const }

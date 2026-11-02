@@ -40,6 +40,19 @@ export interface AutomationDefinition {
   runTimeoutMinutes: number
   /** Whether replies to the chat messages its sessions send wake them. Off: those threads are not followed. */
   receivesChatReplies: boolean
+  /**
+   * Which notifications its sessions send: `failures` only when a run fails or its session errors,
+   * `always` also when the agent replies or asks, `never` none. Unset: `failures`.
+   */
+  notify?: AutomationNotify
+}
+
+export type AutomationNotify = 'failures' | 'always' | 'never'
+
+/** Whether a session of an automation with this setting may notify this kind: `always` every kind, `failures` (default) only errors, `never` none. */
+export function automationNotifies(notify: AutomationNotify | undefined, kind: 'replied' | 'needsAnswer' | 'error'): boolean {
+  if (notify === 'never') return false
+  return notify === 'always' || kind === 'error'
 }
 
 /** Reasoning efforts Claude Code accepts, lowest first. */

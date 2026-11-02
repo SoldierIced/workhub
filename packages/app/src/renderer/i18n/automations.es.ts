@@ -124,6 +124,11 @@ export const automationsEs: Record<keyof typeof automationsEn, string> = {
   'automations.field.usage': 'Esperar con un uso de 5 h mayor a (%)',
   'automations.field.timeout': 'Tiempo máximo por ejecución (minutos)',
   'automations.field.hours': 'Horario',
+  'automations.field.notify': 'Notificaciones',
+  'automations.field.notifyHint': 'Solo fallos: cuando una ejecución falla o su sesión da error. Siempre: también cuando el agente responde o pregunta. Se suma a Ajustes → General → Notificaciones.',
+  'automations.notify.failures': 'Solo fallos',
+  'automations.notify.always': 'Siempre',
+  'automations.notify.never': 'Nunca',
   'automations.field.receivesReplies': 'Las respuestas a sus mensajes de Slack despiertan su sesión',
   'automations.field.receivesRepliesHint': 'Apagado: no se siguen los hilos en los que escriben sus sesiones.',
   'automations.field.enabled': 'Activa'
