@@ -105,34 +105,15 @@ export function PeopleTab({ profile, view, now, busy, brief, oneOnOne, openLink 
         <EmptyState icon={<UserRound className="size-6" aria-hidden />} title={t('plan.people.pick')} description={t('plan.people.pickHint')} />
       ) : (
         <div className="flex min-w-0 flex-col gap-4">
-          <Card>
-            <CardHeader
-              title={current ? current.name : t('plan.people.newTitle')}
-              actions={
-                current && (
-                  <>
-                    <Button size="sm" icon={busy === `person:${current.id}` ? <Spinner /> : <Sparkles className="size-3.5" aria-hidden />} disabled={busy === `person:${current.id}`} onClick={() => oneOnOne(current.id)}>
-                      {t('plan.people.oneOnOne')}
-                    </Button>
-                    <Button size="sm" variant="ghost" aria-label={t('plan.people.remove', { name: current.name })} title={t('plan.people.remove', { name: current.name })} icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => setDeleting(current)} />
-                  </>
-                )
-              }
-            />
-            <CardBody className="flex flex-col gap-3">
-              <PersonFields form={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch, id: current ? f.id : patch.name !== undefined ? personId(patch.name, people.map((p) => p.id)) : f.id }))} nameError={nameError ? t('plan.person.nameRequired') : undefined} />
-              <div className="flex justify-end gap-2 border-t border-border pt-3">
-                {isDirty(baseline, form) && (
-                  <Button variant="ghost" onClick={() => setForm(baseline)}>
-                    {t('common.cancel')}
-                  </Button>
-                )}
-                <Button variant="primary" disabled={saving || (!!current && !isDirty(baseline, form))} onClick={() => void save()}>
-                  {t('plan.people.save')}
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
+          {current && (
+            <header className="flex items-center gap-2 px-1">
+              <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{current.name}</h2>
+              <Button size="sm" icon={busy === `person:${current.id}` ? <Spinner /> : <Sparkles className="size-3.5" aria-hidden />} disabled={busy === `person:${current.id}`} onClick={() => oneOnOne(current.id)}>
+                {t('plan.people.oneOnOne')}
+              </Button>
+              <Button size="sm" variant="ghost" aria-label={t('plan.people.remove', { name: current.name })} title={t('plan.people.remove', { name: current.name })} icon={<Trash2 className="size-3.5" aria-hidden />} onClick={() => setDeleting(current)} />
+            </header>
+          )}
           {current && (
             <section className="flex flex-col gap-2">
               <h2 className="px-1 text-md font-semibold">{t('plan.people.upcoming')}</h2>
@@ -161,6 +142,25 @@ export function PeopleTab({ profile, view, now, busy, brief, oneOnOne, openLink 
               )}
             </section>
           )}
+          {/* Editing the person's details comes last: the meetings and open items are what you look for first. */}
+          <Card>
+            <CardHeader
+              title={current ? t('plan.people.editTitle') : t('plan.people.newTitle')}
+            />
+            <CardBody className="flex flex-col gap-3">
+              <PersonFields form={form} onChange={(patch) => setForm((f) => ({ ...f, ...patch, id: current ? f.id : patch.name !== undefined ? personId(patch.name, people.map((p) => p.id)) : f.id }))} nameError={nameError ? t('plan.person.nameRequired') : undefined} />
+              <div className="flex justify-end gap-2 border-t border-border pt-3">
+                {isDirty(baseline, form) && (
+                  <Button variant="ghost" onClick={() => setForm(baseline)}>
+                    {t('common.cancel')}
+                  </Button>
+                )}
+                <Button variant="primary" disabled={saving || (!!current && !isDirty(baseline, form))} onClick={() => void save()}>
+                  {t('plan.people.save')}
+                </Button>
+              </div>
+            </CardBody>
+          </Card>
         </div>
       )}
       <ConfirmDeleteDialog
