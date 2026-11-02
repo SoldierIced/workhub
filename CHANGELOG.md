@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.9](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.8...v2.0.0-alpha.9) (2026-11-02)
+
+
+### Features
+
+* **updates:** install updates in place on macOS and ask before restarting ([#19](https://github.com/SoldierIced/workhub/issues/19)) ([289bde4](https://github.com/SoldierIced/workhub/commit/289bde43a0e6e324e97b077f2995df1820b20d53))
+
 ## [2.0.0-alpha.8](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.7...v2.0.0-alpha.8) (2026-11-02)
 
 
