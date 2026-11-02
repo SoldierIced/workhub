@@ -12,13 +12,22 @@
 
 ## Install
 
-Download the installer for your system from the
+Latest version: [Windows (x64)](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-win-x64.exe) ·
+[macOS (Apple silicon)](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-mac-arm64.dmg) ·
+[Linux AppImage](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-linux-x86_64.AppImage) ·
+[Linux .deb](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-linux-amd64.deb)
+
+The quickest way is one line: [Windows](#windows-from-zero) in PowerShell,
+[macOS](#macos-in-one-line) in Terminal. It installs the newest published release with no security
+prompts; run it again to update.
+
+To install by hand, download the installer for your system from the
 [Releases](https://github.com/SoldierIced/workhub/releases) page. Every file has a `.sha256` file
 to check the download. The builds are not signed with a paid certificate, so each system asks for
 one extra step the first time you open the app.
 
 A release is created as a **draft** and only its owner sees drafts until it is published. If no
-release is published yet, build from source: see the README, [macOS from source](../../README.md#install)
+release is published yet, build from source: see the README, [macOS from source](../../README.md#install-by-hand)
 and [Build installers](../../README.md#build-installers).
 
 | System | File | First launch |
@@ -33,21 +42,38 @@ Workhub 2 has its own app id and data folder, so it can run next to Workhub 1.
 
 Windows is built by CI and has not been tested on real machines yet. Please report what you find.
 
-1. Install the prerequisites. Install [Git for Windows](https://gitforwindows.org/), which also
-   provides Git Bash; Workhub reads local changes and diffs with `git`. Install Node.js only if you
-   run an agent through `npx` (Codex does). Claude Code needs neither: its binary ships inside the
-   app.
-2. Download `Workhub-2-<version>-win-x64.exe` and its `.sha256` file from the Releases page.
-3. Check the download in PowerShell and compare the result with the `.sha256` file:
-   `Get-FileHash .\Workhub-2-<version>-win-x64.exe -Algorithm SHA256`
-4. Run the `.exe`. SmartScreen shows "Windows protected your PC": click **More info**, then **Run
-   anyway**. This is expected for every unsigned build. The installer lets you pick the folder and
-   installs per user, so it needs no administrator rights.
-5. Open Workhub 2, then **Help → Setup Check…**. Fix what it flags, and sign in with a Claude
-   account from the check.
-6. After you install a CLI (`gh`, `kiro-cli`, `opencode`, `gemini`), restart Workhub. Windows keeps
-   the `PATH` an app started with, so a running Workhub does not see the new program. See
+1. Optional: install [Git for Windows](https://gitforwindows.org/) (Workhub reads local changes and
+   diffs with `git`, and it gives agents Git Bash) and Node.js if you run an agent through `npx`
+   (Codex does). Claude Code needs neither: its binary ships inside the app.
+2. Open **PowerShell** (Start menu → type `PowerShell`), paste this line and press Enter:
+
+   ```powershell
+   irm https://raw.githubusercontent.com/SoldierIced/workhub/main/scripts/install.ps1 | iex
+   ```
+
+   It downloads the newest published installer, checks it, installs Workhub 2 for your user (no
+   administrator rights, no SmartScreen prompt) and opens it. Run the same line to update.
+3. In Workhub 2 open **Help → Setup Check…**, fix what it flags and sign in with a Claude account.
+4. After you install a CLI (`gh`, `kiro-cli`, `opencode`, `gemini`), restart Workhub: Windows keeps
+   the `PATH` an app started with. See
    [Troubleshooting](../troubleshooting.md#an-agent-is-not-found-on-path).
+
+By hand instead: download `Workhub-2-<version>-win-x64.exe` from the Releases page and run it.
+SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway** (expected
+for every unsigned build). To check the download first:
+`Get-FileHash .\Workhub-2-<version>-win-x64.exe -Algorithm SHA256`, compared with its `.sha256`.
+
+### macOS in one line
+
+Open **Terminal**, paste this line and press Enter:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/SoldierIced/workhub/main/scripts/install.sh | bash
+```
+
+It installs the newest published release to `/Applications` (as **Workhub**), with no Gatekeeper
+prompt, and opens it. A running copy keeps working; the new version starts the next time you open
+it.
 
 The **Shell** view opens the shell named by the `COMSPEC` environment variable, else
 `powershell.exe`.

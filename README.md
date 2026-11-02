@@ -13,6 +13,26 @@ Status: alpha (see [Releases](https://github.com/SoldierIced/workhub/releases) a
 Windows and Linux installers are built by CI and untested. See [PLAN.md](PLAN.md) for the scope and the
 current status.
 
+## Install
+
+**Download the latest version:**
+[Windows (x64)](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-win-x64.exe) ·
+[macOS (Apple silicon)](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-mac-arm64.dmg) ·
+[Linux AppImage](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-linux-x86_64.AppImage) ·
+[Linux .deb](https://github.com/SoldierIced/workhub/releases/latest/download/Workhub-2-linux-amd64.deb) ·
+[all releases](https://github.com/SoldierIced/workhub/releases)
+
+These links always point to the newest release. The installers are not signed with a paid
+certificate, so the first launch asks for one extra step (see [Install by hand](#install-by-hand)).
+To skip it, install from a terminal instead; the same line updates later:
+
+| System | Open | Paste and press Enter |
+|---|---|---|
+| **Windows** | PowerShell | `irm https://raw.githubusercontent.com/SoldierIced/workhub/main/scripts/install.ps1 \| iex` |
+| **macOS** | Terminal | `curl -fsSL https://raw.githubusercontent.com/SoldierIced/workhub/main/scripts/install.sh \| bash` |
+
+Then follow [Getting started](docs/user-guide/getting-started.md).
+
 ## Features
 
 **Sessions**
@@ -83,9 +103,10 @@ current status.
   need no separate Claude Code install (sign in with a Claude account in the app's Setup check).
 - `gh` (and `glab` for GitLab) signed in, for pull requests.
 
-## Install
+## Install by hand
 
-Download the installer for your OS from the
+The one-line installers above do these steps for you. To do them yourself, download the installer
+for your OS from the
 [Releases](https://github.com/SoldierIced/workhub/releases) page. The `release` workflow builds
 them for macOS (arm64 `.dmg` and `.zip`), Windows (x64 NSIS `.exe`) and Linux (x64 `.AppImage` and
 `.deb`). The app is called **Workhub 2** and has its own app id and data folder, so it can run next
@@ -242,7 +263,7 @@ Conventional Commits on `main`; [CHANGELOG.md](CHANGELOG.md) is generated the sa
 1. Every push to `main` with a `feat`, `fix`, `perf` or `revert` commit opens or updates the
    release pull request: the next version (`2.0.0-alpha.N` while in alpha) in every `package.json`
    and `package-lock.json`, and the new changelog entry.
-2. Merging it tags `v<version>`, creates a **draft** pre-release with the changelog as notes, and
+2. Merging it tags `v<version>`, creates a **draft** release (marked latest) with the changelog as notes, and
    runs the `release` workflow, which builds the macOS, Windows and Linux installers and attaches
    them, with checksums and `latest*.yml` update metadata, to the draft.
 3. Review the draft on the Releases page and publish it.
