@@ -28,7 +28,17 @@ import {
   type Connection,
   type ConnectionTest,
   type EnvironmentReading,
+  flowAlertsOf,
+  flowHistoryGap,
+  hasFlowAlerts,
+  flowHistoryKey,
+  flowMeasures,
+  flowTimingFromHistory,
+  HealthConnectionError,
+  mergeFlowHistory,
   type FlowMap,
+  type FlowMapReading,
+  type FlowMeasure,
   type FlowTraceSort,
   type HealthDetailRequest,
   type HealthEnvironment,
@@ -37,7 +47,8 @@ import {
   type SecretChange,
   type SecretStore
 } from '@workhub/core'
-import type { FlowMapResult, FlowMapSummary, FlowTraceLogsResult, FlowTraceResult, FlowTracesResult, HealthDetail, HealthDetailResult, HealthEnvironmentView, HealthState, HealthView } from '../shared/health-api'
+import type { FlowMapResult, FlowMapState, FlowMapSummary, FlowTraceLogsResult, FlowTraceResult, FlowTracesResult, HealthDetail, HealthDetailResult, HealthEnvironmentView, HealthState, HealthView } from '../shared/health-api'
+import type { FlowHistoryStore } from './flow-history'
 import { flowMapSummaries, readFlowMapFiles } from './flow-maps'
 
 /** The least time between two real reads of a profile or of one row's details, however often the screen asks. */
@@ -103,7 +114,14 @@ const FLOW_TRACE_LOG_SIZE = 200
 /** The window of a flow-map reading: an hour to a week. */
 export const FLOW_MAP_HOURS = { min: 1, max: 24 * 7, default: 24 }
 
+/** A flow-map measure is read again at most this often (the refresh button: `HEALTH_MIN_GAP_MS`). */
+export const FLOW_HISTORY_REFRESH_MS = 2 * 60_000
+/** Flow-history reads that may run against the cluster at once. */
+export const FLOW_HISTORY_CONCURRENCY = 4
+
 type Resolved = { view: HealthView } | { profileId: string; provider: HealthProvider; environments: HealthEnvironment[]; cached: Cached; state: HealthState; connectionName?: string; refreshMinutes: number; floorMinutes: number }
+
+type Ready = Exclude<Resolved, { view: HealthView }>
 
 /** The first configured index of an environment, for Test connection. */
 const probeIndex = (env: HealthEnvironment | undefined) => env?.apm.errors.trim() || env?.apm.traces.trim() || env?.apm.metrics.trim() || undefined
@@ -117,12 +135,18 @@ export interface HealthServiceDeps {
   now?: () => number
   /** The folder of the flow-map files; no flow maps without it. */
   flowMapsDir?: string
+  /** The local history of flow-map measures; without it every reading asks the cluster for the whole week. */
+  flowHistory?: FlowHistoryStore
 }
 
 /** Resolves the health provider of a profile, keeps what each environment last read and serves the Health screen. */
 export class HealthService {
   private readonly cache = new Map<string, Cached>()
   private readonly inflight = new Map<string, Promise<HealthView>>()
+  /** Flow-history reads under way, by `<scope>|<measure key>`: two maps sharing a measure share the read. */
+  private readonly measureReads = new Map<string, Promise<{ message: string; connection: boolean } | undefined>>()
+  private reading = 0
+  private readonly waiting: (() => void)[] = []
   private readonly now: () => number
 
   constructor(private readonly deps: HealthServiceDeps) {
@@ -240,11 +264,32 @@ export class HealthService {
     return flowMapSummaries(readFlowMapFiles(this.deps.flowMapsDir))
   }
 
+  /** Every map of an environment by id: over its limits in the last stored hour or not (see `FlowMapState`). */
+  async flowMapStates(profileId: string | null, environmentId: string): Promise<Record<string, FlowMapState>> {
+    if (!this.deps.flowMapsDir) return {}
+    const r = await this.resolve(profileId)
+    if ('view' in r) return {}
+    const env = r.environments.find((e) => e.id === environmentId)
+    if (!env) return {}
+    const out: Record<string, FlowMapState> = {}
+    for (const f of readFlowMapFiles(this.deps.flowMapsDir)) {
+      const map = f.map
+      if (!map || (map.environmentId && map.environmentId !== env.id)) continue
+      if (!hasFlowAlerts(map) || !r.provider.flowMeasureHours || !this.deps.flowHistory) {
+        out[map.id] = 'unknown'
+        continue
+      }
+      const result = await this.flowMapFromHistory(r, env, map, 1, false, true)
+      out[map.id] = !result.ok || !result.reading ? 'unknown' : flowAlertsOf(map, result.reading, env).length > 0 ? 'alert' : 'ok'
+    }
+    return out
+  }
+
   /**
    * One map measured on an environment, from the cache while the reading is younger than
    * `HEALTH_DETAIL_LIFETIME_MS`; the file is read every time, so an edited map reads again at once.
    */
-  async flowMap(profileId: string | null, environmentId: string, mapId: string, hours: number, force = false): Promise<FlowMapResult> {
+  async flowMap(profileId: string | null, environmentId: string, mapId: string, hours: number, force = false, storedOnly = false): Promise<FlowMapResult> {
     if (!this.deps.flowMapsDir) return { ok: false, error: 'Flow maps are not available' }
     const file = readFlowMapFiles(this.deps.flowMapsDir).find((f) => f.map?.id === mapId || (!f.map && basename(f.file) === `${mapId}.json`))
     if (!file) return { ok: false, error: 'This flow map is no longer in the folder' }
@@ -254,8 +299,9 @@ export class HealthService {
     if ('view' in r) return { ok: false, error: 'Health is not set up for this profile' }
     const env = r.environments.find((e) => e.id === environmentId)
     if (!env) return { ok: false, error: 'This environment is no longer configured' }
-    if (!r.provider.flowMap) return { ok: true, map }
     const window = Math.min(FLOW_MAP_HOURS.max, Math.max(FLOW_MAP_HOURS.min, Math.round(hours) || FLOW_MAP_HOURS.default))
+    if (r.provider.flowMeasureHours && this.deps.flowHistory) return this.flowMapFromHistory(r, env, map, window, force, storedOnly)
+    if (storedOnly || !r.provider.flowMap) return { ok: true, map }
     const key = `${env.id}|${map.id}|${window}|${createHash('sha256').update(JSON.stringify(map)).digest('hex').slice(0, 12)}`
     const now = this.now()
     const hit = r.cached.flowMaps.get(key)
@@ -270,6 +316,83 @@ export class HealthService {
       if (!result.ok && r.cached.flowMaps.get(key)?.run === run) r.cached.flowMaps.delete(key)
     })
     return run
+  }
+
+  /**
+   * A map read from the local history: each measure (shared between maps) asks the cluster only for
+   * the hours it has not stored as final, at most `FLOW_HISTORY_CONCURRENCY` at a time, and not
+   * again for `FLOW_HISTORY_REFRESH_MS` (30 s when forced). `storedOnly` answers from disk without
+   * asking, so the screen draws at once and fills in when the fresh reading arrives.
+   */
+  private async flowMapFromHistory(r: Ready, env: HealthEnvironment, map: FlowMap, window: number, force: boolean, storedOnly: boolean): Promise<FlowMapResult> {
+    const store = this.deps.flowHistory!
+    const scope = `${r.profileId}|${r.cached.key}|${env.id}`
+    const measures = flowMeasures(map)
+    const errors = new Map<string, { message: string; connection: boolean }>()
+    if (!storedOnly) {
+      const unique = new Map(measures.map((m) => [flowHistoryKey(m.measure), m.measure]))
+      await Promise.all(
+        [...unique].map(async ([key, measure]) => {
+          const error = await this.refreshMeasure(r.provider, store, scope, env, key, measure, force)
+          if (error) errors.set(key, error)
+        })
+      )
+    }
+    const now = this.now()
+    const reading: FlowMapReading = { at: now, windowHours: window, edges: {}, nodes: {}, stages: {}, errors: {} }
+    let stored = false
+    let oldest = now
+    for (const m of measures) {
+      const key = flowHistoryKey(m.measure)
+      const history = store.get(scope, key)
+      if (history) {
+        stored = true
+        oldest = Math.min(oldest, history.fetchedAt)
+        reading[m.of][m.key] = flowTimingFromHistory(history.hours, m.measure, now, window)
+      }
+      const error = errors.get(key)
+      if (error && !history) reading.errors[m.key] = error.message
+    }
+    reading.at = oldest
+    if (storedOnly && !stored) return { ok: true, map }
+    // The cluster could not be reached at all and nothing is stored: say so, as a read used to.
+    const unreachable = [...errors.values()].find((e) => e.connection)
+    if (!stored && unreachable) return { ok: false, error: unreachable.message }
+    return { ok: true, map, reading }
+  }
+
+  /** Reads the hours a measure is missing; the error when the read failed, nothing otherwise. */
+  private async refreshMeasure(provider: HealthProvider, store: FlowHistoryStore, scope: string, env: HealthEnvironment, key: string, measure: FlowMeasure, force: boolean): Promise<{ message: string; connection: boolean } | undefined> {
+    const id = `${scope}|${key}`
+    const running = this.measureReads.get(id)
+    if (running) return running
+    const history = store.get(scope, key)
+    if (history && this.now() - history.fetchedAt < (force ? HEALTH_MIN_GAP_MS : FLOW_HISTORY_REFRESH_MS)) return undefined
+    const run = this.limit(async () => {
+      const now = this.now()
+      const { from, to } = flowHistoryGap(store.get(scope, key), now)
+      try {
+        const hours = await provider.flowMeasureHours!(env, measure, from, to)
+        store.set(scope, key, mergeFlowHistory(store.get(scope, key), hours, from, now))
+        return undefined
+      } catch (error) {
+        return { message: error instanceof Error ? error.message : String(error), connection: error instanceof HealthConnectionError }
+      }
+    }).finally(() => this.measureReads.delete(id))
+    this.measureReads.set(id, run)
+    return run
+  }
+
+  /** Runs `task` once fewer than `FLOW_HISTORY_CONCURRENCY` reads are under way. */
+  private async limit<T>(task: () => Promise<T>): Promise<T> {
+    while (this.reading >= FLOW_HISTORY_CONCURRENCY) await new Promise<void>((resolve) => this.waiting.push(resolve))
+    this.reading++
+    try {
+      return await task()
+    } finally {
+      this.reading--
+      this.waiting.shift()?.()
+    }
   }
 
   /** The map file and the environment a flow-map ask names, or the reason one of them is missing. */

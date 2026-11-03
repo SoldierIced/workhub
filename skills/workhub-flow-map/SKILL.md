@@ -41,6 +41,8 @@ hop of an existing flow, or asks to fix a map that Workhub lists as invalid.
    - short labels (the node box is 170 px: about 22 monospace characters), the detail in `note`;
    - optional `stages` for a saga's steps, `phases` for the headers over the columns;
    - `environmentId` only when the map applies to one Health environment;
+   - `group`: the heading the map is listed under (a domain, such as "Payments"); reuse the
+     headings the folder already has;
    - `entry`: the transaction that starts the flow, so the screen can list its executions
      (traces). Leave it out when the leftmost measured node is the entry;
    - `alerts` when the user wants to be told: `{ "p95Ms": <about twice the entry's p95 over a
@@ -83,7 +85,7 @@ hop of an existing flow, or asks to fix a map that Workhub lists as invalid.
 ```jsonc
 {
   "version": 1,
-  "id": "checkout", "name": "Checkout", "description": "…", "environmentId": "prod",
+  "id": "checkout", "name": "Checkout", "description": "…", "group": "Payments", "environmentId": "prod",
   "entry": { "type": "apm.transaction", "service": "shop-bff", "transaction": "POST /checkout" },
   "phases": [{ "label": "Checkout · sync", "fromColumn": 0, "toColumn": 2 }],
   "lanes": [{ "id": "app", "label": "01 / App" }, { "id": "ex", "label": "EX / External", "kind": "exception" }],

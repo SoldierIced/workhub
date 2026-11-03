@@ -66,6 +66,8 @@ export const flowMapSchema = z.object({
   id,
   name: z.string().min(1).max(80),
   description: z.string().max(400).optional(),
+  /** The heading the map is listed under on the Flow maps screen (a domain, say "Payments"); maps without one are listed last. */
+  group: z.string().trim().min(1).max(40).optional(),
   /** The health environment (by id) whose data measures the map; the screen asks when unset. */
   environmentId: z.string().optional(),
   /** Phase headers over the columns, left to right, e.g. "Checkout · 2 s", "Fulfilment · async". */

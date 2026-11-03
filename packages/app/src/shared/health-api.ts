@@ -51,6 +51,8 @@ export interface FlowMapSummary {
   id: string
   name: string
   description?: string
+  /** The heading the map is listed under. */
+  group?: string
   /** The environment the map measures itself on, when the file names one. */
   environmentId?: string
   file: string
@@ -59,6 +61,12 @@ export interface FlowMapSummary {
   /** The file could not be parsed: the reason. */
   error?: string
 }
+
+/**
+ * How a map stands on an environment, from the stored history only (no read): `alert` when a part
+ * is over the map's limits in the last hour, `ok` when none is, `unknown` without limits or data.
+ */
+export type FlowMapState = 'ok' | 'alert' | 'unknown'
 
 /** A map with its numbers; `reading` is missing while the provider cannot measure (demo and Elastic can). */
 export type FlowMapResult = { ok: true; map: FlowMap; reading?: FlowMapReading } | { ok: false; error: string }
@@ -76,8 +84,14 @@ export interface HealthApi {
   flowTraceLogs(profileId: string | null, environmentId: string, mapId: string, traceId: string): Promise<FlowTraceLogsResult>
   /** The flow maps of the data folder (`flow-maps/*.json`), bad files included with their error. */
   flowMaps(profileId: string | null): Promise<FlowMapSummary[]>
-  /** One map, measured on an environment over the last `hours` (kept 10 minutes; `force` reads again). */
-  flowMap(profileId: string | null, environmentId: string, mapId: string, hours: number, force?: boolean): Promise<FlowMapResult>
+  /** The state of every map of an environment, by map id, from what is stored (never reads the cluster). */
+  flowMapStates(profileId: string | null, environmentId: string): Promise<Record<string, FlowMapState>>
+  /**
+   * One map, measured on an environment over the last `hours`, from the local history: only the
+   * hours not stored yet are read (`force` reads them sooner). `storedOnly` answers from disk at
+   * once without reading, and without a reading when nothing is stored yet.
+   */
+  flowMap(profileId: string | null, environmentId: string, mapId: string, hours: number, force?: boolean, storedOnly?: boolean): Promise<FlowMapResult>
   /** The last read of the profile; reads again when the refresh interval passed or `force` is set (never more than every 30 s). */
   get(profileId: string | null, force?: boolean): Promise<HealthView>
   /**

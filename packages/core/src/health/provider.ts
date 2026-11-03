@@ -1,5 +1,6 @@
 import type { ConnectionTest } from '../tickets/types'
-import type { FlowMap, FlowMapReading, FlowTrace, FlowTraceLog, FlowTraceSort, FlowTraceSummary } from './flow-map'
+import type { FlowHour } from './flow-history'
+import type { FlowMap, FlowMapReading, FlowMeasure, FlowTrace, FlowTraceLog, FlowTraceSort, FlowTraceSummary } from './flow-map'
 import type { FlowDetails, HealthEnvironment, HealthSignals, HealthTier, PodDetails, ServiceErrorDetails } from './types'
 
 /**
@@ -26,6 +27,11 @@ export interface HealthProvider {
   flowDetails?(env: HealthEnvironment, service: string, name: string, now: number): Promise<FlowDetails>
   /** The numbers of a flow map over the last `hours`: one read per measure, failures reported per key. */
   flowMap?(env: HealthEnvironment, map: FlowMap, now: number, hours: number): Promise<FlowMapReading>
+  /**
+   * One measure hour by hour over `[from, to)`, for the local history (see `flow-history`). A
+   * provider with it is read incrementally: only the hours not stored yet are asked for.
+   */
+  flowMeasureHours?(env: HealthEnvironment, measure: FlowMeasure, from: number, to: number): Promise<FlowHour[]>
   /** Recent executions of the flow: the entry transaction's traces over the last `hours`, sorted as asked. */
   flowTraces?(env: HealthEnvironment, map: FlowMap, now: number, hours: number, sort: FlowTraceSort, limit: number): Promise<FlowTraceSummary[]>
   /** One execution laid over the map (see `matchFlowTrace`). */

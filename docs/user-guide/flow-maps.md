@@ -46,7 +46,13 @@ of showing numbers.
 ## The screen
 
 **Flow maps (⌘7)** shows the Health environments as tabs and, for the chosen one, the maps of the
-folder that name it (or name no environment). A map opens with:
+folder that name it (or name no environment) in a side list: under their `group` heading (maps
+without one under **Other**, last), with a search box that matches name, heading and description
+(accents and case ignored). The dot next to each map says how it stands in the last stored hour:
+red when a part is over the map's limits, green when none is, grey without limits or without data
+yet. The dots come from the local history only: listing the maps never reads the cluster.
+
+The map picked opens next to the list with:
 
 - **The toolbar.** The window (6 h, 1 d, 3 d, 7 d); **Diagram** or **Sequence** (the same flow
   as a sequence diagram: one lifeline per service, one arrow per hop in order, or in the order of
@@ -86,8 +92,27 @@ folder that name it (or name no environment). A map opens with:
   once an hour per part (Settings → Notifications → Flow maps turns these off).
 - **Legend.** The same explanation, in the app.
 
-Numbers are kept 10 minutes per map, environment and window, like the other details; an
-execution is kept 10 minutes too.
+### Local history
+
+The numbers come from a local history, so a map draws at once and the cluster is read as little
+as possible. Workhub keeps, per environment and measure, one aggregate per hour for the last seven
+days: calls, failures, the result codes and a latency histogram (buckets 20% wide, 1 ms to
+10 minutes, so a percentile is within about 10% of what APM would say). Every window (1 h to 7 d),
+its previous window and the seven-day baseline are added up from those hours.
+
+- Opening a map draws the stored numbers right away, then reads only the hours not stored as
+  final: the first time a measure is seen that is the whole week, after that the hour in course
+  and the one before (an hour counts as final 15 minutes after it ends, as APM documents arrive
+  late).
+- A measure is read again at most every two minutes (**Refresh**: every 30 s), and two maps that
+  measure the same thing share it. At most four reads run against the cluster at once, the alert
+  checks included.
+- If a read fails, the stored numbers stay on screen and a message says why they are not newer.
+- The history lives in `flow-history/` in the data folder, one file per profile, connection and
+  environment (about 10 MB for a few hundred measures). Hours older than seven days are dropped,
+  and a file not written for seven days is deleted.
+
+An execution is kept 10 minutes.
 
 ## The file
 
@@ -97,6 +122,7 @@ See `docs/examples/flow-maps/checkout.json` for a complete, synthetic example.
 |---|---|
 | `version` | `1`. |
 | `id`, `name`, `description` | The id names the file (`letters, digits, - _ .`). |
+| `group` | Optional: the heading the map is listed under, such as `Payments` (up to 40 characters). |
 | `environmentId` | Optional: the Health environment the map belongs to; listed under every environment when unset. |
 | `phases` | Optional headers over the columns: `{ label, fromColumn, toColumn }`. |
 | `lanes` | Rows, top to bottom: `{ id, label, kind }`, `kind: "exception"` draws the lane dashed (external systems, queues). |

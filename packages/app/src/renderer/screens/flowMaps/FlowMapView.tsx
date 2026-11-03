@@ -54,13 +54,34 @@ export function FlowMapView({ env, profileId, mapId, file, onAsk, canOpenWindow 
   const svgRef = useRef<SVGSVGElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
 
+  const asked = useRef(0)
+  // The stored reading draws the map at once; the fresh one (only the hours not stored yet) replaces it.
   const load = (force = false) => {
+    const ask = ++asked.current
+    let fresh = false
     setLoading(true)
+    if (!force) {
+      window.hub.health
+        .flowMap(profileId, env.id, mapId, hours, false, true)
+        .then((stored) => {
+          if (ask === asked.current && !fresh && stored.ok) setResult(stored)
+        })
+        .catch(() => undefined)
+    }
     window.hub.health
       .flowMap(profileId, env.id, mapId, hours, force)
-      .then(setResult)
-      .catch((e: unknown) => setResult({ ok: false, error: errorText(e) }))
-      .finally(() => setLoading(false))
+      .then((r) => {
+        fresh = true
+        if (ask !== asked.current) return
+        // A failed read keeps what is stored on screen and says why it is not newer.
+        setResult((prev) => {
+          if (r.ok || !prev?.ok || !prev.reading) return r
+          toast(t('flowMaps.staleReading', { error: r.error }), 'danger')
+          return prev
+        })
+      })
+      .catch((e: unknown) => ask === asked.current && setResult({ ok: false, error: errorText(e) }))
+      .finally(() => ask === asked.current && setLoading(false))
   }
   useEffect(() => void load(), [profileId, env.id, mapId, hours]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
