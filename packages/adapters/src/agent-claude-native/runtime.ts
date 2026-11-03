@@ -211,11 +211,11 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
     this.send(s, { type: 'interrupt' })
   }
 
-  respondPermission(sessionId: string, requestId: string, optionId: string | null): void {
+  respondPermission(sessionId: string, requestId: string, optionId: string | null, answers?: Record<string, string>): void {
     const s = this.sessions.get(sessionId)
     const request = s?.mapper.takePermission(requestId)
     if (!s || !request) return
-    this.send(s, { type: 'permission', id: requestId, result: permissionResult(optionId, request.input, request.suggestions) })
+    this.send(s, { type: 'permission', id: requestId, result: permissionResult(optionId, request.input, request.suggestions, answers) })
   }
 
   async setModel(sessionId: string, modelId: string | null): Promise<void> {

@@ -45,11 +45,17 @@ export function snippet(text: string, max = NOTIFY_SNIPPET): string {
  * What a session's notification says besides its kind: the start of the agent's last reply, the
  * question it waits on, or the error. Empty when there is nothing to quote.
  */
-export function attentionDetail(items: readonly { kind: string; text?: string; title?: string; answer?: string }[], kind: AttentionKind): string {
+export function attentionDetail(
+  items: readonly { kind: string; text?: string; title?: string; answer?: string; questions?: readonly { question: string }[] }[],
+  kind: AttentionKind
+): string {
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i]!
     if (kind === 'replied' && item.kind === 'agent' && item.text?.trim()) return snippet(item.text)
-    if (kind === 'needsAnswer' && item.kind === 'permission' && item.answer === undefined && item.title) return snippet(item.title)
+    if (kind === 'needsAnswer' && item.kind === 'permission' && item.answer === undefined) {
+      const text = item.questions?.[0]?.question ?? item.title
+      if (text) return snippet(text)
+    }
     if (kind === 'error' && item.kind === 'error' && item.text?.trim()) return snippet(item.text)
   }
   return ''

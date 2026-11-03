@@ -582,10 +582,10 @@ export class SessionManager {
     return s ? pathInsideFolder(s.view.cwd, path) : null
   }
 
-  respondPermission(id: string, requestId: string, optionId: string | null): void {
+  respondPermission(id: string, requestId: string, optionId: string | null, answers?: Record<string, string>): void {
     const s = this.sessions.get(id)
     if (!s) return
-    s.runtime.respondPermission(id, requestId, optionId)
+    s.runtime.respondPermission(id, requestId, optionId, answers)
     s.openPermissions.delete(requestId)
     this.checkPending(s)
   }

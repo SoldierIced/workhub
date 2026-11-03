@@ -26,6 +26,7 @@ import { BudgetNotice } from './BudgetNotice'
 import { IdleContextNotice } from './IdleContextNotice'
 import { idleContext, lastActivityAt } from '../../lib/idle-context'
 import { SessionControls } from './SessionControls'
+import { QuestionCard } from './QuestionCard'
 import type { ContinuityOptions } from '@shared/continuity-api'
 import { dismissOffer, originText, useContinuityActions, useContinuityOffer } from '../../lib/continuity'
 import { ContinuityNotice } from './ContinuityNotice'
@@ -171,7 +172,7 @@ function ListenButton({ sessionId, itemId, text }: { sessionId: string; itemId: 
 
 interface ChatBlockProps {
   item: ChatItem
-  onAnswer: (requestId: string, optionId: string | null, label: string) => void
+  onAnswer: (requestId: string, optionId: string | null, label: string, answers?: Record<string, string>) => void
   sessionId: string
   cwd: string
   subagents?: SubagentSummary[]
@@ -256,6 +257,15 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
       )
     }
     case 'permission':
+      if (item.questions?.length) {
+        return (
+          <QuestionCard
+            questions={item.questions}
+            answer={item.answer}
+            onSubmit={(answers, label) => onAnswer(item.requestId, answers ? 'allow' : 'deny', label, answers ?? undefined)}
+          />
+        )
+      }
       return (
         <div role="group" aria-label={t('chat.permissionRequested')} className="ml-8 rounded-lg border border-warning/40 bg-warning-soft p-3">
           <div className="flex items-center gap-2 text-sm font-medium text-warning">
@@ -529,8 +539,8 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
   }
 
   const answer = useCallback(
-    (requestId: string, optionId: string | null, label: string) => {
-      window.hub.sessions.respondPermission(v.id, requestId, optionId)
+    (requestId: string, optionId: string | null, label: string, answers?: Record<string, string>) => {
+      window.hub.sessions.respondPermission(v.id, requestId, optionId, answers)
       markPermission(v.id, requestId, label)
     },
     [v.id]

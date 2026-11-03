@@ -262,7 +262,8 @@ export interface SessionsApi {
   onPromptSettled(cb: (id: string, token: number) => void): () => void
   cancel(id: string): Promise<void>
   stop(id: string): Promise<void>
-  respondPermission(id: string, requestId: string, optionId: string | null): void
+  /** `answers` answer a question (question text to answer); see `AgentRuntime.respondPermission`. */
+  respondPermission(id: string, requestId: string, optionId: string | null, answers?: Record<string, string>): void
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
   /**

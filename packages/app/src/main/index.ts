@@ -1047,8 +1047,8 @@ function registerIpc(): void {
   ipc.on('windows:snapshotReply', (_e, requestId: string, snapshot: SessionSnapshot | null) => sessionWindows.reply(requestId, snapshot))
   ipc.handle('sessions:cancel', (_e, id: string) => sessions.cancel(id))
   ipc.handle('sessions:stop', (_e, id: string) => sessions.stop(id))
-  ipc.on('sessions:permission', (_e, id: string, requestId: string, optionId: string | null) =>
-    sessions.respondPermission(id, requestId, optionId)
+  ipc.on('sessions:permission', (_e, id: string, requestId: string, optionId: string | null, answers?: unknown) =>
+    sessions.respondPermission(id, requestId, optionId, validAnswers(answers))
   )
   ipc.on('sessions:write', (_e, id: string, data: string) => sessions.write(id, data))
   ipc.on('sessions:resize', (_e, id: string, cols: number, rows: number) => sessions.resize(id, cols, rows))
@@ -1134,6 +1134,13 @@ function registerIpc(): void {
   ipc.on('trayPopover:hide', (e) => {
     if (trayPopover?.owns(e.sender)) trayPopover.hide()
   })
+}
+
+/** A question's answers from the renderer: question text to answer, strings only; anything else is dropped. */
+function validAnswers(v: unknown): Record<string, string> | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+  const entries = Object.entries(v).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1].length <= 10_000)
+  return entries.length > 0 ? Object.fromEntries(entries.slice(0, 10)) : undefined
 }
 
 const SESSION_STATES = new Set(['starting', 'ready', 'busy', 'stopped', 'error'])
