@@ -2,6 +2,25 @@ import { sessionIdentity, usageOfSnapshot, type AgentEvent, type DrivenSession, 
 import { terminalChannel, type SessionView, type StartSessionInput } from '../shared/api'
 
 /** What the driver needs from the session manager (its public surface). */
+/** How long a prompt typed into a console waits between its text and the Enter that sends it. */
+export const CONSOLE_SUBMIT_DELAY_MS = 300
+
+/**
+ * A prompt as a bracketed paste for an agent's terminal UI, its lines kept as lines. A terminal UI
+ * such as Claude Code's reads a block of text that arrives at once as a paste, Enter included, so
+ * the Enter that sends it must follow on its own.
+ */
+export function consolePaste(text: string): string {
+  return `\x1b[200~${text.replace(/\x1b\[20[01]~/g, '').replace(/\r?\n/g, '\r')}\x1b[201~`
+}
+
+/** Whether output turns bracketed paste on (true) or off (false), by its last such sequence; undefined when it says neither. */
+export function pasteModeIn(data: string): boolean | undefined {
+  const on = data.lastIndexOf('\x1b[?2004h')
+  const off = data.lastIndexOf('\x1b[?2004l')
+  return on === -1 && off === -1 ? undefined : on > off
+}
+
 export interface DrivableSessions {
   list(): SessionView[]
   start(input: StartSessionInput): Promise<SessionView>
@@ -25,6 +44,8 @@ export class SessionDriver {
   private readonly lastState = new Map<string, SessionView['state']>()
   private readonly engine = new Map<string, 'app' | 'console'>()
   private readonly lastOutput = new Map<string, number>()
+  /** Consoles whose agent turned bracketed paste on (`ESC[?2004h`), and did not turn it off since. */
+  private readonly pasteMode = new Map<string, boolean>()
   private readonly identities = new Map<string, string>()
   private readonly usage = new Map<string, SessionUsage>()
   private viewing: string | null = null
@@ -36,7 +57,8 @@ export class SessionDriver {
   constructor(
     private readonly sessions: DrivableSessions,
     private readonly onPrompted: (sessionId: string, text: string) => void,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   ) {}
 
   onChanged(view: SessionView): void {
@@ -57,7 +79,12 @@ export class SessionDriver {
       if (usage) this.usage.set(e.sessionId, usage)
       else this.usage.delete(e.sessionId)
     }
-    if (e.type === 'output' && e.sessionId.endsWith(':console')) this.lastOutput.set(e.sessionId.slice(0, -':console'.length), this.now())
+    if (e.type === 'output' && e.sessionId.endsWith(':console')) {
+      const id = e.sessionId.slice(0, -':console'.length)
+      this.lastOutput.set(id, this.now())
+      const paste = pasteModeIn(e.data)
+      if (paste !== undefined) this.pasteMode.set(id, paste)
+    }
   }
 
   setViewing(sessionId: string | null): void {
@@ -109,7 +136,11 @@ export class SessionDriver {
       return 'delivered'
     }
     this.lastOutput.set(sessionId, this.now())
-    this.sessions.write(terminalChannel(sessionId, 'console'), text.replace(/\r?\n/g, '\r') + '\r')
+    const channel = terminalChannel(sessionId, 'console')
+    this.sessions.write(channel, this.pasteMode.get(sessionId) ? consolePaste(text) : text.replace(/\r?\n/g, '\r'))
+    // Enter on its own, once the paste has landed: sent with it, Claude Code takes it as part of the paste.
+    await this.wait(CONSOLE_SUBMIT_DELAY_MS)
+    this.sessions.write(channel, '\r')
     return 'delivered'
   }
 
@@ -124,7 +155,7 @@ export class SessionDriver {
   /** Drops a stopped session the engine replaced: out of the list and out of the driver's own books. */
   async forget(sessionId: string): Promise<void> {
     if (!this.sessions.remove(sessionId)) return
-    for (const m of [this.turns, this.lastState, this.engine, this.lastOutput, this.identities, this.usage]) m.delete(sessionId)
+    for (const m of [this.turns, this.lastState, this.engine, this.lastOutput, this.pasteMode, this.identities, this.usage]) m.delete(sessionId)
     if (this.viewing === sessionId) this.viewing = null
   }
 }
