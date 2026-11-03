@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_HEALTH_THRESHOLDS, HealthConnectionError, refreshEnvironment, windowVerdict, type HealthEnvironment } from '@workhub/core'
+import { DEFAULT_HEALTH_THRESHOLDS, FLOW_LATENCY_BOUNDS_US, HealthConnectionError, refreshEnvironment, windowVerdict, type HealthEnvironment } from '@workhub/core'
 import { DemoHealthProvider, DEMO_HEALTH_SETTINGS, ElasticClient, ElasticHealthProvider, elasticQueries as q, kibanaDiscoverUrl, kibanaErrorGroupUrl, kibanaServiceErrorsUrl } from '../src/health-elastic'
 import type { HttpClient } from '../src/shared/http'
 
@@ -288,6 +288,31 @@ describe('flow maps', () => {
     const spanTiming = q.parseFlowMeasure(response, map.edges[0]!.measure!, 1)
     expect(spanTiming.errorRate).toBe(0.05)
     expect(spanTiming.codes).toBeUndefined()
+  })
+
+  it('reads only the range asked, hour by hour, with a latency histogram over the fixed buckets', () => {
+    const from = now - 2 * 3_600_000
+    const tx = q.flowMeasureHours(env(), map.nodes[0]!.measure!, from, now)
+    const filter = (tx.body.query as { bool: { filter: unknown[] } }).bool.filter
+    expect(filter[0]).toEqual({ range: { '@timestamp': { gte: from, lt: now, format: 'epoch_millis' } } })
+    expect(filter).toEqual(expect.arrayContaining([{ term: { 'transaction.name': 'POST /checkout' } }, { terms: { 'service.environment': ['dev'] } }]))
+    const hours = (tx.body.aggs as Record<string, { date_histogram: unknown; aggs: Record<string, { range?: { field: string; ranges: { from?: number; to?: number }[] } }> }>).hours!
+    expect(hours.date_histogram).toEqual({ field: '@timestamp', fixed_interval: '1h', min_doc_count: 1 })
+    const ranges = hours.aggs.latency!.range!
+    expect(ranges.field).toBe('transaction.duration.us')
+    expect(ranges.ranges).toHaveLength(FLOW_LATENCY_BOUNDS_US.length + 1)
+    expect(ranges.ranges[0]).toEqual({ to: FLOW_LATENCY_BOUNDS_US[0] })
+    expect(ranges.ranges.at(-1)).toEqual({ from: FLOW_LATENCY_BOUNDS_US.at(-1) })
+    expect(hours.aggs.codes).toEqual({ terms: { field: 'transaction.result', size: 6 } })
+    const span = q.flowMeasureHours(env(), map.edges[0]!.measure!, from, now)
+    const spanHours = (span.body.aggs as typeof tx.body.aggs & { hours: { aggs: Record<string, unknown> } }).hours
+    expect(spanHours.aggs.codes).toBeUndefined()
+
+    const parsed = q.parseFlowMeasureHours({ aggregations: { hours: { buckets: [
+      { key: from, doc_count: 3, failed: { doc_count: 1 }, latency: { buckets: [{ doc_count: 0 }, { doc_count: 2 }, { doc_count: 1 }] }, codes: { buckets: [{ key: 'HTTP 2xx', doc_count: 2 }, { key: 'HTTP 5xx', doc_count: 1 }] } },
+      { key: from + 3_600_000, doc_count: 0, failed: { doc_count: 0 }, latency: { buckets: [] } }
+    ] } } })
+    expect(parsed).toEqual([{ at: from, count: 3, failed: 1, latency: [[1, 2], [2, 1]], codes: { 'HTTP 2xx': 2, 'HTTP 5xx': 1 } }])
   })
 
   it('builds and parses the trace logs: APM errors and container lines', () => {

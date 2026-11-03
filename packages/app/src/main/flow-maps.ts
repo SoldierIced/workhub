@@ -39,7 +39,7 @@ export function readFlowMapFiles(dir: string): FlowMapFile[] {
 export function flowMapSummaries(files: FlowMapFile[]): FlowMapSummary[] {
   return files.map((f) =>
     f.map
-      ? { id: f.map.id, name: f.map.name, file: f.file, ...(f.map.description ? { description: f.map.description } : {}), ...(f.map.environmentId ? { environmentId: f.map.environmentId } : {}), nodes: f.map.nodes.length, edges: f.map.edges.length }
+      ? { id: f.map.id, name: f.map.name, file: f.file, ...(f.map.description ? { description: f.map.description } : {}), ...(f.map.group ? { group: f.map.group } : {}), ...(f.map.environmentId ? { environmentId: f.map.environmentId } : {}), nodes: f.map.nodes.length, edges: f.map.edges.length }
       : { id: f.file.split(/[\\/]/).pop()!.replace(/\.json$/, ''), name: f.file.split(/[\\/]/).pop()!, file: f.file, nodes: 0, edges: 0, error: f.error ?? 'unreadable' }
   )
 }

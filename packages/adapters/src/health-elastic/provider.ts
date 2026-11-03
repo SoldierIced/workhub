@@ -1,4 +1,4 @@
-import { flowEntry, flowMeasures, HealthConnectionError, matchFlowTrace, type FlowTrace, type FlowTraceLog, type FlowTraceSort, type FlowTraceSummary, type ConnectionTest, type FlowDetails, type FlowMap, type FlowMapReading, type HealthEnvironment, type HealthProvider, type HealthSignal, type HealthSignals, type HealthTier, type PodDetails, type PodIssue, type ServiceErrorDetails } from '@workhub/core'
+import { flowEntry, flowMeasures, HealthConnectionError, matchFlowTrace, type FlowTrace, type FlowTraceLog, type FlowTraceSort, type FlowTraceSummary, type ConnectionTest, type FlowDetails, type FlowHour, type FlowMap, type FlowMapReading, type FlowMeasure, type HealthEnvironment, type HealthProvider, type HealthSignal, type HealthSignals, type HealthTier, type PodDetails, type PodIssue, type ServiceErrorDetails } from '@workhub/core'
 import { ElasticClient, ElasticError, toConnectionError } from './client'
 import * as q from './queries'
 
@@ -214,6 +214,11 @@ export class ElasticHealthProvider implements HealthProvider {
       })
     )
     return reading
+  }
+
+  async flowMeasureHours(env: HealthEnvironment, measure: FlowMeasure, from: number, to: number): Promise<FlowHour[]> {
+    if (!q.readsTraces(env)) throw new Error('the environment has no traces index or APM environment')
+    return q.parseFlowMeasureHours(await this.ask(q.flowMeasureHours(env, measure, from, to)))
   }
 
   async flowTraces(env: HealthEnvironment, map: FlowMap, now: number, hours: number, sort: FlowTraceSort, limit: number): Promise<FlowTraceSummary[]> {

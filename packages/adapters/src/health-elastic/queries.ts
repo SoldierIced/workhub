@@ -1,9 +1,11 @@
 import {
+  FLOW_LATENCY_BOUNDS_US,
   median,
   trendStats,
   type ErrorGroup,
   type FlowBaseline,
   type FlowCodeCount,
+  type FlowHour,
   type FlowHourPoint,
   type FlowMeasure,
   type FlowTiming,
@@ -719,6 +721,42 @@ export function parseFlowMeasure(response: Json, measure: FlowMeasure, hours = 2
   if (at(response, 'aggregations', 'previous') !== undefined) timing.previous = parseFlowBaseline(at(response, 'aggregations', 'previous'))
   if (at(response, 'aggregations', 'weekly') !== undefined) timing.weekly = parseFlowBaseline(at(response, 'aggregations', 'weekly'))
   return timing
+}
+
+/**
+ * One measure hour by hour over `[from, to)`, for the local history: calls, failures, a latency
+ * histogram over the fixed buckets of `FLOW_LATENCY_BOUNDS_US` and, for transactions, the results.
+ * Hours without calls are left out. Only the range asked is read, never the whole week.
+ */
+export function flowMeasureHours(env: HealthEnvironment, measure: FlowMeasure, from: number, to: number): EsRequest {
+  const duration = measure.type === 'apm.transaction' ? 'transaction.duration.us' : 'span.duration.us'
+  const what = measure.type === 'apm.transaction' ? [es.term('processor.event', 'transaction'), es.term('transaction.name', measure.transaction)] : [es.term('processor.event', 'span'), es.term('span.destination.service.resource', measure.destination)]
+  const query = es.filter([es.between(from, to), es.terms('service.environment', apmEnvironmentValues(env)), es.term('service.name', measure.service), ...what])
+  const bounds = FLOW_LATENCY_BOUNDS_US
+  const ranges = [...bounds.map((b, i) => (i === 0 ? { to: b } : { from: bounds[i - 1], to: b })), { from: bounds[bounds.length - 1] }]
+  const perHour: Record<string, unknown> = { failed: { filter: es.term('event.outcome', 'failure') }, latency: { range: { field: duration, ranges } } }
+  if (measure.type === 'apm.transaction') perHour.codes = { terms: { field: 'transaction.result', size: 6 } }
+  return { index: env.apm.traces, body: es.aggregations(query, { hours: { date_histogram: { field: '@timestamp', fixed_interval: '1h', min_doc_count: 1 }, aggs: perHour } }) }
+}
+
+export function parseFlowMeasureHours(response: Json): FlowHour[] {
+  return list(at(response, 'aggregations', 'hours', 'buckets')).flatMap((b): FlowHour[] => {
+    const hourAt = num(at(b, 'key'))
+    const count = num(at(b, 'doc_count')) ?? 0
+    if (hourAt === undefined || count === 0) return []
+    const latency: [number, number][] = list(at(b, 'latency', 'buckets')).flatMap((r, i): [number, number][] => {
+      const n = num(at(r, 'doc_count')) ?? 0
+      return n > 0 ? [[i, n]] : []
+    })
+    const hour: FlowHour = { at: hourAt, count, failed: num(at(b, 'failed', 'doc_count')) ?? 0, latency }
+    const codes = list(at(b, 'codes', 'buckets')).flatMap((c): [string, number][] => {
+      const code = str(at(c, 'key'))
+      const n = num(at(c, 'doc_count')) ?? 0
+      return code && n > 0 ? [[code, n]] : []
+    })
+    if (codes.length > 0) hour.codes = Object.fromEntries(codes)
+    return [hour]
+  })
 }
 
 const TS_FIELD = { field: '@timestamp', format: 'epoch_millis' }
