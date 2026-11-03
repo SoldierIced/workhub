@@ -65,7 +65,9 @@ on their own; Refresh is the manual fallback.
 attendees, a **Join** button when the event has a video call link (Meet, Zoom, Teams, Webex and
 others), and its brief: **Prepare brief**, **Preparing…**, **Brief ready** or **Open brief**.
 
-**Inbox** and **Milestones** are described below; they work without a calendar.
+**Inbox**, **Tasks** and **Milestones** are described below; they work without a calendar. The
+Inbox is where things arrive and you decide what they are; Tasks is the work you took on, grouped
+by the milestone it moves forward; Milestones are the goals that work counts toward.
 
 ### Item details
 
@@ -238,21 +240,38 @@ progress does not drop after the week **Closed this week** keeps items.
 
 The inbox collects things to act on. Every item is a **task**, a **bug** or a **decision**, with a
 title, a detail, where it came from, and optionally an area, a criticality, a due date and people.
-New items wait in **To review**, with their actions in the card's header:
+The Inbox tab shows only the items that wait in **To review**, with their actions in the card's
+header; once you keep or send one, it moves to the **Tasks** tab:
 
 - **Create ticket** (a task or bug) creates the issue in the tracker (see the settings below) and
-  links it from the item, which moves to **My tasks → In the tracker** (see
+  links it from the item, which moves to the **Tasks** tab (see
   [Tasks and tickets](#tasks-and-tickets)). On a decision it is **Record**: it goes to **Decisions**.
-- **Local task** keeps it in Workhub, under **My tasks**: overdue or due today first, then the
-  critical and high ones (levels mapped to priority 1 or 2), then the rest. **Done** closes a task
-  and **Reopen** brings it back.
+- **Local task** keeps it in Workhub, on the **Tasks** tab. **Done** closes a task and **Reopen**
+  brings it back.
 - **Discard** (the ✕ button) closes it, after you confirm. A discarded item stays under **Closed
   this week**, where **Reopen** brings it back.
 
-Nothing becomes a ticket without your approval. Closed items (done or discarded) stay under
-**Closed this week** for 7 days and are then removed; decisions stay. Filters narrow the
-list by kind, area and status, and **Search** finds words in titles and details (handy for
-decisions).
+Every task and bug shows the milestones it counts toward as chips (click one to open the
+milestone). **No milestone** (or **Change milestone**) opens a menu of the active milestones: tick
+one to add the item as one of its pieces (weight 5, change it in the milestone's form), untick it
+to take it out. Only milestones made of pieces take items; one whose progress is typed by hand or
+counted from a query is listed but cannot be picked, so its progress is never changed by surprise.
+An item belongs to a milestone that lists it as a task piece or lists its ticket as a ticket piece.
+
+Nothing becomes a ticket without your approval. Filters narrow the list by kind and area, and
+**Search** finds words in titles and details.
+
+### Tasks
+
+The **Tasks** tab shows the work you took on: local tasks and bugs, and those that follow a ticket.
+They are grouped by the milestone they count toward: each group shows the milestone's status,
+progress against time and end date, and its open tasks (overdue or due today first, then the
+critical and high ones, then the rest, then those that follow a ticket). A task in two milestones
+shows in both. When items of a milestone still wait in the Inbox, the group says how many. Tasks in
+no milestone come next, under **In no milestone**; add them to one from their milestone chip.
+
+Below them are **Decisions** and **Closed this week**: closed items (done or discarded) stay there
+for 7 days and are then removed; decisions stay. The same filters and the bulk edit work here.
 
 Select several items with their checkboxes to edit them at once. A bar titled **Edit N selected
 items** shows one labelled control per field, each starting on **Don't change**:
@@ -324,7 +343,7 @@ A task or bug can follow a ticket in the tracker:
   (it never creates one). **Unlink** next to the ticket removes the link; an item created with
   **Create ticket** and then unlinked becomes a plain local task.
 
-While it follows a ticket, the item shows under **My tasks → In the tracker** with the ticket's
+While it follows a ticket, the item shows on the **Tasks** tab with the ticket's
 state, read with the milestones (when you link it, every 30 minutes and on **Count again** on the
 Milestones tab), from the inbox's tracker (**Tracker for new issues**). When the tracker says the
 ticket is done, the item is marked **Done** on its own; its history says it was marked done from

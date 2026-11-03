@@ -1,4 +1,4 @@
-import { CalendarDays, Flag, Inbox, Users, type LucideIcon } from 'lucide-react'
+import { CalendarDays, Flag, Inbox, ListTodo, Users, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Profile } from '@workhub/core'
 import type { PlanView } from '@shared/plan-api'
@@ -7,6 +7,7 @@ import type { MessageKey } from '../../i18n/translate'
 import { InboxTab } from './InboxTab'
 import { MilestonesTab } from './MilestonesTab'
 import { PeopleTab } from './PeopleTab'
+import { TasksTab } from './TasksTab'
 import { TodayTab } from './TodayTab'
 
 /** What every Plan tab gets from the screen. */
@@ -44,6 +45,7 @@ export interface PlanTab {
 export const PLAN_TABS: readonly PlanTab[] = [
   { id: 'today', label: 'plan.tab.today', icon: CalendarDays, needsCalendar: true, render: (context) => <TodayTab {...context} /> },
   { id: 'inbox', label: 'planner.tab.inbox', icon: Inbox, render: (context) => <InboxTab {...context} /> },
+  { id: 'tasks', label: 'planner.tab.tasks', icon: ListTodo, render: (context) => <TasksTab {...context} /> },
   { id: 'milestones', label: 'planner.tab.milestones', icon: Flag, render: (context) => <MilestonesTab {...context} /> },
   { id: 'people', label: 'plan.tab.people', icon: Users, render: (context) => <PeopleTab {...context} /> }
 ]

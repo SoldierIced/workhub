@@ -1,17 +1,24 @@
 import { ExternalLink, Inbox, Plus, X } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
-import { availableInboxActions, filterInbox, groupInbox, inboxSettings, INBOX_KINDS, INBOX_STATUSES, plannerSettings, trackedState, type InboxAction, type InboxItem, type InboxKind, type Person, type TrackedTicket } from '@workhub/core'
+import { useId, useMemo, useState, type ReactNode } from 'react'
+import { availableInboxActions, filterInbox, inboxSettings, INBOX_KINDS, plannerSettings, trackedState, type CriticalityLevel, type InboxAction, type InboxItem, type InboxKind, type Person, type TrackedTicket } from '@workhub/core'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
 import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, Field, useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
 import { BULK_CLEAR, BULK_KEEP, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, EMPTY_ITEM_FORM, formToProposal, inboxActionLabel, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, PIECE_STATE_LABEL, PIECE_STATE_TONE, plainPreview, type BulkForm, type InboxItemForm } from '../../lib/planner'
-import { usePlanner } from '../../plannerStore'
+import { ItemMilestones } from './ItemMilestones'
+import { requestPlanTab, usePlanner } from '../../plannerStore'
 import type { PlanTabContext } from './planTabs'
 
-type Filters = { kind: InboxKind | 'all'; area: string; status: InboxItem['status'] | 'all'; text: string }
-const NO_FILTERS: Filters = { kind: 'all', area: 'all', status: 'all', text: '' }
+export type InboxFilters = { kind: InboxKind | 'all'; area: string; text: string }
+export const NO_FILTERS: InboxFilters = { kind: 'all', area: 'all', text: '' }
+const hasFilters = (f: InboxFilters) => f.kind !== 'all' || f.area !== 'all' || f.text !== ''
+
+/** The items that pass the filters (kind, area and words in the title or detail). */
+export function applyFilters(items: readonly InboxItem[], f: InboxFilters): InboxItem[] {
+  return filterInbox(items, { ...f, status: 'all' })
+}
 
 /** Toggle chips for the people an item involves. */
 export function PeoplePicker({ people, value, onChange }: { people: Person[]; value: string[]; onChange: (ids: string[]) => void }) {
@@ -31,7 +38,7 @@ export function PeoplePicker({ people, value, onChange }: { people: Person[]; va
 }
 
 /** One inbox item with its facts and the actions it offers. */
-export function InboxRow({ item, people, selected, onSelect, busy, canCreate, onAction, profileId, onOpen, ticketState }: { item: InboxItem; people: Person[]; selected?: boolean; onSelect?: (on: boolean) => void; busy: boolean; canCreate: boolean; onAction?: (action: InboxAction) => void; profileId: string; onOpen?: () => void; ticketState?: TrackedTicket }) {
+export function InboxRow({ item, people, selected, onSelect, busy, canCreate, onAction, profileId, onOpen, ticketState, milestones }: { item: InboxItem; people: Person[]; selected?: boolean; onSelect?: (on: boolean) => void; busy: boolean; canCreate: boolean; onAction?: (action: InboxAction) => void; profileId: string; onOpen?: () => void; ticketState?: TrackedTicket; milestones?: ReactNode }) {
   const { t, tn, formatDate } = useI18n()
   const names = (item.people ?? []).map((id) => people.find((p) => p.id === id)?.name).filter(Boolean)
   const due = item.due ? formatDate(new Date(`${item.due}T00:00:00`), { day: 'numeric', month: 'short' }) : null
@@ -77,7 +84,8 @@ export function InboxRow({ item, people, selected, onSelect, busy, canCreate, on
       </div>
       {/* The body takes the whole width of the card. */}
       {item.detail && <p className="line-clamp-3 whitespace-pre-wrap text-sm text-muted">{plainPreview(item.detail)}</p>}
-      <p className="flex flex-wrap gap-x-3 text-xs text-subtle">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-subtle">
+        {milestones}
         <span>{item.source.label ? `${t(INBOX_SOURCE_LABEL[item.source.type])}: ${item.source.label}` : t(INBOX_SOURCE_LABEL[item.source.type])}</span>
         {item.area && <span>{item.area}</span>}
         {item.criticality && <span className="font-medium text-text">{item.criticality}</span>}
@@ -85,46 +93,148 @@ export function InboxRow({ item, people, selected, onSelect, busy, canCreate, on
         {names.length > 0 && <span>{names.join(', ')}</span>}
         {(item.links?.length ?? 0) > 0 && <span>{tn('planner.links.count', item.links!.length)}</span>}
         {item.status !== 'pending' && item.status !== 'local' && item.status !== 'ticket' && <span>{t(INBOX_STATUS_LABEL[item.status])}</span>}
-      </p>
+      </div>
     </li>
   )
 }
 
-/** Inbox: pending approval, my local tasks, decisions and what closed lately; filters and bulk edit. */
-export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
+/** Kind, area and text filters of the Inbox and Tasks tabs. */
+export function InboxFilterBar({ filters, onChange, areas }: { filters: InboxFilters; onChange: (f: InboxFilters) => void; areas: string[] }) {
+  const { t } = useI18n()
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('planner.inbox.filters')}>
+      <div className="w-40 shrink-0"><Select value={filters.kind} aria-label={t('planner.inbox.kind')} onChange={(v) => onChange({ ...filters, kind: v as InboxFilters['kind'] })} options={[{ value: 'all', label: t('planner.inbox.allKinds') }, ...INBOX_KINDS.map((k) => ({ value: k, label: t(INBOX_KIND_LABEL[k]) }))]} /></div>
+      <div className="w-40 shrink-0"><Select value={filters.area} aria-label={t('planner.inbox.area')} onChange={(v) => onChange({ ...filters, area: v })} options={[{ value: 'all', label: t('planner.inbox.allAreas') }, ...areas.map((a) => ({ value: a, label: a }))]} /></div>
+      <Input value={filters.text} onChange={(e) => onChange({ ...filters, text: e.target.value })} placeholder={t('planner.inbox.search')} aria-label={t('planner.inbox.search')} className="w-56" />
+      {hasFilters(filters) && (
+        <Button size="sm" variant="ghost" icon={<X className="size-3.5" aria-hidden />} onClick={() => onChange(NO_FILTERS)}>
+          {t('planner.inbox.clearFilters')}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/** Area, criticality or due date for the selected items at once. */
+export function BulkBar({ profileId, items, selected, onDone, areas, criticalities }: { profileId: string; items: readonly InboxItem[]; selected: string[]; onDone: () => void; areas: string[]; criticalities: readonly CriticalityLevel[] }) {
   const { t, tn } = useI18n()
   const toast = useToast()
-  const { view } = usePlanner(profile.id, true)
-  const settings = inboxSettings(plannerSettings(profile))
-  const people = plannerSettings(profile).people
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
-  const [adding, setAdding] = useState<InboxItemForm | null>(null)
-  const [duplicate, setDuplicate] = useState(false)
-  const [selected, setSelected] = useState<string[]>([])
-  const [busy, setBusy] = useState<string | null>(null)
   const [bulk, setBulk] = useState<BulkForm>(EMPTY_BULK_FORM)
-  // The item whose Discard waits for the user's confirmation.
-  const [discarding, setDiscarding] = useState<InboxItem | null>(null)
-  const bulkTitleId = useId()
-  const items = view?.inbox ?? []
-  const shown = useMemo(() => filterInbox(items, filters), [items, filters])
-  const groups = groupInbox(shown, view?.today ?? '', settings.criticalities)
-  const canCreate = view?.tracker.create ?? false
-  const areas = [...new Set([...settings.areas, ...items.map((i) => i.area).filter((a): a is string => Boolean(a))])]
+  const titleId = useId()
+  const patch = bulkFormToPatch(bulk)
+  const changes = bulkChangeCount(items.filter((i) => selected.includes(i.id)), patch)
+  const done = () => {
+    setBulk(EMPTY_BULK_FORM)
+    onDone()
+  }
+  const apply = async () => {
+    if (changes === 0) return
+    const r = await window.hub.planner.bulkEdit(profileId, selected, patch)
+    if (!r.ok) return toast(r.error, 'danger')
+    done()
+  }
+  if (selected.length === 0) return null
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-accent/40 bg-accent-soft px-3 py-2.5" role="group" aria-labelledby={titleId} data-testid="inbox-bulk">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 id={titleId} className="text-sm font-semibold">
+          {tn('planner.inbox.bulkTitle', selected.length)}
+        </h2>
+        <p className="flex-1 text-xs text-muted">{t('planner.inbox.bulkHint')}</p>
+        <Button size="sm" variant="ghost" onClick={done}>
+          {t('planner.inbox.clearSelection')}
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label={t('planner.inbox.area')} className="w-44 shrink-0">
+          <Select value={bulk.area} onChange={(v) => setBulk((b) => ({ ...b, area: v }))} options={[{ value: BULK_KEEP, label: t('planner.inbox.bulkKeep') }, { value: BULK_CLEAR, label: t('planner.inbox.bulkClearArea') }, ...areas.map((a) => ({ value: a, label: a }))]} />
+        </Field>
+        <Field label={t('planner.inbox.criticality')} className="w-44 shrink-0">
+          <Select value={bulk.criticality} onChange={(v) => setBulk((b) => ({ ...b, criticality: v }))} options={[{ value: BULK_KEEP, label: t('planner.inbox.bulkKeep') }, { value: BULK_CLEAR, label: t('planner.inbox.bulkClearCriticality') }, ...criticalities.map((c) => ({ value: c.name, label: c.name }))]} />
+        </Field>
+        <Field label={t('planner.inbox.dueLabel')} className="w-44 shrink-0">
+          <Select
+            value={bulk.due === 'keep' ? '' : bulk.due}
+            onChange={(v) => setBulk((b) => ({ ...b, due: v === 'set' || v === 'clear' ? v : 'keep' }))}
+            options={[
+              { value: '', label: t('planner.inbox.bulkKeep') },
+              { value: 'set', label: t('planner.inbox.bulkSetDue') },
+              { value: 'clear', label: t('planner.inbox.bulkClearDue') }
+            ]}
+          />
+        </Field>
+        {bulk.due === 'set' && (
+          <Field label={t('planner.inbox.bulkNewDue')} className="w-44 shrink-0">
+            <Input type="date" value={bulk.dueDate} onChange={(e) => setBulk((b) => ({ ...b, dueDate: e.target.value }))} />
+          </Field>
+        )}
+        <Button variant="primary" disabled={changes === 0} title={changes === 0 ? t('planner.inbox.bulkNothing') : undefined} onClick={() => void apply()}>
+          {changes === 0 ? t('planner.inbox.apply') : tn('planner.inbox.applyTo', changes)}
+        </Button>
+      </div>
+    </div>
+  )
+}
 
+/**
+ * What an inbox action does from a tab: runs it, says so when a ticket was made, and confirms a
+ * discard first. `rowProps` gives a row its handlers; `dialog` is the discard confirmation.
+ */
+export function useInboxActions(profileId: string, onActed: (id: string) => void) {
+  const { t } = useI18n()
+  const toast = useToast()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [discarding, setDiscarding] = useState<InboxItem | null>(null)
   const act = async (item: InboxItem, action: InboxAction) => {
     setBusy(item.id)
     try {
-      const r = await window.hub.planner.act(profile.id, item.id, action)
+      const r = await window.hub.planner.act(profileId, item.id, action)
       if (!r.ok) return toast(r.error, 'danger')
       if (r.ticket) toast(t('planner.inbox.ticketCreated', { key: r.ticket.key }))
-      setSelected((s) => s.filter((x) => x !== item.id))
+      onActed(item.id)
     } catch (e) {
       toast(errorText(e), 'danger')
     } finally {
       setBusy(null)
     }
   }
+  const onAction = (item: InboxItem) => (a: InboxAction) => (a === 'discard' ? setDiscarding(item) : void act(item, a))
+  const dialog = (
+    <ConfirmDeleteDialog
+      name={discarding?.title ?? ''}
+      open={discarding !== null}
+      onOpenChange={(open) => !open && setDiscarding(null)}
+      title={t('planner.inbox.confirmDiscard', { title: discarding?.title ?? '' })}
+      description={t('planner.inbox.confirmDiscardBody')}
+      confirmLabel={t('planner.inbox.action.discard')}
+      onConfirm={() => {
+        if (discarding) void act(discarding, 'discard')
+      }}
+    />
+  )
+  return { busy, onAction, dialog }
+}
+
+/** Inbox: what came in and waits for you to say what it is and which milestone it is for. The work itself is on the Tasks tab. */
+export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
+  const { t, tn } = useI18n()
+  const toast = useToast()
+  const { view } = usePlanner(profile.id, true)
+  const settings = inboxSettings(plannerSettings(profile))
+  const people = plannerSettings(profile).people
+  const [filters, setFilters] = useState<InboxFilters>(NO_FILTERS)
+  const [adding, setAdding] = useState<InboxItemForm | null>(null)
+  const [duplicate, setDuplicate] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
+  const { busy, onAction, dialog } = useInboxActions(profile.id, (id) => setSelected((s) => s.filter((x) => x !== id)))
+  const items = view?.inbox ?? []
+  const milestones = view?.milestones ?? []
+  const pending = useMemo(() => items.filter((i) => i.status === 'pending').sort((a, b) => b.createdAt - a.createdAt), [items])
+  const shown = applyFilters(pending, filters)
+  const working = items.filter((i) => i.status === 'local' || i.status === 'ticket').length
+  const canCreate = view?.tracker.create ?? false
+  const areas = [...new Set([...settings.areas, ...items.map((i) => i.area).filter((a): a is string => Boolean(a))])]
+
   const add = async (force = false) => {
     if (!adding) return
     const proposal = formToProposal(adding)
@@ -137,31 +247,7 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
     if (r.duplicateOf) return setDuplicate(true)
     toast(r.error, 'danger')
   }
-  const bulkPatch = bulkFormToPatch(bulk)
-  const bulkChanges = bulkChangeCount(items.filter((i) => selected.includes(i.id)), bulkPatch)
-  const applyBulk = async () => {
-    if (bulkChanges === 0) return
-    const r = await window.hub.planner.bulkEdit(profile.id, selected, bulkPatch)
-    if (!r.ok) return toast(r.error, 'danger')
-    setSelected([])
-    setBulk(EMPTY_BULK_FORM)
-  }
-  const clearSelection = () => {
-    setSelected([])
-    setBulk(EMPTY_BULK_FORM)
-  }
   const select = (id: string, on: boolean) => setSelected((s) => (on ? [...s, id] : s.filter((x) => x !== id)))
-  const row = (item: InboxItem, actions = true) => <InboxRow key={item.id} item={item} people={people} selected={selected.includes(item.id)} onSelect={item.status === 'pending' || item.status === 'local' ? (on) => select(item.id, on) : undefined} busy={busy === item.id} canCreate={canCreate} onAction={actions ? (a) => (a === 'discard' ? setDiscarding(item) : void act(item, a)) : undefined} profileId={profile.id} onOpen={() => openItem('inbox', item.id)} ticketState={view?.itemTickets[item.id]} />
-  const section = (title: string, list: InboxItem[], empty?: string, testId?: string) =>
-    list.length === 0 && !empty ? null : (
-      <section className="flex flex-col gap-2" data-testid={testId}>
-        <h2 className="flex items-baseline gap-2 px-1 text-md font-semibold">
-          {title} <span className="text-sm font-normal text-subtle">{list.length}</span>
-        </h2>
-        {list.length === 0 ? <p className="px-1 text-sm text-muted">{empty}</p> : <ul className="rounded-lg border border-border bg-surface shadow-sm">{list.map((i) => row(i))}</ul>}
-      </section>
-    )
-  const tasks = groups.tasks.due.length + groups.tasks.urgent.length + groups.tasks.rest.length + groups.tasks.tracker.length
   const levelOptions = [{ value: '', label: t('planner.inbox.none') }, ...settings.criticalities.map((c) => ({ value: c.name, label: c.name }))]
   const areaOptions = [{ value: '', label: t('planner.inbox.none') }, ...areas.map((a) => ({ value: a, label: a }))]
 
@@ -239,106 +325,55 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
         </Card>
       )}
 
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('planner.inbox.filters')}>
-        <div className="w-40 shrink-0"><Select value={filters.kind} aria-label={t('planner.inbox.kind')} onChange={(v) => setFilters((f) => ({ ...f, kind: v as Filters['kind'] }))} options={[{ value: 'all', label: t('planner.inbox.allKinds') }, ...INBOX_KINDS.map((k) => ({ value: k, label: t(INBOX_KIND_LABEL[k]) }))]} /></div>
-        <div className="w-40 shrink-0"><Select value={filters.area} aria-label={t('planner.inbox.area')} onChange={(v) => setFilters((f) => ({ ...f, area: v }))} options={[{ value: 'all', label: t('planner.inbox.allAreas') }, ...areas.map((a) => ({ value: a, label: a }))]} /></div>
-        <div className="w-40 shrink-0"><Select value={filters.status} aria-label={t('planner.inbox.status')} onChange={(v) => setFilters((f) => ({ ...f, status: v as Filters['status'] }))} options={[{ value: 'all', label: t('planner.inbox.allStatuses') }, ...INBOX_STATUSES.map((s) => ({ value: s, label: t(INBOX_STATUS_LABEL[s]) }))]} /></div>
-        <Input value={filters.text} onChange={(e) => setFilters((f) => ({ ...f, text: e.target.value }))} placeholder={t('planner.inbox.search')} aria-label={t('planner.inbox.search')} className="w-56" />
-        {(filters.kind !== 'all' || filters.area !== 'all' || filters.status !== 'all' || filters.text) && (
-          <Button size="sm" variant="ghost" icon={<X className="size-3.5" aria-hidden />} onClick={() => setFilters(NO_FILTERS)}>
-            {t('planner.inbox.clearFilters')}
-          </Button>
-        )}
-      </div>
-
-      {selected.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border border-accent/40 bg-accent-soft px-3 py-2.5" role="group" aria-labelledby={bulkTitleId} data-testid="inbox-bulk">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 id={bulkTitleId} className="text-sm font-semibold">
-              {tn('planner.inbox.bulkTitle', selected.length)}
-            </h2>
-            <p className="flex-1 text-xs text-muted">{t('planner.inbox.bulkHint')}</p>
-            <Button size="sm" variant="ghost" onClick={clearSelection}>
-              {t('planner.inbox.clearSelection')}
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label={t('planner.inbox.area')} className="w-44 shrink-0">
-              <Select value={bulk.area} onChange={(v) => setBulk((b) => ({ ...b, area: v }))} options={[{ value: BULK_KEEP, label: t('planner.inbox.bulkKeep') }, { value: BULK_CLEAR, label: t('planner.inbox.bulkClearArea') }, ...areas.map((a) => ({ value: a, label: a }))]} />
-            </Field>
-            <Field label={t('planner.inbox.criticality')} className="w-44 shrink-0">
-              <Select value={bulk.criticality} onChange={(v) => setBulk((b) => ({ ...b, criticality: v }))} options={[{ value: BULK_KEEP, label: t('planner.inbox.bulkKeep') }, { value: BULK_CLEAR, label: t('planner.inbox.bulkClearCriticality') }, ...settings.criticalities.map((c) => ({ value: c.name, label: c.name }))]} />
-            </Field>
-            <Field label={t('planner.inbox.dueLabel')} className="w-44 shrink-0">
-              <Select
-                value={bulk.due === 'keep' ? '' : bulk.due}
-                onChange={(v) => setBulk((b) => ({ ...b, due: v === 'set' || v === 'clear' ? v : 'keep' }))}
-                options={[
-                  { value: '', label: t('planner.inbox.bulkKeep') },
-                  { value: 'set', label: t('planner.inbox.bulkSetDue') },
-                  { value: 'clear', label: t('planner.inbox.bulkClearDue') }
-                ]}
-              />
-            </Field>
-            {bulk.due === 'set' && (
-              <Field label={t('planner.inbox.bulkNewDue')} className="w-44 shrink-0">
-                <Input type="date" value={bulk.dueDate} onChange={(e) => setBulk((b) => ({ ...b, dueDate: e.target.value }))} />
-              </Field>
-            )}
-            <Button variant="primary" disabled={bulkChanges === 0} title={bulkChanges === 0 ? t('planner.inbox.bulkNothing') : undefined} onClick={() => void applyBulk()}>
-              {bulkChanges === 0 ? t('planner.inbox.apply') : tn('planner.inbox.applyTo', bulkChanges)}
-            </Button>
-          </div>
-        </div>
-      )}
+      {pending.length > 0 && <InboxFilterBar filters={filters} onChange={setFilters} areas={areas} />}
+      <BulkBar profileId={profile.id} items={items} selected={selected} onDone={() => setSelected([])} areas={areas} criticalities={settings.criticalities} />
 
       {!view ? (
         <p className="flex items-center gap-2 py-6 text-sm text-muted" role="status">
           <Spinner /> {t('plan.loading')}
         </p>
-      ) : items.length === 0 && !adding ? (
+      ) : pending.length === 0 && !adding ? (
         <EmptyState compact icon={<Inbox className="size-5" aria-hidden />} title={t('planner.inbox.empty')} description={t('planner.inbox.emptyHint')} />
       ) : (
-        <>
-          {section(t('planner.inbox.pending'), groups.pending, t('planner.inbox.pendingEmpty'), 'inbox-pending')}
-          <section className="flex flex-col gap-2" data-testid="inbox-tasks">
-            <h2 className="flex items-baseline gap-2 px-1 text-md font-semibold">
-              {t('planner.inbox.tasks')} <span className="text-sm font-normal text-subtle">{tasks}</span>
-            </h2>
-            {tasks === 0 && <p className="px-1 text-sm text-muted">{t('planner.inbox.tasksEmpty')}</p>}
-            {(
-              [
-                ['planner.inbox.tasks.due', groups.tasks.due],
-                ['planner.inbox.tasks.urgent', groups.tasks.urgent],
-                ['planner.inbox.tasks.rest', groups.tasks.rest],
-                ['planner.inbox.tasks.tracker', groups.tasks.tracker]
-              ] as const
-            ).map(([label, list]) =>
-              list.length === 0 ? null : (
-                <div key={label} className="flex flex-col gap-1" data-testid={label === 'planner.inbox.tasks.tracker' ? 'inbox-tracker' : undefined}>
-                  <h3 className="px-1 text-sm font-medium text-muted">{t(label)}</h3>
-                  {label === 'planner.inbox.tasks.tracker' && <p className="px-1 text-xs text-subtle">{t('planner.inbox.tasks.trackerHint')}</p>}
-                  <ul className="rounded-lg border border-border bg-surface shadow-sm">{list.map((i) => row(i))}</ul>
-                </div>
-              )
-            )}
-          </section>
-          {section(t('planner.inbox.decisions'), groups.decisions, t('planner.inbox.decisionsEmpty'), 'inbox-decisions')}
-          {section(t('planner.inbox.closed'), groups.closed)}
-        </>
+        <section className="flex flex-col gap-2" data-testid="inbox-pending">
+          <h2 className="flex items-baseline gap-2 px-1 text-md font-semibold">
+            {t('planner.inbox.pending')} <span className="text-sm font-normal text-subtle">{shown.length}</span>
+          </h2>
+          {shown.length === 0 ? (
+            <p className="px-1 text-sm text-muted">{t('planner.inbox.noMatch')}</p>
+          ) : (
+            <ul className="rounded-lg border border-border bg-surface shadow-sm">
+              {shown.map((item) => (
+                <InboxRow
+                  key={item.id}
+                  item={item}
+                  people={people}
+                  selected={selected.includes(item.id)}
+                  onSelect={(on) => select(item.id, on)}
+                  busy={busy === item.id}
+                  canCreate={canCreate}
+                  onAction={onAction(item)}
+                  profileId={profile.id}
+                  onOpen={() => openItem('inbox', item.id)}
+                  ticketState={view.itemTickets[item.id]}
+                  milestones={<ItemMilestones item={item} milestones={milestones} profileId={profile.id} onOpen={(id) => openItem('milestone', id)} />}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
-      <ConfirmDeleteDialog
-        name={discarding?.title ?? ''}
-        open={discarding !== null}
-        onOpenChange={(open) => !open && setDiscarding(null)}
-        title={t('planner.inbox.confirmDiscard', { title: discarding?.title ?? '' })}
-        description={t('planner.inbox.confirmDiscardBody')}
-        confirmLabel={t('planner.inbox.action.discard')}
-        onConfirm={() => {
-          if (discarding) void act(discarding, 'discard')
-        }}
-      />
+      {view && working > 0 && (
+        <p className="px-1 text-sm text-muted">
+          {tn('planner.inbox.workingHint', working)}{' '}
+          <button type="button" className="font-medium text-accent hover:underline" onClick={() => requestPlanTab('tasks')}>
+            {t('planner.inbox.openTasks')}
+          </button>
+        </p>
+      )}
+
+      {dialog}
     </div>
   )
 }
