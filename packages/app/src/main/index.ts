@@ -114,6 +114,7 @@ import { registerLinksIpc } from './links'
 import { LocalReviewService, registerLocalReviewIpc } from './local-review'
 import { controlEnv, controlSocketPath, newControlToken, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
 import { createPlanControl } from './plan-control'
+import { FLOW_HISTORY_FOLDER, FlowHistoryStore } from './flow-history'
 import { FLOW_MAPS_FOLDER, saveFlowMap } from './flow-maps'
 import { registerFlowMapsIpc } from './flow-maps-ipc'
 import { DemoMetricSource, HealthMetricSource, MetricAlertService, ProductMetricSource, type MetricAlertsState } from './metric-alerts'
@@ -204,7 +205,10 @@ const prEvents = new PrEventService({
   demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1' ? { advance: () => ++demoPrStep } : undefined
 })
 // WORKHUB_DEMO_HEALTH=1 serves synthetic environments, so Health can be shown without a cluster.
-const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1', flowMapsDir: join(dataDir, FLOW_MAPS_FOLDER) })
+// Flow-map measures kept hour by hour for a week, so maps draw from disk and read only new hours.
+const flowHistory = new FlowHistoryStore(join(dataDir, FLOW_HISTORY_FOLDER))
+flowHistory.prune()
+const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1', flowMapsDir: join(dataDir, FLOW_MAPS_FOLDER), flowHistory })
 // WORKHUB_DEMO_TICKETS=1 serves synthetic tickets, so the UI can be shown without credentials.
 const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1', undefined, scenario ?? undefined)
 // WORKHUB_DEMO_CALENDAR=1 serves synthetic meetings around now, so Plan can be shown without a calendar address.
@@ -1059,7 +1063,8 @@ function registerIpc(): void {
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
   ipc.handle('health:details', (_e, profileId: string | null, environmentId: string, request: HealthDetailRequest, force?: boolean) => health.details(profileId, environmentId, request, force === true))
   ipc.handle('health:flowMaps', (_e, profileId: string | null) => health.flowMaps(profileId))
-  ipc.handle('health:flowMap', (_e, profileId: string | null, environmentId: string, mapId: string, hours: number, force?: boolean) => health.flowMap(profileId, environmentId, mapId, hours, force === true))
+  ipc.handle('health:flowMapStates', (_e, profileId: string | null, environmentId: unknown) => (typeof environmentId === 'string' ? health.flowMapStates(profileId, environmentId) : {}))
+  ipc.handle('health:flowMap', (_e, profileId: string | null, environmentId: string, mapId: string, hours: number, force?: boolean, storedOnly?: boolean) => health.flowMap(profileId, environmentId, mapId, hours, force === true, storedOnly === true))
   ipc.handle('health:flowTraces', (_e, profileId: string | null, environmentId: string, mapId: string, hours: number, sort: FlowTraceSort) => health.flowTraces(profileId, environmentId, mapId, hours, sort))
   ipc.handle('health:flowTrace', (_e, profileId: string | null, environmentId: string, mapId: string, traceId: string) => health.flowTrace(profileId, environmentId, mapId, traceId))
   ipc.handle('health:flowTraceLogs', (_e, profileId: string | null, environmentId: string, mapId: string, traceId: string) => health.flowTraceLogs(profileId, environmentId, mapId, traceId))
@@ -1796,6 +1801,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   diagnostics.log.info('quit')
   diagnostics.flush()
+  flowHistory.flush()
   // Give agent processes a chance to exit before the app does.
   event.preventDefault()
   quitting = true

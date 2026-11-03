@@ -3,6 +3,7 @@
   "id": "checkout",
   "name": "Checkout",
   "description": "A card payment from the shop app to the acquirer, then fulfilment through the order queue.",
+  "group": "Payments",
   "phases": [
     {
       "label": "Checkout · sync",
