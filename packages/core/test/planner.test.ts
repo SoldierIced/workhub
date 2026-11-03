@@ -149,6 +149,11 @@ describe('inbox', () => {
     expect(findDuplicate(items, { title: 'fix  the EXPORT' })?.id).toBe('a')
     expect(findDuplicate(items, { title: 'other' })).toBeUndefined()
     expect(findDuplicate(items, { title: 'Renamed', source: { type: 'alert', ref: 'k1' } })?.id).toBe('c')
+    // One session (or meeting) proposes several items: its ref alone is no duplicate.
+    const fromSession = [item({ id: 's1', title: 'First follow-up', source: { type: 'agent', ref: 'session-1' } }), item({ id: 'm1', title: 'Meeting note', source: { type: 'meeting', ref: 'session-1' } })]
+    expect(findDuplicate(fromSession, { title: 'Second follow-up', source: { type: 'agent', ref: 'session-1' } })).toBeUndefined()
+    expect(findDuplicate(fromSession, { title: 'Another note', source: { type: 'meeting', ref: 'session-1' } })).toBeUndefined()
+    expect(findDuplicate(fromSession, { title: 'first follow-up!', source: { type: 'agent', ref: 'session-2' } })?.id).toBe('s1')
     // Only the most recent open items are compared.
     expect(findDuplicate([item({ title: 'Fix the export', createdAt: 1 }), item({ id: 'z', title: 'z', createdAt: 2 })], { title: 'fix the export' }, 1)).toBeUndefined()
   })

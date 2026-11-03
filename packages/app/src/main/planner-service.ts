@@ -498,7 +498,7 @@ export class PlannerService {
 
   // Inbox
 
-  /** Adds pending items; an item with the same title (or source) as an open one is skipped unless `force`d. */
+  /** Adds pending items; an item with the same title as an open one (or from the same alert) is skipped unless `force`d. */
   private async add(profileId: string, proposals: readonly InboxProposal[], source: InboxSource, force: boolean): Promise<{ added: InboxItem[]; duplicates: InboxItem[] } | { error: string }> {
     const profile = await this.profile(profileId)
     if (!profile || !planner(profile)) return { error: PLANNER_ERRORS.moduleOff }

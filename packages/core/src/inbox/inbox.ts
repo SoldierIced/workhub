@@ -47,10 +47,16 @@ export function normalizeTitle(title: string): string {
     .trim()
 }
 
-/** An open item with the same normalized title (or the same source ref), among the most recent open ones. */
+/** Sources whose `ref` names one thing that deserves one item: an alert. A session or a meeting proposes many. */
+const ONE_ITEM_PER_REF: ReadonlySet<InboxSource['type']> = new Set(['alert'])
+
+/**
+ * An open item with the same normalized title, or from the same alert, among the most recent open
+ * ones. A session's or a meeting's `ref` never makes a duplicate: one session proposes several items.
+ */
 export function findDuplicate(items: readonly InboxItem[], candidate: { title: string; source?: InboxSource }, window: number = INBOX_LIMITS.dedupeWindow): InboxItem | undefined {
   const title = normalizeTitle(candidate.title)
-  const ref = candidate.source?.ref ? `${candidate.source.type}|${candidate.source.ref}` : null
+  const ref = candidate.source?.ref && ONE_ITEM_PER_REF.has(candidate.source.type) ? `${candidate.source.type}|${candidate.source.ref}` : null
   const open = items.filter(isOpenItem).sort((a, b) => b.createdAt - a.createdAt).slice(0, window)
   return open.find((i) => (title !== '' && normalizeTitle(i.title) === title) || (ref !== null && i.source.ref !== undefined && `${i.source.type}|${i.source.ref}` === ref))
 }

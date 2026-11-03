@@ -153,6 +153,14 @@ describe('GET and PATCH /v1/inbox', () => {
     expect((await control.inbox(q('session=s2'))).body).toEqual({ ok: true, enabled: false, reason: 'Plan is off in this profile', items: [], total: 0 })
   })
 
+  it('adds every item a session proposes, in one call or several; only a repeated title is a duplicate', async () => {
+    const { planner } = setup()
+    const first = await planner.propose('work', [{ kind: 'task', title: 'Draft the spec', detail: '' }, { kind: 'task', title: 'Review the spec', detail: '' }], { type: 'agent', ref: 's1' })
+    const second = await planner.propose('work', [{ kind: 'bug', title: 'Crash on save', detail: '' }, { kind: 'task', title: 'draft the SPEC', detail: '' }], { type: 'agent', ref: 's1' })
+    expect(first).toMatchObject({ added: ['id1', 'id2'], duplicates: [] })
+    expect(second).toMatchObject({ added: ['id3'], duplicates: ['id1'] })
+  })
+
   it('moves an item, sets fields and appends a note, telling the UI', async () => {
     const { planner, control, changed } = setup()
     await planner.propose('work', [{ kind: 'task', title: 'Write the docs', detail: 'First draft' }], { type: 'agent' })
