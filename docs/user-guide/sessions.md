@@ -58,6 +58,10 @@ stays in the current view.
 - **Timestamps**: every message shows the day and hour it was sent; hover for the full date with
   seconds.
 - Permission requests appear in the conversation; answer them there.
+- **Questions**: when Claude Code asks a question with choices, the conversation shows each
+  question with its options (one, or several when it says so) and an **Other** field for your own
+  answer; **Send answer** sends them all, **Skip** declines. A question still open when the session
+  stops or switches to the console is marked withdrawn, so the session no longer waits for an answer.
 - **Long messages**: a message of yours taller than about 25 lines on screen (a pasted log or
   crash report, even one with no line breaks) is shown collapsed; **Show more** opens it, **Show less** folds it again. Long lines
   wrap inside the bubble, and code blocks and tables in replies scroll inside themselves.

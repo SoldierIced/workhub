@@ -15,6 +15,7 @@ import {
   keychainServices,
   parsePlanUsage,
   permissionResult,
+  askedQuestions,
   PlanUsageError,
   rateLimitWindow,
   rejectedLimit,
@@ -23,6 +24,7 @@ import {
   toHistoryMessages
 } from '../src/agent-claude-native'
 import { agentEnv } from '../src/agent-claude-native/bridge/env.mjs'
+import { describeTool } from '../src/shared/claude-tools'
 import { parsePlist, workhub1SettingsFromPlist } from '../src/workhub1-import'
 
 const fixtures = join(import.meta.dirname, 'fixtures')
@@ -319,6 +321,31 @@ describe('ClaudeBridgeMapper', () => {
     const hook = (extra: object) => m.map({ type: 'sdk', message: { type: 'system', subtype: 'hook_response', hook_event: 'Stop', hook_name: 'Stop', output: '', stdout: '', stderr: '', ...extra } })
     expect(hook({ outcome: 'success' })).toEqual([])
     expect(hook({ outcome: 'error', stderr: 'boom' })).toMatchObject([{ type: 'notice', kind: 'hook', title: 'Stop', text: 'boom', failed: true }])
+  })
+
+  it('turns AskUserQuestion into a question with choices and sends the answers inside the input', () => {
+    const m = new ClaudeBridgeMapper('s')
+    const input = {
+      questions: [
+        { question: 'Which color?', header: 'Color', options: [{ label: 'Red', description: 'Warm' }, { label: 'Blue', description: 'Cold' }], multiSelect: false },
+        { question: 'Extras?', header: 'Extras', options: [{ label: 'Cream', description: '' }], multiSelect: true }
+      ]
+    }
+    const [event] = m.map({ type: 'permission_request', id: 'p1', toolName: 'AskUserQuestion', input, suggestions: [] })
+    expect(event).toMatchObject({ type: 'permission', requestId: 'p1', title: 'Asked you a question' })
+    expect(event?.type === 'permission' && event.questions).toEqual([
+      { question: 'Which color?', header: 'Color', options: [{ label: 'Red', description: 'Warm' }, { label: 'Blue', description: 'Cold' }], multiSelect: false },
+      { question: 'Extras?', header: 'Extras', options: [{ label: 'Cream', description: undefined }], multiSelect: true }
+    ])
+    // Allowing without answers reads as "the user did not answer": the answers travel in the input.
+    expect(permissionResult('allow', input, [], { 'Which color?': 'Blue', 'Extras?': 'Cream' })).toEqual({
+      behavior: 'allow',
+      updatedInput: { ...input, answers: { 'Which color?': 'Blue', 'Extras?': 'Cream' } }
+    })
+    expect(permissionResult(null, input, [], { 'Which color?': 'Blue' })).toMatchObject({ behavior: 'deny' })
+    expect(askedQuestions({ questions: [{ header: 'no text' }, 'junk'] })).toEqual([])
+    // The tool call itself names the questions in the chat and the monitor.
+    expect(describeTool('AskUserQuestion', input).detail).toBe('Which color?\nExtras?')
   })
 
   it('builds the permission answers Workhub 1 sends', () => {

@@ -9,6 +9,7 @@ import {
   isUsageLimitText,
   limitResetFromText,
   type AgentEvent,
+  type AgentQuestion,
   type McpServerState,
   type McpServerStatus,
   type ModelOption,
@@ -144,8 +145,29 @@ export const PERMISSION_OPTIONS = {
   deny: { optionId: 'deny', name: 'Deny', kind: 'reject_once' }
 } as const satisfies Record<string, PermissionOption>
 
-/** The bridge's answer to a permission request for the option the user picked (null: cancelled). */
-export function permissionResult(optionId: string | null, input: unknown, suggestions: unknown): Obj {
+/** The questions of an AskUserQuestion call, as the chat shows them; empty when the input has none. */
+export function askedQuestions(input: unknown): AgentQuestion[] {
+  const out: AgentQuestion[] = []
+  for (const q of arr(obj(input)?.['questions'])) {
+    const o = obj(q)
+    const question = str(o?.['question'])
+    if (!o || !question) continue
+    const options = arr(o['options']).flatMap((x) => {
+      const label = str(obj(x)?.['label'])
+      return label ? [{ label, description: str(obj(x)?.['description']) }] : []
+    })
+    out.push({ question, header: str(o['header']), options, multiSelect: o['multiSelect'] === true })
+  }
+  return out
+}
+
+/**
+ * The bridge's answer to a permission request for the option the user picked (null: cancelled).
+ * A question's `answers` (question text to answer) go back inside the tool's input, as Claude Code
+ * reads them: allowing the call without them reads as "the user did not answer".
+ */
+export function permissionResult(optionId: string | null, input: unknown, suggestions: unknown, answers?: Record<string, string>): Obj {
+  if (optionId !== null && answers) return { behavior: 'allow', updatedInput: { ...(obj(input) ?? {}), answers } }
   if (optionId === PERMISSION_OPTIONS.allowOnce.optionId) return { behavior: 'allow', updatedInput: obj(input) ?? {} }
   if (optionId === PERMISSION_OPTIONS.allowAlways.optionId) {
     return { behavior: 'allow', updatedInput: obj(input) ?? {}, updatedPermissions: arr(suggestions) }
@@ -247,6 +269,10 @@ export class ClaudeBridgeMapper {
         if (!requestId || !tool) return []
         this.permissions.set(requestId, { input: line['input'], suggestions: line['suggestions'] })
         const { title, detail } = describeTool(tool, obj(line['input']) ?? {})
+        const questions = tool === 'AskUserQuestion' ? askedQuestions(line['input']) : []
+        if (questions.length > 0) {
+          return [{ sessionId, type: 'permission', requestId, title, options: [PERMISSION_OPTIONS.allowOnce, PERMISSION_OPTIONS.deny], questions }]
+        }
         const options: PermissionOption[] = [PERMISSION_OPTIONS.allowOnce]
         if (arr(line['suggestions']).length) options.push(PERMISSION_OPTIONS.allowAlways)
         options.push(PERMISSION_OPTIONS.deny)

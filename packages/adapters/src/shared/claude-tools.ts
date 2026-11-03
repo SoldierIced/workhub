@@ -15,6 +15,15 @@ function host(url: string): string {
   return m?.[1] ?? url
 }
 
+/** The questions of an AskUserQuestion call, one per line. */
+function questionTexts(input: Obj): string {
+  const qs = Array.isArray(input['questions']) ? input['questions'] : []
+  return qs
+    .map((q) => (q && typeof q === 'object' ? str(q as Obj, 'question') : ''))
+    .filter(Boolean)
+    .join('\n')
+}
+
 /** One tool call in words, as Workhub 1's monitor shows it: a title and the command, path or URL behind it. */
 export function describeTool(tool: string, input: Obj): { title: string; detail: string } {
   switch (tool) {
@@ -43,7 +52,7 @@ export function describeTool(tool: string, input: Obj): { title: string; detail:
     case 'Skill':
       return { title: `Loaded the ${str(input, 'skill')} skill`, detail: str(input, 'args') }
     case 'AskUserQuestion':
-      return { title: 'Asked you a question', detail: '' }
+      return { title: 'Asked you a question', detail: questionTexts(input) }
     case 'TodoWrite':
     case 'TaskCreate':
     case 'TaskUpdate':

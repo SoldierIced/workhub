@@ -75,6 +75,16 @@ export interface PermissionOption {
   kind: string
 }
 
+/** One question an agent asks with choices (Claude Code's AskUserQuestion), answered in the chat. */
+export interface AgentQuestion {
+  question: string
+  /** A short label for the question (a few words). */
+  header?: string
+  options: { label: string; description?: string }[]
+  /** More than one option may be picked. */
+  multiSelect?: boolean
+}
+
 export interface PromptResult {
   stopReason: string
 }
@@ -85,7 +95,8 @@ export type AgentEvent =
   | { sessionId: string; type: 'message'; role: 'agent' | 'thought'; text: string }
   /** `view` and `result`: what the call did, per tool (a diff, a command's output), when the agent says. */
   | { sessionId: string; type: 'tool'; toolCallId: string; title?: string; status?: string; kind?: string; detail?: string; view?: ToolView; result?: ToolResultView }
-  | { sessionId: string; type: 'permission'; requestId: string; title: string; options: PermissionOption[]; detail?: string }
+  /** With `questions` the request is a question with choices: it is answered with `answers`, not an option. */
+  | { sessionId: string; type: 'permission'; requestId: string; title: string; options: PermissionOption[]; detail?: string; questions?: AgentQuestion[] }
   /** The agent withdrew a permission request (the turn was interrupted). */
   | { sessionId: string; type: 'permissionCancelled'; requestId: string }
   /** Models the session can switch to, and the current one. */
@@ -129,8 +140,11 @@ export interface AgentRuntime {
   cancel(sessionId: string): Promise<void>
   stop(sessionId: string): Promise<void>
   stopAll(): Promise<void>
-  /** Answers a `permission` event; `null` cancels the request. */
-  respondPermission(sessionId: string, requestId: string, optionId: string | null): void
+  /**
+   * Answers a `permission` event; `null` cancels the request. A question is answered with
+   * `answers`: question text to the picked labels (comma-separated) or the user's own words.
+   */
+  respondPermission(sessionId: string, requestId: string, optionId: string | null, answers?: Record<string, string>): void
   /** Event stream for every session of this runtime. */
   subscribe(listener: AgentEventListener): Unsubscribe
 }

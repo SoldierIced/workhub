@@ -4,6 +4,7 @@ import {
   mergeMonitor,
   raiseAttention,
   type AgentEvent,
+  type AgentQuestion,
   type AttentionKind,
   type HistoryMessage,
   type PermissionOption,
@@ -30,7 +31,7 @@ export type ChatItem =
   | { id: number; at?: number; kind: 'exit'; code: number | null }
   /** `view`/`result`: what the call did per tool (diff, command output), when the agent reports it. */
   | { id: number; at?: number; kind: 'tool'; toolCallId: string; title: string; status: string; toolKind?: string; detail?: string; view?: ToolView; result?: ToolResultView }
-  | { id: number; at?: number; kind: 'permission'; requestId: string; title: string; detail?: string; options: PermissionOption[]; answer?: string }
+  | { id: number; at?: number; kind: 'permission'; requestId: string; title: string; detail?: string; options: PermissionOption[]; questions?: AgentQuestion[]; answer?: string }
   /** A hook's output or a harness banner: its own block, never part of the agent's reply. */
   | { id: number; at?: number; kind: 'notice'; noticeKind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
   /** Messages of a resumed session before this run. */
@@ -312,9 +313,21 @@ function onReplay(id: string, messages: HistoryMessage[]): void {
   patch(id, (s) => withReplay(s, messages, () => ++seq))
 }
 
+/**
+ * The chat's open permission requests and questions, marked withdrawn ("—"). Used when the chat's
+ * agent process ends or hands over to the console: nothing can answer them any more, and an open
+ * one would keep the session flagged as waiting for an answer.
+ */
+export function withdrawOpenRequests(s: SessionData): SessionData {
+  if (!awaitingAnswer(s)) return s
+  return { ...s, items: s.items.map((i) => (i.kind === 'permission' && i.answer === undefined ? { ...i, answer: '—' } : i)) }
+}
+
 export function onChanged(view: SessionView): void {
   const prev = sessions[view.id]
-  set({ ...sessions, [view.id]: prev ? { ...prev, view } : { view, items: [], monitor: {} } })
+  const ended = view.state === 'starting' || view.state === 'stopped' || view.state === 'error' || view.mode === 'console'
+  const data = prev ? { ...prev, view } : { view, items: [], monitor: {} }
+  set({ ...sessions, [view.id]: ended ? withdrawOpenRequests(data) : data })
   const kind = attentionFromTransition(prev?.view.state, view.state)
   if (kind) raise(view.id, kind)
 }
@@ -361,7 +374,7 @@ export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): S
       return { ...s, items }
     }
     case 'permission':
-      return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'permission', requestId: e.requestId, title: e.title, detail: e.detail, options: e.options }] }
+      return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'permission', requestId: e.requestId, title: e.title, detail: e.detail, options: e.options, questions: e.questions }] }
     case 'permissionCancelled':
       return { ...s, items: s.items.map((i) => (i.kind === 'permission' && i.requestId === e.requestId && !i.answer ? { ...i, answer: '—' } : i)) }
     case 'notice':
