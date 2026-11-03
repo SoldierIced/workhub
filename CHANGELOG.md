@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.13](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.12...v2.0.0-alpha.13) (2026-11-03)
+
+
+### Bug Fixes
+
+* **sessions:** show conversation compaction in the app chat ([#31](https://github.com/SoldierIced/workhub/issues/31)) ([0efd48e](https://github.com/SoldierIced/workhub/commit/0efd48e82d10bc52571559c81f53860b979ac174))
+
 ## [2.0.0-alpha.12](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.11...v2.0.0-alpha.12) (2026-11-03)
 
 
