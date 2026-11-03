@@ -53,8 +53,10 @@ export type HistoryMessage =
   /** `images`: how many the message carried; `imageData`: the ones that could be read back, to show them again. */
   | { kind: 'user'; at?: number; text: string; images?: number; imageData?: ImageInput[] }
   | { kind: 'agent'; at?: number; text: string }
-  /** A harness banner worth keeping in the replay, e.g. the summary a compaction left. */
+  /** A harness banner worth keeping in the replay. */
   | { kind: 'notice'; at?: number; title: string; text: string }
+  /** The conversation was compacted here; `summary` is what replaced it. */
+  | { kind: 'compaction'; at?: number; summary?: string }
   /** The user stopped the agent mid-turn (Claude Code records it as a user turn). */
   | { kind: 'interrupted'; at?: number }
   | { kind: 'tool'; at?: number; id: string; title: string; detail?: string; failed?: boolean; view?: ToolView; result?: ToolResultView }

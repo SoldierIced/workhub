@@ -347,6 +347,11 @@ export class ClaudeBridgeMapper {
       }
       case 'user': {
         const message = obj(m['message']) ?? {}
+        // The summary a compaction left, sent as a user turn: it belongs to the compaction, not the chat.
+        if (m['isCompactSummary'] === true && typeof message['content'] === 'string') {
+          const summary = message['content'].trim()
+          return summary ? [{ sessionId, type: 'compaction', phase: 'done', summary }] : []
+        }
         const blocks = arr(message['content'])
         // The structured result belongs to the message's only tool result; with several it is ambiguous.
         const extra = blocks.filter((b) => obj(b)?.['type'] === 'tool_result').length === 1 ? m['tool_use_result'] : undefined
@@ -428,8 +433,18 @@ export class ClaudeBridgeMapper {
         const level = m['level']
         return [this.notice(level === 'warning' ? 'warning' : 'info', 'Claude Code', content)]
       }
-      case 'compact_boundary':
-        return [this.notice('info', 'Claude Code', 'The conversation was compacted.')]
+      case 'status': {
+        // `compacting` while Claude Code summarizes the conversation; the boundary follows a success.
+        if (m['status'] === 'compacting') return [{ sessionId, type: 'compaction', phase: 'started' }]
+        if (m['compact_result'] === 'failed') return [{ sessionId, type: 'compaction', phase: 'failed', ...(str(m['compact_error']) ? { error: str(m['compact_error']) } : {}) }]
+        return []
+      }
+      case 'compact_boundary': {
+        const meta = obj(m['compact_metadata'])
+        const trigger = meta?.['trigger'] === 'auto' || meta?.['trigger'] === 'manual' ? meta['trigger'] : undefined
+        const preTokens = num(meta?.['pre_tokens'])
+        return [{ sessionId, type: 'compaction', phase: 'done', ...(trigger ? { trigger } : {}), ...(preTokens !== undefined ? { preTokens } : {}) }]
+      }
       default:
         return []
     }

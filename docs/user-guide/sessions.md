@@ -62,6 +62,10 @@ stays in the current view.
   question with its options (one, or several when it says so) and an **Other** field for your own
   answer; **Send answer** sends them all, **Skip** declines. A question still open when the session
   stops or switches to the console is marked withdrawn, so the session no longer waits for an answer.
+- **Compaction**: when Claude Code compacts the conversation (on its own or with `/compact`), the
+  conversation shows **Compacting the conversation…** and then a divider with how it started and
+  how many tokens were summarized; **Show the summary** opens the summary Claude Code kept, when it
+  reports one. A compaction that fails says so with its reason.
 - **Long messages**: a message of yours taller than about 25 lines on screen (a pasted log or
   crash report, even one with no line breaks) is shown collapsed; **Show more** opens it, **Show less** folds it again. Long lines
   wrap inside the bubble, and code blocks and tables in replies scroll inside themselves.

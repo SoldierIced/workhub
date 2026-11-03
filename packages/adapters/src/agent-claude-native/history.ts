@@ -101,7 +101,7 @@ export function toHistoryMessages(raw: unknown): HistoryMessage[] {
     if (m['type'] === 'user') {
       const raw = typeof content === 'string' ? content : arr(content).map((b) => str(obj(b)?.['text']) ?? '').join('\n')
       if (m['isCompactSummary'] === true || raw.trimStart().startsWith(COMPACT_SUMMARY)) {
-        if (raw.trim()) out.push({ kind: 'notice', ...when, title: 'Conversation compacted', text: raw.trim() })
+        out.push({ kind: 'compaction', ...when, ...(raw.trim() ? { summary: raw.trim() } : {}) })
         continue
       }
       if (INTERRUPTED.test(raw)) {

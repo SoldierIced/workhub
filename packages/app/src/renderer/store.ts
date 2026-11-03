@@ -34,6 +34,8 @@ export type ChatItem =
   | { id: number; at?: number; kind: 'permission'; requestId: string; title: string; detail?: string; options: PermissionOption[]; questions?: AgentQuestion[]; answer?: string }
   /** A hook's output or a harness banner: its own block, never part of the agent's reply. */
   | { id: number; at?: number; kind: 'notice'; noticeKind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
+  /** A compaction of the conversation: running while the agent summarizes it, then done (with what it summarized) or failed. */
+  | { id: number; at?: number; kind: 'compaction'; phase: 'running' | 'done' | 'failed'; trigger?: 'auto' | 'manual'; preTokens?: number; summary?: string; error?: string }
   /** Messages of a resumed session before this run. */
   | { id: number; kind: 'replayStart'; count: number }
 
@@ -235,8 +237,28 @@ export function withTurnEnd(s: SessionData, stopReason: string, next: () => numb
   const items =
     stopReason === 'end_turn'
       ? s.items
-      : s.items.map((i) => (i.kind === 'tool' && (i.status === 'pending' || i.status === 'in_progress') ? { ...i, status: 'cancelled' } : i))
+      : s.items.map((i) =>
+          i.kind === 'tool' && (i.status === 'pending' || i.status === 'in_progress') ? { ...i, status: 'cancelled' } : i.kind === 'compaction' && i.phase === 'running' ? { ...i, phase: 'failed' as const } : i
+        )
   return { ...s, items: [...items, { id: next(), at: Date.now(), kind: 'turnEnd', stopReason }] }
+}
+
+/**
+ * A compaction event on the chat: `started` adds a running divider; `done` and `failed` settle the
+ * latest compaction that is running or just finished (the boundary and the summary arrive apart),
+ * or add one when none is open.
+ */
+export function withCompaction(s: SessionData, e: Extract<AgentEvent, { type: 'compaction' }>, next: () => number): SessionData {
+  const facts = { ...(e.trigger ? { trigger: e.trigger } : {}), ...(e.preTokens !== undefined ? { preTokens: e.preTokens } : {}), ...(e.summary ? { summary: e.summary } : {}), ...(e.error ? { error: e.error } : {}) }
+  const last = [...s.items].reverse().find((i) => i.kind === 'compaction')
+  const open = last?.kind === 'compaction' && (last.phase === 'running' || (e.phase === 'done' && last.phase === 'done' && !last.summary && s.items[s.items.length - 1] === last)) ? last : undefined
+  if (e.phase === 'started') {
+    if (open?.phase === 'running') return s
+    return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'compaction', phase: 'running' }] }
+  }
+  const phase = e.phase === 'failed' ? 'failed' : 'done'
+  if (open) return { ...s, items: s.items.map((i) => (i === open ? { ...open, ...facts, phase } : i)) }
+  return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'compaction', phase, ...facts }] }
 }
 
 export function markPermission(id: string, requestId: string, answer: string): void {
@@ -292,6 +314,8 @@ export function replayItems(messages: HistoryMessage[], next: () => number): Cha
         return { id: next(), kind: 'agent', text: m.text, ...at(m) }
       case 'notice':
         return { id: next(), kind: 'notice', noticeKind: 'info', title: m.title, text: m.text, ...at(m) }
+      case 'compaction':
+        return { id: next(), kind: 'compaction', phase: 'done', ...(m.summary ? { summary: m.summary } : {}), ...at(m) }
       case 'interrupted':
         return { id: next(), kind: 'turnEnd', stopReason: 'cancelled', ...at(m) }
       case 'tool':
@@ -379,6 +403,8 @@ export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): S
       return { ...s, items: s.items.map((i) => (i.kind === 'permission' && i.requestId === e.requestId && !i.answer ? { ...i, answer: '—' } : i)) }
     case 'notice':
       return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'notice', noticeKind: e.kind, title: e.title, text: e.text, failed: e.failed }] }
+    case 'compaction':
+      return withCompaction(s, e, next)
     case 'monitor':
       return { ...s, monitor: mergeMonitor(s.monitor, e.snapshot) }
     case 'exit':
