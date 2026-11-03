@@ -4,6 +4,19 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.10](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.9...v2.0.0-alpha.10) (2026-11-03)
+
+
+### Features
+
+* **app:** ask once a day to install a new version ([#22](https://github.com/SoldierIced/workhub/issues/22)) ([d7b1bf3](https://github.com/SoldierIced/workhub/commit/d7b1bf31e3831214c3a295b9215b1d08a36f3719))
+* worktree per session ([#21](https://github.com/SoldierIced/workhub/issues/21)) ([f26e341](https://github.com/SoldierIced/workhub/commit/f26e3418c6fd6d263f0f84f60e6131d02a3823f6))
+
+
+### Bug Fixes
+
+* **app:** show a failed command's output in the normal tone ([#24](https://github.com/SoldierIced/workhub/issues/24)) ([90e4c18](https://github.com/SoldierIced/workhub/commit/90e4c18ceaa022f947c06d89f48373bbb54726f3))
+
 ## [2.0.0-alpha.9](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.8...v2.0.0-alpha.9) (2026-11-02)
 
 
