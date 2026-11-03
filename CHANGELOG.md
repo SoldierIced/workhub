@@ -4,6 +4,19 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.12](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.11...v2.0.0-alpha.12) (2026-11-03)
+
+
+### Features
+
+* **plan:** a Tasks tab grouped by milestone, and milestones picked from each item ([#28](https://github.com/SoldierIced/workhub/issues/28)) ([33b26ee](https://github.com/SoldierIced/workhub/commit/33b26ee03d867d0c23197ad087f8f20ce33babe8))
+
+
+### Bug Fixes
+
+* **app:** send a prompt typed into an agent's console, such as a Slack reply ([#29](https://github.com/SoldierIced/workhub/issues/29)) ([a913420](https://github.com/SoldierIced/workhub/commit/a913420ab6c8d18360fd4f3cfe35ac1141181eba))
+* **plan:** let one session propose several inbox items ([#27](https://github.com/SoldierIced/workhub/issues/27)) ([d7e3eb6](https://github.com/SoldierIced/workhub/commit/d7e3eb651700bfed558bbaaeeedb2db67cd97535))
+
 ## [2.0.0-alpha.11](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.10...v2.0.0-alpha.11) (2026-11-03)
 
 
