@@ -53,6 +53,11 @@ export interface ToolCallCardProps {
   onOpenAgent?: () => void
 }
 
+/** A command's output without the leading "Exit code N" line Claude Code adds to a non-zero exit. */
+export function withoutExitLine(text?: string): string | undefined {
+  return text?.replace(/^(?:Error: )?Exit code \d+[^\S\n]*(?:\n|$)/, '')
+}
+
 /** Text output, cut to a preview with "Show more"; errors in the danger tone. Plain text only. */
 export function OutputBlock({ text, truncated, isError }: { text?: string; truncated?: boolean; isError?: boolean }) {
   const { t } = useI18n()
@@ -301,6 +306,11 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
       )
     case 'command': {
       const exit = result?.exitCode
+      // A non-zero exit is still the command's own output: the header (badge, icon, border) flags the
+      // failure, so the text reads in the normal tone, without the "Exit code N" line the badge repeats.
+      const exited = exit !== undefined && exit !== 0
+      const commandOutput = () =>
+        exited ? <OutputBlock text={withoutExitLine(result?.text)} truncated={result?.truncated} /> : output()
       return (
         <Frame
           icon={SquareTerminal}
@@ -311,7 +321,7 @@ export const ToolCallCard = memo(function ToolCallCard({ title, detail, status, 
           body={() => (
             <>
               <pre className="rounded-sm bg-bg px-2 py-1 font-mono text-chat-xs whitespace-pre-wrap break-all text-text">{`$ ${view.command}`}</pre>
-              {result && output()}
+              {result && commandOutput()}
             </>
           )}
           defaultOpen={failed}
