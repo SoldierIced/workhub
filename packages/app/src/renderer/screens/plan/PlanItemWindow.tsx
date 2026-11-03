@@ -35,7 +35,7 @@ function Frame({ platform, target }: { platform: string; target: PlanItemTarget 
     <ToastProvider label={t('common.notifications')}>
       <div className="flex h-full flex-col bg-bg">
         <div className={cn('drag-region h-10 shrink-0', platform === 'mac' ? 'pl-20' : 'pr-36')} />
-        <main className="mx-auto min-h-0 w-full max-w-3xl flex-1 overflow-y-auto pb-6">
+        <main className="min-h-0 w-full flex-1 overflow-y-auto pb-6">
           <Body target={target} />
         </main>
       </div>

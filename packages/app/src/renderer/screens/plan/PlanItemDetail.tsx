@@ -471,7 +471,7 @@ function MilestoneDetail({ profile, row, view, editRequest }: { profile: Profile
     [t('planner.detail.progress'), <span className="tabular-nums">{t('planner.milestone.progressOf', { progress: row.progress, elapsed: row.elapsed })}</span>],
     m.source.kind === 'tracker'
       ? [t('planner.milestone.query'), <code className="font-mono text-xs break-all">{m.source.query}</code>]
-      : [t('planner.milestone.source'), m.source.kind === 'manual' ? t('planner.milestone.source.manual') : t('planner.milestone.source.items')],
+      : [t('planner.detail.countedBy'), m.source.kind === 'manual' ? t('planner.milestone.source.manual') : t('planner.milestone.source.items')],
     ...(row.counts
       ? [
           [

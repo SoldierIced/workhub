@@ -8,6 +8,7 @@ import { parsePlanLinks, planLinksOk, type PlanEditor, type PlanLink } from '../
 import { parsePieces, piecesOk, type MilestonePiece } from './pieces'
 
 export * from './pieces'
+export * from './membership'
 
 export type MilestoneSource = { kind: 'manual'; progress: number } | { kind: 'tracker'; connectionId?: string; query: string } | { kind: 'items'; items: MilestonePiece[] }
 
