@@ -1,4 +1,4 @@
-import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, CircleAlert, Clock, History, ImagePlus, Info, LoaderCircle, Pause, Play, ShieldAlert, Square, TriangleAlert, Volume2, Webhook, X, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, ArrowUp, Brain, ChevronRight, FoldVertical, CircleAlert, Clock, History, ImagePlus, Info, LoaderCircle, Pause, Play, ShieldAlert, Square, TriangleAlert, Volume2, Webhook, X, type LucideIcon } from 'lucide-react'
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { appOptions, filterSlashCommands, gatePrompt, sessionIdentity, setCeiling, setSessionCeiling, slashQuery, type SlashCommandInfo, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
@@ -88,6 +88,42 @@ function Disclosure({ icon: Icon, title, tone, children, testId }: { icon: Lucid
       </summary>
       <div className="mt-1.5 border-l-2 border-border pl-3 text-muted">{children}</div>
     </details>
+  )
+}
+
+/**
+ * Where the agent compacted the conversation, drawn across the chat like the resume divider so it
+ * is seen: a spinner while it summarizes, then what was summarized (with the summary to open), or
+ * why it failed.
+ */
+function CompactionDivider({ item }: { item: Extract<ChatItem, { kind: 'compaction' }> }) {
+  const { t, locale } = useI18n()
+  const failed = item.phase === 'failed'
+  const facts = [
+    item.trigger === 'auto' ? t('chat.compaction.auto') : item.trigger === 'manual' ? t('chat.compaction.manual') : null,
+    item.preTokens !== undefined ? t('chat.compaction.tokens', { tokens: new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(item.preTokens) }) : null
+  ].filter(Boolean)
+  const label = item.phase === 'running' ? t('chat.compaction.running') : failed ? (item.error ? t('chat.compaction.failedWhy', { error: item.error }) : t('chat.compaction.failed')) : t('chat.compaction.done')
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="chat-compaction" role="status">
+      <div className={cn('flex items-center gap-3 text-xs font-medium', failed ? 'text-danger' : item.phase === 'running' ? 'text-info' : 'text-muted')}>
+        <span className={cn('h-px flex-1', failed ? 'bg-danger/40' : 'bg-border')} />
+        {item.phase === 'running' ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : failed ? <CircleAlert className="size-3.5" aria-hidden /> : <FoldVertical className="size-3.5" aria-hidden />}
+        <span className="min-w-0 text-center [overflow-wrap:anywhere]">{[label, ...facts].join(' · ')}</span>
+        <span className={cn('h-px flex-1', failed ? 'bg-danger/40' : 'bg-border')} />
+      </div>
+      {item.summary && (
+        <details className="group mx-auto w-full max-w-3xl text-sm text-muted">
+          <summary className="flex cursor-pointer list-none items-center justify-center gap-1 text-xs select-none hover:text-text">
+            <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" aria-hidden />
+            {t('chat.compaction.summary')}
+          </summary>
+          <div className="mt-1.5 max-h-96 overflow-auto rounded-md border border-border bg-surface px-3 py-2">
+            <Markdown text={item.summary} />
+          </div>
+        </details>
+      )}
+    </div>
   )
 }
 
@@ -232,6 +268,8 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, suba
           <div className="whitespace-pre-wrap italic [overflow-wrap:anywhere]">{item.text}</div>
         </Disclosure>
       )
+    case 'compaction':
+      return <CompactionDivider item={item} />
     case 'notice':
       return (
         <Disclosure icon={NOTICE_ICON[item.noticeKind]} title={item.title} tone={item.failed ? 'danger' : item.noticeKind === 'warning' ? 'warning' : undefined} testId="notice">

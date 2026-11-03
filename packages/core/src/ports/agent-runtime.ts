@@ -109,6 +109,11 @@ export type AgentEvent =
    * Something the agent's harness reports outside the conversation: a hook's output, an
    * informational banner. Shown as its own block, never merged into the agent's reply.
    */
+  /**
+   * The agent compacts the conversation: `started` while it summarizes, `done` once the summary
+   * replaced it (`trigger`, the tokens before, and the summary when the agent shares it), `failed`.
+   */
+  | { sessionId: string; type: 'compaction'; phase: 'started' | 'done' | 'failed'; trigger?: 'auto' | 'manual'; preTokens?: number; summary?: string; error?: string }
   | { sessionId: string; type: 'notice'; noticeId: string; kind: 'hook' | 'info' | 'warning'; title: string; text: string; failed?: boolean }
   | { sessionId: string; type: 'permissionMode'; mode: PermissionModeInfo; currentModeId?: string }
   /**

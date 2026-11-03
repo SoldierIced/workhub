@@ -266,6 +266,18 @@ describe('ClaudeBridgeMapper', () => {
     expect(m.map({ type: 'sdk', message: { type: 'assistant', message: { id: 'm4', model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 500' }] } } }).some((e) => e.type === 'usageLimit')).toBe(false)
   })
 
+  it('reports a compaction as it starts, finishes and fails', () => {
+    const m = new ClaudeBridgeMapper('s')
+    const sys = (message: object) => m.map({ type: 'sdk', message: { type: 'system', ...message } }).filter((e) => e.type === 'compaction')
+    expect(sys({ subtype: 'status', status: 'compacting' })).toEqual([{ sessionId: 's', type: 'compaction', phase: 'started' }])
+    expect(sys({ subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 43500 } })).toEqual([
+      { sessionId: 's', type: 'compaction', phase: 'done', trigger: 'manual', preTokens: 43500 }
+    ])
+    expect(sys({ subtype: 'status', status: null, compact_result: 'failed', compact_error: 'Not enough messages' })).toMatchObject([{ phase: 'failed', error: 'Not enough messages' }])
+    const summary = m.map({ type: 'sdk', message: { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued...' } } })
+    expect(summary).toContainEqual(expect.objectContaining({ type: 'compaction', phase: 'done', summary: 'This session is being continued...' }))
+  })
+
   it('reads no permission mode in the settings as Claude\'s default mode', () => {
     const m = new ClaudeBridgeMapper('s')
     const modeOf = (defaults: object | undefined) => m.map({ type: 'options', models: [], ...(defaults ? { defaults } : {}) }).find((e) => e.type === 'permissionMode')
@@ -453,16 +465,17 @@ describe('Claude session history', () => {
       lines[6] = { ...lines[6]!, isSidechain: true } as unknown as (typeof lines)[number]
       writeFileSync(join(config, 'projects', '-tmp-acme', 'sess-x.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
       const messages = await new ClaudeSessionHistory({ bridgeDir: fakeBridge }).messages('sess-x', '/tmp/acme', config)
-      expect(messages.map((m) => (m.kind === 'notice' ? `notice:${m.title}` : m.kind === 'tool' || m.kind === 'interrupted' ? m.kind : `${m.kind}:${m.text}`))).toEqual([
+      expect(messages.map((m) => (m.kind === 'notice' ? `notice:${m.title}` : m.kind === 'tool' || m.kind === 'interrupted' || m.kind === 'compaction' ? m.kind : `${m.kind}:${m.text}`))).toEqual([
         'user:first question',
         'agent:first answer',
-        'notice:Conversation compacted',
+        'compaction',
         'user:second question',
         'agent:second answer',
-        'notice:Conversation compacted',
+        'compaction',
         'user:third question',
         'agent:third answer'
       ])
+      expect(messages[5]).toMatchObject({ kind: 'compaction', summary })
       expect(messages[7]).toMatchObject({ at: Date.parse(t(8)) })
     } finally {
       rmSync(config, { recursive: true, force: true })
