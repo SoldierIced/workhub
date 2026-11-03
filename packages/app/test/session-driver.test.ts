@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { NO_CAPABILITIES, type SessionState } from '@workhub/core'
 import type { SessionView, StartSessionInput } from '../src/shared/api'
 import { expandHome } from '../src/main/automations'
-import { SessionDriver, type DrivableSessions } from '../src/main/session-driver'
+import { consolePaste, pasteModeIn, SessionDriver, type DrivableSessions } from '../src/main/session-driver'
 import { SendGate } from '../src/main/send-gate'
 
 function view(id: string, state: SessionState, over: Partial<SessionView> = {}): SessionView {
@@ -57,7 +57,7 @@ function setup() {
       return true
     }
   }
-  const driver = new SessionDriver(sessions, (id, text) => void shown.push([id, text]))
+  const driver = new SessionDriver(sessions, (id, text) => void shown.push([id, text]), Date.now, async () => undefined)
   const endTurn = async () => {
     turns.shift()?.()
     await new Promise((r) => setTimeout(r, 0))
@@ -97,8 +97,21 @@ describe('session driver', () => {
     expect(await driver.deliver('v3', 'hi')).toBe('delivered')
     expect(prompts).toEqual([['v3', 'hi']])
     expect(shown).toEqual([['v3', 'hi']])
+    // A console that never turned bracketed paste on gets plain text, and Enter on its own.
     expect(await driver.deliver('v2', 'a\nb')).toBe('delivered')
-    expect(writes).toEqual([['v2:console', 'a\rb\r']])
+    expect(writes.splice(0)).toEqual([
+      ['v2:console', 'a\rb'],
+      ['v2:console', '\r']
+    ])
+    driver.onEvent({ sessionId: 'v2:console', type: 'output', data: 'x\x1b[?2004l\x1b[?2004hy' })
+    expect(await driver.deliver('v2', 'a\nb')).toBe('delivered')
+    // A bracketed paste, then Enter on its own: sent together, Claude Code keeps the Enter in the paste and never sends it.
+    expect(writes).toEqual([
+      ['v2:console', '\x1b[200~a\rb\x1b[201~'],
+      ['v2:console', '\r']
+    ])
+    expect(consolePaste('x\x1b[201~y')).toBe('\x1b[200~xy\x1b[201~')
+    expect([pasteModeIn('plain'), pasteModeIn('\x1b[?2004h'), pasteModeIn('\x1b[?2004h..\x1b[?2004l')]).toEqual([undefined, true, false])
   })
 
   it('waits while another prompt of the session is in flight, even when the session still reads ready', async () => {
