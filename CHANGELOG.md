@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.11](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.10...v2.0.0-alpha.11) (2026-11-03)
+
+
+### Bug Fixes
+
+* **app:** answer an agent's questions in the chat and clear the needs-answer flag after a switch to the console ([#25](https://github.com/SoldierIced/workhub/issues/25)) ([d30a596](https://github.com/SoldierIced/workhub/commit/d30a59606bc05ddfc82afe7f1884ebbfffb0c382))
+
 ## [2.0.0-alpha.10](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.9...v2.0.0-alpha.10) (2026-11-03)
 
 
