@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.14](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.13...v2.0.0-alpha.14) (2026-11-04)
+
+
+### Bug Fixes
+
+* **plan:** refuse milestone task pieces from another profile ([#33](https://github.com/SoldierIced/workhub/issues/33)) ([ab55d4a](https://github.com/SoldierIced/workhub/commit/ab55d4a60f11552197222fdd660e2589de08ecd8))
+
 ## [2.0.0-alpha.13](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.12...v2.0.0-alpha.13) (2026-11-03)
 
 
