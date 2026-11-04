@@ -132,6 +132,8 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
     child.on('exit', (code) => {
       failStart(new Error(`the Claude bridge exited during start (code ${code})`))
       this.finishPending(session, 'cancelled')
+      // Background tasks die with the process; nothing else would clear them.
+      this.emit({ sessionId: id, type: 'monitor', snapshot: { backgroundTasks: [] } })
       this.emit({ sessionId: id, type: 'exit', code })
       if (this.sessions.get(id) === session) {
         this.sessions.delete(id)

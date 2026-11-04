@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, Settings, X } from 'lucide-react'
+import { Bot, ChevronRight, Ellipsis, FolderClosed, FolderOpen, FolderPlus, RotateCcw, Settings, Timer, X } from 'lucide-react'
 import { ContextMenu, DropdownMenu } from 'radix-ui'
 import { memo, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
 import {
@@ -31,6 +31,7 @@ import {
 } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { LEVEL_LABEL, LEVEL_TONE } from '../../lib/attention'
+import { waitingTasks } from '../../lib/backgroundTasks'
 import { cn } from '../../lib/cn'
 import { folderName } from '../../lib/home'
 import { groupSummary, listSessions, memberOf, newGroupId, rowName, summarize, updateGroups, type ListedSession } from '../../lib/sessionGroups'
@@ -471,7 +472,9 @@ const SessionItem = memo(function SessionItem(props: SessionItemProps) {
   const level = data ? statusLevel({ state: data.view.state, unseen: data.unseen, awaitingAnswer: awaitingAnswer(data) }) : null
   const tone = data ? (level ? LEVEL_TONE[level] : STATE_TONE[data.view.state]) : 'neutral'
   const closed = !data
-  const automation = useAutomations()?.automations.find((a) => a.session === member.key)?.definition.name
+  // Work the agent left running (a command in the background, a watcher): shown even while idle.
+  const waiting = waitingTasks(data?.monitor.backgroundTasks)
+  const automation =useAutomations()?.automations.find((a) => a.session === member.key)?.definition.name
   // A session that was stopped is as good as closed: dimmed, and the row reopens it.
   const stopped = data?.view.state === 'stopped'
   const status = data ? (data.unseen && level ? t(LEVEL_LABEL[level]) : t(`state.${data.view.state}`)) : t('groups.closed')
@@ -592,6 +595,18 @@ const SessionItem = memo(function SessionItem(props: SessionItemProps) {
               </button>
             </Tooltip>
             {props.slack && <SlackBadge summary={slack.summary} onOpen={actions.openSlack} />}
+            {waiting.length > 0 && (
+              <span
+                role="img"
+                data-testid="background-tasks-badge"
+                aria-label={tn('backgroundTasks.badge', waiting.length)}
+                title={[tn('backgroundTasks.badge', waiting.length), ...waiting.map((w) => `· ${w.description || t('backgroundTasks.untitled')}`)].join('\n')}
+                className="mr-0.5 inline-flex h-5 shrink-0 items-center gap-0.5 px-0.5 text-xs tabular-nums text-subtle"
+              >
+                <Timer className="size-3 animate-pulse" aria-hidden />
+                {waiting.length}
+              </span>
+            )}
             {props.subagents.length > 0 && (
               <button
                 type="button"

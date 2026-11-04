@@ -63,6 +63,22 @@ export interface ToolCallSummary {
   endedAt?: number
 }
 
+/** What a background task is: a shell command, a watcher, a sub-agent, a workflow, or something else. */
+export type BackgroundTaskKind = 'shell' | 'monitor' | 'agent' | 'workflow' | 'other'
+
+/**
+ * Work the agent left running while it waits or goes on (Claude Code's background tasks): a
+ * command in the background, a watcher, a sub-agent sent to the background.
+ */
+export interface BackgroundTaskSummary {
+  id: string
+  kind: BackgroundTaskKind
+  /** What the agent said the task does (`Wait for CI checks`). */
+  description: string
+  /** When Workhub first saw it running (epoch ms). */
+  since: number
+}
+
 export interface SubagentSummary {
   id: string
   name?: string
@@ -157,6 +173,8 @@ export interface SessionMonitorSnapshot {
   context?: ContextUsage
   toolCalls?: ToolCallSummary[]
   subagents?: SubagentSummary[]
+  /** Background tasks running now (replaced whole on every change; empty when none). */
+  backgroundTasks?: BackgroundTaskSummary[]
   /** New tokens (input + cache write + output, cache re-reads left out) of each request of the current turn, in order. */
   turnRequests?: number[]
   /** Time the agent spent working, in ms. */

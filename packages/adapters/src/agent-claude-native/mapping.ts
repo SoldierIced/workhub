@@ -10,6 +10,8 @@ import {
   limitResetFromText,
   type AgentEvent,
   type AgentQuestion,
+  type BackgroundTaskKind,
+  type BackgroundTaskSummary,
   type McpServerState,
   type McpServerStatus,
   type ModelOption,
@@ -209,6 +211,24 @@ export function claudeSlashCommands(rows: readonly unknown[], names: readonly st
   return [...out.values()]
 }
 
+/** Claude Code's `task_type` of a background task, in Workhub's words. */
+export function backgroundTaskKind(taskType: string | undefined): BackgroundTaskKind {
+  switch (taskType) {
+    case 'local_bash':
+      return 'shell'
+    case 'monitor':
+    case 'mcp_task':
+      return 'monitor'
+    case 'local_agent':
+    case 'remote_agent':
+      return 'agent'
+    case 'local_workflow':
+      return 'workflow'
+    default:
+      return 'other'
+  }
+}
+
 /** One session's mapping state: which assistant messages already streamed their text. */
 export class ClaudeBridgeMapper {
   private readonly streamed = new Set<string>()
@@ -224,8 +244,13 @@ export class ClaudeBridgeMapper {
   private commandNames: string[] = []
   private skills = new Set<string>()
   private terminalOnly = new Set<string>()
+  /** When each live background task was first seen, by task id. */
+  private taskSince = new Map<string, number>()
 
-  constructor(private readonly sessionId: string) {}
+  constructor(
+    private readonly sessionId: string,
+    private readonly now: () => number = Date.now
+  ) {}
 
   /** The stored input and suggestions of a pending permission request. */
   takePermission(requestId: string): { input: unknown; suggestions: unknown } | undefined {
@@ -408,6 +433,23 @@ export class ClaudeBridgeMapper {
           events.push(this.commandsEvent())
         }
         return events
+      }
+      case 'background_tasks_changed': {
+        // A level signal: the payload is every live task, so it replaces the list. Ambient tasks
+        // (live-update watchers, hidden ones) are not the agent's work and stay out.
+        if (!Array.isArray(m['tasks'])) return []
+        const seen = new Map<string, number>()
+        const tasks: BackgroundTaskSummary[] = []
+        for (const row of m['tasks']) {
+          const t = obj(row)
+          const id = str(t?.['task_id'])
+          if (!t || !id || t['ambient'] === true) continue
+          const since = this.taskSince.get(id) ?? this.now()
+          seen.set(id, since)
+          tasks.push({ id, kind: backgroundTaskKind(str(t['task_type'])), description: (str(t['description']) ?? '').slice(0, 200), since })
+        }
+        this.taskSince = seen
+        return [{ sessionId, type: 'monitor', snapshot: { backgroundTasks: tasks } }]
       }
       case 'commands_changed':
         if (!Array.isArray(m['commands'])) return []

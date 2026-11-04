@@ -31,6 +31,10 @@ export interface Prefs {
   sidebarWidth: number
   /** Monitor sections the user folded (section ids). */
   monitorCollapsed: string[]
+  /** Whether the left sidebar is folded away (Workhub 1's sidebar toggle). */
+  sidebarHidden: boolean
+  /** Whether the session monitor panel is folded away (Workhub 1's Inspector toggle). */
+  monitorHidden: boolean
   /** Folders starred in the sidebar (Workhub 1's Favorites), in the order they were added. */
   favoriteFolders: string[]
 }
@@ -55,6 +59,8 @@ export const DEFAULT_PREFS: Prefs = {
   monitorWidth: 320,
   sidebarWidth: 256,
   monitorCollapsed: [],
+  sidebarHidden: false,
+  monitorHidden: false,
   favoriteFolders: []
 }
 
@@ -85,6 +91,8 @@ export function parsePrefs(raw: string | null): Prefs {
       monitorWidth: clampSize('monitorWidth', v.monitorWidth),
       sidebarWidth: clampSize('sidebarWidth', v.sidebarWidth),
       monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
+      sidebarHidden: v.sidebarHidden === true,
+      monitorHidden: v.monitorHidden === true,
       favoriteFolders: Array.isArray(v.favoriteFolders) ? [...new Set(v.favoriteFolders.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, 100) : []
     }
   } catch {

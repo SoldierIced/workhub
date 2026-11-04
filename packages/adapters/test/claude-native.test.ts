@@ -240,6 +240,37 @@ describe('settleResult', () => {
 })
 
 describe('ClaudeBridgeMapper', () => {
+  it('reports the live background tasks, keeps when each started and leaves ambient ones out', () => {
+    let clock = 1000
+    const m = new ClaudeBridgeMapper('s', () => clock)
+    const changed = (tasks: unknown[]) => m.map({ type: 'sdk', message: { type: 'system', subtype: 'background_tasks_changed', tasks } })
+    expect(
+      changed([
+        { task_id: 'b1', task_type: 'local_bash', description: 'Wait for CI checks' },
+        { task_id: 'w1', task_type: 'monitor', description: 'Live updates', ambient: true }
+      ])
+    ).toEqual([{ sessionId: 's', type: 'monitor', snapshot: { backgroundTasks: [{ id: 'b1', kind: 'shell', description: 'Wait for CI checks', since: 1000 }] } }])
+    clock = 5000
+    expect(changed([{ task_id: 'b1', task_type: 'local_bash', description: 'Wait for CI checks' }, { task_id: 'a1', task_type: 'local_agent', description: 'Review' }, { task_id: 'f1', task_type: 'local_workflow' }])).toEqual([
+      {
+        sessionId: 's',
+        type: 'monitor',
+        snapshot: {
+          backgroundTasks: [
+            { id: 'b1', kind: 'shell', description: 'Wait for CI checks', since: 1000 },
+            { id: 'a1', kind: 'agent', description: 'Review', since: 5000 },
+            { id: 'f1', kind: 'workflow', description: '', since: 5000 }
+          ]
+        }
+      }
+    ])
+    // Replace semantics: an empty set clears the list, and a task seen again later starts afresh.
+    expect(changed([])).toEqual([{ sessionId: 's', type: 'monitor', snapshot: { backgroundTasks: [] } }])
+    clock = 9000
+    expect(changed([{ task_id: 'b1', task_type: 'something_new', description: 'x' }])).toEqual([{ sessionId: 's', type: 'monitor', snapshot: { backgroundTasks: [{ id: 'b1', kind: 'other', description: 'x', since: 9000 }] } }])
+    expect(m.map({ type: 'sdk', message: { type: 'system', subtype: 'background_tasks_changed' } })).toEqual([])
+  })
+
   it('ignores subagent traffic and keeps unstreamed text', () => {
     const m = new ClaudeBridgeMapper('s')
     expect(m.map({ type: 'sdk', message: { type: 'assistant', parent_tool_use_id: 'toolu_x', message: { content: [{ type: 'text', text: 'inner' }] } } })).toEqual([])

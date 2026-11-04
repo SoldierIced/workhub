@@ -20,5 +20,20 @@ export const sessionsUxEn = {
   'session.switchNowHint': 'Stop the turn in progress and switch right away',
   'session.switchCancel': 'Cancel',
   'session.switchCancelHint': 'Stay in this view',
-  'session.switchPending': '{mode} (waiting for the turn)'
+  'session.switchPending': '{mode} (waiting for the turn)',
+  'layout.hideSidebar': 'Hide the sidebar',
+  'layout.showSidebar': 'Show the sidebar',
+  'layout.hideMonitor': 'Hide the monitor',
+  'layout.showMonitor': 'Show the monitor',
+  'backgroundTasks.badge.one': '{count} task running in the background',
+  'backgroundTasks.badge.other': '{count} tasks running in the background',
+  'backgroundTasks.title.one': 'The agent has {count} task running in the background',
+  'backgroundTasks.title.other': 'The agent has {count} tasks running in the background',
+  'backgroundTasks.kind.shell': 'Command',
+  'backgroundTasks.kind.monitor': 'Watcher',
+  'backgroundTasks.kind.workflow': 'Workflow',
+  'backgroundTasks.kind.task': 'Task',
+  'backgroundTasks.untitled': 'No description',
+  'backgroundTasks.more.one': 'and {count} more',
+  'backgroundTasks.more.other': 'and {count} more'
 } as const

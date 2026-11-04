@@ -26,7 +26,7 @@ export interface TraySyncDeps {
   sessions: readonly SessionData[]
   groups: SessionGroups
   locale: Locale
-  navigate: (route: TrayRoute) => void
+  navigate: (route: TrayRoute, tab?: string) => void
   newSession: () => void
 }
 
@@ -44,8 +44,8 @@ export function useTraySync({ sessions, groups, locale, navigate, newSession }: 
   const latest = useRef({ navigate, newSession })
   latest.current = { navigate, newSession }
   useEffect(() => {
-    const offNavigate = window.hub.tray.onNavigate((route) => {
-      if (TRAY_ROUTES.includes(route)) latest.current.navigate(route)
+    const offNavigate = window.hub.tray.onNavigate((route, tab) => {
+      if (TRAY_ROUTES.includes(route)) latest.current.navigate(route, typeof tab === 'string' ? tab : undefined)
     })
     const offNew = window.hub.tray.onNewSession(() => latest.current.newSession())
     return () => {

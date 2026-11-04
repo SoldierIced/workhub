@@ -151,5 +151,9 @@ be opened in a new window.
   closed session stays in its group, marked **Closed**; click it to reopen, or **Remove from group**
   to forget it. Order within each group is kept.
 - Sub-agents of a session can be shown or hidden under it.
+- **Background work** (Claude): while the agent waits on something it left running, such as a
+  command in the background ("wait for the CI checks") or a watcher, its row shows a timer with
+  the number of tasks (hover for what each one does), and the chat shows them above the message
+  box with how long each has run. They disappear when the tasks end or the session stops.
 
 Next: [Monitor](monitor.md).

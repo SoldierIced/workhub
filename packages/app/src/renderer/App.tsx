@@ -21,10 +21,11 @@ import { runIntent, type IntentDeps } from './lib/links'
 import { keyProviders } from './lib/tickets'
 import type { SessionIntent } from '@shared/links-api'
 import { usageGroups } from './lib/home'
-import { allNavItems, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, visibleNavItems, type Route } from './lib/nav'
+import { allNavItems, MONITOR_SHORTCUT, NEW_SESSION_SHORTCUT, SESSIONS_ITEM, SIDEBAR_SHORTCUT, visibleNavItems, type Route } from './lib/nav'
 import { usePlatform } from './lib/platform'
 import { attentionDetail, NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
-import { readPrefs } from './lib/prefs'
+import { readPrefs, setPrefs, usePrefs } from './lib/prefs'
+import { parseSettingsTarget } from './lib/settingsTarget'
 import { useAppearance } from './lib/appearance'
 import { historyLookupKeys, listSessions, lookUpHistory, memberOf, sessionLabel, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
@@ -46,6 +47,7 @@ import { HomeScreen } from './screens/HomeScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
 import { SettingsDialog } from './screens/SettingsDialog'
+import type { SettingsSpotlight } from './screens/SettingsScreen'
 import { SubagentSheet } from './screens/sessions/SubagentView'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, sessionSnapshot, setExternalViewing, setViewing, startStore, useSessions, type SessionData } from './store'
@@ -239,8 +241,12 @@ function Shell() {
   )
   // A ticket window asked to show one of the sessions.
   useEffect(() => window.hub.tickets.onOpenSession(openSession), [openSession])
+  // `tab#group` opens a tab and points at one of its groups (see SettingsScreen's spotlight).
+  const [spotlight, setSpotlight] = useState<SettingsSpotlight | null>(null)
   const openSettings = useCallback((tab?: string) => {
-    if (tab) setSettingsTab(tab)
+    const { tab: name, group } = parseSettingsTarget(tab)
+    if (name) setSettingsTab(name)
+    setSpotlight(group ? { group, at: Date.now() } : null)
     setSettingsOpen(true)
   }, [])
   // Every way to Settings (sidebar, ⌘,, the menu bar icon, links to a tab) opens the modal.
@@ -331,6 +337,16 @@ function Shell() {
         if (quickGate.current()) void quickSession()
         return
       }
+      if (matchesShortcut(e, SIDEBAR_SHORTCUT, platform)) {
+        e.preventDefault()
+        setPrefs({ sidebarHidden: !readPrefs().sidebarHidden })
+        return
+      }
+      if (matchesShortcut(e, MONITOR_SHORTCUT, platform)) {
+        e.preventDefault()
+        setPrefs({ monitorHidden: !readPrefs().monitorHidden })
+        return
+      }
       const item = reachable.find((i) => matchesShortcut(e, i.shortcut, platform))
       if (item) {
         e.preventDefault()
@@ -409,6 +425,7 @@ function Shell() {
     [openSession, toast]
   )
 
+  const layout = usePrefs()
   const selectProfile = async (id: string) => {
     const r = await window.hub.config.setActiveProfile(id)
     if (r.ok) await refreshConfig()
@@ -416,39 +433,41 @@ function Shell() {
 
   return (
     <div className="flex h-full">
-      <Sidebar
-        route={route}
-        sessionsItem={SESSIONS_ITEM}
-        onNavigate={navigate}
-        profiles={profiles}
-        activeProfileId={activeProfileId}
-        onSelectProfile={(id) => void selectProfile(id)}
-        onManageProfiles={() => openSettings('profiles')}
-        sessions={sessions.map((s) => s.view)}
-        selectedSessionId={selectedSession}
-        sessionList={
-          <SessionList
-            sessions={sessions}
-            groups={groups}
-            selectedId={selectedSession}
-            active={route === 'sessions'}
-            onSelect={openSession}
-            onReopen={(m) => void reopenMember(m)}
-            profiles={profiles}
-            accounts={snap?.config.accounts}
-            pastTitles={pastTitles}
-            onOpenSlack={reachable.some((i) => i.route === 'slack') ? () => navigate('slack') : undefined}
-            onRename={setRenaming}
-            onOpenInWindow={(id) => window.hub.windows.openSession(id)}
-          />
-        }
-        attentionCount={sessions.filter((s) => s.unseen).length}
-        onDropOnSessions={(e) => dropOnSessionsTitle(e, liveKeys)}
-        workspaces={workspaces}
-        onNewSessionIn={(f) => (f ? newSession(f) : void quickSession())}
-        onResumeIn={setResumeFolder}
-        usage={usageGroups(sessions, accountUsage)}
-      />
+      {!layout.sidebarHidden && (
+        <Sidebar
+          route={route}
+          sessionsItem={SESSIONS_ITEM}
+          onNavigate={navigate}
+          profiles={profiles}
+          activeProfileId={activeProfileId}
+          onSelectProfile={(id) => void selectProfile(id)}
+          onManageProfiles={() => openSettings('profiles')}
+          sessions={sessions.map((s) => s.view)}
+          selectedSessionId={selectedSession}
+          sessionList={
+            <SessionList
+              sessions={sessions}
+              groups={groups}
+              selectedId={selectedSession}
+              active={route === 'sessions'}
+              onSelect={openSession}
+              onReopen={(m) => void reopenMember(m)}
+              profiles={profiles}
+              accounts={snap?.config.accounts}
+              pastTitles={pastTitles}
+              onOpenSlack={reachable.some((i) => i.route === 'slack') ? () => navigate('slack') : undefined}
+              onRename={setRenaming}
+              onOpenInWindow={(id) => window.hub.windows.openSession(id)}
+            />
+          }
+          attentionCount={sessions.filter((s) => s.unseen).length}
+          onDropOnSessions={(e) => dropOnSessionsTitle(e, liveKeys)}
+          workspaces={workspaces}
+          onNewSessionIn={(f) => (f ? newSession(f) : void quickSession())}
+          onResumeIn={setResumeFolder}
+          usage={usageGroups(sessions, accountUsage)}
+        />
+      )}
       <div className="flex min-w-0 flex-1 flex-col bg-bg">
         <Toolbar
           nav={<TopNav items={navItems} route={route} onNavigate={navigate} profileId={activeProfileId} />}
@@ -457,6 +476,10 @@ function Shell() {
           onChooseSession={(key) => newSession(null, key)}
           newSessionHint={quickPlan ? t('toolbar.newSessionIn', { agent: quickPlan.agentLabel, folder: abbreviateFolder(quickPlan.cwd) }) : undefined}
           onOpenSettings={() => openSettings()}
+          sidebarHidden={layout.sidebarHidden}
+          onToggleSidebar={() => setPrefs({ sidebarHidden: !layout.sidebarHidden })}
+          monitorHidden={route === 'sessions' && selectedSession ? layout.monitorHidden : undefined}
+          onToggleMonitor={() => setPrefs({ monitorHidden: !layout.monitorHidden })}
         />
         <main className="relative min-h-0 flex-1">
           {/* Sessions stay mounted so terminals and chats survive a visit to another screen. */}
@@ -515,7 +538,7 @@ function Shell() {
         onStarted={openSession}
       />
       <SubagentSheet />
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} snap={snap} tab={settingsTab} onTabChange={setSettingsTab} spotlight={spotlight} />
       <RenameSessionDialog session={renaming} onClose={() => setRenaming(null)} />
       <UpdatePromptDialog />
       <ResumeSheet folder={resumeFolder} profileId={activeProfileId} onClose={() => setResumeFolder(null)} onOpened={openSession} />
