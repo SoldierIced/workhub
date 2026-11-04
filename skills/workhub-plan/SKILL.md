@@ -1,6 +1,6 @@
 ---
 name: workhub-plan
-description: Read and update the user's Workhub plan (the Plan screen, ⌘9) from inside a Workhub session: today's meetings, the inbox of tasks, bugs and decisions, milestones and people. Trigger: "my tasks", "what's on today", "my meetings", "add to my inbox", "follow-up", "log a decision", "milestone status", "prepare for my next meeting", "mis tareas", "qué tengo hoy", "agregá al inbox".
+description: Read and update the user's Workhub plan (the Plan screen, ⌘9) from inside a Workhub session: today's meetings, the inbox of tasks, bugs and decisions, milestones and people. Trigger: "my tasks", "what's on today", "my meetings", "add to my inbox", "follow-up", "log a decision", "milestone status", "plan a milestone with its tasks", "prepare for my next meeting", "mis tareas", "qué tengo hoy", "agregá al inbox", "armá el hito con sus tareas".
 ---
 
 # Workhub plan
@@ -17,6 +17,8 @@ section of `docs/user-guide/plan.md` in the Workhub repository.
 - Something worth remembering came up: a follow-up, a bug you found but will not fix now, a
   decision taken in the conversation.
 - The user asks how a milestone is going.
+- The user asks to plan a milestone, a phase or a project with its tasks or tickets, or to link
+  the work of a milestone that already exists.
 
 ## Before calling
 
@@ -54,7 +56,7 @@ user the reason and that it is turned on in **Settings → Plan**.
 | `W -X POST http://workhub/v1/inbox -H 'content-type: application/json' -d @-` | Proposes items (pending, waiting for the user's approval). Answer: `added` (new ids) and `duplicates` (ids of open items with the same title, which were not added). |
 | `W -X PATCH "http://workhub/v1/inbox/<id>" -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","status":"done"}'` | Changes one item: `status` (`local`, `done`, `discarded`, `pending`), `due` (`YYYY-MM-DD` or null), `area`, `criticality` (or null), `note` (appended to the detail, at most 2000 characters), `links` (replaces the list; null clears), `ticket` (`{"key":"ABC-12"}` links a `local` task or bug to an existing ticket, optional `connectionId`; null unlinks; never creates a ticket). Answer: the item. |
 | `W "http://workhub/v1/milestones?$S"` | Milestones: `name`, `start`, `end`, `status` (`late`, `atRisk`, `onTrack`, `notStarted`, `done`), `progress` and `elapsed` (0–100), `source` (`manual`, `tracker`, `items`), `counts` for tracker milestones, `pieces` for milestones made of pieces (`kind`, `key`/`itemId`/`url`, `title`, `state`, `weight`, `share` in %), `error` when the last count failed, `notes` (shortened), `link`, `links`, `updatedAt`/`updatedBy`. |
-| `W -X POST http://workhub/v1/milestones -H 'content-type: application/json' -d @-` | Creates a milestone: `{"session","name","start","end","progress"}` (typed, 0–100), or `"query"` instead of `progress` (counted from the tracker), or `"items"` (its pieces, see below); optional `notes` (Markdown), `link`, `links`, `reason` (a short why, shown to the user). |
+| `W -X POST http://workhub/v1/milestones -H 'content-type: application/json' -d @-` | Creates a milestone: `{"session","name","start","end"}` and one of `"items"` (its pieces, see below: the usual choice when the work is known), `"query"` (counted from the tracker) or `"progress"` (typed by hand, 0–100); optional `notes` (Markdown), `link`, `links`, `reason` (a short why, shown to the user). |
 | `W -X PATCH "http://workhub/v1/milestones/<id>" -H 'content-type: application/json' -d @-` | Changes `name`, `start`, `end`, `progress` (typed ones), `query` (counted ones), `items` (replaces the pieces; turns any milestone into one made of pieces), `notes`, `link`, `links` (null clears; `links` replaces the whole list). Include `session` and `reason`. |
 | `W -X DELETE "http://workhub/v1/milestones/<id>?$S"` | Deletes a milestone. |
 | `W "http://workhub/v1/people?$S"` | People: `name`, `emails`, `handles`. Use it to match meeting attendees and to fill `people`. |
@@ -89,6 +91,11 @@ whose state is unknown never counts as done; a task counts only when its item is
 A `task` piece must be an item of the same profile's inbox (the one `session` resolves to); an
 item of another profile is refused with `400`, so create the milestone in that item's profile.
 
+The ids for `itemId` come from the inbox: `added` lists the new items' ids in the order they were
+sent (an item already open with the same title is not added again: its id is in `duplicates`, and
+it can be a piece too). A `pending` item can be a piece right away; it counts as done only once it
+is `done`. When unsure which id is which, read them back with `inbox?q=<words of the title>`.
+
 An item with a ticket (created by the user on approval, or linked) is done on its own when the
 tracker says the ticket is done: do not mark it `done` yourself for that.
 
@@ -111,6 +118,13 @@ of pasting addresses into the detail. The user sees who changed an item last (`u
 - **Close what you finished.** When you finish work that is a `local` task in the inbox, mark it
   `done` (add a short `note` with the branch or PR when useful). Only touch items the work is
   about; ask before discarding anything.
+- **A milestone with known work is made of pieces.** When a milestone has tickets, inbox tasks or
+  documents behind it (including ones you are proposing in the same turn), create it with `items`
+  so its progress follows them, never with a typed `progress`. A ticket key in the milestone's
+  name or in what the user said is a `ticket` piece. Weigh each piece by its share of the work
+  (the main ticket heavier than a small task). Use a typed `progress` only when the user gives a
+  percentage or there is nothing to link, and a `query` when the work is "every ticket of an epic
+  or label". To link the work of an existing typed milestone, `PATCH` it with `items`.
 - **Milestone changes may wait for the user.** A `202` answer with `pending: true` means the
   change is a proposal on the Plan screen, not applied: tell the user it waits for them to apply
   it, and do not send it again. `200` with `applied: true` means it is saved. Change or delete a
@@ -129,6 +143,17 @@ of pasting addresses into the detail. The user sees who changed an item last (`u
   `people` and look for open items that involve them (`inbox?q=<name>`), then write a short
   brief: who is coming, what is open with them, what to ask.
 - **"Log this decision."** POST one item with `"kind": "decision"` and the reasoning in `detail`.
+- **"Plan the migration: phase 1 is ABC-12, with these tasks…"** Two steps. (1) `POST inbox`
+  with the tasks, bugs and decisions; keep the ids of `added` (and of `duplicates`). (2) `POST
+  milestones` with `items`: the ticket (`{"kind":"ticket","key":"ABC-12"}`), each task
+  (`{"kind":"task","itemId":"<id>"}`) and any spec as a `link`, each with a weight. One milestone
+  per phase; a task belongs to the phase whose work it is (a task may be a piece of more than one
+  milestone, but avoid it). Report each milestone with its pieces and shares, and say that the
+  tasks wait for approval in the inbox and the milestone may wait on the Plan screen.
+- **"Link the tasks of this milestone."** Read `milestones` and `inbox?status=open`, match the
+  items to the milestone by their subject, and `PATCH milestones/<id>` with `items` (it replaces
+  the pieces and turns a typed milestone into one made of pieces); list the pieces you sent and
+  what you left out.
 - **"Mark the beta at 60 %."** `PATCH milestones/<id>` with `progress` and a `reason`; report
   whether it was applied or waits for approval.
 - **"How is the beta going?"** Call `milestones`; give status, progress against time gone and,
