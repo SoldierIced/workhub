@@ -5,7 +5,7 @@
  * human action in the UI. Every answer is short and capped; no secret (calendar addresses, notes)
  * leaves through it.
  */
-import { INBOX_KINDS, INBOX_LIMITS, INBOX_STATUSES, MILESTONE_LIMITS, PIECE_LIMITS, PIECE_WEIGHT, filterInbox, isDay, isOpenItem, milestoneProblems, moduleScreens, parsePieces, parsePlanLinks, parseTicketKey, patchMilestone, plannerSettings, trackedState, type InboxItem, type Milestone, type MilestonePatch, type MilestoneProposal, type PieceView, type Profile, type TrackedTicket } from '@workhub/core'
+import { INBOX_KINDS, INBOX_LIMITS, INBOX_STATUSES, MILESTONE_LIMITS, PIECE_LIMITS, PIECE_WEIGHT, filterInbox, isDay, isOpenItem, milestoneProblems, moduleScreens, parsePieces, parsePlanLinks, parseTicketKey, patchMilestone, plannerSettings, trackedState, unknownTaskItems, type InboxItem, type Milestone, type MilestonePatch, type MilestoneProposal, type PieceView, type Profile, type TrackedTicket } from '@workhub/core'
 import { randomUUID } from 'node:crypto'
 import type { PlanView } from '../shared/plan-api'
 import type { ControlReply } from './control-server'
@@ -421,6 +421,11 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
           if (typeof next === 'string') return fail(400, next)
           change = { action: 'update', milestoneId: current.id, milestone: next }
         }
+      }
+      if (change.milestone) {
+        const before = view.milestones.find((r) => r.milestone.id === change.milestoneId)?.milestone
+        const foreign = unknownTaskItems(change.milestone, new Set(view.inbox.map((i) => i.id)), before)
+        if (foreign.length) return fail(400, `task pieces must be items of this profile's inbox (send "session" or "profile" for another one); unknown: ${foreign.join(', ')}`)
       }
       const r = await deps.planner.agentMilestone(who.profileId, change, changeSource(who.session, body))
       if (!r.ok) return fail(r.reason === 'unknown' ? 404 : 409, r.error)

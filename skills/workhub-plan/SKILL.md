@@ -86,6 +86,9 @@ whose state is unknown never counts as done; a task counts only when its item is
              { "kind": "link", "url": "https://docs.example.com/spec", "label": "Spec", "done": false, "weight": 2 } ] }
 ```
 
+A `task` piece must be an item of the same profile's inbox (the one `session` resolves to); an
+item of another profile is refused with `400`, so create the milestone in that item's profile.
+
 An item with a ticket (created by the user on approval, or linked) is done on its own when the
 tracker says the ticket is done: do not mark it `done` yourself for that.
 

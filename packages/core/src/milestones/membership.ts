@@ -45,6 +45,16 @@ export function withoutItem<M extends Milestone>(milestone: M, item: Pick<InboxI
   return { ...milestone, source: { kind: 'items', items } }
 }
 
+/**
+ * The item ids of the milestone's task pieces that are not in `known` (the profile's inbox), left
+ * out those `before` already listed: a change may keep an old piece but not add a foreign one.
+ */
+export function unknownTaskItems(milestone: Pick<Milestone, 'source'>, known: ReadonlySet<string>, before?: Pick<Milestone, 'source'>): string[] {
+  if (milestone.source.kind !== 'items') return []
+  const kept = new Set(before?.source.kind === 'items' ? before.source.items.flatMap((p) => (p.kind === 'task' ? [p.itemId] : [])) : [])
+  return milestone.source.items.flatMap((p) => (p.kind === 'task' && !known.has(p.itemId) && !kept.has(p.itemId) ? [p.itemId] : []))
+}
+
 /** Open work grouped by milestone: one group per milestone (in the order given) with its items, then the items in none. */
 export interface MilestoneGroups<M, I> {
   groups: { milestone: M; items: I[] }[]
