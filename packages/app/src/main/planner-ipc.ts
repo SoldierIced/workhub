@@ -153,7 +153,7 @@ export async function addControlInboxItems(deps: ControlInboxDeps, body: unknown
   const parsed = parseInboxProposals(body)
   if (!parsed.ok) return { ok: false, status: 400, error: parsed.error }
   const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>
-  const who = await resolveControlProfile(deps, { session: b['session'], profile: b['profile'] })
+  const who = await resolveControlProfile(deps, { session: b['session'], profile: b['profile'], cwd: b['cwd'] })
   if (!who.ok) return who
   const { profileId, session } = who
   const source: InboxSource = { type: b['sourceType'] === 'meeting' ? 'meeting' : 'agent', ...(session ? { ref: session } : {}), ...(parsed.label ? { label: parsed.label } : {}) }

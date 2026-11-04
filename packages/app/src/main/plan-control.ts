@@ -28,15 +28,18 @@ export interface ControlProfileDeps {
   sessionProfile: (sessionId: string) => string | null | undefined
   /** Whether a profile exists, and the active one. */
   profiles: () => Promise<{ ids: string[]; active: string | null }>
+  /** The profile whose folders hold `path` (see `owningProfile`), for a caller outside a session. */
+  folderProfile?: (path: string) => Promise<string | undefined>
 }
 
 export type ControlProfile = { ok: true; profileId: string; session: string | null } | { ok: false; status: number; error: string }
 
 /**
  * The profile a control request acts on: the one of `session` (an agent passes `$WORKHUB_SESSION`),
- * else `profile` (a profile id), else the active one.
+ * else `profile` (a profile id), else the profile that owns `cwd` (the folder the agent works in),
+ * else the active one.
  */
-export async function resolveControlProfile(deps: ControlProfileDeps, ask: { session?: unknown; profile?: unknown }): Promise<ControlProfile> {
+export async function resolveControlProfile(deps: ControlProfileDeps, ask: { session?: unknown; profile?: unknown; cwd?: unknown }): Promise<ControlProfile> {
   const { ids, active } = await deps.profiles()
   let profileId: string | null = null
   const session = typeof ask.session === 'string' && SESSION_ID.test(ask.session) ? ask.session : null
@@ -48,6 +51,10 @@ export async function resolveControlProfile(deps: ControlProfileDeps, ask: { ses
   if (!profileId && typeof ask.profile === 'string' && ask.profile) {
     if (!ids.includes(ask.profile)) return { ok: false, status: 404, error: 'unknown profile' }
     profileId = ask.profile
+  }
+  if (!profileId && typeof ask.cwd === 'string' && ask.cwd.trim() && deps.folderProfile) {
+    const owner = await deps.folderProfile(ask.cwd)
+    if (owner && ids.includes(owner)) profileId = owner
   }
   profileId ??= active
   if (!profileId) return { ok: false, status: 409, error: 'no profile' }
@@ -327,7 +334,7 @@ export interface PlanControlDeps extends ControlProfileDeps {
 /** The ask of a request: `session` and `profile` from the query, or from a JSON body. */
 const askOf = (params: URLSearchParams, body?: unknown) => {
   const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : {}
-  return { session: b['session'] ?? params.get('session') ?? undefined, profile: b['profile'] ?? params.get('profile') ?? undefined }
+  return { session: b['session'] ?? params.get('session') ?? undefined, profile: b['profile'] ?? params.get('profile') ?? undefined, cwd: b['cwd'] ?? params.get('cwd') ?? undefined }
 }
 
 /** The handlers of the Plan endpoints, for `ControlDeps.plan`. */
