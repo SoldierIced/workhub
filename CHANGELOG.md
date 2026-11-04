@@ -4,7 +4,7 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
-## [2.0.0-alpha.16](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.15...v2.0.0-alpha.16) (2026-11-04)
+## [2.0.0-alpha.16](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.14...v2.0.0-alpha.16) (2026-11-04)
 
 
 ### Features
