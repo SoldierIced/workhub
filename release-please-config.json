@@ -4,11 +4,9 @@
   "include-component-in-tag": false,
   "include-v-in-tag": true,
   "bootstrap-sha": "29256808754e9321b7e30f73d50b4642b983f165",
-  "last-release-sha": "79409425a31c0035ada038f9f2cba8ba313382d8",
   "packages": {
     ".": {
       "package-name": "workhub2",
-      "release-as": "2.0.0-alpha.16",
       "changelog-path": "CHANGELOG.md",
       "versioning": "prerelease",
       "prerelease": true,
