@@ -4,18 +4,6 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
-## [2.0.0-alpha.15](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.14...v2.0.0-alpha.15) (2026-11-04)
-
-
-### Features
-
-* **plan:** pick the profile from the caller's folder when there is no session ([#36](https://github.com/SoldierIced/workhub/issues/36)) ([30644f8](https://github.com/SoldierIced/workhub/commit/30644f8d2677e52223f7c2d5457efa6e5a0a88ed))
-
-
-### Bug Fixes
-
-* **app:** remove update leftovers without tripping over app.asar ([e5a550f](https://github.com/SoldierIced/workhub/commit/e5a550fe6ab00a482b654703e2b494f0175cef0f))
-
 ## [2.0.0-alpha.14](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.13...v2.0.0-alpha.14) (2026-11-04)
 
 
