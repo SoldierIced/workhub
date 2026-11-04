@@ -23,7 +23,9 @@ section of `docs/user-guide/plan.md` in the Workhub repository.
 The session environment has `WORKHUB_SESSION` (this session's id) and the endpoint:
 `WORKHUB_SOCKET` (a Unix socket, macOS and Linux) or `WORKHUB_URL` and `WORKHUB_TOKEN` (a loopback
 port and its token, Windows). Pass the session on every call: the answer is about the profile this
-session runs in. With none of them you are not in a Workhub session: say so and stop; do not look
+session runs in. Pass also your working folder (`"cwd"` in a body, `cwd` in `$S`): when the
+session is missing or has no profile, the profile that owns that folder is used instead of the
+active one. With none of them you are not in a Workhub session: say so and stop; do not look
 for the endpoint.
 
 `W` works on both (bash, including Git Bash on Windows): it calls `http://workhub/...` over the
@@ -36,7 +38,7 @@ W() {
     curl -s -H "Authorization: Bearer $WORKHUB_TOKEN" "${a[@]}"
   else curl -s --unix-socket "$WORKHUB_SOCKET" "$@"; fi
 }
-S="session=$WORKHUB_SESSION"
+S="session=$WORKHUB_SESSION&cwd=$(printf %s "$PWD" | sed 's/%/%25/g; s/ /%20/g; s/&/%26/g; s/#/%23/g; s/+/%2B/g')"
 ```
 
 From PowerShell use `curl.exe -s -H "Authorization: Bearer $env:WORKHUB_TOKEN" "$env:WORKHUB_URL/v1/..."`.
@@ -62,7 +64,7 @@ user the reason and that it is turned on in **Settings → Plan**.
 A proposal body (at most 20 items):
 
 ```json
-{ "session": "<WORKHUB_SESSION>", "source": "Checkout refactor",
+{ "session": "<WORKHUB_SESSION>", "cwd": "<$PWD>", "source": "Checkout refactor",
   "items": [ { "kind": "task", "title": "Add a retry to the payment callback",
                "detail": "Found while refactoring; out of scope for PAY-123.\n\n- Happens on timeouts\n- See `callback.ts`",
                "links": [ { "label": "Failing run", "url": "https://ci.example.com/runs/42" } ],
@@ -79,7 +81,7 @@ weight of all of them: with weights 2 and 8, the second piece is 80 % of the mil
 whose state is unknown never counts as done; a task counts only when its item is `done`.
 
 ```json
-{ "session": "<WORKHUB_SESSION>", "name": "Reliable invites", "start": "2026-11-01", "end": "2026-11-30",
+{ "session": "<WORKHUB_SESSION>", "cwd": "<$PWD>", "name": "Reliable invites", "start": "2026-11-01", "end": "2026-11-30",
   "reason": "Asked in the planning call",
   "items": [ { "kind": "ticket", "key": "ABC-12", "weight": 3 },
              { "kind": "task", "itemId": "<inbox item id>", "weight": 4 },

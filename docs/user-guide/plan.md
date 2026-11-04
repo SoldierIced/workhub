@@ -308,8 +308,9 @@ Items come from:
   (`YYYY-MM-DD`), and optionally `area`, `criticality`, an http(s) `link` and `links`, a list of up
   to 20 `{ "label": "…", "url": "https://…" }` (a bare address works too; the label is at most 200
   characters). The detail may use Markdown. At most 20 items per
-  request. The items go to the profile of `session`, else of `profile` (a profile id), else the
-  active one, which must have Plan on. `source` names where they came from, and `"sourceType":
+  request. The items go to the profile of `session`, else of `profile` (a profile id), else of the
+  profile whose folders hold `cwd` (the folder the agent works in), else the active one, which
+  must have Plan on. `source` names where they came from, and `"sourceType":
   "meeting"` marks them as meeting follow-ups. Items with the same title as an open one are
   skipped and listed under `duplicates` in the answer. The endpoint only listens on a socket in the
   data folder (a named pipe on Windows) readable by your own user. A brief prompt can ask the agent
@@ -359,7 +360,9 @@ first read marks those whose ticket is done as **Done**.
 An agent running in a Workhub session can read your plan and keep the inbox up to date through the
 same local control endpoint, and the `workhub-plan` skill tells it how. Every call names the
 session (`session=$WORKHUB_SESSION` in the query, or `"session"` in a body) and acts on that
-session's profile; without it, on `profile` (a profile id), else the active profile. When Plan is
+session's profile; without it, on `profile` (a profile id), else on the profile whose folders
+hold `cwd` (the folder the agent works in, `cwd=` in the query or `"cwd"` in a body), else the
+active profile. When Plan is
 off in the profile, the answers are empty and say why.
 
 | Endpoint | Answer |

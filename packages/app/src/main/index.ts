@@ -144,7 +144,7 @@ import { meetingReminderWords, planView, registerPlanIpc } from './plan-ipc'
 import { PlannerService, type PlannerState } from './planner-service'
 import { addControlInboxItems, registerPlannerIpc } from './planner-ipc'
 import { expandHome } from './automations'
-import { gatePrompt, productCalendarEvents, ticketsInProgress, type CalendarState, type DueAction } from '@workhub/core'
+import { gatePrompt, owningProfile, productCalendarEvents, ticketsInProgress, type CalendarState, type DueAction } from '@workhub/core'
 import type { SetupPage } from '../shared/setup-api'
 
 // Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
@@ -1680,13 +1680,14 @@ async function fillDefaultFoldersOnStart(): Promise<void> {
 }
 
 let controlServer: import('node:http').Server | null = null
-/** How the control endpoint finds the profile of a request (the calling session's, a named one, the active one). */
+/** How the control endpoint finds the profile of a request (the calling session's, a named one, the one owning the caller's folder, the active one). */
 const controlProfiles = {
   sessionProfile: (id: string) => sessions.list().find((s) => s.id === id)?.profileId,
   profiles: async () => {
     const config = await configuration.current()
     return { ids: config.profiles.map((p) => p.id), active: config.activeProfileId ?? null }
-  }
+  },
+  folderProfile: async (path: string) => owningProfile(path, (await configuration.current()).profiles, homedir())?.id
 }
 void app.whenReady().then(async () => {
   const controlDeps: ControlDeps = {

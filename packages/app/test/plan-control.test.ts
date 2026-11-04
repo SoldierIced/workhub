@@ -73,6 +73,15 @@ describe('resolveControlProfile', () => {
     expect(await resolveControlProfile(deps, { profile: 'nope' })).toEqual({ ok: false, status: 404, error: 'unknown profile' })
     expect(await resolveControlProfile({ ...deps, profiles: async () => ({ ids: [], active: null }) }, {})).toEqual({ ok: false, status: 409, error: 'no profile' })
   })
+
+  it('takes the profile that owns the caller folder when there is no session nor profile', async () => {
+    const withFolders = { ...deps, folderProfile: async (path: string) => (path.startsWith('/w/side') ? 'work' : path.startsWith('/w/gone') ? 'deleted' : undefined) }
+    expect(await resolveControlProfile(withFolders, { cwd: '/w/side/shop' })).toEqual({ ok: true, profileId: 'work', session: null })
+    expect(await resolveControlProfile(withFolders, { session: 's3', cwd: '/w/side/shop' })).toEqual({ ok: true, profileId: 'work', session: 's3' })
+    expect(await resolveControlProfile(withFolders, { profile: 'home', cwd: '/w/side/shop' })).toEqual({ ok: true, profileId: 'home', session: null })
+    expect(await resolveControlProfile(withFolders, { cwd: '/elsewhere' })).toEqual({ ok: true, profileId: 'home', session: null })
+    expect(await resolveControlProfile(withFolders, { cwd: '/w/gone' })).toEqual({ ok: true, profileId: 'home', session: null })
+  })
 })
 
 describe('Plan control parsers', () => {
