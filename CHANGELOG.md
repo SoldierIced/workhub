@@ -4,6 +4,70 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.4](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.15...v2.0.0-alpha.4) (2026-11-04)
+
+
+### Features
+
+* **agents:** report each agent's slash commands and local command output ([b600c46](https://github.com/SoldierIced/workhub/commit/b600c4649cd7c8d9a5f684c46dca7c96adf924f2))
+* **ai-review:** choose one reviewer for every round or a new one each round ([45e05b6](https://github.com/SoldierIced/workhub/commit/45e05b625bcdf399beebc81c4560fa287935eb2a))
+* **ai-review:** hand the reviewer the diff as a file and let tools request a review ([d3d0be4](https://github.com/SoldierIced/workhub/commit/d3d0be49c207f2f5d62700ed7e2099b62028d483))
+* **ai-review:** make the reviewer check beyond the author's brief ([8783ae0](https://github.com/SoldierIced/workhub/commit/8783ae0a1303abb5a3244a403c2a3d314ebd7f75))
+* **app:** "Check for updates" in the menu bar opens and highlights Settings → Updates ([34407b2](https://github.com/SoldierIced/workhub/commit/34407b2ddca5c8065059c3a025bde0ab1115e841))
+* **app:** ask once a day to install a new version ([#22](https://github.com/SoldierIced/workhub/issues/22)) ([d7b1bf3](https://github.com/SoldierIced/workhub/commit/d7b1bf31e3831214c3a295b9215b1d08a36f3719))
+* **app:** fold the sidebar and the session monitor away ([34407b2](https://github.com/SoldierIced/workhub/commit/34407b2ddca5c8065059c3a025bde0ab1115e841))
+* **automations:** keep running in one session while the app runs, with an optional context clear ([475961b](https://github.com/SoldierIced/workhub/commit/475961b2854045d6462a3325f05fe154a28b85b2))
+* **chat:** copy buttons on agent messages and code blocks ([378133a](https://github.com/SoldierIced/workhub/commit/378133a15c61a7cc8b9479b43d06da0f67b53127))
+* **chat:** escuchar respuestas del agente y mensajes largos legibles ([356daa5](https://github.com/SoldierIced/workhub/commit/356daa5738c3dbf7bff0e73cb982360fd8391203))
+* **chat:** listen to agent replies with a cheap-model summary and wrap long messages ([5417ea5](https://github.com/SoldierIced/workhub/commit/5417ea5c566bea0be3ffff57a3132921e90433a3))
+* **chat:** slash command menu and /rename in every chat ([d1ad4da](https://github.com/SoldierIced/workhub/commit/d1ad4da6e9f3d91a4b08adf140669e4aa9a55806))
+* **flow-maps:** give flow maps their own screen with baselines, alerts, traces and a sequence view ([72a70d1](https://github.com/SoldierIced/workhub/commit/72a70d1fe74925337a58e19b6cf9af5f4c596cdb))
+* **history:** group automation runs into one row per automation ([ef7967c](https://github.com/SoldierIced/workhub/commit/ef7967cef5e368cd97f1f7d78f0c0ae87a8f127e))
+* **install:** add one-line installers and latest-version download links ([6a5caca](https://github.com/SoldierIced/workhub/commit/6a5caca595c4f537f065a320e638619203699637))
+* **install:** instaladores de una línea y links a la última versión ([fc308a5](https://github.com/SoldierIced/workhub/commit/fc308a59d1a65473036f0cc029792985a2ef860b))
+* **notifications:** add a test notification to Settings ([721cdce](https://github.com/SoldierIced/workhub/commit/721cdce76be2d37890afc0c1216c9c0d4dc2017e))
+* **plan:** a Tasks tab grouped by milestone, and milestones picked from each item ([#28](https://github.com/SoldierIced/workhub/issues/28)) ([33b26ee](https://github.com/SoldierIced/workhub/commit/33b26ee03d867d0c23197ad087f8f20ce33babe8))
+* **plan:** add the Plan module, metric alerts, agent access and a demo ([0a5574c](https://github.com/SoldierIced/workhub/commit/0a5574c0103455f217f86375ac1976b7e0187a39))
+* **plan:** item windows, milestone pieces with weights and task-ticket sync ([3afd8fb](https://github.com/SoldierIced/workhub/commit/3afd8fb2378c808b62c2467ea40458bece6f219e))
+* **plan:** let agents create, change and delete milestones, asking first by default ([72a2d2e](https://github.com/SoldierIced/workhub/commit/72a2d2e1cfa8ec60485c40c31f26690bb3078b45))
+* **plan:** módulo Plan, hitos editables por agentes, revisión manual y endpoint para Windows ([cfc2dbf](https://github.com/SoldierIced/workhub/commit/cfc2dbf1bd4035585997eb3807fd2905dc78119f))
+* **plan:** pick the profile from the caller's folder when there is no session ([#36](https://github.com/SoldierIced/workhub/issues/36)) ([30644f8](https://github.com/SoldierIced/workhub/commit/30644f8d2677e52223f7c2d5457efa6e5a0a88ed))
+* **plan:** ventanas de detalle, hitos por piezas y tareas vinculadas a tickets ([7411706](https://github.com/SoldierIced/workhub/commit/74117068d71086f9647dd5af1fb0029ea12eca30))
+* **sessions:** follow the new session id Claude's /clear moves the conversation to ([190df66](https://github.com/SoldierIced/workhub/commit/190df66c59853804c4d5f283e416887343c18db5))
+* **sessions:** show the tasks an agent left running in the background ([34407b2](https://github.com/SoldierIced/workhub/commit/34407b2ddca5c8065059c3a025bde0ab1115e841))
+* **sessions:** warn before reviving a conversation whose prompt cache expired ([dab5147](https://github.com/SoldierIced/workhub/commit/dab5147c4a5c8243537b895a4de5d35f84e974d5))
+* **ui:** image attach button, history paging and shared delete dialog ([016196a](https://github.com/SoldierIced/workhub/commit/016196a521e9644b38a358f3442165e79a356d59))
+* **updates:** install updates in place on macOS and ask before restarting ([#19](https://github.com/SoldierIced/workhub/issues/19)) ([289bde4](https://github.com/SoldierIced/workhub/commit/289bde43a0e6e324e97b077f2995df1820b20d53))
+* **usage:** show fresh tokens and cache reads apart on Home and the monitor ([58b31a3](https://github.com/SoldierIced/workhub/commit/58b31a36c3dcae31488782241a8939a71b549bfe))
+* worktree per session ([#21](https://github.com/SoldierIced/workhub/issues/21)) ([f26e341](https://github.com/SoldierIced/workhub/commit/f26e3418c6fd6d263f0f84f60e6131d02a3823f6))
+
+
+### Bug Fixes
+
+* **ai-review:** document manual reviews as the default and pin it in tests ([a68d49d](https://github.com/SoldierIced/workhub/commit/a68d49d9bbb0a617dc8c53852f903252c6979ed8))
+* **ai-review:** make reviews manual by default ([00aed9a](https://github.com/SoldierIced/workhub/commit/00aed9a3467b5704d6a30393345216f320a49d99))
+* **ai-review:** send the reviewer's last answer to the author when the loop ends ([994592f](https://github.com/SoldierIced/workhub/commit/994592f7b3f652d9e8b892ae9f4f7176801ccc47))
+* **ai-review:** stop calling the branch review loop automatic in its hint ([d3cf460](https://github.com/SoldierIced/workhub/commit/d3cf460187d79aeaa22936f8f6b8e18a2a90cdee))
+* **app:** answer an agent's questions in the chat and clear the needs-answer flag after a switch to the console ([#25](https://github.com/SoldierIced/workhub/issues/25)) ([d30a596](https://github.com/SoldierIced/workhub/commit/d30a59606bc05ddfc82afe7f1884ebbfffb0c382))
+* **app:** remove update leftovers without tripping over app.asar ([e5a550f](https://github.com/SoldierIced/workhub/commit/e5a550fe6ab00a482b654703e2b494f0175cef0f))
+* **app:** send a prompt typed into an agent's console, such as a Slack reply ([#29](https://github.com/SoldierIced/workhub/issues/29)) ([a913420](https://github.com/SoldierIced/workhub/commit/a913420ab6c8d18360fd4f3cfe35ac1141181eba))
+* **app:** show a failed command's output in the normal tone ([#24](https://github.com/SoldierIced/workhub/issues/24)) ([90e4c18](https://github.com/SoldierIced/workhub/commit/90e4c18ceaa022f947c06d89f48373bbb54726f3))
+* **build:** add homepage and repository so the Linux deb build has its metadata ([#3](https://github.com/SoldierIced/workhub/issues/3)) ([aa3b7a7](https://github.com/SoldierIced/workhub/commit/aa3b7a7146bdc2474ce1459f2bd115893852706b))
+* **control:** reach the control endpoint on Windows through a loopback port and a token ([549ea24](https://github.com/SoldierIced/workhub/commit/549ea2485e016590e0e56b67d6fcc2ee39601492))
+* **monitor:** list only the tickets and PRs the session is related to ([2e766fc](https://github.com/SoldierIced/workhub/commit/2e766fc2a12ab3329664cf6536ce058adb3d9689))
+* notificaciones por automatización, brief tras reinicio y orden de Personas ([#16](https://github.com/SoldierIced/workhub/issues/16)) ([b3bb100](https://github.com/SoldierIced/workhub/commit/b3bb100724c0908e06bf50a364136ee3795cc5c3))
+* **plan:** let one session propose several inbox items ([#27](https://github.com/SoldierIced/workhub/issues/27)) ([d7e3eb6](https://github.com/SoldierIced/workhub/commit/d7e3eb651700bfed558bbaaeeedb2db67cd97535))
+* **plan:** refuse milestone task pieces from another profile ([#33](https://github.com/SoldierIced/workhub/issues/33)) ([ab55d4a](https://github.com/SoldierIced/workhub/commit/ab55d4a60f11552197222fdd660e2589de08ecd8))
+* **scripts:** detect the main module through a symlinked folder in brand.mjs ([1c516ad](https://github.com/SoldierIced/workhub/commit/1c516ade1c1f156bf892cac394c49fde25bc1a04))
+* **sessions:** show conversation compaction in the app chat ([#31](https://github.com/SoldierIced/workhub/issues/31)) ([0efd48e](https://github.com/SoldierIced/workhub/commit/0efd48e82d10bc52571559c81f53860b979ac174))
+* **sidebar:** stop the session row tooltip from flickering with the hover actions ([c8c5590](https://github.com/SoldierIced/workhub/commit/c8c559063bed9dcb916badf2cfe8ece4aba630b2))
+* **transcript:** tell a session's own actions from tool output and listings ([560e493](https://github.com/SoldierIced/workhub/commit/560e49376227df2ccd101e98307e7c21c65558df))
+
+
+### Tests
+
+* **adapters:** wait for the fake agent's stderr before asserting it ([#5](https://github.com/SoldierIced/workhub/issues/5)) ([021a1e0](https://github.com/SoldierIced/workhub/commit/021a1e0070d8d5b13fe03453003bd81df0d0ef1c))
+
 ## [2.0.0-alpha.15](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.14...v2.0.0-alpha.15) (2026-11-04)
 
 
