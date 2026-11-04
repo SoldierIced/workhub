@@ -2,9 +2,10 @@ import type { ReactNode } from 'react'
 import { Card, HelpTip } from '../../components/molecules'
 
 /** A Settings section: a heading (with optional help), its rows in a card and a footnote. */
-export function SettingsGroup({ title, help, children, footnote }: { title: string; help?: ReactNode; children: ReactNode; footnote?: ReactNode }) {
+export function SettingsGroup({ title, help, children, footnote, anchor }: { title: string; help?: ReactNode; children: ReactNode; footnote?: ReactNode; anchor?: string }) {
   return (
-    <section className="flex flex-col gap-2">
+    // `data-settings-group` lets a spotlight dim the other groups; `anchor` names this one for it.
+    <section className="flex flex-col gap-2 rounded-lg transition-[opacity,filter,box-shadow] duration-500" data-settings-group={anchor ?? ''}>
       <h2 className="flex items-center gap-1.5 px-1 text-md font-semibold">
         {title}
         {help && <HelpTip text={help} label={title} />}

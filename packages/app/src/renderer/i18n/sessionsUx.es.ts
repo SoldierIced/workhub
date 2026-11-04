@@ -22,5 +22,20 @@ export const sessionsUxEs: Record<keyof typeof sessionsUxEn, string> = {
   'session.switchNowHint': 'Detener el turno en curso y cambiar de inmediato',
   'session.switchCancel': 'Cancelar',
   'session.switchCancelHint': 'Quedarse en esta vista',
-  'session.switchPending': '{mode} (esperando el turno)'
+  'session.switchPending': '{mode} (esperando el turno)',
+  'layout.hideSidebar': 'Ocultar la barra lateral',
+  'layout.showSidebar': 'Mostrar la barra lateral',
+  'layout.hideMonitor': 'Ocultar el monitor',
+  'layout.showMonitor': 'Mostrar el monitor',
+  'backgroundTasks.badge.one': '{count} tarea corriendo en segundo plano',
+  'backgroundTasks.badge.other': '{count} tareas corriendo en segundo plano',
+  'backgroundTasks.title.one': 'El agente tiene {count} tarea corriendo en segundo plano',
+  'backgroundTasks.title.other': 'El agente tiene {count} tareas corriendo en segundo plano',
+  'backgroundTasks.kind.shell': 'Comando',
+  'backgroundTasks.kind.monitor': 'Monitor',
+  'backgroundTasks.kind.workflow': 'Workflow',
+  'backgroundTasks.kind.task': 'Tarea',
+  'backgroundTasks.untitled': 'Sin descripción',
+  'backgroundTasks.more.one': 'y {count} más',
+  'backgroundTasks.more.other': 'y {count} más'
 }

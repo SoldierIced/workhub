@@ -1173,9 +1173,13 @@ function showPullRequestInMain(url: string, profileId: string | null): void {
   send('codeHost:focus', url, profileId)
 }
 
-function navigate(route: TrayRoute): void {
+/** Where "Check for updates" takes the user: the General tab's Updates group. */
+const UPDATES_SETTINGS = 'general#updates'
+
+/** Brings the main window to `route`; for Settings, `tab` names the tab (`general#updates` also points at one of its groups). */
+function navigate(route: TrayRoute, tab?: string): void {
   showMain()
-  send('tray:navigate', route)
+  send('tray:navigate', route, tab)
 }
 
 /** A notification worded by the renderer; a click opens its session, or its screen. */
@@ -1384,7 +1388,8 @@ async function trayState(): Promise<TrayState> {
       })),
     notifications: notifier.recent().map((n) => ({ id: n.id, title: n.title, at: n.at })),
     pausedUntil: options.notificationsPausedUntil,
-    canCheckForUpdates: app.isPackaged
+    // WORKHUB_SHOW_UPDATE_MENU=1 shows the item in a dev run, to try where it leads (the check itself needs a packaged build).
+    canCheckForUpdates: app.isPackaged || process.env['WORKHUB_SHOW_UPDATE_MENU'] === '1'
   }
 }
 
@@ -1417,7 +1422,8 @@ async function performTrayAction(action: TrayAction): Promise<void> {
       return scheduleTray()
     }
     case 'checkForUpdates':
-      navigate('settings')
+      // Straight to the Updates group, highlighted, where the check's result shows.
+      navigate('settings', UPDATES_SETTINGS)
       void updates.check()
       return
     case 'quit':

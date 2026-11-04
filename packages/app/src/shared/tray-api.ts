@@ -9,8 +9,8 @@ export interface TrayRendererState {
 export interface TrayApi {
   /** Reports the sessions (with their unseen flags) and the language; sent again on every change. */
   setState(state: TrayRendererState): void
-  /** The menu bar icon (or a notification) asked for a screen. */
-  onNavigate(cb: (route: TrayRoute) => void): () => void
+  /** The menu bar icon (or a notification) asked for a screen; for Settings, maybe a tab (`general#updates`). */
+  onNavigate(cb: (route: TrayRoute, tab?: string) => void): () => void
   /** "New session…" in the menu bar icon. */
   onNewSession(cb: () => void): () => void
   /** The popover window that opens from the icon (macOS, Windows); only that window gets its events. */

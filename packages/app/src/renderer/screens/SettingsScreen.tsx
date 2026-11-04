@@ -1,5 +1,6 @@
 import { Activity, CalendarDays, ChevronRight, FolderCog, TriangleAlert, Gauge, MessageSquare, Languages, Palette, Plug, Plus, Route as RouteIcon, Ticket, Users, UserCog } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { cn } from '../lib/cn'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   appOptions,
   automaticProfileColor,
@@ -142,15 +143,63 @@ function TabIntro({ text }: { text: string }) {
   return <p className="-mt-1 max-w-3xl text-base text-muted">{text}</p>
 }
 
+/** A Settings group to point at: its `anchor` and when it was asked for (a new `at` points again). */
+export interface SettingsSpotlight {
+  group: string
+  at: number
+}
+
+/** How long a spotlit group stays highlighted, with the rest dimmed. */
+export const SPOTLIGHT_MS = 2800
+
 export interface SettingsScreenProps {
   snap: ConfigSnapshot | null
   tab: string
   onTabChange: (tab: string) => void
   /** Replaces the plain title, e.g. with the modal's title and close button. */
   heading?: ReactNode
+  /** Scroll to this group and highlight it, dimming and blurring the others for a moment. */
+  spotlight?: SettingsSpotlight | null
 }
 
-export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScreenProps) {
+/**
+ * Points at one group: scrolls it into view and marks it `data-spotlit` while the others dim (the
+ * classes of SPOTLIGHT_CLASSES). A click anywhere, or SPOTLIGHT_MS, ends it.
+ */
+function useSpotlight(root: RefObject<HTMLElement | null>, spotlight: SettingsSpotlight | null | undefined, tab: string): boolean {
+  const [lit, setLit] = useState(false)
+  useEffect(() => {
+    if (!spotlight) return
+    let target: HTMLElement | null = null
+    const end = () => {
+      target?.removeAttribute('data-spotlit')
+      setLit(false)
+    }
+    // The tab's content mounts with this render: look for the group on the next frame.
+    const frame = requestAnimationFrame(() => {
+      target = root.current?.querySelector<HTMLElement>(`[data-settings-group="${CSS.escape(spotlight.group)}"]`) ?? null
+      if (!target) return
+      target.setAttribute('data-spotlit', '')
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setLit(true)
+    })
+    const timer = window.setTimeout(end, SPOTLIGHT_MS)
+    window.addEventListener('pointerdown', end, { once: true })
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+      window.removeEventListener('pointerdown', end)
+      end()
+    }
+  }, [root, spotlight, tab])
+  return lit
+}
+
+/** While a group is spotlit: the others fade and blur, the lit one gets an accent ring. */
+export const SPOTLIGHT_CLASSES =
+  '[&_[data-settings-group]:not([data-spotlit])]:opacity-35 [&_[data-settings-group]:not([data-spotlit])]:blur-[1.5px] [&_[data-spotlit]]:ring-2 [&_[data-spotlit]]:ring-accent [&_[data-spotlit]]:ring-offset-8 [&_[data-spotlit]]:ring-offset-bg'
+
+export function SettingsScreen({ snap, tab, onTabChange, heading, spotlight }: SettingsScreenProps) {
   const { t } = useI18n()
   const notify = useToast()
   const [issues, setIssues] = useState<ValidationIssue[]>([])
@@ -160,6 +209,8 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
   const workhub1 = useWorkhub1Preview(snap?.config)
 
   const unsaved = useUnsavedChanges()
+  const root = useRef<HTMLDivElement>(null)
+  const lit = useSpotlight(root, spotlight, tab)
 
   const run: Run = async (op) => {
     const r = await op()
@@ -193,7 +244,7 @@ export function SettingsScreen({ snap, tab, onTabChange, heading }: SettingsScre
       onTabChange(target.tab)
     })
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col px-8 pb-7">
+    <div ref={root} className={cn('mx-auto flex w-full max-w-5xl flex-col px-8 pb-7', lit && SPOTLIGHT_CLASSES)} data-testid="settings-screen">
       <Tabs
         variant="fill"
         header={
@@ -294,7 +345,7 @@ function GeneralSection({ snap, run, workhub1 }: SectionProps & { workhub1: Work
         <MenuBarRows config={snap.config} editable={editable} run={run} />
         <AppBadgeRows config={snap.config} editable={editable} run={run} />
       </SettingsGroup>
-      <SettingsGroup title={t('updates.group')} help={t('help.general.updates')} footnote={window.hub.platform === 'mac' ? t('updates.macNote') : undefined}>
+      <SettingsGroup anchor="updates" title={t('updates.group')} help={t('help.general.updates')} footnote={window.hub.platform === 'mac' ? t('updates.macNote') : undefined}>
         <UpdatesSettings enabled={options.checkForUpdates} editable={editable} run={run} />
       </SettingsGroup>
       <SettingsGroup title={t('prevent.settings.title')} help={t('help.general.prEvents')} footnote={t('prevent.settings.note')}>

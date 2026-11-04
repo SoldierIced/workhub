@@ -24,6 +24,8 @@ import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useNow, useSessionCeilings, useUsageSettings } from '../../lib/usage'
 import { BudgetNotice } from './BudgetNotice'
 import { IdleContextNotice } from './IdleContextNotice'
+import { BackgroundTasksNotice } from './BackgroundTasksNotice'
+import { waitingTasks } from '../../lib/backgroundTasks'
 import { idleContext, lastActivityAt } from '../../lib/idle-context'
 import { SessionControls } from './SessionControls'
 import { QuestionCard } from './QuestionCard'
@@ -746,6 +748,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
           onClick={focusFromBox}
           data-testid="composer"
         >
+          <BackgroundTasksNotice tasks={waitingTasks(data.monitor.backgroundTasks)} now={now} />
           {idle && <IdleContextNotice idle={idle} now={now} onDismiss={() => setIdleDismissedAt(lastAt)} />}
           <BudgetNotice
             status={gate.status}

@@ -39,6 +39,10 @@ export const SESSIONS_ITEM: NavItem = { route: 'sessions', shortcut: { key: '0' 
 export const SETTINGS_ITEM: NavItem = { route: 'settings', shortcut: { key: ',' } }
 /** Workhub 1's "new session" key. */
 export const NEW_SESSION_SHORTCUT: Shortcut = { key: 't' }
+/** Shows or hides the left sidebar. Not Option: on macOS it changes the key the event carries. */
+export const SIDEBAR_SHORTCUT: Shortcut = { key: 's', shift: true }
+/** Shows or hides the session monitor panel. */
+export const MONITOR_SHORTCUT: Shortcut = { key: 'm', shift: true }
 
 /** Nav items the active profile shows: an item tied to a module is hidden while the module is off. */
 export function visibleNavItems(modules: ModuleToggles | undefined): NavItem[] {

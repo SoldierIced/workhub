@@ -5,6 +5,7 @@ import { Button, Spinner } from '../components/atoms'
 import { EmptyState } from '../components/molecules'
 import { BrandMark } from '../components/organisms'
 import { useI18n } from '../i18n/I18nProvider'
+import { usePrefs } from '../lib/prefs'
 import { cn } from '../lib/cn'
 import type { SessionData } from '../store'
 import { AiReviewAside } from './sessions/AiReviewPanel'
@@ -59,6 +60,7 @@ export function SessionsScreen({ sessions, selectedId, visible, theme, onNewSess
 export const SessionPane = memo(function SessionPane({ data, visible, theme }: { data: SessionData; visible: boolean; theme: 'light' | 'dark' }) {
   const { t } = useI18n()
   const v = data.view
+  const monitorHidden = usePrefs().monitorHidden
   // A shell, once opened, stays mounted so its scrollback survives switching back and forth.
   const [shellOpened, setShellOpened] = useState(false)
   useEffect(() => {
@@ -100,7 +102,8 @@ export const SessionPane = memo(function SessionPane({ data, visible, theme }: {
             </div>
           )}
         </div>
-        {v.screens.includes('monitor') ? <MonitorPanel data={data} visible={visible} /> : <AiReviewAside view={v} />}
+        {/* Folded away with the toolbar's monitor button (⇧⌘M), as Workhub 1's Inspector. */}
+        {monitorHidden ? null : v.screens.includes('monitor') ? <MonitorPanel data={data} visible={visible} /> : <AiReviewAside view={v} />}
       </div>
     </>
   )

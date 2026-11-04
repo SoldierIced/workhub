@@ -126,6 +126,8 @@ With **Check for updates** on, Workhub checks when it starts and every 6 hours w
 it finds a newer version it asks, at most once a day: **Update now** (or **Download the new
 version** on a Mac that cannot replace the app), **Later** (asks again the next day) or **Skip this
 version** (never asks for that one again; a newer one does). **Check now** in Settings never asks.
+**Check for updates…** in the menu bar icon checks at once and opens Settings on this group,
+highlighted for a moment, where the result shows.
 
 ## Menu bar and tray
 

@@ -6,7 +6,7 @@ import { SaveBar, SAVE_SHORTCUT, StoreUnsavedPrompt, UnsavedChangesProvider } fr
 import { useI18n } from '../i18n/I18nProvider'
 import { matchesShortcut } from '../lib/shortcuts'
 import { createUnsavedChanges } from '../lib/unsavedChanges'
-import { SettingsScreen } from './SettingsScreen'
+import { SettingsScreen, type SettingsSpotlight } from './SettingsScreen'
 
 export interface SettingsDialogProps {
   open: boolean
@@ -14,6 +14,8 @@ export interface SettingsDialogProps {
   snap: ConfigSnapshot | null
   tab: string
   onTabChange: (tab: string) => void
+  /** A group to scroll to and highlight once the tab shows (see `SettingsSpotlight`). */
+  spotlight?: SettingsSpotlight | null
 }
 
 /**
@@ -22,7 +24,7 @@ export interface SettingsDialogProps {
  * A form with unsaved changes keeps a save bar pinned under the content (⌘S saves), and closing
  * the modal first asks to save or discard them.
  */
-export function SettingsDialog({ open, onOpenChange, snap, tab, onTabChange }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, snap, tab, onTabChange, spotlight }: SettingsDialogProps) {
   const { t } = useI18n()
   const [unsaved] = useState(createUnsavedChanges)
   const content = useRef<HTMLDivElement>(null)
@@ -48,6 +50,7 @@ export function SettingsDialog({ open, onOpenChange, snap, tab, onTabChange }: S
                 snap={snap}
                 tab={tab}
                 onTabChange={onTabChange}
+                spotlight={spotlight}
                 heading={
                   <div className="flex items-start gap-3">
                     <RDialog.Title className="min-w-0 flex-1 text-2xl font-semibold tracking-tight">{t('nav.settings')}</RDialog.Title>
