@@ -302,6 +302,21 @@ describe('milestone changes by agents', () => {
     expect(view.milestones.map((r) => r.milestone.name)).toEqual(['GA'])
   })
 
+  it('refuses task pieces from another profile, but keeps the ones a milestone already had', async () => {
+    const { planner, control } = setup(allowing())
+    await planner.propose('work', [{ kind: 'task', title: 'Ship the invite flow', detail: '' }], { type: 'agent' })
+    const pieces = (...ids: string[]) => ids.map((itemId) => ({ kind: 'task', itemId }))
+    const make = (items: object[]) => control.changeMilestone(null, 'POST', { session: 's1', name: 'GA', start: '2026-11-10', end: '2026-11-30', items }, q())
+    expect((await make(pieces('id1'))).body).toMatchObject({ applied: true })
+    const foreign = await make(pieces('id1', 'elsewhere'))
+    expect(foreign.status).toBe(400)
+    expect(foreign.body).toMatchObject({ error: expect.stringMatching(/unknown: elsewhere$/) })
+    // A milestone saved before the check keeps its old pieces through a change that adds none.
+    await planner.saveMilestone('work', { id: 'old', name: 'Old', start: '2026-11-01', end: '2026-11-11', source: { kind: 'items', items: [{ kind: 'task', itemId: 'gone', weight: 1 }] } })
+    expect((await control.changeMilestone('old', 'PATCH', { session: 's1', notes: 'Still on' }, q())).body).toMatchObject({ applied: true })
+    expect((await control.changeMilestone('old', 'PATCH', { session: 's1', items: [...pieces('gone', 'other')] }, q())).status).toBe(400)
+  })
+
   it('refuses bad bodies, unknown milestones, wrong fields for the source and Plan off', async () => {
     const { planner, control } = setup()
     await planner.saveMilestone('work', beta)
