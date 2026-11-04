@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { access, constants, mkdtemp, readdir, rename, rm } from 'node:fs/promises'
+import { access, constants, mkdtemp, readdir, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -74,10 +74,11 @@ export async function installMacUpdate(options: { zipUrl: string; bundle: string
       await deps.rename(old, bundle)
       throw err
     }
-    await deps.remove(old)
+    // The new version is in place: leftovers are tidied up when possible, never a failed update.
+    await deps.remove(old).catch(() => undefined)
     await deps.run(LSREGISTER, ['-f', bundle]).catch(() => '')
   } finally {
-    await deps.remove(tmp)
+    await deps.remove(tmp).catch(() => undefined)
   }
 }
 
@@ -108,5 +109,8 @@ export const nodeMacUpdateDeps: MacUpdateDeps = {
       () => false
     ),
   rename: (from, to) => rename(from, to),
-  remove: (path) => rm(path, { recursive: true, force: true })
+  // Not fs.rm: inside Electron, fs treats `app.asar` as a folder, so a recursive rm of a bundle
+  // cannot delete it and fails with ENOTEMPTY. /bin/rm sees the real file.
+  remove: (path) =>
+    new Promise((resolve, reject) => execFile('/bin/rm', ['-rf', '--', path], (err, _stdout, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve())))
 }

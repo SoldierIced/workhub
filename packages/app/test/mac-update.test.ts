@@ -5,8 +5,8 @@ const BUNDLE = '/Applications/Acme.app'
 const ZIP = 'https://example.com/releases/download/v2.0.0/Acme-2.0.0-mac-arm64.zip'
 
 /** An in-memory system: a folder tree of bundles, a fixed download and its checksum. */
-function fakeSystem(over: { sum?: string; id?: string; renameFails?: string } = {}) {
-  const dirs = new Set<string>([BUNDLE])
+function fakeSystem(over: { sum?: string; id?: string; renameFails?: string; removeFails?: string[] } = {}) {
+  const dirs = new Set<string>([BUNDLE, '/tmp/u'])
   const calls: string[] = []
   const deps: MacUpdateDeps = {
     download: async (url) => void calls.push(`download ${url}`),
@@ -27,7 +27,10 @@ function fakeSystem(over: { sum?: string; id?: string; renameFails?: string } = 
       dirs.add(to)
       calls.push(`rename ${from} -> ${to}`)
     },
-    remove: async (path) => void dirs.delete(path)
+    remove: async (path) => {
+      if (over.removeFails?.includes(path) && dirs.has(path)) throw new Error(`ENOTEMPTY: directory not empty, rmdir '${path}'`)
+      dirs.delete(path)
+    }
   }
   return { deps, dirs, calls }
 }
@@ -71,5 +74,12 @@ describe('macOS self-update', () => {
     await expect(installMacUpdate({ zipUrl: ZIP, bundle: BUNDLE, appId: 'com.example.acme' }, deps)).rejects.toThrow('busy')
     expect(dirs.has(BUNDLE)).toBe(true)
     expect(dirs.has(`${BUNDLE}.old`)).toBe(false)
+  })
+
+  it('reports success when only the clean-up of the old bundle and the download fails', async () => {
+    const { deps, dirs, calls } = fakeSystem({ removeFails: [`${BUNDLE}.old`, '/tmp/u'] })
+    await expect(installMacUpdate({ zipUrl: ZIP, bundle: BUNDLE, appId: 'com.example.acme' }, deps)).resolves.toBeUndefined()
+    expect(calls).toContain(`rename ${BUNDLE}.new -> ${BUNDLE}`)
+    expect(dirs.has(BUNDLE)).toBe(true)
   })
 })
