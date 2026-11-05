@@ -9,7 +9,8 @@ import { statusLevel, type AttentionKind, type StatusLevel } from '../domain/att
 import type { SessionState } from '../domain/session'
 import type { AutomationHealth } from '../automations/engine'
 import type { HealthState } from '../health/types'
-import type { PausePreset } from '../notifications/policy'
+import { pausedIndefinitely, type PausePreset } from '../notifications/policy'
+import type { TrayPopoverOptions } from '../config/schema'
 
 export interface TraySession {
   id: string
@@ -49,6 +50,26 @@ export interface TrayAutomation {
   lastError?: string
 }
 
+/** A meeting of today's calendars (Plan), as the popover's "Today" lists it. */
+export interface TrayCalendarEvent {
+  id: string
+  title: string
+  /** Epoch ms. */
+  startsAt: number
+  endsAt?: number
+  location?: string
+  /** The video call link (Meet, Zoom, Teams…). */
+  joinUrl?: string
+}
+
+/** A Plan inbox task due today or earlier. */
+export interface TrayPlanItem {
+  id: string
+  title: string
+  /** Due before today. */
+  overdue?: boolean
+}
+
 export type TraySlackHealth = 'off' | 'watching' | 'checking' | 'paused' | 'failing'
 
 export interface TrayState {
@@ -66,23 +87,36 @@ export interface TrayState {
   slack: { health: TraySlackHealth; open: number; unread: number; error?: string } | null
   /** Enabled automations of the active profile; unset or empty hides the section. */
   automations?: readonly TrayAutomation[]
-  /** Notifications shown lately, newest first (Workhub 1's "Notifications" list). */
-  notifications?: readonly { id: string; title: string; at?: number }[]
+  /** Notifications shown lately, newest first (Workhub 1's "Notifications" list); `sessionId` when one is about a session. */
+  notifications?: readonly { id: string; title: string; at?: number; sessionId?: string }[]
+  /** Today's meetings that have not ended (Plan's calendars), soonest first; unset while Plan is off. */
+  calendar?: readonly TrayCalendarEvent[]
+  /** Open Plan inbox tasks due today or overdue. */
+  planDueToday?: readonly TrayPlanItem[]
+  /** What the popover shows (Settings → Notifications); unset: everything. */
+  popover?: TrayPopoverOptions
   /** Epoch ms; unset or in the past when notifications are not paused. */
   pausedUntil?: number
   /** Whether "Check for updates" makes sense (a packaged build). */
   canCheckForUpdates: boolean
 }
 
-export type TrayRoute = 'home' | 'sessions' | 'pullRequests' | 'tickets' | 'slack' | 'automations' | 'health' | 'flowMaps' | 'settings'
+export type TrayRoute = 'home' | 'sessions' | 'pullRequests' | 'tickets' | 'slack' | 'automations' | 'health' | 'flowMaps' | 'plan' | 'settings'
 
-export const TRAY_ROUTES: readonly TrayRoute[] = ['home', 'sessions', 'pullRequests', 'tickets', 'slack', 'automations', 'health', 'flowMaps', 'settings']
+export const TRAY_ROUTES: readonly TrayRoute[] = ['home', 'sessions', 'pullRequests', 'tickets', 'slack', 'automations', 'health', 'flowMaps', 'plan', 'settings']
+
+/** The Settings sections the popover opens directly. */
+export type TraySettingsSection = 'usage' | 'notifications'
+export const TRAY_SETTINGS_SECTIONS: readonly TraySettingsSection[] = ['usage', 'notifications']
 
 export type TrayAction =
   | { kind: 'open' }
   | { kind: 'openSession'; id: string }
   | { kind: 'navigate'; route: TrayRoute }
   | { kind: 'openPullRequest'; profileId: string; url: string }
+  /** Opens one of today's meetings: its call link when it has one, else the Plan screen. */
+  | { kind: 'openMeeting'; id: string }
+  | { kind: 'openSettings'; section: TraySettingsSection }
   /** Does what a click on that notification does. */
   | { kind: 'openNotification'; id: string }
   /** Empties the recent notifications list. */
@@ -296,10 +330,11 @@ export function buildTrayMenu(state: TrayState, text: TrayText, now = Date.now()
   const paused = isPaused(state, now)
   items.push({
     type: 'submenu',
-    label: paused ? t('tray.pausedUntil', { time: text.time(state.pausedUntil!) }) : t('tray.pause'),
+    label: paused ? (pausedIndefinitely(state.pausedUntil) ? t('tray.pausedIndefinitely') : t('tray.pausedUntil', { time: text.time(state.pausedUntil!) })) : t('tray.pause'),
     items: [
       { type: 'action', label: t('tray.pause.hour'), action: { kind: 'pause', preset: 'hour' } },
       { type: 'action', label: t('tray.pause.tomorrow'), action: { kind: 'pause', preset: 'tomorrow' } },
+      { type: 'action', label: t('tray.pause.indefinite'), action: { kind: 'pause', preset: 'indefinite' } },
       ...(paused ? [{ type: 'separator' } as const, { type: 'action', label: t('tray.resume'), action: { kind: 'resume' } } as const] : [])
     ]
   })

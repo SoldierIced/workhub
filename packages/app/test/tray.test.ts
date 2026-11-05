@@ -130,6 +130,13 @@ describe('notifier', () => {
     expect(FakeNotification.made.map((f) => f.closed)).toEqual([true, false, false])
   })
 
+  it('remembers the session a recent notification is about', async () => {
+    const n = make()
+    await n.show('replied', { title: 'replied' }, () => {}, { sessionId: 's1' })
+    await n.show('health', { title: 'degraded' }, () => {}, { environmentId: 'prod' })
+    expect(n.recent().map((r) => r.sessionId)).toEqual([undefined, 's1'])
+  })
+
   it('honours the kind switch and the pause', async () => {
     FakeNotification.made = []
     expect(await make({ notifyHealth: false }).show('health', { title: 't' }, () => {})).toBe(false)
@@ -330,7 +337,8 @@ describe('flow alert watcher', () => {
   const timing = (p95Ms: number, errorRate = 0) => ({ count: 10, p95Ms, errorRate, failed: errorRate > 0 ? 1 : 0 })
   const mapOf = (id: string, alerts: object | undefined) => ({ id, name: id, nodes: [{ id: 'orders', label: 'Orders', measure: { kind: 'service', service: 'orders' } }], edges: [], stages: [], alerts }) as never
   const readingOf = (p95Ms: number) => ({ windowHours: 1, nodes: { orders: timing(p95Ms) }, edges: {}, stages: {}, errors: {}, at: 0 }) as never
-  const limits = { p95Ms: 500, parts: {} }
+  // Ten calls a window: below the default minimum, so the fixtures set their own.
+  const limits = { p95Ms: 500, minCalls: 1, parts: {} }
   function setup(over: Record<string, unknown> = {}) {
     let now = 5_000_000
     let saved: Record<string, number> = {}

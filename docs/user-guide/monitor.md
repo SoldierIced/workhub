@@ -56,4 +56,41 @@ The monitor also holds **Usage limit for this session**, a ceiling for this one 
 
 A card that depends on something not configured says so and links to **Settings**.
 
+## Menu bar panel
+
+On macOS and Windows a click on the menu bar / notification area icon opens a small panel (Linux
+keeps the native menu). It follows the system's light or dark appearance, not the app theme, and
+has no boxes: every line is a flat row (an icon or a colored dot, the text with an optional small
+second line, a value on the right), with a small uppercase title per block and a thin line
+between blocks.
+
+- **Header**: the verdict (**2 sessions need you**, **3 working**, **All caught up** or **No open
+  sessions**), and below it the active profile, the number of open sessions and, while
+  notifications are paused, until when (**muted** for a pause until you resume). A click on it
+  opens the main window; **✕** closes the panel.
+- **Today**, left out when it has nothing:
+  - the next meetings of today from the Plan calendars (2 by default): the title, then the time,
+    the call service or the room and, when it is close, how soon. The one that starts within 15
+    minutes shows **Join** when it has a call link. A click joins the call, or opens Plan when there
+    is no link.
+  - Plan inbox tasks due today or overdue (up to 2); a click opens Plan.
+  - **Pull requests** (to review and mine), while the profile has a code host.
+  - **Health**, only while an environment is degraded or unreachable.
+  - **Slack**, only when watching stopped with an error.
+- **Usage**: one row per agent account that reports usage: the name, a bar for its most spent
+  window (amber from 75 %, red from 90 %) and the percentage. A click opens **Settings → Usage**.
+- **Sessions**, shown only when they have something: **Needs you** (up to 5, with the state and how
+  long ago), **Working** (up to 3) and **Recent** notifications (up to 4, with **Clear**). Recent
+  leaves out notifications about a session already listed above. **N more** opens the app.
+- **Footer**: **New session**; the bell, with **Pause for 1 hour**, **Pause until tomorrow**,
+  **Mute until I resume** and **Notification settings…** (while paused the bell turns amber and its
+  menu starts with **Resume**); **Settings**; and **⋯** with **Check for updates** (when available)
+  and **Quit**.
+
+Escape, a click outside the panel or **✕** closes it; the arrow keys move between rows and buttons.
+
+**Settings → Notifications → Menu bar panel** chooses the blocks: **Meetings** (and how many, 1 to
+3), **Plan tasks**, **Pull requests**, **Health**, **Usage** and **Recent notifications**. All are
+on by default. Slack has no switch: it only appears when watching fails.
+
 Next: [Review before PR](review-before-pr.md).

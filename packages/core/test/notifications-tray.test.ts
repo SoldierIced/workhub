@@ -10,6 +10,8 @@ import {
   NOTIFICATION_KINDS,
   notificationsPaused,
   pauseUntil,
+  PAUSE_INDEFINITE_AT,
+  pausedIndefinitely,
   PAUSE_TOMORROW_HOUR,
   shouldNotify,
   ticketChanges,
@@ -70,6 +72,16 @@ describe('notification policy', () => {
     // Just after midnight "tomorrow" is still the next calendar day.
     const late = new Date(pauseUntil('tomorrow', new Date(2026, 11, 31, 0, 30)))
     expect([late.getFullYear(), late.getMonth(), late.getDate()]).toEqual([2027, 0, 1])
+  })
+
+  it('pauses until resumed: a far end that holds and has no time to show', () => {
+    const at = new Date(2026, 9, 27, 22, 15)
+    const until = pauseUntil('indefinite', at)
+    expect(until).toBe(PAUSE_INDEFINITE_AT)
+    expect(pausedIndefinitely(until)).toBe(true)
+    expect(pausedIndefinitely(pauseUntil('tomorrow', at))).toBe(false)
+    expect(pausedIndefinitely(undefined)).toBe(false)
+    expect(notificationsPaused(options({ notificationsPausedUntil: until }), Date.UTC(2100, 0, 1))).toBe(true)
   })
 
   it('recognizes kinds', () => {
@@ -253,7 +265,7 @@ describe('tray menu', () => {
   it('has the quick actions even with nothing to show', () => {
     const items = buildTrayMenu(baseState(), text)
     expect(labels(items)).toContain('tray.nothingNeedsYou')
-    expect(actions(items).map((a) => a.kind)).toEqual(['newSession', 'open', 'navigate', 'pause', 'pause', 'quit'])
+    expect(actions(items).map((a) => a.kind)).toEqual(['newSession', 'open', 'navigate', 'pause', 'pause', 'pause', 'quit'])
   })
 
   it('opens each session that needs a look and caps the list', () => {
@@ -302,5 +314,6 @@ describe('tray menu', () => {
     expect(labels(items)).toContain('>tray.pausedUntil{"time":"08:00"}')
     expect(actions(items)).toContainEqual({ kind: 'resume' })
     expect(actions(buildTrayMenu(baseState({ pausedUntil: now - 1 }), text, now))).not.toContainEqual({ kind: 'resume' })
+    expect(labels(buildTrayMenu(baseState({ pausedUntil: PAUSE_INDEFINITE_AT }), text, now))).toContain('>tray.pausedIndefinitely')
   })
 })
