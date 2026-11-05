@@ -3,12 +3,18 @@ import {
   automationLine,
   buildTrayMenu,
   buildTrayPopover,
+  hasToday,
+  meetingProvider,
   parseTrayAction,
+  PAUSE_INDEFINITE_AT,
   popoverPlacement,
   popoverSize,
   stampSince,
   taskbarEdge,
-  TRAY_POPOVER_LIST_LIMIT,
+  TRAY_POPOVER_NEEDS_YOU_LIMIT,
+  TRAY_POPOVER_NOTIFICATION_LIMIT,
+  TRAY_POPOVER_PLAN_LIMIT,
+  TRAY_POPOVER_WORKING_LIMIT,
   usageTone,
   type Rect,
   type TraySession,
@@ -30,17 +36,19 @@ const state = (s: Partial<TrayState> = {}): TrayState => ({
 })
 
 describe('tray popover view-model', () => {
-  it('splits sessions into "needs you" (most urgent first) and the rest (working first)', () => {
+  it('splits sessions into "needs you" (most urgent first) and "working" (longest first); idle ones only count', () => {
     const sessions: TraySession[] = [
       { id: 'idle', title: 'Codex · web', state: 'ready', agentId: 'codex' },
       { id: 'replied', title: 'Claude · api', state: 'ready', unseen: 'replied', agentId: 'claude' },
-      { id: 'busy', title: 'Claude · ops', state: 'busy' },
+      { id: 'busy', title: 'Claude · ops', state: 'busy', since: NOW - 60_000 },
+      { id: 'busy2', title: 'Claude · db', state: 'busy', since: NOW - 120_000 },
       { id: 'err', title: 'Kiro · infra', state: 'error' },
       { id: 'ask', title: 'Claude · docs', state: 'busy', awaitingAnswer: true, since: NOW - 60_000 }
     ]
     const view = buildTrayPopover(state({ sessions }), NOW)
-    expect(view.summary).toEqual({ open: 5, running: 1, attention: 3 })
+    expect(view.summary).toEqual({ open: 6, running: 2, attention: 3 })
     expect(view.level).toBe('error')
+    expect(view.verdict).toEqual({ kind: 'needsYou', count: 3, tone: 'danger' })
     expect(view.needsYou.map((s) => [s.id, s.level])).toEqual([
       ['err', 'error'],
       ['ask', 'needsAnswer'],
@@ -48,72 +56,149 @@ describe('tray popover view-model', () => {
     ])
     expect(view.needsYou[1]!.since).toBe(NOW - 60_000)
     expect(view.needsYou[2]!.agentId).toBe('claude')
-    expect(view.sessions.map((s) => [s.id, s.level])).toEqual([
-      ['busy', 'working'],
-      ['idle', null]
-    ])
+    expect(view.working.map((s) => s.id)).toEqual(['busy2', 'busy'])
+  })
+
+  it('words the header verdict: needs you, else working, else caught up, else empty', () => {
+    const v = (sessions: TraySession[]) => buildTrayPopover(state({ sessions }), NOW).verdict
+    expect(v([{ id: 'a', title: 'A', state: 'busy', awaitingAnswer: true }])).toEqual({ kind: 'needsYou', count: 1, tone: 'warning' })
+    expect(v([{ id: 'a', title: 'A', state: 'busy' }, { id: 'b', title: 'B', state: 'starting' }])).toMatchObject({ kind: 'working', tone: 'info' })
+    expect(v([{ id: 'a', title: 'A', state: 'ready' }])).toEqual({ kind: 'caughtUp', count: 0, tone: 'success' })
+    expect(v([])).toEqual({ kind: 'empty', count: 0, tone: 'neutral' })
   })
 
   it('caps the lists and counts what is left out', () => {
-    const sessions: TraySession[] = Array.from({ length: TRAY_POPOVER_LIST_LIMIT + 3 }, (_, i) => ({ id: `s${i}`, title: `S${i}`, state: 'error' as const }))
-    const view = buildTrayPopover(state({ sessions }), NOW)
-    expect(view.needsYou).toHaveLength(TRAY_POPOVER_LIST_LIMIT)
-    expect(view.needsYouMore).toBe(3)
-    expect(view.sessionsMore).toBe(0)
+    const errors: TraySession[] = Array.from({ length: TRAY_POPOVER_NEEDS_YOU_LIMIT + 3 }, (_, i) => ({ id: `e${i}`, title: `E${i}`, state: 'error' as const }))
+    const busy: TraySession[] = Array.from({ length: TRAY_POPOVER_WORKING_LIMIT + 2 }, (_, i) => ({ id: `b${i}`, title: `B${i}`, state: 'busy' as const }))
+    const notifications = Array.from({ length: TRAY_POPOVER_NOTIFICATION_LIMIT + 5 }, (_, i) => ({ id: `n${i}`, title: `N${i}`, at: NOW - i }))
+    const view = buildTrayPopover(state({ sessions: [...errors, ...busy], notifications }), NOW)
+    expect([view.needsYou.length, view.needsYouMore]).toEqual([TRAY_POPOVER_NEEDS_YOU_LIMIT, 3])
+    expect([view.working.length, view.workingMore]).toEqual([TRAY_POPOVER_WORKING_LIMIT, 2])
+    expect([view.notifications.length, view.notificationsMore]).toEqual([TRAY_POPOVER_NOTIFICATION_LIMIT, 5])
+    expect(view.notifications[0]!.id).toBe('n0')
   })
 
-  it('orders usage windows 5h then weekly, rounds and colors them, and keeps only future resets', () => {
+  it('lists one usage row per account with a reading: its most spent window, rounded and colored, with a future reset only', () => {
     const view = buildTrayPopover(
       state({
         usage: [
+          { name: 'Codex', windows: [], error: true },
           {
             name: 'Work',
             agentId: 'claude',
             windows: [
-              { window: 'weekly', percent: 76.4, resetsAt: NOW + 3_600_000 },
               { window: '5h', percent: 12.6, resetsAt: NOW - 1 },
-              { window: 'opus', percent: 140 }
+              { window: 'weekly', percent: 76.4, resetsAt: NOW + 3_600_000 }
             ]
           },
-          { name: 'Codex', windows: [], error: true }
+          { name: 'New', windows: [] },
+          { name: 'Side', windows: [{ window: '5h', percent: 31.2 }] }
         ]
       }),
       NOW
     )
-    expect(view.usage[0]).toEqual({
-      name: 'Work',
-      agentId: 'claude',
-      error: false,
-      windows: [
-        { window: '5h', percent: 13, tone: 'success' },
-        { window: 'weekly', percent: 76, tone: 'warning', resetsAt: NOW + 3_600_000 },
-        { window: 'opus', percent: 100, tone: 'danger' }
-      ]
-    })
-    expect(view.usage[1]).toEqual({ name: 'Codex', error: true, windows: [] })
+    expect(view.usage).toEqual([
+      { name: 'Work', agentId: 'claude', window: { window: 'weekly', percent: 76, tone: 'warning', resetsAt: NOW + 3_600_000 } },
+      { name: 'Side', window: { window: '5h', percent: 31, tone: 'success' } }
+    ])
+    expect(buildTrayPopover(state({ usage: [{ name: 'Big', windows: [{ window: 'opus', percent: 140 }] }] }), NOW).usage[0]?.window).toEqual({ window: 'opus', percent: 100, tone: 'danger' })
+    expect(buildTrayPopover(state({ usage: [{ name: 'Tie', windows: [{ window: 'weekly', percent: 40 }, { window: '5h', percent: 40 }] }] }), NOW).usage[0]?.window.window).toBe('5h')
+    expect(buildTrayPopover(state(), NOW).usage).toEqual([])
   })
 
   it('uses the Home bars thresholds for usage colors', () => {
     expect([0, 74, 75, 89, 90, 100].map(usageTone)).toEqual(['success', 'success', 'warning', 'warning', 'danger', 'danger'])
   })
 
-  it('colors Health and Slack by state and reports the pause only while it lasts', () => {
+  it('shows Health only while it is degraded or unreachable, Slack only while the watcher fails, and the pause while it lasts', () => {
     const view = buildTrayPopover(
       state({
         health: { state: 'degraded', degraded: ['prod'] },
         slack: { health: 'failing', open: 2, unread: 1, error: 'expired' },
-        pausedUntil: NOW + 1000,
-        notifications: Array.from({ length: 9 }, (_, i) => ({ id: `n${i}`, title: `N${i}`, at: NOW - i }))
+        pausedUntil: NOW + 1000
       }),
       NOW
     )
-    expect(view.health).toEqual({ state: 'degraded', degraded: ['prod'], tone: 'warning' })
-    expect(view.slack).toEqual({ health: 'failing', open: 2, unread: 1, error: 'expired', tone: 'danger' })
-    expect(view.pausedUntil).toBe(NOW + 1000)
-    expect(view.notifications).toHaveLength(5)
-    expect(buildTrayPopover(state({ pausedUntil: NOW - 1, health: { state: null, degraded: [] } }), NOW)).toMatchObject({ pausedUntil: null, health: { tone: 'neutral' } })
+    expect(view.today.health).toEqual({ state: 'degraded', degraded: ['prod'], tone: 'warning' })
+    expect(view.today.slack).toEqual({ error: 'expired', tone: 'danger' })
+    expect([view.pausedUntil, view.pausedIndefinitely]).toEqual([NOW + 1000, false])
+    expect(buildTrayPopover(state({ health: { state: 'unreachable', degraded: [] } }), NOW).today.health?.tone).toBe('danger')
+    for (const quiet of ['healthy', 'blind', null] as const) expect(buildTrayPopover(state({ health: { state: quiet, degraded: [] } }), NOW).today.health).toBeNull()
+    expect(buildTrayPopover(state({ slack: { health: 'watching', open: 3, unread: 1 } }), NOW).today.slack).toBeNull()
+    expect(buildTrayPopover(state({ pausedUntil: NOW - 1 }), NOW)).toMatchObject({ pausedUntil: null, pausedIndefinitely: false })
+    expect(buildTrayPopover(state({ pausedUntil: PAUSE_INDEFINITE_AT }), NOW)).toMatchObject({ pausedUntil: PAUSE_INDEFINITE_AT, pausedIndefinitely: true })
   })
 })
+
+describe('tray popover "Today"', () => {
+  const MIN = 60_000
+  const calendar = [
+    { id: 'later', title: 'Sprint review', startsAt: NOW + 160 * MIN, endsAt: NOW + 220 * MIN, location: 'Room 2' },
+    { id: 'soon', title: '1:1', startsAt: NOW + 12 * MIN, endsAt: NOW + 42 * MIN, joinUrl: 'https://meet.google.com/abc-defg-hij' },
+    { id: 'last', title: 'Retro', startsAt: NOW + 300 * MIN },
+    { id: 'over', title: 'Stand-up', startsAt: NOW - 60 * MIN, endsAt: NOW - 45 * MIN }
+  ]
+
+  it('lists the next meetings soonest first, up to the chosen count, and marks the one about to start', () => {
+    const view = buildTrayPopover(state({ calendar }), NOW)
+    expect(view.today.meetings).toEqual([
+      { id: 'soon', title: '1:1', startsAt: NOW + 12 * MIN, endsAt: NOW + 42 * MIN, provider: 'Meet', hasJoinUrl: true, ongoing: false, soon: true },
+      { id: 'later', title: 'Sprint review', startsAt: NOW + 160 * MIN, endsAt: NOW + 220 * MIN, location: 'Room 2', hasJoinUrl: false, ongoing: false, soon: false }
+    ])
+    expect(buildTrayPopover(state({ calendar, popover: { ...defaults(), meetingCount: 3 } }), NOW).today.meetings.map((m) => m.id)).toEqual(['soon', 'later', 'last'])
+    const ongoing = buildTrayPopover(state({ calendar: [{ id: 'on', title: 'Call', startsAt: NOW - 5 * MIN, endsAt: NOW + 25 * MIN }] }), NOW).today.meetings[0]
+    expect(ongoing).toMatchObject({ ongoing: true, soon: true, hasJoinUrl: false })
+  })
+
+  it('lists Plan tasks due today, overdue first, at most two; and the pull requests while there is a code host', () => {
+    const planDueToday = [
+      { id: 't1', title: 'Answer the contract question' },
+      { id: 't2', title: 'Old one', overdue: true },
+      { id: 't3', title: 'Third' }
+    ]
+    const view = buildTrayPopover(state({ planDueToday, pullRequests: { toReview: 31, mine: 4 } }), NOW)
+    expect(view.today.plan).toEqual([
+      { id: 't2', title: 'Old one', overdue: true },
+      { id: 't1', title: 'Answer the contract question', overdue: false }
+    ])
+    expect(view.today.plan).toHaveLength(TRAY_POPOVER_PLAN_LIMIT)
+    expect(view.today.pullRequests).toEqual({ toReview: 31, mine: 4 })
+    expect(hasToday(view.today)).toBe(true)
+    const empty = buildTrayPopover(state(), NOW)
+    expect(empty.today).toEqual({ meetings: [], plan: [], pullRequests: null, health: null, slack: null })
+    expect(hasToday(empty.today)).toBe(false)
+  })
+
+  it('leaves out the blocks the user turned off', () => {
+    const off = { meetings: false, meetingCount: 2 as const, plan: false, pullRequests: false, health: false, usage: false, recent: false }
+    const view = buildTrayPopover(
+      state({
+        calendar,
+        planDueToday: [{ id: 't', title: 'T' }],
+        pullRequests: { toReview: 1, mine: 0 },
+        health: { state: 'degraded', degraded: ['dev'] },
+        slack: { health: 'failing', open: 0, unread: 0 },
+        usage: [{ name: 'Work', windows: [{ window: '5h', percent: 10 }] }],
+        notifications: [{ id: 'n1', title: 'Hi' }],
+        popover: off
+      }),
+      NOW
+    )
+    expect(view.today).toEqual({ meetings: [], plan: [], pullRequests: null, health: null, slack: { tone: 'danger' } })
+    expect([view.usage, view.notifications, view.notificationsMore]).toEqual([[], [], 0])
+  })
+
+  it('names the call service of a link', () => {
+    expect(meetingProvider('https://meet.google.com/abc')).toBe('Meet')
+    expect(meetingProvider('https://acme.zoom.us/j/1')).toBe('Zoom')
+    expect(meetingProvider('https://teams.microsoft.com/l/meetup-join/1')).toBe('Teams')
+    expect(meetingProvider('https://example.com/zoom.us')).toBeUndefined()
+    expect(meetingProvider('not a link')).toBeUndefined()
+    expect(meetingProvider(undefined)).toBeUndefined()
+  })
+})
+
+const defaults = () => ({ meetings: true, meetingCount: 2 as const, plan: true, pullRequests: true, health: true, usage: true, recent: true })
 
 describe('stampSince', () => {
   it('keeps the time while the state holds and restamps when it changes', () => {
@@ -139,7 +224,12 @@ describe('parseTrayAction', () => {
       { kind: 'openNotification', id: 'n1' },
       { kind: 'navigate', route: 'settings' },
       { kind: 'openPullRequest', profileId: '', url: 'https://github.com/o/r/pull/1' },
-      { kind: 'pause', preset: 'tomorrow' }
+      { kind: 'navigate', route: 'plan' },
+      { kind: 'openMeeting', id: 'uid-1|1700000000000' },
+      { kind: 'openSettings', section: 'usage' },
+      { kind: 'openSettings', section: 'notifications' },
+      { kind: 'pause', preset: 'tomorrow' },
+      { kind: 'pause', preset: 'indefinite' }
     ]) {
       expect(parseTrayAction(a), a.kind).toEqual(a)
     }
@@ -155,7 +245,9 @@ describe('parseTrayAction', () => {
       { kind: 'openSession', id: 7 },
       { kind: 'navigate', route: 'secrets' },
       { kind: 'openPullRequest', profileId: 'p', url: 'file:///etc/passwd' },
-      { kind: 'pause', preset: 'forever' }
+      { kind: 'pause', preset: 'forever' },
+      { kind: 'openMeeting' },
+      { kind: 'openSettings', section: 'secrets' }
     ]) {
       expect(parseTrayAction(bad), JSON.stringify(bad)).toBeNull()
     }
@@ -207,16 +299,21 @@ describe('popover placement', () => {
 })
 
 describe('tray popover automations and notifications', () => {
-  it('lists enabled automations, failing and running first, with a tone', () => {
-    const automations = [
-      { id: 'a', name: 'Idle one', health: 'idle' as const, startedToday: 2 },
-      { id: 'b', name: 'Off one', health: 'off' as const, startedToday: 0 },
-      { id: 'c', name: 'Broken', health: 'failing' as const, startedToday: 1, lastError: 'boom' },
-      { id: 'd', name: 'Busy', health: 'running' as const, startedToday: 3 }
+  it('does not repeat under "Recent" a session already under "Needs you" or "Working"', () => {
+    const sessions: TraySession[] = [
+      { id: 'ask', title: 'A', state: 'busy', awaitingAnswer: true },
+      { id: 'busy', title: 'B', state: 'busy' },
+      { id: 'idle', title: 'C', state: 'ready' }
     ]
-    const view = buildTrayPopover(state({ automations }), NOW)
-    expect(view.automations.map((a) => [a.id, a.tone])).toEqual([['c', 'danger'], ['d', 'info'], ['a', 'success']])
-    expect(buildTrayPopover(state(), NOW).automations).toEqual([])
+    const notifications = [
+      { id: 'n1', title: 'A asks', sessionId: 'ask' },
+      { id: 'n2', title: 'B replied', sessionId: 'busy' },
+      { id: 'n3', title: 'C replied', sessionId: 'idle' },
+      { id: 'n4', title: 'PR approved' }
+    ]
+    const view = buildTrayPopover(state({ sessions, notifications }), NOW)
+    expect(view.notifications.map((n) => n.id)).toEqual(['n3', 'n4'])
+    expect(view.notificationsMore).toBe(0)
   })
 
   it('words each automation like Workhub 1 and accepts "Clear all"', () => {

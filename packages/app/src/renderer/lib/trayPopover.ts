@@ -60,27 +60,44 @@ export function nextFocus(current: number, count: number, key: string): number |
   }
 }
 
-/** An entry of the popover's own "More" menu (what the native tray menu offered besides the lists). */
+/** An entry of one of the popover's footer menus (the bell and "⋯"). */
 export interface PopoverMenuItem {
-  id: 'pauseHour' | 'pauseTomorrow' | 'resume' | 'checkForUpdates' | 'quit'
+  id: 'resume' | 'pauseHour' | 'pauseTomorrow' | 'pauseIndefinite' | 'adjustNotifications' | 'checkForUpdates' | 'quit'
   label: MessageKey
   action: TrayAction
   /** A line above it. */
   separated?: boolean
 }
 
+export type PopoverMenuId = 'notifications' | 'more'
+
 /**
- * The popover's "More" menu: the pause presets (or resume), checking for updates where the build
- * can, and quitting. Opening the window, settings and a new session already sit in the popover.
+ * The footer menus. The bell offers the pause presets and the notification settings; while
+ * paused it offers Resume first. "⋯" offers checking for updates where the build can, and quitting.
  */
-export function popoverMenuItems(view: Pick<TrayPopoverView, 'pausedUntil' | 'canCheckForUpdates'>): PopoverMenuItem[] {
-  const items: PopoverMenuItem[] = view.pausedUntil
-    ? [{ id: 'resume', label: 'trayPopover.resume', action: { kind: 'resume' } }]
-    : [
-        { id: 'pauseHour', label: 'trayPopover.pauseHour', action: { kind: 'pause', preset: 'hour' } },
-        { id: 'pauseTomorrow', label: 'trayPopover.pauseTomorrow', action: { kind: 'pause', preset: 'tomorrow' } }
-      ]
-  if (view.canCheckForUpdates) items.push({ id: 'checkForUpdates', label: 'trayPopover.checkForUpdates', action: { kind: 'checkForUpdates' }, separated: true })
-  items.push({ id: 'quit', label: 'trayPopover.quitTitle', action: { kind: 'quit' }, separated: true })
+export function popoverMenuItems(menu: PopoverMenuId, view: Pick<TrayPopoverView, 'canCheckForUpdates' | 'pausedUntil'>): PopoverMenuItem[] {
+  if (menu === 'notifications') {
+    const paused = view.pausedUntil !== null
+    const items: PopoverMenuItem[] = paused ? [{ id: 'resume', label: 'trayPopover.menu.resume', action: { kind: 'resume' } }] : []
+    items.push(
+      { id: 'pauseHour', label: 'trayPopover.menu.pauseHour', action: { kind: 'pause', preset: 'hour' }, separated: paused },
+      { id: 'pauseTomorrow', label: 'trayPopover.menu.pauseTomorrow', action: { kind: 'pause', preset: 'tomorrow' } },
+      { id: 'pauseIndefinite', label: 'trayPopover.menu.pauseIndefinite', action: { kind: 'pause', preset: 'indefinite' } },
+      { id: 'adjustNotifications', label: 'trayPopover.menu.adjust', action: { kind: 'openSettings', section: 'notifications' }, separated: true }
+    )
+    return items
+  }
+  const items: PopoverMenuItem[] = []
+  if (view.canCheckForUpdates) items.push({ id: 'checkForUpdates', label: 'trayPopover.checkForUpdates', action: { kind: 'checkForUpdates' } })
+  items.push({ id: 'quit', label: 'trayPopover.quitTitle', action: { kind: 'quit' }, separated: items.length > 0 })
   return items
+}
+
+/** How long until `at`, as the words of a countdown ("12 min", "2 h 40", "3 h"); minutes round up. */
+export function countdown(at: number, now: number): { key: MessageKey; params: Record<string, number> } {
+  const total = Math.max(1, Math.ceil((at - now) / 60_000))
+  if (total < 60) return { key: 'trayPopover.countdown.minutes', params: { minutes: total } }
+  const hours = Math.floor(total / 60)
+  const minutes = total % 60
+  return minutes ? { key: 'trayPopover.countdown.hoursMinutes', params: { hours, minutes } } : { key: 'trayPopover.countdown.hours', params: { hours } }
 }
