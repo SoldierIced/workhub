@@ -39,18 +39,20 @@ const STATE_TONE: Record<FlowMapState, Tone> = { ok: 'success', alert: 'danger',
 export interface FlowMapListProps {
   maps: readonly FlowMapSummary[]
   states: Record<string, FlowMapState>
+  /** Parts over their limits in the last stored hour, by map id (only the maps that have some). */
+  alerts?: Record<string, number>
   opened: string | null
   query: string
   onQuery: (query: string) => void
   onOpen: (id: string) => void
 }
 
-/** The side list of the Flow maps screen: a search box and the maps under their headings, each with its state. */
-export function FlowMapList({ maps, states, opened, query, onQuery, onOpen }: FlowMapListProps) {
-  const { t } = useI18n()
+/** The side list of the Flow maps screen: a search box and the maps under their headings, each with its state and how many parts are over their limits. */
+export function FlowMapList({ maps, states, alerts = {}, opened, query, onQuery, onOpen }: FlowMapListProps) {
+  const { t, tn } = useI18n()
   const groups = groupFlowMaps(maps, query)
   return (
-    <nav aria-label={t('flowMaps.maps')} className="flex w-60 shrink-0 flex-col gap-2" data-testid="flow-map-list">
+    <nav aria-label={t('flowMaps.maps')} className="flex w-56 shrink-0 flex-col gap-2" data-testid="flow-map-list">
       <div className="relative">
         <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted" aria-hidden />
         <Input value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t('flowMaps.search')} aria-label={t('flowMaps.search')} className="pl-7" />
@@ -63,6 +65,7 @@ export function FlowMapList({ maps, states, opened, query, onQuery, onOpen }: Fl
             <ul className="flex flex-col gap-0.5">
               {g.maps.map((m) => {
                 const state = states[m.id] ?? 'unknown'
+                const over = m.error ? 0 : (alerts[m.id] ?? 0)
                 return (
                   <li key={m.id}>
                     <button
@@ -78,7 +81,12 @@ export function FlowMapList({ maps, states, opened, query, onQuery, onOpen }: Fl
                     >
                       <StateDot tone={m.error ? 'danger' : STATE_TONE[state]} />
                       <span className="min-w-0 flex-1 truncate">{m.name}</span>
-                      <span className="sr-only">{m.error ? t('flowMaps.invalidShort') : t(`flowMaps.state.${state}`)}</span>
+                      {over > 0 && (
+                        <span className="shrink-0 rounded-full bg-danger-soft px-1.5 text-[11px] font-medium tabular-nums text-danger" title={tn('flowMaps.list.over', over)} data-testid="flow-map-over">
+                          {over}
+                        </span>
+                      )}
+                      <span className="sr-only">{m.error ? t('flowMaps.invalidShort') : t(`flowMaps.state.${state}`)}{over > 0 ? ` · ${tn('flowMaps.list.over', over)}` : ''}</span>
                     </button>
                   </li>
                 )
