@@ -26,7 +26,10 @@ function call(socketPath: string, method: string, path: string, body?: unknown):
 describe('control endpoint', () => {
   it('puts the socket in the data folder, a temp file for long paths, a pipe on Windows', () => {
     expect(controlSocketPath('/data/wh', 'darwin')).toBe(join('/data/wh', 'control.sock'))
-    expect(controlSocketPath(`/${'x'.repeat(120)}`, 'darwin', () => '/run/user/501/workhub')).toMatch(/^\/run\/user\/501\/workhub\/workhub-control-[0-9a-f]{16}\.sock$/)
+    // `join` follows the host's separator, so the expectation is built with it too (the suite also runs on Windows).
+    const long = controlSocketPath(`/${'x'.repeat(120)}`, 'darwin', () => '/run/user/501/workhub')
+    expect(long.startsWith(join('/run/user/501/workhub', 'workhub-control-'))).toBe(true)
+    expect(long).toMatch(/workhub-control-[0-9a-f]{16}\.sock$/)
     expect(controlSocketPath('C:\\data', 'win32')).toMatch(/^\\\\\.\\pipe\\workhub-control-[0-9a-f]{16}$/)
     // Every variable is set, the unused ones empty, so nothing inherited from a parent process is left.
     expect(controlEnv('s1', { socket: '/x.sock' })).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_SOCKET: '/x.sock', WORKHUB_URL: '', WORKHUB_TOKEN: '' })

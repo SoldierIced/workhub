@@ -3,7 +3,10 @@ import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { access, constants, mkdtemp, readdir, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+// macOS paths only: posix keeps them so on every platform, the tests included.
+import { posix } from 'node:path'
+
+const { basename, dirname, join } = posix
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
