@@ -184,7 +184,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const profileId = v.profileId ?? config?.config.activeProfileId ?? null
   const fields = visibleMonitorFields(v.capabilities, m)
   const now = useNow(visible ? 5_000 : 600_000)
-  const { changes, loaded } = useLocalChanges(v.id, visible, m.workPaths?.join('\n') ?? '')
+  const { changes, loaded } = useLocalChanges(v.id, visible, m.changePaths?.join('\n') ?? '')
   const lists = useCachedPullRequestLists(profileId)
   const [dragging, setDragging] = useState<number | null>(null)
   const width = dragging ?? prefs.monitorWidth

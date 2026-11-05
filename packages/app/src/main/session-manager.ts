@@ -68,6 +68,8 @@ interface ManagedSession {
   lastMonitor?: string
   /** The folders the transcript says the session worked in, most recent last; unset until one says so. */
   workPaths?: string[]
+  /** The folders among `workPaths` the session changed something in. */
+  changePaths?: string[]
   /** An AI reviewer: started in the agent's most read-only mode, chat only. */
   readOnly: boolean
   /** The engine picked while a turn ran: the hand-over waits for the turn to end (Workhub 1's `pendingEngine`). */
@@ -799,7 +801,10 @@ export class SessionManager {
     if (snapshot?.activeTimeMs !== undefined) s.reportsActiveTime = true
     if (!snapshot || key === s.lastMonitor) return
     s.lastMonitor = key ?? undefined
-    if (snapshot.workPaths) s.workPaths = snapshot.workPaths
+    if (snapshot.workPaths) {
+      s.workPaths = snapshot.workPaths
+      s.changePaths = snapshot.changePaths ?? []
+    }
     if (snapshot.title) this.noteAgentTitle(s, snapshot.title)
     for (const t of snapshot.toolCalls ?? []) s.toolStatus.set(t.id, { status: t.status, startedAt: t.startedAt })
     this.deps.emitEvent({ sessionId: s.view.id, type: 'monitor', snapshot })
@@ -893,6 +898,11 @@ export class SessionManager {
   /** The folders a session worked in, most recent last; undefined when its agent does not report them. */
   workPathsOf(id: string): string[] | undefined {
     return this.sessions.get(id)?.workPaths
+  }
+
+  /** The folders a session changed something in (edits, git writes, pull requests); undefined when its agent does not report them. */
+  changePathsOf(id: string): string[] | undefined {
+    return this.sessions.get(id)?.changePaths
   }
 
   private require(id: string): ManagedSession {

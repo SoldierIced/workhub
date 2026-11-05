@@ -144,6 +144,9 @@ export class ClaudeTranscriptReader implements TranscriptReader {
     const workPaths = [...(snap.workPaths ?? [])]
     for (const sub of state.subagents.values()) for (const path of sub.parser.workPaths) noteWorkPath(workPaths, path)
     if (workPaths.length) patch.workPaths = workPaths
+    const changePaths = [...(snap.changePaths ?? [])]
+    for (const sub of state.subagents.values()) for (const path of sub.parser.changePaths) noteWorkPath(changePaths, path)
+    if (workPaths.length) patch.changePaths = changePaths
     Object.assign(patch, withSubagentLinks(snap, [...state.subagents.values()].map((s) => s.parser.links)))
     if (costs.length) patch.cost = { amount: costs.reduce((sum, c) => sum + c.amount, 0), currency: 'USD' }
     return mergeMonitor(snap, patch)

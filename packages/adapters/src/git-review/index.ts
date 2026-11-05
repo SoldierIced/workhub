@@ -180,20 +180,21 @@ export class GitReview {
   }
 
   /**
-   * The monitor's "Local changes" of a session. With the folders it worked in (`workPaths`, most
-   * recent last), the repositories behind them, every one listed, most recent first: in a folder
-   * of repositories (a profile's base folder) only the ones the session actually worked in. A
+   * The monitor's "Local changes" of a session. With the folders it changed something in
+   * (`changePaths`, most recent last), the repositories behind them, every one listed, most recent
+   * first: in a folder of repositories (a profile's base folder) only the ones the session changed,
+   * not the ones it only read. A
    * session in a repository that worked in no other keeps the one-repository view.
    *
    * Without them (an agent that does not report them), the folder's own repository, else each
    * repository right inside it (Workhub 1's folder of repos) that has changes. Null when there is none.
    */
-  async localChanges(cwd: string, workPaths?: readonly string[]): Promise<LocalChanges | null> {
-    if (workPaths) {
+  async localChanges(cwd: string, changePaths?: readonly string[]): Promise<LocalChanges | null> {
+    if (changePaths) {
       // Found the same way as the touched ones, so the paths compare (git would print the real path).
       const own = await this.repositoryOf(cwd)
       const touched: string[] = []
-      for (const path of [...workPaths].reverse()) {
+      for (const path of [...changePaths].reverse()) {
         const repo = await this.repositoryOf(path)
         if (repo && !touched.includes(repo)) touched.push(repo)
         if (touched.length >= MAX_TOUCHED_REPOS) break

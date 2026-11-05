@@ -24,7 +24,7 @@ reported by the agent**; a missing or unreadable transcript never breaks the ses
 | MCP servers | Status of each server (**running**, **needs sign-in**, **failed**, **disabled**, **loading**). With Claude Code you can **Refresh MCP status**, **Reconnect** or **Enable/Disable** a server. |
 | Activity | The tool calls so far: commands run, files read, edited or written, searches, pages fetched, subagents started. |
 | Tickets, Pull requests | The tickets and pull requests the session worked on, found from its tool calls. With a tracker connected, tickets show their title and status; click one to open it. |
-| Local changes | Uncommitted changes in the repos the session worked in (files and repos), with a **clean** marker per repo. |
+| Local changes | Uncommitted changes in the repos the session changed (files and repos), with a **clean** marker per repo. A repo counts when the agent (or one of its sub-agents) edited or wrote a file in it, ran a git command that writes there (commit, push, merge, rebase, cherry-pick, revert, a new branch), or ran `gh pr create` or `gh pr merge` there. A repo it only read (`cd`, `git log`, a search) does not count, and neither does one it changed only through other shell commands (a redirect into a file, `sed -i`, a code generator) until it commits there. |
 | Slack | Threads that wake this session and messages about its tickets and pull requests. See [Slack](slack.md). |
 
 Pull requests and tickets from the monitor open in Workhub (**View in app**) or on the code host
