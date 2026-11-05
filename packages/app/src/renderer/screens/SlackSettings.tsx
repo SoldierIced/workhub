@@ -4,9 +4,7 @@ import {
   DEFAULT_THREAD_ARCHIVE_MINUTES,
   MIN_THREAD_ARCHIVE_MINUTES,
   MIN_WATCH_INTERVAL_MINUTES,
-  type ChatWatcherSettings,
-  type Result,
-  type WorkhubConfig
+  type ChatWatcherSettings
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Switch } from '../components/atoms'
@@ -15,8 +13,7 @@ import { reloadSlack, useSlack } from '../chatStore'
 import { useI18n } from '../i18n/I18nProvider'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
 
 const DAYS = [1, 2, 3, 4, 5, 6, 0]
 

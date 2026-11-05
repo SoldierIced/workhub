@@ -8,9 +8,7 @@ import {
   withAgentDefaultMode,
   type AgentAccount,
   type AgentDefinition,
-  type FailoverMode,
-  type Result,
-  type WorkhubConfig
+  type FailoverMode
 } from '@workhub/core'
 import type { AgentOptionsView, ConfigSnapshot } from '@shared/api'
 import { Badge, Button, Select, StateDot, Tooltip } from '../components/atoms'
@@ -24,8 +22,7 @@ import { useNow } from '../lib/usage'
 import { useWindowLabel } from '../components/molecules/UsageWindowRow'
 import { useAccountUsage } from '../lib/usage'
 import { SettingsGroup } from './settings/SettingsLayout'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
 
 const ENGINE_LABEL: Record<AgentEngine, MessageKey> = { sdk: 'agents.engine.sdk', acp: 'agents.engine.acp', terminal: 'agents.engine.terminal' }
 const ENGINE_HINT: Record<AgentEngine, MessageKey> = { sdk: 'agents.engine.sdkHint', acp: 'agents.engine.acpHint', terminal: 'agents.engine.terminalHint' }
@@ -340,7 +337,20 @@ export function SignInDetail({ entry, snap, run, onAddAccount }: { entry: SignIn
  * Settings → Agents, above the account form: every agent Workhub knows with how it runs, whether
  * it is installed and its sign-ins; then the active profile's agent order and account failover.
  */
-export function AgentsOverview({ snap, run, onEditAccount, onAddAccount }: { snap: ConfigSnapshot; run: Run; onEditAccount: (accountId: string) => void; onAddAccount: (agentId: string) => void }) {
+export function AgentsOverview({
+  snap,
+  run,
+  profileId,
+  onEditAccount,
+  onAddAccount
+}: {
+  snap: ConfigSnapshot
+  run: Run
+  /** The profile whose agent order and failover are shown; the active one when not given. */
+  profileId?: string | null
+  onEditAccount: (accountId: string) => void
+  onAddAccount: (agentId: string) => void
+}) {
   const { t } = useI18n()
   const reads = useAccountUsage()
   const [availability, setAvailability] = useState<Record<string, boolean> | null>(null)
@@ -355,7 +365,7 @@ export function AgentsOverview({ snap, run, onEditAccount, onAddAccount }: { sna
     }
   }, [snap.agents])
   const entries = agentDirectory(snap.agents, snap.config.accounts, reads, availability)
-  const profile = snap.config.profiles.find((p) => p.id === snap.config.activeProfileId)
+  const profile = snap.config.profiles.find((p) => p.id === (profileId ?? snap.config.activeProfileId))
   const editable = !snap.loadError
   const ordered = profile ? orderAgents(profile.preferredAgents, resolveEffectiveAgents(snap.config, profile.id)) : []
   const { agentModes, ...editing } = useModeEditing(snap, run)

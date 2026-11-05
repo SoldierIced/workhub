@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { appOptions, parseThresholds, setCeiling, type Result, type UsageBudgetOptions, type WorkhubConfig } from '@workhub/core'
+import { appOptions, parseThresholds, setCeiling, type UsageBudgetOptions } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot } from '@shared/api'
 import { Button, Input, Switch } from '../components/atoms'
 import { Card, Field, HelpTip, SwitchRow } from '../components/molecules'
@@ -7,8 +7,7 @@ import { usageCeilingLabel } from '../lib/usage-window'
 import { useI18n } from '../i18n/I18nProvider'
 import { budgetWindows } from '../lib/agent-usage'
 import { useAccountLabel, useAccountUsage } from '../lib/usage'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
 
 function Group({ title, help, footnote, children }: { title: string; help?: ReactNode; footnote?: ReactNode; children: ReactNode }) {
   return (

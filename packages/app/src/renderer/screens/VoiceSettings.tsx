@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Square, Volume2 } from 'lucide-react'
-import { appOptions, DEFAULT_LISTEN_MODEL, DEFAULT_SPEECH_RATE, SPEECH_RATE_RANGE, type Result, type WorkhubConfig } from '@workhub/core'
+import { appOptions, DEFAULT_LISTEN_MODEL, DEFAULT_SPEECH_RATE, SPEECH_RATE_RANGE, type WorkhubConfig } from '@workhub/core'
 import { Button, Input, Select, Switch } from '../components/atoms'
 import { SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { usePlatform } from '../lib/platform'
 import { speak, stopSpeaking, stopSpeakingKeys, useSpeakingId, useVoices } from '../lib/readAloud'
 import { SettingRow, SettingsGroup } from './settings/SettingsLayout'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
 
 const TEST_ID = 'voice-test'
 

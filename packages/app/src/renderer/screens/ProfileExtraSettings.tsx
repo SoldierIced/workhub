@@ -61,8 +61,24 @@ export function envChanges(rows: readonly EnvRow[], savedNames: readonly string[
   return { values, removed: savedNames.filter((n) => !keep.has(n)) }
 }
 
+/** Where an environment draft reads and writes its values: the profile's or an agent account's secret refs. */
+export interface EnvStore {
+  stored(ownerId: string): Promise<string[]>
+  save(ownerId: string, values: Record<string, string>, removed: string[]): Promise<void>
+}
+
 /** Draft of the profile's environment variables; reloads when another profile is selected. */
 export function useProfileEnvDraft(saved: Profile | undefined): EnvDraft {
+  return useEnvDraft(saved?.id, saved?.envNames, window.hub.profileEnv)
+}
+
+/** Draft of an agent account's environment variables (values in the secret store); reloads when another account is selected. */
+export function useAccountEnvDraft(saved: { id: string; envNames?: string[] } | undefined): EnvDraft {
+  return useEnvDraft(saved?.id, saved?.envNames, window.hub.accountEnv)
+}
+
+/** Names in the config, values in the secret store: what the form types is written there on save. */
+function useEnvDraft(id: string | undefined, savedEnvNames: string[] | undefined, store: EnvStore): EnvDraft {
   const [rows, setRowsState] = useState<EnvRow[]>([])
   const [loaded, setLoaded] = useState<EnvRow[]>([])
   const load = (next: EnvRow[]) => {
@@ -70,14 +86,13 @@ export function useProfileEnvDraft(saved: Profile | undefined): EnvDraft {
     setLoaded(next)
   }
   const savedNames = useRef<string[]>([])
-  const id = saved?.id
   useEffect(() => {
-    const names = saved?.envNames ?? []
+    const names = savedEnvNames ?? []
     savedNames.current = names
     load(names.map((name) => ({ name, value: '', stored: true })))
     if (!id) return
     let cancelled = false
-    void window.hub.profileEnv.stored(id).then((stored) => {
+    void store.stored(id).then((stored) => {
       if (!cancelled) load(names.map((name) => ({ name, value: '', stored: stored.includes(name) })))
     })
     return () => {
@@ -92,14 +107,14 @@ export function useProfileEnvDraft(saved: Profile | undefined): EnvDraft {
     dirty: envDirty(rows, loaded),
     reset: () => setRowsState(loaded),
     names: () => envNamesToSave(rows),
-    commit: async (profileId) => {
+    commit: async (ownerId) => {
       const { values, removed } = envChanges(rows, savedNames.current)
       if (Object.keys(values).length === 0 && removed.length === 0) {
         setLoaded(rows)
         return true
       }
       try {
-        await window.hub.profileEnv.save(profileId, values, removed)
+        await store.save(ownerId, values, removed)
       } catch {
         return false
       }
@@ -110,7 +125,8 @@ export function useProfileEnvDraft(saved: Profile | undefined): EnvDraft {
   }
 }
 
-function EnvFields({ env }: { env: EnvDraft }) {
+/** One row per variable: its name, and its value masked (stored values show as dots). */
+export function EnvFields({ env }: { env: EnvDraft }) {
   const { t } = useI18n()
   const update = (index: number, patch: Partial<EnvRow>) => env.setRows(env.rows.map((r, i) => (i === index ? { ...r, ...patch } : r)))
   return (

@@ -1,15 +1,15 @@
 import { FolderOpen, Trash2, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { moduleScreens, type Profile, type Result, type WorkhubConfig } from '@workhub/core'
+import { moduleScreens } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import type { FlowMapSummary } from '@shared/health-api'
-import { Button, Switch } from '../components/atoms'
+import { Button } from '../components/atoms'
 import { Dialog, EmptyState, useToast } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { errorText } from '../lib/errorText'
-import { SettingRow, SettingsGroup } from './settings/SettingsLayout'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import { SettingsGroup } from './settings/SettingsLayout'
+import type { Run } from './settings/run'
+import { ModuleOffNote } from './settings/shared'
 
 const ENDPOINT_EXAMPLE = `curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/flow-maps \\
   -H 'content-type: application/json' --data-binary @my-flow.json`
@@ -17,11 +17,11 @@ const ENDPOINT_EXAMPLE = `curl --unix-socket "$WORKHUB_SOCKET" -X POST http://wo
 const ENDPOINT_EXAMPLE_WINDOWS = `curl -H "Authorization: Bearer $WORKHUB_TOKEN" -X POST "$WORKHUB_URL/v1/flow-maps" \\
   -H 'content-type: application/json' --data-binary @my-flow.json`
 
-/** Settings → Flow maps: the screen's switch for the active profile, the maps folder, importing files and the maps it holds. */
-export function FlowMapsSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
+/** Settings → Flow maps: the maps folder, importing files and the maps a profile (the active one unless given) reads. The screen's switch is in Modules and screens. */
+export function FlowMapsSettings({ snap, profileId, onOpenModules }: { snap: ConfigSnapshot; run?: Run; profileId?: string | null; onOpenModules?: () => void }) {
   const { t, tn } = useI18n()
   const toast = useToast()
-  const profile = snap.config.profiles.find((p) => p.id === snap.config.activeProfileId)
+  const profile = snap.config.profiles.find((p) => p.id === (profileId ?? snap.config.activeProfileId))
   const [folder, setFolder] = useState('')
   const [maps, setMaps] = useState<FlowMapSummary[] | null>(null)
   const [error, setError] = useState<string>()
@@ -44,7 +44,6 @@ export function FlowMapsSettings({ snap, run }: { snap: ConfigSnapshot; run: Run
   const modules = moduleScreens(profile.modules)
   const on = modules.includes('flowMaps')
   const healthOn = modules.includes('health')
-  const saveProfile = (patch: (p: Profile) => Profile) => run(() => window.hub.config.saveProfile(patch(profile)))
   const envName = (id: string) => profile.health?.environments.find((e) => e.id === id)?.name ?? id
 
   const importFiles = async () => {
@@ -71,13 +70,8 @@ export function FlowMapsSettings({ snap, run }: { snap: ConfigSnapshot; run: Run
 
   return (
     <div className="flex flex-col gap-6" data-testid="flow-maps-settings">
-      <SettingsGroup title={t('flowMaps.settings.tab')} footnote={!healthOn ? t('flowMaps.settings.needsHealth') : undefined}>
-        <SettingRow label={t('flowMaps.settings.module')} hint={t('flowMaps.settings.moduleHint')}>
-          <div className="flex justify-end">
-            <Switch checked={on} disabled={Boolean(snap.loadError)} onChange={(next) => void saveProfile((p) => ({ ...p, modules: { ...p.modules, flowMaps: next } }))} aria-label={t('flowMaps.settings.module')} />
-          </div>
-        </SettingRow>
-      </SettingsGroup>
+      {!on && onOpenModules && <ModuleOffNote module="flowMaps" onOpenModules={onOpenModules} />}
+      {on && !healthOn && <p className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning">{t('flowMaps.settings.needsHealth')}</p>}
 
       <SettingsGroup title={t('flowMaps.settings.folder')} footnote={t('flowMaps.settings.format')}>
         <div className="flex flex-col gap-2 py-3">
