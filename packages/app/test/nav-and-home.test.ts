@@ -92,9 +92,12 @@ describe('home figures', () => {
 
   it('formats token counts compactly', () => {
     expect(formatTokens(950)).toBe('950')
-    expect(formatTokens(1234)).toBe('1.2k')
-    expect(formatTokens(646_100)).toBe('646k')
+    expect(formatTokens(1234)).toBe('1.2K')
+    expect(formatTokens(646_100)).toBe('646K')
     expect(formatTokens(5_500_000)).toBe('5.5M')
+    // In the app's language.
+    expect(formatTokens(1234, 'es')).toBe('1,2 mil')
+    expect(formatTokens(5_500_000, 'es')).toBe('5,5 M')
   })
 
   it('knows whether a profile has a connection of a kind', () => {

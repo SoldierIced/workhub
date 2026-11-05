@@ -9,7 +9,7 @@ const ENTRIES: readonly (readonly [SetupPage, 'check' | 'welcome' | 'help'])[] =
   ['help', 'help']
 ]
 
-/** Settings → Profiles: the way back to the setup check, the welcome tour and "How Workhub works". */
+/** Settings → General: the way back to the setup check, the welcome tour and "How Workhub works". */
 export function SetupEntryGroup() {
   const { t } = useI18n()
   return (

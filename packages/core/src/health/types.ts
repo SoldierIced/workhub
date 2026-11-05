@@ -4,6 +4,7 @@
  * all of that comes from the profile's configuration.
  */
 import type { AlertRulesConfig } from '../alerts/types'
+import type { HealthAlertSettings } from './alert-settings'
 
 /** Limits that turn raw numbers into a state. All are tunable; the defaults are starting points. */
 export interface HealthThresholds {
@@ -95,6 +96,8 @@ export interface HealthSettings {
   environments: HealthEnvironment[]
   /** Metric alert rules (thresholds, business days, notification minimum); defaults when unset. */
   alertRules?: AlertRulesConfig
+  /** Which Health alert kinds are announced, where and from which threshold (Settings → Alerts); defaults when unset. */
+  alerts?: HealthAlertSettings
 }
 
 export const HEALTH_REFRESH_CHOICES = [5, 10, 15, 30, 60] as const

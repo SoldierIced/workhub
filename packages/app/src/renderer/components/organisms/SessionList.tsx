@@ -38,7 +38,7 @@ import { groupSummary, listSessions, memberOf, newGroupId, rowName, summarize, u
 import { openSubagent, visibleSubagents } from '../../lib/subagentView'
 import { useNow } from '../../lib/usage'
 import { usePlatform } from '../../lib/platform'
-import { shortcutLabel } from '../../lib/shortcuts'
+import { shortcutLabel, type Shortcut } from '../../lib/shortcuts'
 import { isSessionReadAloud, setSessionReadAloud, useReadAloudVersion } from '../../lib/readAloud'
 import { useAutomations } from '../../chatStore'
 import { awaitingAnswer, pushItem } from '../../store'
@@ -90,7 +90,11 @@ export interface SessionListProps {
   onOpenInWindow?: (id: string) => void
 }
 
-type MenuItem = { label: string; hint?: string; onSelect: () => void } | { separator: true } | { label: string; items: MenuItem[] }
+/** `key`: what React tells the items apart by when labels can repeat (two groups with one name); the label otherwise. */
+type MenuItem = { label: string; key?: string; hint?: string; onSelect: () => void } | { separator: true } | { label: string; items: MenuItem[] }
+
+const MOVE_UP: Shortcut = { key: '↑', alt: true, mod: false }
+const MOVE_DOWN: Shortcut = { key: '↓', alt: true, mod: false }
 
 type Dialogs = { kind: 'create'; member?: GroupMember } | { kind: 'rename'; group: SessionGroup } | { kind: 'delete'; group: SessionGroup } | null
 
@@ -133,7 +137,7 @@ function renderMenu(kit: MenuKit, items: MenuItem[]): ReactNode {
       )
     }
     return (
-      <kit.Item key={item.label} className={MENU_ITEM} onSelect={item.onSelect}>
+      <kit.Item key={item.key ?? item.label} className={MENU_ITEM} onSelect={item.onSelect}>
         {item.label}
         {item.hint && <span className="text-xs text-subtle">{item.hint}</span>}
       </kit.Item>
@@ -203,12 +207,12 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
       items.push({ label: reading ? t('voice.session.on') : t('voice.session.off'), onSelect: () => setSessionReadAloud(entry.data.view.id, !reading) }, { separator: true })
     }
     items.push(
-      { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveBy(s, member.key, -1)) },
-      { label: t('groups.moveDown'), hint: 'Alt+↓', onSelect: () => act((s) => moveBy(s, member.key, 1)) },
+      { label: t('groups.moveUp'), hint: shortcutLabel(MOVE_UP, platform), onSelect: () => act((s) => moveBy(s, member.key, -1)) },
+      { label: t('groups.moveDown'), hint: shortcutLabel(MOVE_DOWN, platform), onSelect: () => act((s) => moveBy(s, member.key, 1)) },
       {
         label: t('groups.moveTo'),
         items: [
-          ...state.groups.filter((g) => g.id !== inGroup?.id).map((g): MenuItem => ({ label: g.name, onSelect: () => act((s) => moveToGroup(s, member, g.id)) })),
+          ...state.groups.filter((g) => g.id !== inGroup?.id).map((g): MenuItem => ({ label: g.name, key: `group:${g.id}`, onSelect: () => act((s) => moveToGroup(s, member, g.id)) })),
           ...(state.groups.some((g) => g.id !== inGroup?.id) ? [{ separator: true } as MenuItem] : []),
           { label: t('groups.moveToNew'), onSelect: () => setDialog({ kind: 'create', member }) }
         ]
@@ -224,8 +228,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
 
   const groupMenu = (group: SessionGroup): MenuItem[] => [
     { label: t('groups.rename'), onSelect: () => setDialog({ kind: 'rename', group }) },
-    { label: t('groups.moveUp'), hint: 'Alt+↑', onSelect: () => act((s) => moveGroupBy(s, group.id, -1)) },
-    { label: t('groups.moveDown'), hint: 'Alt+↓', onSelect: () => act((s) => moveGroupBy(s, group.id, 1)) },
+    { label: t('groups.moveUp'), hint: shortcutLabel(MOVE_UP, platform), onSelect: () => act((s) => moveGroupBy(s, group.id, -1)) },
+    { label: t('groups.moveDown'), hint: shortcutLabel(MOVE_DOWN, platform), onSelect: () => act((s) => moveGroupBy(s, group.id, 1)) },
     { separator: true },
     { label: t('groups.delete'), onSelect: () => setDialog({ kind: 'delete', group }) }
   ]

@@ -37,6 +37,16 @@ export function followsTicket(item: Pick<InboxItem, 'status' | 'kind' | 'ticket'
   return item.ticket !== undefined && item.kind !== 'decision' && (item.status === 'ticket' || item.status === 'local')
 }
 
+/**
+ * The approved tasks and bugs (local, or sent to the tracker and not done yet) due on `today` or
+ * before (`YYYY-MM-DD`), overdue first: what the menu bar popover lists under "Today".
+ */
+export function inboxDueBy(items: readonly InboxItem[], today: string): InboxItem[] {
+  return items
+    .filter((i) => i.kind !== 'decision' && (i.status === 'local' || i.status === 'ticket') && i.due !== undefined && i.due <= today)
+    .sort((a, b) => a.due!.localeCompare(b.due!) || b.createdAt - a.createdAt)
+}
+
 /** A title reduced for comparison: lower case, no accents, punctuation as spaces, single spaces. */
 export function normalizeTitle(title: string): string {
   return title

@@ -136,6 +136,20 @@ describe('KiroPlanUsageReader', () => {
     expect(await reader.read()).toEqual([])
   })
 
+  it('survives a broken pipe to a kiro-cli that never started', async () => {
+    const spawn: KiroSpawn = () => {
+      const events = new EventEmitter()
+      const stdin = new PassThrough()
+      setTimeout(() => {
+        stdin.destroy(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))
+        setTimeout(() => events.emit('error', Object.assign(new Error('spawn kiro-cli ENOENT'), { code: 'ENOENT' })), 5)
+      })
+      return { stdin, stdout: new PassThrough(), on: (e, cb) => events.on(e, cb), kill: () => undefined }
+    }
+    const reader = new KiroPlanUsageReader({ probeDir: probeDir(), state: { load: () => null, save: () => undefined }, spawn })
+    expect(await reader.read()).toEqual([])
+  })
+
   it("deletes the probe session an earlier version left in Kiro's list, and nothing else", async () => {
     const dir = probeDir()
     const sessions = join(dir, 'legacy')

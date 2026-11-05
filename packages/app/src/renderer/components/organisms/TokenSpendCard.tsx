@@ -16,7 +16,7 @@ const ROWS = 7
  * agents billed by API key spent in money.
  */
 export function TokenSpendCard({ spend, apiSpend = [], onOpenSettings }: { spend: FolderSpendResult | null; apiSpend?: readonly ApiAgentSpend[]; onOpenSettings: () => void }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const days = spend?.days ?? 7
   const entries = spend?.entries.slice(0, ROWS) ?? []
   const top = entries[0]?.tokens ?? 1
@@ -44,7 +44,7 @@ export function TokenSpendCard({ spend, apiSpend = [], onOpenSettings }: { spend
             const name = f.root ? t('home.tokensByFolderRoot', { name: f.name }) : f.name
             const split = Object.entries(f.byAgent)
               .filter(([, n]) => (n ?? 0) > 0)
-              .map(([agent, n]) => `${AGENT_NAME[agent] ? t(AGENT_NAME[agent]!) : agent} ${formatTokens(n ?? 0)}`)
+              .map(([agent, n]) => `${AGENT_NAME[agent] ? t(AGENT_NAME[agent]!) : agent} ${formatTokens(n ?? 0, locale)}`)
               .join(' · ')
             return (
               <li key={`${f.root ? 'root' : 'dir'}:${f.path}`} className="grid grid-cols-[9.5rem_1fr_4.5rem] items-center gap-2.5 text-sm" title={`${f.path}\n${split}`}>
@@ -53,10 +53,10 @@ export function TokenSpendCard({ spend, apiSpend = [], onOpenSettings }: { spend
                   <span className="brand-gradient block h-full rounded-full" style={{ width: `${Math.max(2, (f.tokens / top) * 100)}%` }} />
                 </span>
                 <span className="text-right text-xs tabular-nums text-muted">
-                  {formatTokens(f.tokens)}
+                  {formatTokens(f.tokens, locale)}
                   {f.cacheRead > 0 && (
                     <span className="block text-[10px] text-subtle" data-testid="token-spend-cache">
-                      {t('home.tokensByFolderCache', { value: formatTokens(f.cacheRead) })}
+                      {t('home.tokensByFolderCache', { value: formatTokens(f.cacheRead, locale) })}
                     </span>
                   )}
                 </span>

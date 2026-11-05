@@ -36,14 +36,15 @@ export class SafeStorageSecretStore implements SecretStore {
 
   async get(ref: string): Promise<string | null> {
     const file = await this.read()
-    const cipher = file.secrets[ref]
-    if (cipher === undefined) return null
+    // Own keys only: `toString` or `__proto__` are not secrets.
+    const cipher = Object.hasOwn(file.secrets, ref) ? file.secrets[ref] : undefined
+    if (typeof cipher !== 'string') return null
     this.requireEncryption()
     return this.safeStorage.decryptString(Buffer.from(cipher, 'base64'))
   }
 
   async has(ref: string): Promise<boolean> {
-    return (await this.read()).secrets[ref] !== undefined
+    return Object.hasOwn((await this.read()).secrets, ref)
   }
 
   async set(ref: string, value: string): Promise<void> {
@@ -59,7 +60,7 @@ export class SafeStorageSecretStore implements SecretStore {
   async delete(ref: string): Promise<void> {
     await this.queue.run(async () => {
       const file = await this.read()
-      if (!(ref in file.secrets)) return
+      if (!Object.hasOwn(file.secrets, ref)) return
       delete file.secrets[ref]
       await this.write(file)
     })
@@ -76,7 +77,8 @@ export class SafeStorageSecretStore implements SecretStore {
     if (parsed.version !== 1 || typeof parsed.secrets !== 'object' || parsed.secrets === null) {
       throw new Error(`${this.path} is not a Workhub secrets file`)
     }
-    return { version: 1, secrets: { ...parsed.secrets } }
+    // A null-prototype copy: assigning a ref such as `__proto__` stores a key, not a prototype.
+    return { version: 1, secrets: Object.assign(Object.create(null) as Record<string, string>, parsed.secrets) }
   }
 
   private async write(file: SecretsFile): Promise<void> {

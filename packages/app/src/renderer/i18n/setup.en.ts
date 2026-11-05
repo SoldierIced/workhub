@@ -204,7 +204,7 @@ export const setupEn = {
   'profileExtra.linkChromeProfile': 'Chrome profile',
   'profileExtra.linkChromeProfileHint': 'Links open in a new Chrome window on this profile.',
   'profileExtra.linkCommand': 'Custom command',
-  'profileExtra.linkCommandHint': 'An executable (a name on your PATH or a full path) that gets the link as its only argument, for example a script that opens a work browser profile. If it fails, the default browser opens the link.',
+  'profileExtra.linkCommandHint': 'An executable (a name on your PATH or a full path) that gets the link as its last argument, for example a script that opens a work browser profile. To pass arguments, quote the executable: "firefox" -P work. If it fails, the default browser opens the link.',
   'profileExtra.linkChromeNone': 'No profiles found for this Chrome app; type the profile directory (Default, Profile 1).',
   'profileExtra.linkChromeApp': 'Chrome app',
   'profileExtra.linkChromeAppHint': 'Empty: Google Chrome. Set it for another Chrome app.',

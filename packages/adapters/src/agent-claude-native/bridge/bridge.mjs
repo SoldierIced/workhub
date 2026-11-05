@@ -188,7 +188,9 @@ async function start(config) {
     }
     send({ type: "closed" });
   } catch (error) {
-    send({ type: "error", message: String(error?.message ?? error) });
+    // Exit 1 after an error, once the line has reached stdout: the app keeps the session in error.
+    process.stdout.write(JSON.stringify({ type: "error", message: String(error?.message ?? error) }) + "\n", () => process.exit(1));
+    return;
   }
   process.exit(0);
 }

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -96,6 +96,22 @@ describe('the tracking hook', () => {
     expect(JSON.parse(readFileSync(join(configDir, 'settings.json'), 'utf8'))).toEqual({ theme: 'dark' })
     writeFileSync(join(configDir, 'settings.json'), '{oops')
     expect((await hook.status(configDir)).state).toBe('unreadable')
+  })
+
+  it.skipIf(process.platform === 'win32')('keeps a symlinked settings.json a link and edits the file it points to', async () => {
+    const configDir = join(dir, 'claude')
+    const dotfiles = join(dir, 'dotfiles')
+    mkdirSync(configDir)
+    mkdirSync(dotfiles)
+    writeFileSync(join(dotfiles, 'settings.json'), JSON.stringify({ theme: 'dark' }))
+    symlinkSync(join(dotfiles, 'settings.json'), join(configDir, 'settings.json'))
+    const hook = new SlackTrackingHook({ dir: join(dir, 'data'), sourceScript: hookScript, node: async () => '/usr/bin/node' })
+    await hook.install(configDir)
+    expect(lstatSync(join(configDir, 'settings.json')).isSymbolicLink()).toBe(true)
+    expect(hookCommandIn(JSON.parse(readFileSync(join(dotfiles, 'settings.json'), 'utf8')))).toContain(HOOK_SCRIPT_NAME)
+    await hook.remove(configDir)
+    expect(lstatSync(join(configDir, 'settings.json')).isSymbolicLink()).toBe(true)
+    expect(JSON.parse(readFileSync(join(dotfiles, 'settings.json'), 'utf8'))).toEqual({ theme: 'dark' })
   })
 
   it('records a Slack message a session sent, and nothing for other tools', async () => {

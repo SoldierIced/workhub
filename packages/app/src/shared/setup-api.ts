@@ -8,10 +8,8 @@ export interface SetupApi {
   run(): Promise<SetupItem[]>
   /** Opens (or focuses) a setup window. */
   openWindow(page: SetupPage): void
-  /** Shows the main window on a Settings tab (used by the fix buttons of the setup windows). */
+  /** Opens the Settings window on a tab (used by the fix buttons of the setup windows). */
   openSettings(tab: string): void
-  /** The main window was asked for a Settings tab. */
-  onOpenSettings(cb: (tab: string) => void): () => void
   /** The welcome flow is done: it does not open again on its own. */
   completeWelcome(): Promise<void>
 }

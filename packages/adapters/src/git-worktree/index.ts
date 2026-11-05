@@ -46,20 +46,37 @@ export class GitWorktrees implements Worktrees {
     await mkdir(dirname(opts.path), { recursive: true })
     await this.excludeIfInside(repoRoot, opts.path)
     const exists = (await this.git(repoRoot, ['rev-parse', '--verify', '--quiet', `refs/heads/${opts.branch}`])).ok
-    const args = exists ? ['worktree', 'add', opts.path, opts.branch] : ['worktree', 'add', '-b', opts.branch, opts.path, opts.base?.trim() || (await this.defaultBase(repoRoot))]
+    let args: string[]
+    if (exists) {
+      args = ['worktree', 'add', '--', opts.path, opts.branch]
+    } else {
+      const base = opts.base?.trim() || (await this.defaultBase(repoRoot))
+      const verified = await this.git(repoRoot, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${base}^{commit}`])
+      if (!verified.ok) throw new Error(`"${base}" is not a commit in this repository`)
+      // `--no-track`: a session branch made from `origin/main` must not have it as its upstream, or a
+      // plain `git push` from the session would go to main.
+      args = ['worktree', 'add', '--no-track', '-b', opts.branch, '--', opts.path, base]
+    }
     const r = await this.git(repoRoot, args)
     if (!r.ok) throw failure('git worktree add', r)
   }
 
+  /**
+   * `unpushed` counts the commits no remote-tracking branch has, whether or not the branch has an
+   * upstream. A repository with no remote at all reports `unpushed: 0`: there is nowhere to push, and
+   * counting would report its whole history.
+   */
   async status(path: string): Promise<WorktreeStatus> {
-    const [st, ahead, branch] = await Promise.all([
+    const [st, ahead, branch, remotes] = await Promise.all([
       this.git(path, ['status', '--porcelain=v1']),
-      // Commits no remote-tracking branch has: unpushed whether or not the branch has an upstream.
       this.git(path, ['rev-list', '--count', 'HEAD', '--not', '--remotes']),
-      this.git(path, ['branch', '--show-current'])
+      this.git(path, ['branch', '--show-current']),
+      this.git(path, ['remote'])
     ])
     if (!st.ok) throw failure('git status', st)
-    return { dirty: st.stdout.trim().length > 0, unpushed: ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : 0, branch: branch.stdout.trim() }
+    const hasRemote = remotes.ok && remotes.stdout.trim().length > 0
+    const unpushed = hasRemote && ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : 0
+    return { dirty: st.stdout.trim().length > 0, unpushed, branch: branch.stdout.trim() }
   }
 
   async remove(repoRoot: string, path: string, opts: { force: boolean }): Promise<void> {

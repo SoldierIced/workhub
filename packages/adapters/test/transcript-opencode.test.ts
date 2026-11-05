@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { OpenCodeSessionHistory, OpenCodeTranscriptReader, modelName } from '../src/transcript-opencode'
+import { withDatabase } from '../src/transcript-opencode/db'
 
 // A synthetic database with the columns the reader uses (session_v2, session_message), written
 // by hand from the structure checked on a real OpenCode install.
@@ -192,5 +193,28 @@ describe('modelName', () => {
     expect(modelName(MODEL)).toBe('claude-opus-5-5')
     expect(modelName('gpt-5')).toBe('gpt-5')
     expect(modelName(null)).toBeUndefined()
+  })
+})
+
+describe('withDatabase on a locked database', () => {
+  let lockDir: string
+  beforeEach(async () => {
+    lockDir = await mkdtemp(join(tmpdir(), 'wh2-opencode-lock-'))
+  })
+  afterEach(async () => rm(lockDir, { recursive: true, force: true }))
+
+  it('gives up at once instead of blocking the event loop', async () => {
+    const path = join(lockDir, 'opencode.db')
+    const writer = new DatabaseSync(path)
+    try {
+      writer.exec("PRAGMA journal_mode = DELETE; CREATE TABLE t (x integer); INSERT INTO t VALUES (1); BEGIN EXCLUSIVE; INSERT INTO t VALUES (2);")
+      const started = Date.now()
+      expect(await withDatabase(path, (q) => q('SELECT x FROM t'))).toBeNull()
+      expect(Date.now() - started).toBeLessThan(1000)
+      writer.exec('COMMIT')
+      expect(await withDatabase(path, (q) => q('SELECT x FROM t'))).toEqual([{ x: 1 }, { x: 2 }])
+    } finally {
+      writer.close()
+    }
   })
 })

@@ -3,7 +3,7 @@
  * of the session's account and reads only what was appended since the last read, together with
  * the session's subagent transcripts. Missing or unreadable files hide data, never throw.
  */
-import { open, readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import {
@@ -16,6 +16,7 @@ import {
   type TranscriptQuery,
   type TranscriptReader
 } from '@workhub/core'
+import { LineTail } from '../shared/reader-utils'
 import { SubagentConversationBuilder } from './conversation'
 import { noteBranch, noteLink, type SessionLinks } from './session-links'
 import {
@@ -28,44 +29,18 @@ import {
   type SubagentMeta
 } from './parser'
 
-/** Appends whole lines to a parser; an unfinished last line waits for the next read. */
+/** A `LineTail` that runs one read at a time: the monitor poll and the subagent view share a tail. */
 class Tail {
-  private offset = 0
-  private partial = ''
+  private readonly lines: LineTail
   private queue: Promise<unknown> = Promise.resolve()
-  constructor(readonly path: string) {}
-
-  /** One read at a time: the monitor poll and the subagent view share a tail. */
-  read(onLine: (line: string) => void): Promise<boolean> {
-    const run = this.queue.then(() => this.readNow(onLine))
-    this.queue = run.catch(() => undefined)
-    return run
+  constructor(readonly path: string) {
+    this.lines = new LineTail(path)
   }
 
-  private async readNow(onLine: (line: string) => void): Promise<boolean> {
-    let handle
-    try {
-      handle = await open(this.path, 'r')
-    } catch {
-      return false
-    }
-    try {
-      const { size } = await handle.stat()
-      // A file that shrank was rewritten: start over is not possible without the parser, so skip.
-      if (size < this.offset) return true
-      const length = size - this.offset
-      if (length > 0) {
-        const buffer = Buffer.alloc(length)
-        await handle.read(buffer, 0, length, this.offset)
-        this.offset = size
-        const lines = (this.partial + buffer.toString('utf8')).split('\n')
-        this.partial = lines.pop() ?? ''
-        for (const line of lines) if (line.trim()) onLine(line)
-      }
-      return true
-    } finally {
-      await handle.close()
-    }
+  read(onLine: (line: string) => void): Promise<boolean> {
+    const run = this.queue.then(() => this.lines.read(onLine))
+    this.queue = run.catch(() => undefined)
+    return run
   }
 }
 

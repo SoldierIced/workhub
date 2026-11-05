@@ -20,12 +20,16 @@ export function defaultOpenCodeDbPath(): string {
 
 export type Row = Record<string, unknown>
 
-/** A read-only database that is opened for one piece of work and closed again. */
+/**
+ * A read-only database that is opened for one piece of work and closed again. `node:sqlite` is
+ * synchronous and runs on the main process's event loop, so a busy database is not waited for
+ * (`timeout: 0`): the read fails with SQLITE_BUSY, returns null, and the next poll tries again.
+ */
 export async function withDatabase<T>(path: string, work: (query: (sql: string, ...params: SQLInputValue[]) => Row[]) => T): Promise<T | null> {
   if (!(await isFile(path))) return null
   let db: DatabaseSync | undefined
   try {
-    db = new DatabaseSync(path, { readOnly: true, timeout: 2000 })
+    db = new DatabaseSync(path, { readOnly: true, timeout: 0 })
     const open = db
     return work((sql, ...params) => open.prepare(sql).all(...params) as Row[])
   } catch {

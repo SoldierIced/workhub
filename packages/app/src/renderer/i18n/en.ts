@@ -29,6 +29,8 @@ import { localReviewEn } from './localReview.en'
 import { unsavedEn } from './unsaved.en'
 import { planEn } from './plan.en'
 import { plannerEn } from './planner.en'
+import { alertsEn } from './alerts.en'
+import { settingsNavEn } from './settingsNav.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -313,10 +315,10 @@ export const en = {
   'settings.configDir': 'Config folder',
   'settings.configDirSets': 'Sets {env} for this account.',
   'settings.configDirNone': 'This agent has no per-account config folder.',
-  'settings.envLines': 'Environment (KEY=value per line)',
-  'settings.envHint.codex': 'Codex reads OPENAI_API_KEY; the config folder becomes CODEX_HOME.',
-  'settings.envHint.opencode': 'OpenCode reads provider keys such as ANTHROPIC_API_KEY or OPENAI_API_KEY.',
-  'settings.envHint.gemini': 'Gemini CLI reads GEMINI_API_KEY.',
+  'settings.envLines': 'Environment variables',
+  'settings.envHint.codex': 'Codex reads OPENAI_API_KEY: add it here and its value is kept in the secret store. Set the config folder above instead of CODEX_HOME.',
+  'settings.envHint.opencode': 'OpenCode reads provider keys such as ANTHROPIC_API_KEY or OPENAI_API_KEY: their values are kept in the secret store, never in config.json.',
+  'settings.envHint.gemini': 'Gemini CLI reads GEMINI_API_KEY: its value is kept in the secret store, never in config.json.',
   'settings.saveAccount': 'Save account',
   'settings.agentsOffered': 'Agents offered',
   'settings.allAgents': 'All agents',
@@ -419,7 +421,7 @@ export const en = {
   'history.refresh': 'Reload',
   'history.loading': 'Reading the sessions…',
   'history.empty': 'No sessions yet',
-  'history.noMatch': 'No session matches the search',
+  'history.noMatch': 'No session matches the search or the filters',
   'history.emptyDescription': 'The sessions of Claude Code, Kiro, OpenCode and Codex show up here, grouped by folder. Only Claude Code sessions can be resumed.',
   'history.noFolder': 'No folder',
   'history.untitled': 'Untitled session',
@@ -499,5 +501,7 @@ export const en = {
   ...localReviewEn,
   ...unsavedEn,
   ...planEn,
-  ...plannerEn
+  ...plannerEn,
+  ...alertsEn,
+  ...settingsNavEn
 } as const

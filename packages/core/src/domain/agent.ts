@@ -147,8 +147,13 @@ export interface AgentAccount {
   name: string
   /** The agent's config folder for this account, passed through `accountConfigEnv`. */
   configDir?: string
-  /** Extra environment for sessions started with this account. */
+  /**
+   * Plain environment for sessions started with this account. Legacy: values here are moved to the
+   * secret store on load (see `migrateAccountEnv`); new values never land here.
+   */
   env?: Record<string, string>
+  /** Names of the environment variables added to this account's sessions; the values live in the secret store (`accountEnvRef`). */
+  envNames?: string[]
   /**
    * The executable to start instead of the agent's own command (a full path, or another build on
    * PATH). The agent's args are kept.
@@ -180,12 +185,16 @@ export function isValidEnvName(name: string): boolean {
   return ENV_NAME.test(name)
 }
 
+/** Where the value of an account's environment variable is kept (the secret store, never the config file). */
+export const accountEnvRef = (accountId: string, name: string): string => `account-env:${accountId}:${name}`
+
 /**
  * The environment a session gets on top of the inherited one: the agent's env, then the
- * account's env, then the account's config folder through `accountConfigEnv`. Later wins.
+ * account's env (its legacy plain values, then the values read from the secret store), then the
+ * account's config folder through `accountConfigEnv`. Later wins.
  */
-export function launchEnvironment(agent: AgentDefinition, account: AgentAccount | null): Record<string, string> {
-  const env: Record<string, string> = { ...agent.env, ...account?.env }
+export function launchEnvironment(agent: AgentDefinition, account: AgentAccount | null, accountSecrets?: Record<string, string>): Record<string, string> {
+  const env: Record<string, string> = { ...agent.env, ...account?.env, ...accountSecrets }
   if (account?.configDir && agent.accountConfigEnv) env[agent.accountConfigEnv] = account.configDir
   return env
 }

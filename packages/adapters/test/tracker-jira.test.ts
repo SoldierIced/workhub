@@ -110,6 +110,28 @@ describe('JiraTracker.listAssigned', () => {
     expect(q.get('fields')).toContain('customfield_10020')
   })
 
+  it('follows nextPageToken to the last page', async () => {
+    const { tracker, calls } = make({
+      'GET /rest/api/3/field': () => ({ body: FIELDS }),
+      'GET /rest/api/3/search/jql': (_req, url) =>
+        url.searchParams.get('nextPageToken') === 'page-2'
+          ? { body: { issues: [issue('ABC-3', status('To Do', 'new'))], isLast: true } }
+          : { body: { issues: [issue('ABC-1', status('To Do', 'new')), issue('ABC-2', status('To Do', 'new'))], nextPageToken: 'page-2' } }
+    })
+    expect((await tracker.listAssigned()).map((t) => t.key)).toEqual(['ABC-1', 'ABC-2', 'ABC-3'])
+    expect(calls.filter((c) => c.url.pathname.endsWith('/search/jql'))).toHaveLength(2)
+  })
+
+  it('stops after ten pages', async () => {
+    let n = 0
+    const { tracker, calls } = make({
+      'GET /rest/api/3/field': () => ({ body: FIELDS }),
+      'GET /rest/api/3/search/jql': () => ({ body: { issues: [issue(`ABC-${++n}`, status('To Do', 'new'))], nextPageToken: `page-${n + 1}` } })
+    })
+    expect(await tracker.listAssigned()).toHaveLength(10)
+    expect(calls.filter((c) => c.url.pathname.endsWith('/search/jql'))).toHaveLength(10)
+  })
+
   it('finds the sprint field once', async () => {
     const { tracker, calls } = make({ 'GET /rest/api/3/field': () => ({ body: FIELDS }), 'GET /rest/api/3/search/jql': search })
     await tracker.listAssigned()

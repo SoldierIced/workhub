@@ -13,7 +13,7 @@ const AGENT_NAME: Record<string, MessageKey> = { claude: 'agentUsage.agent.claud
  * day and any unpriced tokens on hover. Renders nothing when no agent spent anything.
  */
 export function ApiSpendList({ spend, className, compact = false }: { spend: readonly ApiAgentSpend[]; className?: string; /** One line with today's total, each agent on hover (the sidebar). */ compact?: boolean }) {
-  const { t, formatNumber } = useI18n()
+  const { t, formatNumber, locale } = useI18n()
   const agents = useConfig()?.agents ?? []
   if (!spend.length) return null
   const money = (usd: number) => formatNumber(usd, { style: 'currency', currency: 'USD', maximumFractionDigits: usd > 0 && usd < 1 ? 3 : 2 })
@@ -38,7 +38,7 @@ export function ApiSpendList({ spend, className, compact = false }: { spend: rea
           <li
             key={s.agent}
             className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-x-3 text-xs tabular-nums"
-            title={`${t('agentUsage.apiSpendDays')}\n${apiSpendDetail(s, money, (n) => t('agentUsage.apiUnpriced', { tokens: formatTokens(n) }))}`}
+            title={`${t('agentUsage.apiSpendDays')}\n${apiSpendDetail(s, money, (n) => t('agentUsage.apiUnpriced', { tokens: formatTokens(n, locale) }))}`}
             data-testid="api-spend-agent"
           >
             <span className="truncate font-medium text-text">{name(s.agent)}</span>

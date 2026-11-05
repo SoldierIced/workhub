@@ -136,7 +136,7 @@ export interface SubagentBodyProps {
 /** A sub-agent's conversation: header, prompt, steps and answer. Rendered inside a Radix dialog (the sheet, or a window). */
 export function SubagentBody({ sessionId, subagentId, depth, onBack = backSubagent, onOpenNested, inWindow }: SubagentBodyProps) {
   const openNested = onOpenNested ?? ((id: string) => openSubagent(sessionId, id, true))
-  const { t, tn, formatNumber } = useI18n()
+  const { t, tn, formatNumber, locale } = useI18n()
   const load = useConversation(sessionId, subagentId)
   const [shown, setShown] = useState(ENTRY_PAGE)
   const c = load.state === 'ready' ? load.conversation : undefined
@@ -167,7 +167,7 @@ export function SubagentBody({ sessionId, subagentId, depth, onBack = backSubage
             )}
             {c?.tokens?.total !== undefined && (
               <span title={formatNumber(c.tokens.total)}>
-                {t('subagent.tokens')}: {formatTokens(c.tokens.total)}
+                {t('subagent.tokens')}: {formatTokens(c.tokens.total, locale)}
               </span>
             )}
             {c?.model && (

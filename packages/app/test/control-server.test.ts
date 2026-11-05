@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { controlEnv, controlSocketPath, newControlToken, parseReviewBody, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
+import { controlEnv, controlSocketPath, NO_CONTROL_ENV, newControlToken, parseReviewBody, privateSocketDir, probeSocket, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -25,11 +26,13 @@ function call(socketPath: string, method: string, path: string, body?: unknown):
 describe('control endpoint', () => {
   it('puts the socket in the data folder, a temp file for long paths, a pipe on Windows', () => {
     expect(controlSocketPath('/data/wh', 'darwin')).toBe(join('/data/wh', 'control.sock'))
-    expect(controlSocketPath(`/${'x'.repeat(120)}`, 'darwin')).toMatch(/workhub-control-[0-9a-f]{16}\.sock$/)
+    expect(controlSocketPath(`/${'x'.repeat(120)}`, 'darwin', () => '/run/user/501/workhub')).toMatch(/^\/run\/user\/501\/workhub\/workhub-control-[0-9a-f]{16}\.sock$/)
     expect(controlSocketPath('C:\\data', 'win32')).toMatch(/^\\\\\.\\pipe\\workhub-control-[0-9a-f]{16}$/)
-    expect(controlEnv('s1', { socket: '/x.sock' })).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_SOCKET: '/x.sock' })
-    expect(controlEnv('s1', { url: 'http://127.0.0.1:5000', token: 't' })).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_URL: 'http://127.0.0.1:5000', WORKHUB_TOKEN: 't' })
-    expect(controlEnv('s1', null)).toEqual({ WORKHUB_SESSION: 's1' })
+    // Every variable is set, the unused ones empty, so nothing inherited from a parent process is left.
+    expect(controlEnv('s1', { socket: '/x.sock' })).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_SOCKET: '/x.sock', WORKHUB_URL: '', WORKHUB_TOKEN: '' })
+    expect(controlEnv('s1', { url: 'http://127.0.0.1:5000', token: 't' })).toEqual({ WORKHUB_SESSION: 's1', WORKHUB_SOCKET: '', WORKHUB_URL: 'http://127.0.0.1:5000', WORKHUB_TOKEN: 't' })
+    expect(controlEnv('s1', null)).toEqual({ WORKHUB_SESSION: '', WORKHUB_SOCKET: '', WORKHUB_URL: '', WORKHUB_TOKEN: '' })
+    expect(NO_CONTROL_ENV).toEqual(controlEnv('s1', null))
     expect(usesLoopbackControl('win32')).toBe(true)
     expect(usesLoopbackControl('darwin')).toBe(false)
     expect(newControlToken()).toMatch(/^[0-9a-f]{64}$/)
@@ -91,6 +94,69 @@ describe('control endpoint', () => {
       expect((await call(socket, 'POST', '/v1/sessions/zz/review')).status).toBe(404)
       expect((await call(socket, 'GET', '/v1/sessions/s1/review')).status).toBe(405)
       expect((await call(socket, 'POST', '/nope')).status).toBe(404)
+    } finally {
+      server?.close()
+    }
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('control socket ownership', () => {
+  // Under /tmp: the user's temp folder on macOS is too long for some socket paths.
+  const newDir = () => {
+    const dir = mkdtempSync(join('/tmp', 'wh-own-'))
+    dirs.push(dir)
+    return dir
+  }
+
+  it('puts a long-path socket in a folder only the user can open', () => {
+    const runtime = newDir()
+    const dir = privateSocketDir({ XDG_RUNTIME_DIR: runtime })
+    expect(dir).toBe(join(runtime, 'workhub'))
+    expect(statSync(dir).mode & 0o777).toBe(0o700)
+    const tmp = newDir()
+    const made = privateSocketDir({}, tmp)
+    dirs.push(made)
+    expect(made.startsWith(join(tmp, 'workhub-'))).toBe(true)
+    expect(statSync(made).mode & 0o777).toBe(0o700)
+    // Two launches never share a predictable path.
+    const other = privateSocketDir({}, tmp)
+    dirs.push(other)
+    expect(other).not.toBe(made)
+    const socket = controlSocketPath(`/${'x'.repeat(120)}`, 'linux', () => made)
+    expect(Buffer.byteLength(socket)).toBeLessThanOrEqual(100)
+  })
+
+  it('leaves a socket another app serves alone and answers null', async () => {
+    const socket = join(newDir(), 'control.sock')
+    const logs: string[] = []
+    const first = await startControlServer(socket, { openReview: () => ({ ok: true }) })
+    expect(first).not.toBeNull()
+    try {
+      expect(await probeSocket(socket)).toBe('live')
+      const second = await startControlServer(socket, { openReview: () => ({ ok: true }), log: (m) => logs.push(m) })
+      expect(second).toBeNull()
+      expect(logs.join()).toMatch(/served by another process/)
+      // The first app still answers on its socket.
+      expect(await call(socket, 'GET', '/v1/health')).toEqual({ status: 200, json: { ok: true } })
+    } finally {
+      first?.close()
+    }
+  })
+
+  it('replaces a socket left by a process that died', async () => {
+    const socket = join(newDir(), 'control.sock')
+    expect(await probeSocket(socket)).toBe('stale')
+    // A process that listens and is killed leaves its socket file behind.
+    const child = spawn(process.execPath, ['-e', `require('node:net').createServer().listen(${JSON.stringify(socket)}, () => console.log('up'))`], { stdio: ['ignore', 'pipe', 'inherit'] })
+    await new Promise<void>((resolve) => child.stdout!.once('data', () => resolve()))
+    child.kill('SIGKILL')
+    await new Promise((resolve) => child.once('exit', resolve))
+    expect(existsSync(socket)).toBe(true)
+    expect(await probeSocket(socket)).toBe('stale')
+    const server = await startControlServer(socket, { openReview: () => ({ ok: true }) })
+    expect(server).not.toBeNull()
+    try {
+      expect(await call(socket, 'GET', '/v1/health')).toEqual({ status: 200, json: { ok: true } })
     } finally {
       server?.close()
     }

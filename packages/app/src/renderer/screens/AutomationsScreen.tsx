@@ -190,7 +190,7 @@ function RunRow({ run: r, now, locale, removed, onOpen }: { run: AutomationRun; 
   const { t, formatNumber } = useI18n()
   const usage = runUsageLabel(r, {
     money: (c) => formatNumber(c.amount, { style: 'currency', currency: c.currency, maximumFractionDigits: 2 }),
-    tokens: (n) => t('automations.run.tokens', { count: formatTokens(n) })
+    tokens: (n) => t('automations.run.tokens', { count: formatTokens(n, locale) })
   })
   const detail = r.detail ? (r.detail.startsWith('timeout:') ? t('automations.detail.timeout', { minutes: r.detail.slice(8) }) : DETAIL_KEYS.has(r.detail) ? t(`automations.detail.${r.detail}` as 'automations.detail.paused') : r.detail) : ''
   return (

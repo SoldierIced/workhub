@@ -1,9 +1,9 @@
 import type { ConnectionKind, ConnectionProvider, ValidationIssue, WorkhubConfig } from '@workhub/core'
 import type { MessageKey, Params } from '../i18n/translate'
 
-/** Where a fix lives: a Settings tab and, when there is one, the item to open in it. */
+/** Where a fix lives: a Settings tab (see `settingsSection`) and, when there is one, the item to open in it (a profile id opens that profile). */
 export interface IssueTarget {
-  tab: 'connections' | 'trackers' | 'health' | 'profiles' | 'accounts' | 'plan'
+  tab: 'connections' | 'trackers' | 'health' | 'profiles' | 'modules' | 'accounts' | 'plan'
   id?: string
 }
 
@@ -50,11 +50,13 @@ export function humanIssue(issue: ValidationIssue, config: WorkhubConfig, provid
     const p = config.profiles.find((x) => x.id === id)
     if (!p) return raw
     const target: IssueTarget = { tab: 'profiles', id: p.id }
+    // A profile's connection, account and agent picks live in Modules and screens.
+    const picks: IssueTarget = { tab: 'modules', id: p.id }
     const name = p.name || p.id
     const kind = issue.path.split('.')[3] as ConnectionKind | undefined
-    if (field === 'connections' && kind && kind in KIND_KEY) return { key, message: 'issues.profileConnection', params: { name, kind: label(KIND_KEY[kind]) }, action: { label: 'issues.editProfile', target }, technical }
-    if (field === 'accountIds') return { key, message: 'issues.profileAccount', params: { name }, action: { label: 'issues.editProfile', target }, technical }
-    if (field === 'agentIds') return { key, message: 'issues.profileAgent', params: { name }, action: { label: 'issues.editProfile', target }, technical }
+    if (field === 'connections' && kind && kind in KIND_KEY) return { key, message: 'issues.profileConnection', params: { name, kind: label(KIND_KEY[kind]) }, action: { label: 'issues.editProfile', target: picks }, technical }
+    if (field === 'accountIds') return { key, message: 'issues.profileAccount', params: { name }, action: { label: 'issues.editProfile', target: picks }, technical }
+    if (field === 'agentIds') return { key, message: 'issues.profileAgent', params: { name }, action: { label: 'issues.editProfile', target: picks }, technical }
     return { ...raw, action: { label: 'issues.editProfile', target } }
   }
 

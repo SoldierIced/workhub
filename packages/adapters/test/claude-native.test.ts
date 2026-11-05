@@ -403,6 +403,29 @@ describe('ClaudeBridgeMapper', () => {
   })
 })
 
+describe('ClaudeNativeRuntime bridge errors', () => {
+  it('fails the start when the bridge cannot run', async () => {
+    const rt = new ClaudeNativeRuntime({ bridgeDir: fakeBridge, nodeCommand: join(fixtures, 'no-such-node') })
+    await expect(rt.start({ sessionId: 'missing', agent: claude, account: null, cwd: fixtures, env: {} })).rejects.toThrow(/could not start the Claude bridge/)
+  })
+
+  it('keeps the error state when the bridge exits after an error line', async () => {
+    const rt = new ClaudeNativeRuntime({ bridgeDir: fakeBridge, stopTimeoutMs: 300 })
+    const events: AgentEvent[] = []
+    rt.subscribe((e) => events.push(e))
+    try {
+      await rt.start({ sessionId: 'crash', agent: claude, account: null, cwd: fixtures, env: {} })
+      await expect(rt.prompt('crash', 'crash')).rejects.toThrow('acme sdk crashed')
+      await waitFor(events, (e) => e.type === 'exit')
+      const states = events.flatMap((e) => (e.type === 'state' ? [e] : []))
+      expect(states.at(-1)).toMatchObject({ state: 'error', error: 'acme sdk crashed' })
+      expect(states.some((e) => e.state === 'stopped')).toBe(false)
+    } finally {
+      await rt.stopAll()
+    }
+  })
+})
+
 describe('ClaudeNativeRuntime stop', () => {
   it('frees the session id when a bridge had to be killed, so the next engine can start under it', async () => {
     const rt = new ClaudeNativeRuntime({ bridgeDir: fakeBridge, stopTimeoutMs: 300 })

@@ -93,6 +93,7 @@ export function HistoryScreen({ profileId, profiles = [], onOpened, visible = tr
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       setResult(await window.hub.history.list())
     } catch (e) {
@@ -131,6 +132,8 @@ export function HistoryScreen({ profileId, profiles = [], onOpened, visible = tr
   const page = useMemo(() => pageGroups(groups, limit), [groups, limit])
 
   const resume = async (e: HistoryItem, mode: 'app' | 'console') => {
+    // One start at a time: the context menu has no disabled state, so the guard lives here.
+    if (opening !== null) return
     // Already open: show it rather than start a second copy of the conversation.
     const live = open.get(historyId(e))
     if (live && mode === 'app') return onOpened(live)
@@ -304,7 +307,7 @@ export function HistoryScreen({ profileId, profiles = [], onOpened, visible = tr
       )}
       {result && groups.length === 0 && automationGroups.length === 0 && (
         <div className="py-12">
-          <EmptyState icon={<History className="size-6" aria-hidden />} title={query ? t('history.noMatch') : t('history.empty')} description={t('history.emptyDescription')} />
+          <EmptyState icon={<History className="size-6" aria-hidden />} title={query || agent !== ALL || account !== ALL || hideAutomations || filterProfile ? t('history.noMatch') : t('history.empty')} description={t('history.emptyDescription')} />
         </div>
       )}
       {automationGroups.length > 0 && (

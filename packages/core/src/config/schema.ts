@@ -6,6 +6,7 @@ import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
 import type { SessionGroups } from '../domain/session-groups'
 import { ALERT_SEVERITIES, METRIC_ALERT_THRESHOLD_RANGES, DEFAULT_METRIC_ALERT_THRESHOLDS, DEFAULT_BUSINESS_DAYS, type AlertThresholds } from '../alerts/types'
 import { DEFAULT_HEALTH_FLOOR_MINUTES, DEFAULT_HEALTH_REFRESH_MINUTES, DEFAULT_HEALTH_THRESHOLDS, HEALTH_FLOOR_CHOICES, HEALTH_THRESHOLD_RANGES, MAX_HEALTH_REFRESH_MINUTES, MIN_HEALTH_REFRESH_MINUTES, type HealthThresholds } from '../health/types'
+import { HEALTH_ALERT_CHANNELS, HEALTH_ALERT_KINDS, HEALTH_ALERT_THRESHOLDS } from '../health/alert-settings'
 import { DEFAULT_PR_EVENT_TOGGLES, PR_EVENT_KINDS, type PrEventToggles } from '../pr-events/types'
 import type { ChatWatcherSettings } from '../chat/types'
 import type { AutomationDefinition } from '../automations/types'
@@ -18,8 +19,10 @@ import { DEFAULT_WORKTREE_SETTINGS, WORKTREE_CLOSE_MODES } from '../worktrees/se
 import { DEFAULT_PLANNER_REFRESH_MINUTES, DEFAULT_REMINDER_LEAD_MINUTES, MAX_LEAD_MINUTES, MAX_PLANNER_REFRESH_MINUTES, MIN_PLANNER_REFRESH_MINUTES } from '../calendar/types'
 
 /**
- * The persisted config. Every change to its shape bumps `CONFIG_VERSION` and adds a migration
- * in `migrations.ts`. Secrets are never part of it (only `secretRef` keys).
+ * The persisted config. A change an older build cannot read (a field renamed, removed, retyped or
+ * made required) bumps `CONFIG_VERSION` and adds a migration in `migrations.ts`. A new optional
+ * field with a default needs no bump: older files load with the default, and an older build
+ * strips the field on its next save. Secrets are never part of it (only `secretRef` keys).
  */
 export const CONFIG_VERSION = 8
 
@@ -95,6 +98,8 @@ export interface AppOptions {
   reopenSessions: boolean
   /** A badge on the app icon (Dock, taskbar, launcher) with the number of sessions that need a look. */
   showAppBadge: boolean
+  /** What the menu bar popover shows (Settings → Notifications → Menu bar panel). */
+  trayPopover: TrayPopoverOptions
   /** Master switch: off silences every OS notification, whatever the per-kind switches say. */
   notificationsEnabled: boolean
   /** Read each finished reply aloud in new sessions (a session's own toggle overrides it). */
@@ -125,16 +130,38 @@ export interface AppOptions {
   agentDefaultModes?: Record<string, string>
 }
 
+/** The blocks of the menu bar popover that can be hidden, and how many meetings "Today" lists. */
+export interface TrayPopoverOptions {
+  /** Today's next meetings (Plan's calendars). */
+  meetings: boolean
+  /** How many of them, at most. */
+  meetingCount: 1 | 2 | 3
+  /** Plan inbox tasks due today (or overdue). */
+  plan: boolean
+  /** The pull request counts, while the profile has a code host. */
+  pullRequests: boolean
+  /** Health, while it is not healthy. */
+  health: boolean
+  /** One usage bar per agent account. */
+  usage: boolean
+  /** Recent notifications. */
+  recent: boolean
+}
+
+export const TRAY_POPOVER_MEETING_COUNTS = [1, 2, 3] as const
+export const DEFAULT_TRAY_POPOVER_OPTIONS: TrayPopoverOptions = { meetings: true, meetingCount: 2, plan: true, pullRequests: true, health: true, usage: true, recent: true }
+
 /** Words per minute the voice speaks at (Workhub 1's range). */
 export const SPEECH_RATE_RANGE = [120, 300] as const
 export const DEFAULT_SPEECH_RATE = 190
 /** The cheap model a long message is summarized with before it is read aloud. */
 export const DEFAULT_LISTEN_MODEL = 'haiku'
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, listenModel: DEFAULT_LISTEN_MODEL, welcomeDone: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, trayPopover: DEFAULT_TRAY_POPOVER_OPTIONS, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, listenModel: DEFAULT_LISTEN_MODEL, welcomeDone: false }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
-  return { ...DEFAULT_OPTIONS, ...config.options }
+  const options = { ...DEFAULT_OPTIONS, ...config.options }
+  return { ...options, trayPopover: { ...DEFAULT_TRAY_POPOVER_OPTIONS, ...config.options?.trayPopover } }
 }
 
 /** The per-agent default modes with one agent's set (or cleared, for an empty or null mode). */
@@ -224,6 +251,8 @@ const account = z.object({
   name: z.string().min(1),
   configDir: z.string().optional(),
   env: stringMap.optional(),
+  // Variable names only; the values are in the secret store (`accountEnvRef`).
+  envNames: z.array(z.string().regex(ENV_NAME)).optional(),
   // Optional, so older files load unchanged (no version bump).
   command: z.string().trim().min(1).max(1000).optional(),
   defaultModel: z.string().trim().min(1).max(200).optional(),
@@ -236,6 +265,9 @@ const clamped = (range: readonly [number, number], fallback: number) =>
     .number()
     .default(fallback)
     .transform((n) => Math.min(range[1], Math.max(range[0], Math.round(n))))
+
+/** A whole number of at least `min`, raised to it (and rounded) instead of refused, like `clamped`. */
+const atLeast = (min: number) => z.number().transform((n) => Math.max(min, Math.round(n)))
 
 const healthThresholds = z.object({
   ...(Object.fromEntries(
@@ -280,10 +312,32 @@ const alertRules = z.object({
   overrides: z.record(z.string().trim().min(1).max(200), metricRuleOverride).default({})
 })
 
+// Health alerts per kind (Settings → Alerts). Every field optional or defaulted: no version bump.
+const healthAlertKind = (kind: (typeof HEALTH_ALERT_KINDS)[number]) => {
+  const spec = HEALTH_ALERT_THRESHOLDS[kind]
+  return z
+    .object({
+      notify: z.boolean().default(true),
+      // A kind without a tunable threshold drops one written by hand instead of refusing the file.
+      threshold: spec ? within(spec.range).optional() : z.unknown().transform((): undefined => undefined),
+      channels: z.array(z.enum(HEALTH_ALERT_CHANNELS)).max(HEALTH_ALERT_CHANNELS.length).transform((list) => [...new Set(list)]).optional()
+    })
+    .optional()
+}
+const healthAlerts = z.object(Object.fromEntries(HEALTH_ALERT_KINDS.map((k) => [k, healthAlertKind(k)])) as Record<(typeof HEALTH_ALERT_KINDS)[number], ReturnType<typeof healthAlertKind>>)
+
 const healthSettings = z.object({
   refreshMinutes: clamped([MIN_HEALTH_REFRESH_MINUTES, MAX_HEALTH_REFRESH_MINUTES], DEFAULT_HEALTH_REFRESH_MINUTES),
   environments: z.array(healthEnvironment).default([]),
-  alertRules: alertRules.optional()
+  alertRules: alertRules.optional(),
+  alerts: healthAlerts.optional()
+})
+
+/** An hour of the day for quiet hours: 0 to 23 (24 reads as 0). */
+const dayHour = z.number().transform((n) => ((Math.round(n) % 24) + 24) % 24)
+// Optional, so it needs no config version bump.
+const profileAlerts = z.object({
+  quietHours: z.object({ startHour: dayHour, endHour: dayHour }).nullable().default(null)
 })
 
 const modules = z.object(
@@ -403,7 +457,8 @@ const profile = z.object({
   worktrees: worktrees.optional(),
   accountFailover: z.enum(['ask', 'automatic', 'off']).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  planner: planner.optional()
+  planner: planner.optional(),
+  alerts: profileAlerts.optional()
 })
 
 const groupMember = z.object({
@@ -430,18 +485,20 @@ const sessionGroups = z.object({
     .default([])
 })
 
-const hour = z.number().int().min(0).max(24)
+/** A usage percentage, kept within 0..100 (not rounded). */
+const share = z.number().transform((n) => Math.min(100, Math.max(0, n)))
+const hour = z.number().transform((n) => Math.min(24, Math.max(0, Math.round(n))))
 const weekdays = z.array(z.number().int().min(0).max(6))
 
 const chatWatcher = z.object({
   enabled: z.boolean().default(false),
   accountId: id.nullable().default(null),
   model: z.string().default('haiku'),
-  intervalMinutes: z.number().int().min(1).default(10),
+  intervalMinutes: atLeast(1).default(10),
   startHour: hour.default(9),
   endHour: hour.default(19),
   weekdays: weekdays.default([1, 2, 3, 4, 5]),
-  usageThreshold: z.number().min(0).max(100).default(85),
+  usageThreshold: share.default(85),
   channels: z.array(z.object({ id: z.string().min(1), name: z.string(), purpose: z.string().default('') })).default([])
 })
 
@@ -461,18 +518,18 @@ const automation = z.object({
     .object({
       chatChannelIds: z.array(z.string()).default([]),
       prOwner: z.string().default(''),
-      intervalMinutes: z.number().int().min(1).nullable().default(null),
+      intervalMinutes: atLeast(1).nullable().default(null),
       pendingGate: z.object({ kind: z.literal('prReviewQueue'), stateFile: z.string() }).optional()
     })
     .default({ chatChannelIds: [], prOwner: '', intervalMinutes: null }),
   window: z.object({ days: weekdays, startHour: hour, endHour: hour }).default({ days: [1, 2, 3, 4, 5], startHour: 9, endHour: 19 }),
   limits: z
-    .object({ maxRuns: z.number().int().min(1), perMinutes: z.number().int().min(1), maxPerDay: z.number().int().min(1).nullable() })
+    .object({ maxRuns: atLeast(1), perMinutes: atLeast(1), maxPerDay: atLeast(1).nullable() })
     .default({ maxRuns: 6, perMinutes: 5, maxPerDay: 60 }),
-  usageThreshold: z.number().min(0).max(100).default(85),
+  usageThreshold: share.default(85),
   sessionPolicy: z.enum(['reuse', 'newEachRun']).default('reuse'),
   clearContext: z.boolean().optional(),
-  runTimeoutMinutes: z.number().int().min(1).default(30),
+  runTimeoutMinutes: atLeast(1).default(30),
   receivesChatReplies: z.boolean().default(true),
   notify: z.enum(['failures', 'always', 'never']).default('failures')
 })
@@ -491,6 +548,20 @@ const usageBudget = z.object({
     .transform((n) => Math.min(50, Math.max(0, Math.round(n))))
     .default(DEFAULT_USAGE_BUDGET.warnMargin),
   ceilings: z.record(z.string(), z.record(z.string(), percent)).default({})
+})
+
+const popoverBlock = (key: keyof TrayPopoverOptions) => z.boolean().default(DEFAULT_TRAY_POPOVER_OPTIONS[key] as boolean).catch(DEFAULT_TRAY_POPOVER_OPTIONS[key] as boolean)
+const trayPopoverOptions = z.object({
+  meetings: popoverBlock('meetings'),
+  meetingCount: z
+    .union([z.literal(1), z.literal(2), z.literal(3)])
+    .default(DEFAULT_TRAY_POPOVER_OPTIONS.meetingCount)
+    .catch(DEFAULT_TRAY_POPOVER_OPTIONS.meetingCount),
+  plan: popoverBlock('plan'),
+  pullRequests: popoverBlock('pullRequests'),
+  health: popoverBlock('health'),
+  usage: popoverBlock('usage'),
+  recent: popoverBlock('recent')
 })
 
 export const configSchema = z.object({
@@ -529,10 +600,11 @@ export const configSchema = z.object({
       keepInTray: z.boolean().default(true),
       reopenSessions: z.boolean().default(true),
       showAppBadge: z.boolean().default(true),
+      trayPopover: trayPopoverOptions.default(DEFAULT_TRAY_POPOVER_OPTIONS).catch(DEFAULT_TRAY_POPOVER_OPTIONS),
       notificationsEnabled: z.boolean().default(true),
       readAloud: z.boolean().default(false),
       speechVoice: z.string().max(200).default(''),
-      speechRate: z.number().int().min(SPEECH_RATE_RANGE[0]).max(SPEECH_RATE_RANGE[1]).default(DEFAULT_SPEECH_RATE),
+      speechRate: clamped(SPEECH_RATE_RANGE, DEFAULT_SPEECH_RATE),
       listenModel: z.string().trim().max(100).regex(/^[\w.:@\-[\]]*$/).default(DEFAULT_LISTEN_MODEL),
       welcomeDone: z.boolean().default(false),
       protectedBranches: z.array(z.string().trim().min(1).max(200)).max(100).optional(),

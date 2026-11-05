@@ -13,9 +13,13 @@ import {
   type ReviewAction
 } from '@workhub/core'
 import { CliNotFoundError, failureText, parseJsonPages, type CliResult, type CliRunner } from '../shared/cli'
-import { mapDetail, mapSearchResponse } from './mapping'
+import { mapDetail, mapSearchResponse, searchNextCursor } from './mapping'
 
-const SEARCH_QUERY = `query($q: String!) { search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
+/** At most this many pull requests per list, read in at most `SEARCH_PAGES` pages of 50. */
+const SEARCH_CAP = 500
+const SEARCH_PAGES = 10
+
+const SEARCH_QUERY = `query($q: String!, $after: String) { search(query: $q, type: ISSUE, first: 50, after: $after) { pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
   number title url state isDraft updatedAt headRefName baseRefName additions deletions changedFiles
   reviewDecision mergeable author { login } repository { name owner { login } }
   comments { totalCount } reviewThreads { totalCount }
@@ -90,12 +94,22 @@ export class GitHubCodeHost implements CodeHost {
 
   private async search(qualifier: string, query: PullRequestQuery): Promise<PullRequest[]> {
     const q = `is:pr is:open archived:false ${qualifier} ${query.scope ?? ''}`.trim()
-    const result = await this.gh(['api', ...this.hostArgs, 'graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`], 'GitHub search failed')
-    try {
-      return mapSearchResponse(result.stdout)
-    } catch {
-      throw new CodeHostError('GitHub returned an answer Workhub could not read')
+    const out: PullRequest[] = []
+    let after: string | null = null
+    for (let page = 0; page < SEARCH_PAGES && out.length < SEARCH_CAP; page++) {
+      const result = await this.gh(
+        ['api', ...this.hostArgs, 'graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`, ...(after ? ['-f', `after=${after}`] : [])],
+        'GitHub search failed'
+      )
+      try {
+        out.push(...mapSearchResponse(result.stdout))
+        after = searchNextCursor(result.stdout)
+      } catch {
+        throw new CodeHostError('GitHub returned an answer Workhub could not read')
+      }
+      if (!after) break
     }
+    return out.slice(0, SEARCH_CAP)
   }
 
   listAuthored(query: PullRequestQuery): Promise<PullRequest[]> {

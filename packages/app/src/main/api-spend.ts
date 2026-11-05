@@ -40,9 +40,9 @@ export function apiKeyClaudeDirs(config: WorkhubConfig, home: string, env: NodeJ
   const out = new Set<string>()
   for (const ref of usageAccounts(config, 'claude', home, env)) {
     const account = ref.accountId ? (config.accounts.find((a) => a.id === ref.accountId) ?? null) : null
-    // Sessions get Workhub's environment plus the agent's and the account's own.
+    // Sessions get Workhub's environment plus the agent's and the account's own (stored values count by name).
     const vars = { ...env, ...launchEnvironment(agent, account) }
-    if (vars['ANTHROPIC_API_KEY']) out.add(resolve(ref.configDir ?? join(home, '.claude')))
+    if (vars['ANTHROPIC_API_KEY'] || account?.envNames?.includes('ANTHROPIC_API_KEY')) out.add(resolve(ref.configDir ?? join(home, '.claude')))
   }
   return [...out]
 }

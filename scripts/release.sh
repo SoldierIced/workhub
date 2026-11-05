@@ -7,8 +7,8 @@
 #   scripts/release.sh --publish   the same, then `gh release create` on the repository
 #   scripts/release.sh --dry-run   print every step and the release notes; build and write nothing
 #
-# <version> is the root package.json's. The release is a pre-release while it has a suffix
-# (2.0.0-alpha.1). CI (.github/workflows/release.yml) builds every OS when a v* tag is pushed and
+# <version> is the root package.json's; a suffix (2.0.0-alpha.1) does not make it a pre-release,
+# as in CI, so it becomes the latest release. CI (.github/workflows/release.yml) builds every OS when a v* tag is pushed and
 # attaches the installers to a draft release; use this script for a macOS-only release from here.
 # The macOS build is signed with an Apple Development identity or ad hoc, never notarized.
 set -euo pipefail
@@ -40,8 +40,10 @@ app_version="$(node -p "require('$root/packages/app/package.json').version")"
 tag="v$version"
 dist="$root/dist"
 notes="$dist/release-notes-$version.md"
-prerelease=()
-[[ "$version" == *-* ]] && prerelease=(--prerelease)
+# As in .github/workflows/release.yml: alpha versions too are published as regular releases, so the
+# releases/latest/download links (README, installers) follow them; GitHub never makes a
+# pre-release the latest. The version keeps its -alpha.N suffix for the update checks.
+prerelease=(--prerelease=false)
 
 case "$(uname -s)" in
   Darwin) os=mac ;;

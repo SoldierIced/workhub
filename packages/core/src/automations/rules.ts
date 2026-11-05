@@ -4,12 +4,21 @@ import { isMe, pullRequestOwner, tsToMs } from '../chat/links'
 import type { ChatMessage } from '../chat/types'
 import type { AutomationDefinition, AutomationLimits, AutomationWindow } from './types'
 
+/**
+ * Whether an hour (0-23) is inside `[startHour, endHour)`. A window whose start is after its end
+ * crosses midnight (22 to 6 holds 22:00-05:59); equal hours mean the whole day.
+ */
+export function inHourWindow(hour: number, startHour: number, endHour: number): boolean {
+  if (startHour === endHour) return true
+  if (startHour < endHour) return hour >= startHour && hour < endHour
+  return hour >= startHour || hour < endHour
+}
+
 /** Why a time is outside the window: `days` or `hours`; null inside it. Local time. */
 export function windowReason(window: AutomationWindow, now: number): 'days' | 'hours' | null {
   const d = new Date(now)
   if (!window.days.includes(d.getDay())) return 'days'
-  const hour = d.getHours()
-  if (hour < window.startHour || hour >= window.endHour) return 'hours'
+  if (!inHourWindow(d.getHours(), window.startHour, window.endHour)) return 'hours'
   return null
 }
 

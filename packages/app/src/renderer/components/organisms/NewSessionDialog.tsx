@@ -36,6 +36,11 @@ export interface NewSessionDialogProps {
   onStarted: (sessionId: string) => void
 }
 
+/** Whether the agents of the profile that owns the folder (another one than the active) are still loading. */
+export function ownerAgentsLoading(sessionProfileId: string | null, profileId: string | null, ownerAgents: readonly EffectiveAgent[] | null, failed: boolean): boolean {
+  return sessionProfileId !== profileId && ownerAgents === null && !failed
+}
+
 /** "Default (auto)": the default option names the agent's own default when it is known. */
 const optionDefault = (label: string, id: string | undefined) => (id ? `${label} (${id})` : label)
 
@@ -53,19 +58,28 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
   const sessionProfileId = useMemo(() => newSessionProfile(cwd, profileId, profiles, home), [cwd, profileId, profiles, home])
   const owner = profiles.find((p) => p.id === sessionProfileId)
   const [ownerAgents, setOwnerAgents] = useState<EffectiveAgent[] | null>(null)
+  // The owner's agents could not be read: the active profile's list stands in, as before.
+  const [ownerFailed, setOwnerFailed] = useState(false)
   useEffect(() => {
     setOwnerAgents(null)
+    setOwnerFailed(false)
     if (!open || sessionProfileId === profileId) return
     let alive = true
     void window.hub.config.effectiveAgents(sessionProfileId).then(
       (list) => alive && setOwnerAgents(list),
-      () => alive && setOwnerAgents(null)
+      () => {
+        if (!alive) return
+        setOwnerAgents(null)
+        setOwnerFailed(true)
+      }
     )
     return () => {
       alive = false
     }
   }, [open, sessionProfileId, profileId])
   const otherProfile = sessionProfileId !== profileId && ownerAgents !== null
+  // Starting before the owner's agents are in would start the active profile's agent in its folder.
+  const ownerLoading = ownerAgentsLoading(sessionProfileId, profileId, ownerAgents, ownerFailed)
   const agents = otherProfile ? ownerAgents : activeAgents
   const preferredAgents = otherProfile ? owner?.preferredAgents : activePreferred
   const [error, setError] = useState('')
@@ -199,7 +213,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" disabled={!agentKey || !cwd || busy || missing} onClick={() => void start()}>
+          <Button variant="primary" disabled={!agentKey || !cwd || busy || missing || ownerLoading} onClick={() => void start()}>
             {t('newSession.start')}
           </Button>
         </>
@@ -210,7 +224,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault()
-          if (agentKey && cwd && !busy && !missing) void start()
+          if (agentKey && cwd && !busy && !missing && !ownerLoading) void start()
         }}
       >
         <Field

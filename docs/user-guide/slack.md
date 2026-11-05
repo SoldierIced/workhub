@@ -20,7 +20,7 @@ In **Settings → Slack**:
 | **Model for the reads** | A small model, like `haiku` (the default), costs the least. |
 | **Every (minutes)** | Read interval; the minimum is 3 minutes, the default 10. |
 | **Skip reads above this 5 h usage (%)** | Reads pause while the account's usage is this high (default 85). |
-| **Hours**, **Days** | Reads only run inside these hours and on these days (default 9 to 19, Monday to Friday). |
+| **Hours**, **Days** | Reads only run inside these hours and on these days (default 9 to 19, Monday to Friday). Hours may cross midnight (22 to 6 reads from 22:00 to 05:59); equal hours mean the whole day. Days are checked against the current day, so after midnight the next day must be selected too. |
 | **Channels** | **Channel id** (like `C0123…`, from the channel details in Slack), a **Name** to show and what it is for (for example `PR reviews`); the purpose is given to the agent as context. |
 
 The screen's header shows the state (**Off**, **Watching**, **Reading…**, **Paused**, **Failing**),

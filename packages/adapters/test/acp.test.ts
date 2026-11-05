@@ -257,4 +257,38 @@ describe('AcpRuntime against a fake ACP agent', () => {
       expect(events.at(-1)).toMatchObject({ type: 'state', state: 'error' })
     })
   })
+
+  it('stops the agent and fails the start when it never answers', async () => {
+    const rt = new AcpRuntime({ clientName: 'workhub-test', clientVersion: '0.0.0', startTimeoutMs: 200 })
+    const events: AgentEvent[] = []
+    rt.subscribe((e) => events.push(e))
+    try {
+      await expect(rt.start({ sessionId: 's-silent', agent: fakeAgent, account: null, cwd: process.cwd(), env: { FAKE_ACP_SILENT: '1' } })).rejects.toThrow(
+        /"Fake" did not finish starting within 0 s; it was stopped/
+      )
+      expect(events.at(-1)).toMatchObject({ type: 'state', state: 'error' })
+      await expect(rt.prompt('s-silent', 'hello')).rejects.toThrow(/no ready ACP session/)
+    } finally {
+      await rt.stopAll()
+    }
+  })
+
+  it.skipIf(process.platform === 'win32')('stops the agent by signalling its whole process group', async () => {
+    const calls: [number, NodeJS.Signals][] = []
+    const kill = (pid: number, signal: NodeJS.Signals) => {
+      calls.push([pid, signal])
+      process.kill(pid, signal)
+    }
+    const rt = new AcpRuntime({ clientName: 'workhub-test', clientVersion: '0.0.0', killTree: { kill } })
+    try {
+      await rt.start({ sessionId: 's-group', agent: fakeAgent, account: null, cwd: process.cwd(), env: {} })
+      await rt.stop('s-group')
+      expect(calls).toHaveLength(1)
+      const [pid, signal] = calls[0]!
+      expect(pid).toBeLessThan(0)
+      expect(signal).toBe('SIGTERM')
+    } finally {
+      await rt.stopAll()
+    }
+  })
 })
