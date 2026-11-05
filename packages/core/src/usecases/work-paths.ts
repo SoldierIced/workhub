@@ -1,8 +1,11 @@
 /**
  * Where a session worked, from its tool calls (Workhub 1's rule): the folders its edits and writes
  * touched, the folders its `cd` and `git -C` commands went to, and the cwd its commands ran in.
- * Reading a file does not count. Shared by the token spend per folder (which follows the last
- * folder) and the monitor's "Local changes" (which lists the repositories behind all of them).
+ * Reading a file does not count. The token spend per folder follows the last of them.
+ *
+ * The monitor's "Local changes" uses a narrower list (`toolChangePaths`): only the folders the
+ * session changed something in, through an edit or a git command that writes (a commit, a push, a
+ * new branch) or a pull request it opened or merged. A `cd` to read a repository does not count.
  * Pure: the caller passes the home folder.
  */
 
@@ -87,4 +90,141 @@ export function noteWorkPath(paths: string[], path: string | undefined, limit = 
   }
   paths.push(path)
   if (paths.length > limit) paths.splice(0, paths.length - limit)
+}
+
+/**
+ * git subcommands that change a repository: the agent's own work, not a look around. `worktree
+ * add` is left out: the work happens in the new worktree, which its own edits and commits list.
+ */
+const GIT_WRITE = /^(commit|push|merge|rebase|cherry-pick|revert|am|apply)\b|^(checkout|switch)\s+-[bBcC]\b/
+
+/** A command without the bodies of its here-documents (a PR body is text, not commands); `<<<` is a here-string, not one. */
+function withoutHeredocs(command: string): string {
+  const out: string[] = []
+  let end: string | undefined
+  for (const line of command.split('\n')) {
+    if (end !== undefined) {
+      if (line.replace(/^\t+/, '').trim() === end) end = undefined
+      continue
+    }
+    out.push(line)
+    const m = /(?<!<)<<(?!<)-?\s*(["']?)([A-Za-z_][\w-]*)\1/.exec(line)
+    if (m) end = m[2]
+  }
+  return out.join('\n')
+}
+
+/**
+ * The simple commands of a shell line, split on newlines, `;`, `&&`, `||` and `|` outside quotes,
+ * each with how many subshells it opens (leading `(`) and closes (trailing `)`).
+ */
+function shellSegments(command: string): { text: string; opens: number; closes: number }[] {
+  const parts: string[] = []
+  let cur = ''
+  let quote: string | undefined
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!
+    if (quote) {
+      if (ch === '\\' && quote === '"' && i + 1 < command.length) {
+        cur += ch + command[++i]
+        continue
+      }
+      if (ch === quote) quote = undefined
+      cur += ch
+      continue
+    }
+    if (ch === '\\' && i + 1 < command.length) {
+      cur += ch + command[++i]
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      cur += ch
+      continue
+    }
+    if (ch === '\n' || ch === ';' || ch === '|' || (ch === '&' && command[i + 1] === '&')) {
+      parts.push(cur)
+      cur = ''
+      if ((ch === '|' && command[i + 1] === '|') || ch === '&') i++
+      continue
+    }
+    cur += ch
+  }
+  parts.push(cur)
+  return parts.map((raw) => {
+    let text = raw.trim()
+    let opens = 0
+    let closes = 0
+    while (/^[({]/.test(text)) {
+      if (text[0] === '(') opens++
+      text = text.slice(1).trimStart()
+    }
+    while (/[)}]$/.test(text)) {
+      if (text.endsWith(')')) closes++
+      text = text.slice(0, -1).trimEnd()
+    }
+    return { text, opens, closes }
+  })
+}
+
+/** A shell word at the start of `rest`: quoted (spaces allowed) or bare; its unquoted value and length. */
+function shellWord(rest: string): { value: string; length: number } | undefined {
+  const m = /^(?:"([^"]*)"|'([^']*)'|([^\s"']+))/.exec(rest)
+  return m ? { value: m[1] ?? m[2] ?? m[3]!, length: m[0].length } : undefined
+}
+
+/** `VAR=x`, `command`, `time`, `env`, `nice` and `sudo` in front of a command do not change what it is. */
+const PREFIX = /^(?:[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\S*)\s+|(?:command|time|env|nice|sudo)\s+)/
+
+/**
+ * The folders a shell command changed a repository in, in order: where each writing git command
+ * ran (its `cd`s, subshells and `-C` followed), and where `gh pr create` or `gh pr merge` ran.
+ * Quoted text is never split, and a `cd` inside `( … )` ends with the subshell.
+ */
+export function commandChangePaths(command: string, cwd: string | undefined, home: string): string[] {
+  const out: string[] = []
+  let here = cwd
+  const saved: (string | undefined)[] = []
+  for (const seg of shellSegments(withoutHeredocs(command))) {
+    for (let i = 0; i < seg.opens; i++) saved.push(here)
+    let text = seg.text
+    for (let p = PREFIX.exec(text); p; p = PREFIX.exec(text)) text = text.slice(p[0].length)
+    const cd = /^cd\s+/.exec(text)
+    if (cd) {
+      const word = shellWord(text.slice(cd[0].length))
+      const quotedHome = word && /^["']/.test(text.slice(cd[0].length)) && word.value.startsWith('~')
+      if (word && !quotedHome) here = resolveWorkPath(word.value, here, home) ?? here
+    } else if (/^git\s/.test(text)) {
+      let rest = text.slice(3).trimStart()
+      let where = here
+      for (;;) {
+        const c = /^-C\s+/.exec(rest)
+        if (c) {
+          const word = shellWord(rest.slice(c[0].length))
+          if (!word) break
+          where = resolveWorkPath(word.value, where, home)
+          rest = rest.slice(c[0].length + word.length).trimStart()
+          continue
+        }
+        const o = /^(?:-c\s+\S+|--no-pager|--paginate|-P|--no-replace-objects|--(?:git-dir|work-tree|namespace)=\S+)\s*/.exec(rest)
+        if (o) {
+          rest = rest.slice(o[0].length)
+          continue
+        }
+        break
+      }
+      if (where && GIT_WRITE.test(rest)) out.push(where)
+    } else if (here && /^gh\s+pr\s+(create|merge)\b/.test(text) && !/\s(-R|--repo)[\s=]/.test(text)) out.push(here)
+    for (let i = 0; i < seg.closes && saved.length; i++) here = saved.pop()
+  }
+  return out
+}
+
+/**
+ * The folders one Claude Code tool call changed something in: an edited or written file's folder,
+ * or where a Bash command wrote to git or opened a pull request (see `commandChangePaths`).
+ */
+export function toolChangePaths(tool: string | undefined, input: Readonly<Record<string, unknown>>, cwd: string | undefined, home: string): string[] {
+  if (tool === 'Bash') return typeof input['command'] === 'string' ? commandChangePaths(input['command'], cwd, home) : []
+  return toolWorkPaths(tool, input, cwd, home)
 }

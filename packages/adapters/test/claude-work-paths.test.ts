@@ -30,6 +30,13 @@ describe('the folders a Claude session worked in', () => {
     expect(p.snapshot().workPaths).toEqual([`${BASE}/api/src`, BASE, `${BASE}/web`])
   })
 
+  it('keeps apart the folders it changed: the edit, not the cd or the git status', () => {
+    const p = new ClaudeTranscriptParser({ home: HOME })
+    for (const l of SESSION) p.ingest(l)
+    p.ingest(line(`${BASE}/web`, 5, [tool('Bash', { command: 'git -C ../docs log && git commit -am wip' })]))
+    expect(p.snapshot().changePaths).toEqual([`${BASE}/api/src`, `${BASE}/web`])
+  })
+
   it('leaves the field unset before anything was read', () => {
     expect(new ClaudeTranscriptParser({ home: HOME }).snapshot().workPaths).toBeUndefined()
   })

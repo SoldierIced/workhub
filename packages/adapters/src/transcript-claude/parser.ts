@@ -5,7 +5,7 @@
  * The format is internal to Claude Code: every field is optional and unknown lines are skipped.
  */
 import { homedir } from 'node:os'
-import { noteWorkPath, toolWorkPaths, type SessionMonitorSnapshot, type SessionPullRequestLink, type SubagentSummary, type TokenUsage, type ToolCallSummary } from '@workhub/core'
+import { noteWorkPath, toolChangePaths, toolWorkPaths, type SessionMonitorSnapshot, type SessionPullRequestLink, type SubagentSummary, type TokenUsage, type ToolCallSummary } from '@workhub/core'
 import { contextWindow, describeTool, estimateCost, pullRequestNumbers, pullRequestUrls, ticketKeys, toolKind } from '../shared/claude-tools'
 import { noteLink, SessionLinks } from './session-links'
 
@@ -130,6 +130,8 @@ export class ClaudeTranscriptParser {
   private permissionMode: string | undefined
   /** The folders the session worked in, most recent last (see `toolWorkPaths`). */
   private readonly workPaths: string[] = []
+  /** The folders the session changed something in, most recent last (see `toolChangePaths`). */
+  private readonly changePaths: string[] = []
   /** The `cwd` of the latest entry: where its commands run. */
   private cwd: string | undefined
   /** Folder of the session (its first entries' `cwd`). */
@@ -188,6 +190,7 @@ export class ClaudeTranscriptParser {
         const { title, detail } = describeTool(tool, input)
         if (tool === 'Bash') noteWorkPath(this.workPaths, this.cwd)
         for (const path of toolWorkPaths(tool, input, this.cwd, this.options.home ?? homedir())) noteWorkPath(this.workPaths, path)
+        for (const path of toolChangePaths(tool, input, this.cwd, this.options.home ?? homedir())) noteWorkPath(this.changePaths, path)
         this.links.call(callId, tool, input, this.cwd)
         this.steps.push({ id: callId, title, detail: detail || undefined, kind: toolKind(tool), status: 'in_progress', startedAt: at })
       }
@@ -283,7 +286,10 @@ export class ClaudeTranscriptParser {
     const linked = this.links.linkedTickets()
     if (linked.length) snap.linkedTicketKeys = linked
     if (this.links.branches.length) snap.branches = this.links.branches.map((b) => ({ ...b }))
-    if (this.workPaths.length) snap.workPaths = [...this.workPaths]
+    if (this.workPaths.length) {
+      snap.workPaths = [...this.workPaths]
+      snap.changePaths = [...this.changePaths]
+    }
     return snap
   }
 
@@ -369,6 +375,8 @@ export class SubagentParser {
   isTerminal = false
   /** The folders the subagent worked in, most recent last (see `toolWorkPaths`). */
   readonly workPaths: string[] = []
+  /** The folders the subagent changed something in (see `toolChangePaths`). */
+  readonly changePaths: string[] = []
   /** The PRs, tickets and branches the subagent changed: the session's work too (its reads are research). */
   readonly links: SessionLinks
   private cwd: string | undefined
@@ -414,6 +422,7 @@ export class SubagentParser {
       this.lastStep = describeTool(str(b['name'])!, input).title
       this.isTerminal = false
       for (const path of toolWorkPaths(str(b['name']), input, this.cwd, this.home)) noteWorkPath(this.workPaths, path)
+      for (const path of toolChangePaths(str(b['name']), input, this.cwd, this.home)) noteWorkPath(this.changePaths, path)
       const callId = str(b['id'])
       if (callId) this.links.call(callId, str(b['name'])!, input, this.cwd)
     }

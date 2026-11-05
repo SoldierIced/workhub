@@ -208,6 +208,12 @@ export interface SessionMonitorSnapshot {
    * does not report them, which leaves "Local changes" on the session's folder.
    */
   workPaths?: string[]
+  /**
+   * The folders among them the session changed something in (see `toolChangePaths`): edits, git
+   * commands that write, pull requests it opened. "Local changes" lists the repositories behind
+   * these. Set (maybe empty) whenever `workPaths` is.
+   */
+  changePaths?: string[]
 }
 
 export type MonitorField =
@@ -248,8 +254,8 @@ export interface LocalChanges {
   /** More than one repository is listed, by name: a folder of repositories, or several touched ones. */
   nested: boolean
   /**
-   * The repositories are the ones the session worked in (its `workPaths`), every one listed even
-   * when clean, most recent first; empty while it has worked in none yet.
+   * The repositories are the ones the session changed something in (its `changePaths`), every one
+   * listed even when clean, most recent first; empty while it has changed none yet.
    */
   touched?: boolean
   /** Repositories read (for a folder of repositories, all of them, with or without changes). */
