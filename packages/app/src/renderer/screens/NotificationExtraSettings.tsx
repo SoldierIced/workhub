@@ -1,10 +1,11 @@
-import { appOptions, notificationsPaused, pauseUntil, type Result, type WorkhubConfig } from '@workhub/core'
-import { Button, Switch } from '../components/atoms'
+import { Fragment } from 'react'
+import { appOptions, notificationsPaused, pausedIndefinitely, pauseUntil, TRAY_POPOVER_MEETING_COUNTS, type TrayPopoverOptions, type WorkhubConfig } from '@workhub/core'
+import { Button, Select, Switch } from '../components/atoms'
 import { SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
+import { SettingRow } from './settings/SettingsLayout'
 
 interface RowsProps {
   config: WorkhubConfig
@@ -40,7 +41,11 @@ export function OtherNotificationRows({ config, editable, run }: RowsProps) {
         <div className="min-w-0">
           <span className="block text-base text-text">{t('settings.pause')}</span>
           <p className="text-xs text-subtle">
-            {paused ? t('settings.pausedUntil', { time: formatDate(options.notificationsPausedUntil!, { hour: '2-digit', minute: '2-digit' }) }) : t('settings.pauseHint')}
+            {paused
+              ? pausedIndefinitely(options.notificationsPausedUntil)
+                ? t('settings.pausedIndefinitely')
+                : t('settings.pausedUntil', { time: formatDate(options.notificationsPausedUntil!, { hour: '2-digit', minute: '2-digit' }) })
+              : t('settings.pauseHint')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -87,5 +92,46 @@ export function AppBadgeRows({ config, editable, run }: RowsProps) {
     <SwitchRow label={t('settings.appBadge')} hint={t(BADGE_LABEL[window.hub.platform] ?? 'settings.appBadgeMac')} help={t('help.general.appBadge')}>
       <Switch checked={options.showAppBadge} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ showAppBadge: on }))} />
     </SwitchRow>
+  )
+}
+
+type PopoverBlock = Exclude<keyof TrayPopoverOptions, 'meetingCount'>
+
+/** The blocks of the menu bar panel, in the order the panel draws them. */
+export const TRAY_POPOVER_BLOCKS = [
+  ['meetings', 'settings.trayPopover.meetings', 'settings.trayPopover.meetingsHint'],
+  ['plan', 'settings.trayPopover.plan', 'settings.trayPopover.planHint'],
+  ['pullRequests', 'settings.trayPopover.pullRequests', 'settings.trayPopover.pullRequestsHint'],
+  ['health', 'settings.trayPopover.health', 'settings.trayPopover.healthHint'],
+  ['usage', 'settings.trayPopover.usage', 'settings.trayPopover.usageHint'],
+  ['recent', 'settings.trayPopover.recent', 'settings.trayPopover.recentHint']
+] as const satisfies readonly (readonly [PopoverBlock, MessageKey, MessageKey])[]
+
+/** Settings → Notifications → Menu bar panel: which blocks the popover shows, and how many meetings. */
+export function TrayPopoverRows({ config, editable, run }: RowsProps) {
+  const { t } = useI18n()
+  const current = appOptions(config).trayPopover
+  const save = (patch: Partial<TrayPopoverOptions>) => void run(() => window.hub.config.saveOptions({ trayPopover: { ...current, ...patch } }))
+  return (
+    <>
+      {TRAY_POPOVER_BLOCKS.map(([block, label, hint]) => (
+        <Fragment key={block}>
+          <SwitchRow label={t(label)} hint={t(hint)}>
+            <Switch checked={current[block]} disabled={!editable} onChange={(on) => save({ [block]: on })} />
+          </SwitchRow>
+          {block === 'meetings' && current.meetings && (
+            <SettingRow label={t('settings.trayPopover.meetingCount')}>
+              <Select
+                aria-label={t('settings.trayPopover.meetingCount')}
+                value={String(current.meetingCount)}
+                disabled={!editable}
+                onChange={(v) => save({ meetingCount: Number(v) as TrayPopoverOptions['meetingCount'] })}
+                options={TRAY_POPOVER_MEETING_COUNTS.map((n) => ({ value: String(n), label: String(n) }))}
+              />
+            </SettingRow>
+          )}
+        </Fragment>
+      ))}
+    </>
   )
 }

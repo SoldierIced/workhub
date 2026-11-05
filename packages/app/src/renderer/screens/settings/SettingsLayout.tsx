@@ -4,7 +4,7 @@ import { Card, HelpTip } from '../../components/molecules'
 /** A Settings section: a heading (with optional help), its rows in a card and a footnote. */
 export function SettingsGroup({ title, help, children, footnote }: { title: string; help?: ReactNode; children: ReactNode; footnote?: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-settings-group>
       <h2 className="flex items-center gap-1.5 px-1 text-md font-semibold">
         {title}
         {help && <HelpTip text={help} label={title} />}
@@ -18,7 +18,7 @@ export function SettingsGroup({ title, help, children, footnote }: { title: stri
 /** A label on the left, its control on the right. */
 export function SettingRow({ label, hint, help, children }: { label: string; hint?: ReactNode; help?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 py-3">
+    <div className="flex items-center justify-between gap-6 py-3" data-settings-row>
       <div className="min-w-0">
         <span className="flex items-center gap-1.5 text-base">
           {label}
