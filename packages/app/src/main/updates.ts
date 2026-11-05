@@ -4,8 +4,13 @@ import { join } from 'node:path'
 import type { UpdateStatus } from '../shared/updates-api'
 import { bundleOf, canSelfUpdate, installMacUpdate, nodeMacUpdateDeps, type MacUpdateDeps } from './mac-update'
 
-/** Where releases are published; must match the `publish` block of electron-builder.config.mjs. */
-const RELEASES = 'https://github.com/SoldierIced/workhub/releases'
+/** `owner/name` from scripts/brand.mjs, set at build time by electron.vite.config.ts (`define`). */
+declare const __WORKHUB_RELEASE_REPO__: string | undefined
+
+/** The repository releases are published to; tests run unbundled, without the build-time value. */
+export const RELEASE_REPO = typeof __WORKHUB_RELEASE_REPO__ === 'string' ? __WORKHUB_RELEASE_REPO__ : 'example/workhub'
+/** Where releases are published; the same repository as the `publish` block of electron-builder.config.mjs. */
+const RELEASES = `https://github.com/${RELEASE_REPO}/releases`
 
 /**
  * Update checks over electron-updater against the GitHub Releases. Nothing runs unless the user
@@ -63,7 +68,8 @@ export class UpdateService {
       }
       this.set({ state: 'ready' })
     } catch (err) {
-      this.set({ state: 'error', message: err instanceof Error ? err.message : String(err) })
+      // Back to `available` with the reason: Install and Check now both work again.
+      this.set({ state: 'available', message: err instanceof Error ? err.message : String(err) })
     }
     return this.current
   }

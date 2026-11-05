@@ -128,4 +128,58 @@ describe('waking a Slack thread owner', () => {
     expect(starts).toHaveLength(1)
     expect(notices.filter((n) => n.kind === 'notWoken').map((n) => (n.kind === 'notWoken' ? n.reason : ''))).toEqual(['openFailed'])
   })
+
+  it('delivers a reply that reaches another thread, or the same one, while a wake is in flight', async () => {
+    const OWNER_B = '0b6f5c1e-2222-4222-8333-944455556666'
+    const thread = (id: string, owner: string, ts: string) =>
+      newThread({ id, channelId: 'C01', ts, permalink: `https://acme.slack.com/archives/C01/p${ts.replace('.', '')}`, title: id, source: 'hook', createdAt: NOW, owner, wake: true, seeded: true, pendingWake: [{ ts: `${ts}1`, user: 'ana', text: `first for ${id}` }] })
+    const state: ChatWatcherState = { ...EMPTY_CHAT_STATE, threads: [thread('A', OWNER, '1761566400.000100'), thread('B', OWNER_B, '1761566400.000200')] }
+    const views = [view({ id: 'ui-a', identity: OWNER, agentSessionId: OWNER, state: 'ready' }), view({ id: 'ui-b', identity: OWNER_B, agentSessionId: OWNER_B, state: 'ready' })]
+    const delivered: { sessionId: string; text: string }[] = []
+    let watcher!: SlackWatcherService
+    const inject = (id: string, reply: { ts: string; user: string; text: string }) => {
+      const w = watcher as unknown as { state: ChatWatcherState; setState(next: ChatWatcherState): void }
+      w.setState({ ...w.state, threads: w.state.threads.map((t) => (t.id === id ? { ...t, pendingWake: [...t.pendingWake, reply] } : t)) })
+    }
+    const deps = {
+      configuration: { current: async () => ({ ...emptyConfig(), accounts: [] }) as unknown as WorkhubConfig },
+      source: {},
+      hook: { drain: async () => [] },
+      demo: null,
+      state: { load: () => state, save: () => undefined, flush: () => undefined },
+      driver: {
+        views: () => views,
+        deliver: async (sessionId: string, text: string) => {
+          delivered.push({ sessionId, text })
+          if (sessionId === 'ui-a' && delivered.length === 1) {
+            // While A's wake is being typed in, B and A each get one more reply.
+            inject('B', { ts: '1761566600.000200', user: 'ben', text: 'second for B' })
+            inject('A', { ts: '1761566600.000100', user: 'ben', text: 'second for A' })
+          }
+          return 'delivered' as const
+        }
+      },
+      home,
+      usage: () => [],
+      myPullRequests: async () => new Set<string>(),
+      prState: async () => undefined,
+      emit: () => undefined,
+      notice: () => undefined,
+      now: () => NOW
+    } as unknown as SlackWatcherDeps
+    watcher = new SlackWatcherService(deps)
+
+    await watcher.deliverPendingWakes()
+    expect(delivered.map((d) => d.sessionId)).toEqual(['ui-a', 'ui-b'])
+    expect(delivered[1]?.text).toContain('first for B')
+    expect(delivered[1]?.text).toContain('second for B')
+    // A's late reply was not handed over yet: it is still pending, then delivered on the next pass.
+    const pendingOf = async (id: string) => (await watcher.snapshot()).threads.find((t) => t.id === id)?.pendingWake.map((r) => r.text)
+    expect(await pendingOf('A')).toEqual(['second for A'])
+    expect(await pendingOf('B')).toEqual([])
+    await watcher.deliverPendingWakes()
+    expect(delivered[2]).toMatchObject({ sessionId: 'ui-a' })
+    expect(delivered[2]?.text).toContain('second for A')
+    expect(await pendingOf('A')).toEqual([])
+  })
 })

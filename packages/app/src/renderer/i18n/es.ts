@@ -30,6 +30,8 @@ import { localReviewEs } from './localReview.es'
 import { unsavedEs } from './unsaved.es'
 import { planEs } from './plan.es'
 import { plannerEs } from './planner.es'
+import { alertsEs } from './alerts.es'
+import { settingsNavEs } from './settingsNav.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -303,10 +305,10 @@ export const es: Record<keyof typeof en, string> = {
   'settings.configDir': 'Carpeta de configuración',
   'settings.configDirSets': 'Define {env} para esta cuenta.',
   'settings.configDirNone': 'Este agente no tiene carpeta de configuración por cuenta.',
-  'settings.envLines': 'Entorno (CLAVE=valor por línea)',
-  'settings.envHint.codex': 'Codex lee OPENAI_API_KEY; la carpeta de configuración se convierte en CODEX_HOME.',
-  'settings.envHint.opencode': 'OpenCode lee claves de proveedor como ANTHROPIC_API_KEY u OPENAI_API_KEY.',
-  'settings.envHint.gemini': 'Gemini CLI lee GEMINI_API_KEY.',
+  'settings.envLines': 'Variables de entorno',
+  'settings.envHint.codex': 'Codex lee OPENAI_API_KEY: agregala acá y su valor queda en el almacén de secretos. Usá la carpeta de configuración de arriba en lugar de CODEX_HOME.',
+  'settings.envHint.opencode': 'OpenCode lee claves de proveedor como ANTHROPIC_API_KEY u OPENAI_API_KEY: sus valores quedan en el almacén de secretos, nunca en config.json.',
+  'settings.envHint.gemini': 'Gemini CLI lee GEMINI_API_KEY: su valor queda en el almacén de secretos, nunca en config.json.',
   'settings.saveAccount': 'Guardar cuenta',
   'settings.agentsOffered': 'Agentes ofrecidos',
   'settings.allAgents': 'Todos los agentes',
@@ -401,7 +403,7 @@ export const es: Record<keyof typeof en, string> = {
   'history.refresh': 'Recargar',
   'history.loading': 'Leyendo las sesiones…',
   'history.empty': 'Todavía no hay sesiones',
-  'history.noMatch': 'Ninguna sesión coincide con la búsqueda',
+  'history.noMatch': 'Ninguna sesión coincide con la búsqueda o los filtros',
   'history.emptyDescription': 'Las sesiones de Claude Code, Kiro, OpenCode y Codex aparecen aquí, agrupadas por carpeta. Solo se pueden retomar las de Claude Code.',
   'history.noFolder': 'Sin carpeta',
   'history.untitled': 'Sesión sin título',
@@ -481,5 +483,7 @@ export const es: Record<keyof typeof en, string> = {
   ...localReviewEs,
   ...unsavedEs,
   ...planEs,
-  ...plannerEs
+  ...plannerEs,
+  ...alertsEs,
+  ...settingsNavEs
 }

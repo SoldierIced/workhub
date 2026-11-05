@@ -303,9 +303,9 @@ export function parseIcs(textValue: string, options: ParseIcsOptions): ParseIcsR
       continue
     }
     const excluded = datesOf(all(raw, 'EXDATE'))
-    // Instances moved into the window from further out still have to be generated to be replaced.
-    const stopAfter = Math.max(options.window.to, ...[...(moved?.keys() ?? [])])
-    for (const { wall, epoch } of expandRecurrence(rule, timing.start.wall, clock, stopAfter)) {
+    // Instances moved into the window from slots past its end are not generated here: the loop
+    // stops at the first instance past the window, and the pass over unused overrides below adds them.
+    for (const { wall, epoch } of expandRecurrence(rule, timing.start.wall, clock, options.window.to)) {
       if (excluded.has(epoch)) {
         consumed.add(`${uid}|${epoch}`)
         continue

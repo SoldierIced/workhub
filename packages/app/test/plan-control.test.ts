@@ -73,6 +73,21 @@ describe('resolveControlProfile', () => {
     expect(await resolveControlProfile(deps, { profile: 'nope' })).toEqual({ ok: false, status: 404, error: 'unknown profile' })
     expect(await resolveControlProfile({ ...deps, profiles: async () => ({ ids: [], active: null }) }, {})).toEqual({ ok: false, status: 409, error: 'no profile' })
   })
+
+  it('refuses a session that is sent but is not a session id, instead of using the active profile', async () => {
+    for (const session of ['', 42, 'bad id!', {}, 'x'.repeat(101)]) expect(await resolveControlProfile(deps, { session })).toMatchObject({ ok: false, status: 400 })
+    // Absent (or null, from a body without it) still means "no session".
+    expect(await resolveControlProfile(deps, { session: undefined })).toEqual({ ok: true, profileId: 'home', session: null })
+    expect(await resolveControlProfile(deps, { session: null })).toEqual({ ok: true, profileId: 'home', session: null })
+  })
+
+  it('lets a read-only session read but not write; a request without a session may write', async () => {
+    const guarded = { ...deps, sessionReadOnly: (id: string) => id === 's1' }
+    expect(await resolveControlProfile(guarded, { session: 's1' })).toEqual({ ok: true, profileId: 'work', session: 's1' })
+    expect(await resolveControlProfile(guarded, { session: 's1' }, { write: true })).toEqual({ ok: false, status: 403, error: 'a read-only session cannot change the plan' })
+    expect(await resolveControlProfile(guarded, { session: 's3' }, { write: true })).toMatchObject({ ok: true, session: 's3' })
+    expect(await resolveControlProfile(guarded, {}, { write: true })).toEqual({ ok: true, profileId: 'home', session: null })
+  })
 })
 
 describe('Plan control parsers', () => {
@@ -129,6 +144,29 @@ describe('GET /v1/plan/today', () => {
     const none = setup(undefined, view({ state: 'noConnection', calendars: [] }))
     expect((await none.control.today(q())).body).toMatchObject({ state: 'noConnection', reason: expect.stringMatching(/No calendar/), events: [] })
     expect((await none.control.today(q('session=zz'))).status).toBe(404)
+  })
+})
+
+describe('Plan writes from a read-only session', () => {
+  it('answers 403 to inbox and milestone changes, 400 to a malformed session', async () => {
+    const { planner, control } = setup()
+    const guarded = createPlanControl({
+      planner,
+      agenda: async () => view(),
+      profile: async (id) => [profile(), profile('home', false)].find((p) => p.id === id),
+      sessionProfile: (id) => ({ s1: 'work', r1: 'work' })[id as 's1'],
+      sessionReadOnly: (id) => id === 'r1',
+      profiles: async () => ({ ids: ['work', 'home'], active: 'work' }),
+      now: () => NOW
+    })
+    await planner.propose('work', [{ kind: 'task', title: 'Send the rollout plan', detail: '' }], { type: 'agent' })
+    expect((await guarded.updateItem('id1', { session: 'r1', status: 'done' }, q())).status).toBe(403)
+    expect((await guarded.changeMilestone(null, 'POST', { session: 'r1', name: 'Beta', start: '2026-11-01', end: '2026-11-30', progress: 0 }, q())).status).toBe(403)
+    expect((await guarded.changeMilestone('m1', 'DELETE', undefined, q('session=r1'))).status).toBe(403)
+    expect((await guarded.updateItem('id1', { session: '', status: 'done' }, q())).status).toBe(400)
+    // Reads stay open to it.
+    expect((await guarded.inbox(q('session=r1'))).status).toBe(200)
+    expect((await control.updateItem('id1', { session: 's1', status: 'local' }, q())).status).toBe(200)
   })
 })
 

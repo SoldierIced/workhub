@@ -34,8 +34,75 @@ export async function refreshPullRequests(profileId: string | null, force = fals
   }
 }
 
-/** The lists of a profile, refreshed on mount and every `REFRESH_MS` while mounted. */
-export function usePullRequestLists(profileId: string | null): { lists: CodeHostLists | null; loading: boolean; refresh: () => Promise<void> } {
+interface Poller {
+  profileId: string | null
+  users: number
+  timer: ReturnType<typeof setInterval>
+  /** A tick came while the window was hidden: the next time it shows, the lists refresh at once. */
+  missed: boolean
+}
+
+/** One forced refresh timer per profile, shared by every screen that shows its lists. */
+const pollers = new Map<string, Poller>()
+let visibilityWatched = false
+
+const pageHidden = (): boolean => typeof document !== 'undefined' && document.hidden
+
+function watchVisibility(): void {
+  if (visibilityWatched || typeof document === 'undefined') return
+  visibilityWatched = true
+  document.addEventListener('visibilitychange', () => {
+    if (pageHidden()) return
+    for (const p of pollers.values()) {
+      if (!p.missed) continue
+      p.missed = false
+      void refreshPullRequests(p.profileId, true)
+    }
+  })
+}
+
+/**
+ * Keeps a profile's lists fresh while something shows them: every `REFRESH_MS`, skipped while the
+ * window is hidden (and caught up with one refresh when it shows again). Returns the release.
+ */
+export function pollPullRequests(profileId: string | null): () => void {
+  const key = keyOf(profileId)
+  watchVisibility()
+  let poller = pollers.get(key)
+  if (!poller) {
+    const p: Poller = {
+      profileId,
+      users: 0,
+      missed: false,
+      timer: setInterval(() => {
+        if (pageHidden()) p.missed = true
+        else void refreshPullRequests(profileId, true)
+      }, REFRESH_MS)
+    }
+    poller = p
+    pollers.set(key, p)
+  }
+  const mine = poller
+  mine.users++
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    mine.users--
+    if (mine.users > 0) return
+    clearInterval(mine.timer)
+    if (pollers.get(key) === mine) pollers.delete(key)
+  }
+}
+
+/** How many profiles have a refresh timer running (tests). */
+export const activePollers = (): number => pollers.size
+
+/**
+ * The lists of a profile, read on mount and refreshed by the profile's shared timer while `active`
+ * (a screen kept mounted but hidden passes false and stops polling).
+ */
+export function usePullRequestLists(profileId: string | null, active = true): { lists: CodeHostLists | null; loading: boolean; refresh: () => Promise<void> } {
   const key = keyOf(profileId)
   const entry = useSyncExternalStore(
     (l) => {
@@ -45,10 +112,10 @@ export function usePullRequestLists(profileId: string | null): { lists: CodeHost
     () => entries.get(key) ?? EMPTY
   )
   useEffect(() => {
+    if (!active) return
     void refreshPullRequests(profileId)
-    const timer = setInterval(() => void refreshPullRequests(profileId, true), REFRESH_MS)
-    return () => clearInterval(timer)
-  }, [profileId])
+    return pollPullRequests(profileId)
+  }, [profileId, active])
   const refresh = useCallback(() => refreshPullRequests(profileId, true), [profileId])
   return { lists: entry.lists, loading: entry.loading, refresh }
 }

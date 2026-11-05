@@ -26,7 +26,7 @@ import { usePlatform } from './lib/platform'
 import { attentionDetail, NOTIFY_BODY, NOTIFY_OPTION } from './lib/attention'
 import { readPrefs } from './lib/prefs'
 import { useAppearance } from './lib/appearance'
-import { historyLookupKeys, listSessions, lookUpHistory, memberOf, sessionLabel, updateGroups } from './lib/sessionGroups'
+import { historyLookupKeys, listSessions, lookUpHistory, memberOf, sameRows, sessionLabel, updateGroups } from './lib/sessionGroups'
 import { ROUTE_LABEL } from './lib/routes'
 import { matchesShortcut } from './lib/shortcuts'
 import { useAccountUsage, useUsageAlerts } from './lib/usage'
@@ -45,7 +45,6 @@ import { PlanScreen } from './screens/plan/PlanScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionsScreen } from './screens/SessionsScreen'
-import { SettingsDialog } from './screens/SettingsDialog'
 import { SubagentSheet } from './screens/sessions/SubagentView'
 import { TicketsScreen } from './screens/TicketsScreen'
 import { onAttention, sessionSnapshot, setExternalViewing, setViewing, startStore, useSessions, type SessionData } from './store'
@@ -79,12 +78,11 @@ function Shell() {
     if (KEPT_ROUTES.has(route)) setVisited((prev) => (prev.has(route) ? prev : new Set(prev).add(route)))
   }, [route])
   const kept = KEPT_ROUTES.has(route) && !visited.has(route) ? [...visited, route] : [...visited]
-  const [settingsTab, setSettingsTab] = useState('general')
-  // Settings is a modal over whatever screen is up, not a screen of its own.
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
-  const [prFocus, setPrFocus] = useState<string | null>(null)
-  const [agents, setAgents] = useState<EffectiveAgent[]>([])
+  // A new object per request, so asking for the same PR again focuses it again.
+  const [prFocus, setPrFocus] = useState<{ url: string } | null>(null)
+  // The agents of the profile they were read for: another profile's list never shows (or starts) here.
+  const [agentList, setAgentList] = useState<{ profileId: string | null; list: EffectiveAgent[] } | null>(null)
   const [dialog, setDialog] = useState<{ open: boolean; cwd?: string; agentKey?: string }>({ open: false })
   const [renaming, setRenaming] = useState<SessionView | null>(null)
   const [resumeFolder, setResumeFolder] = useState<string | null>(null)
@@ -108,9 +106,18 @@ function Shell() {
   const navItems = visibleNavItems(profile?.modules)
   const reachable = useMemo(() => allNavItems(profile?.modules), [profile?.modules])
 
+  const agents = useMemo(() => (agentList && agentList.profileId === activeProfileId ? agentList.list : []), [agentList, activeProfileId])
   useEffect(() => {
     if (!snap) return
-    void window.hub.config.effectiveAgents(activeProfileId).then(setAgents)
+    // Replies can arrive out of order (A then B switched quickly): only the current request's reply applies.
+    let alive = true
+    window.hub.config.effectiveAgents(activeProfileId).then(
+      (list) => alive && setAgentList({ profileId: activeProfileId, list }),
+      () => alive && setAgentList({ profileId: activeProfileId, list: [] })
+    )
+    return () => {
+      alive = false
+    }
   }, [snap, activeProfileId])
 
   // The sidebar's folder browser: the profile's folders and the folders inside them, read again when they change.
@@ -135,7 +142,12 @@ function Shell() {
   const docked = useMemo(() => sessions.filter((s) => !detached.has(s.view.id)), [sessions, detached])
 
   const groups = snap?.config.sessionGroups ?? EMPTY_SESSION_GROUPS
-  const listed = useMemo(() => listSessions(sessions), [sessions])
+  // The sessions as rows: a new array only when a row changes (a view, a flag, the prompt that names it),
+  // not on every flush of a streaming reply. The tray and the group-member effects read these.
+  const rowsRef = useRef(sessions)
+  if (!sameRows(rowsRef.current, sessions)) rowsRef.current = sessions
+  const rows = rowsRef.current
+  const listed = useMemo(() => listSessions(rows), [rows])
   const liveKeys = useMemo(() => listed.map((s) => s.key), [listed])
   // Latest values for callbacks that outlive a render (notifications, opening a session).
   const latest = useRef({ sessions, groups, snap, t, tn, liveKeys })
@@ -150,7 +162,6 @@ function Shell() {
   const openSession = useCallback((id: string) => {
     setSelectedSession(id)
     setRoute('sessions')
-    setSettingsOpen(false)
     // Opening a session from anywhere (Home, a ticket, a notification) shows it: its group unfolds.
     const view = latest.current.sessions.find((s) => s.view.id === id)?.view
     const group = view && groupOf(latest.current.groups, sessionIdentity(view))
@@ -190,10 +201,7 @@ function Shell() {
     []
   )
   // Usage alerts (Settings → Usage): a click opens Home, where "Usage by agent" is.
-  const showScreen = useCallback((r: Route) => {
-    setSettingsOpen(false)
-    setRoute(r)
-  }, [])
+  const showScreen = useCallback((r: Route) => setRoute(r), [])
   useUsageAlerts(useCallback(() => showScreen('home'), [showScreen]))
   // Slack notices have no session: their click opens the Slack screen.
   useEffect(() => window.hub.notifications.onOpen((id) => (id ? openSession(id) : showScreen('slack'))), [openSession, showScreen])
@@ -219,7 +227,7 @@ function Shell() {
     )
   }, [snap, groups, listed, liveKeys])
   const openPullRequest = useCallback((url?: string) => {
-    setPrFocus(url ?? null)
+    setPrFocus(url ? { url } : null)
     showScreen('pullRequests')
   }, [showScreen])
   // A pull request window asked to show its PR here.
@@ -239,11 +247,10 @@ function Shell() {
   )
   // A ticket window asked to show one of the sessions.
   useEffect(() => window.hub.tickets.onOpenSession(openSession), [openSession])
-  const openSettings = useCallback((tab?: string) => {
-    if (tab) setSettingsTab(tab)
-    setSettingsOpen(true)
-  }, [])
-  // Every way to Settings (sidebar, ⌘,, the menu bar icon, links to a tab) opens the modal.
+  // Settings opens in a window of its own, which can stay open beside this one. Old tab ids
+  // ('trackers', 'accounts', 'profiles'…) open the section that now holds them (the window maps them).
+  const openSettings = useCallback((tab?: string) => window.hub.settings.open(tab), [])
+  // Every way to Settings (sidebar, ⌘,, the menu bar icon, links to a tab) opens the Settings window.
   const navigate = useCallback(
     (r: Route, tab?: string) => {
       if (r === 'settings') return openSettings(tab)
@@ -254,8 +261,6 @@ function Shell() {
   )
   // A meeting reminder without a call link was clicked: show Plan.
   useEffect(() => window.hub.plan.onFocus(() => navigate('plan')), [navigate])
-  // A setup window's fix button asked for a Settings tab.
-  useEffect(() => window.hub.setup.onOpenSettings((tab) => openSettings(tab)), [openSettings])
   // The full dialog: pick the agent, account and folder (the toolbar's arrow, a sidebar folder row).
   const newSession = useCallback((cwd?: string | null, agentKey?: string) => setDialog({ open: true, cwd: cwd ?? undefined, agentKey }), [])
   // "New session" (toolbar button, ⌘T, the menus): the profile's preferred agent in its default
@@ -287,7 +292,7 @@ function Shell() {
     [newSession, openSession, toast]
   )
   // The menu bar / notification area icon: it lists the sessions and opens screens and starts a new session.
-  useTraySync({ sessions, groups, locale, navigate, newSession: () => void quickSession() })
+  useTraySync({ sessions: rows, groups, locale, navigate, newSession: () => void quickSession() })
 
   // The application menu (main sends its commands to the window they act on).
   const menuState = useRef({ route, selectedSession, reachable, sessions })
@@ -469,11 +474,11 @@ function Shell() {
               {r === 'history' ? (
                 <HistoryScreen profileId={activeProfileId} profiles={profiles} onOpened={openSession} visible={route === 'history'} />
               ) : (
-                <PullRequestsScreen profile={profile} focusUrl={prFocus} onOpenSettings={openSettings} />
+                <PullRequestsScreen profile={profile} focus={prFocus} onOpenSettings={openSettings} visible={route === 'pullRequests'} />
               )}
             </div>
           ))}
-          {route !== 'sessions' && !KEPT_ROUTES.has(route) && (
+          {route !== 'sessions' && route !== 'settings' && !KEPT_ROUTES.has(route) && (
             <div key={route} className={SCREEN_PANE}>
               {route === 'home' ? (
                 <HomeScreen
@@ -515,7 +520,6 @@ function Shell() {
         onStarted={openSession}
       />
       <SubagentSheet />
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} snap={snap} tab={settingsTab} onTabChange={setSettingsTab} />
       <RenameSessionDialog session={renaming} onClose={() => setRenaming(null)} />
       <UpdatePromptDialog />
       <ResumeSheet folder={resumeFolder} profileId={activeProfileId} onClose={() => setResumeFolder(null)} onOpened={openSession} />

@@ -21,6 +21,7 @@ import {
   usageDelta,
   usageOfSnapshot,
   windowReason,
+  inHourWindow,
   type AutomationDefinition,
   type AutomationHost,
   type AutomationNotice,
@@ -119,6 +120,20 @@ async function runOnce(world: FakeWorld, engine: AutomationEngine): Promise<void
 }
 
 describe('rules', () => {
+  it('supports hour windows that cross midnight; equal hours mean the whole day', () => {
+    const night = { days: [0, 1, 2, 3, 4, 5, 6], startHour: 22, endHour: 6 }
+    expect(windowReason(night, new Date(2026, 9, 27, 23).getTime())).toBeNull()
+    expect(windowReason(night, new Date(2026, 9, 27, 3).getTime())).toBeNull()
+    expect(windowReason(night, new Date(2026, 9, 27, 12).getTime())).toBe('hours')
+    expect(windowReason(night, new Date(2026, 9, 27, 6).getTime())).toBe('hours')
+    expect(windowReason(night, new Date(2026, 9, 27, 22).getTime())).toBeNull()
+    const allDay = { ...night, startHour: 8, endHour: 8 }
+    expect(windowReason(allDay, new Date(2026, 9, 27, 3).getTime())).toBeNull()
+    expect(windowReason(allDay, new Date(2026, 9, 27, 8).getTime())).toBeNull()
+    expect(inHourWindow(18, 9, 19)).toBe(true)
+    expect(inHourWindow(19, 9, 19)).toBe(false)
+  })
+
   it('knows the window, the sliding and daily limits and the preset', () => {
     const w = { days: [1, 2, 3, 4, 5], startHour: 9, endHour: 19 }
     expect(windowReason(w, T0)).toBeNull()

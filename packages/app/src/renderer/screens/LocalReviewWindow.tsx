@@ -20,7 +20,8 @@ import { Badge, Button, Input, Select, Spinner, TooltipProvider } from '../compo
 import { Dialog, EmptyState, RefreshButton } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
-import { fileName, newCommentId } from '../lib/localReview'
+import { errorText } from '../lib/errorText'
+import { fileName, newCommentId, sendOutcome } from '../lib/localReview'
 import { usePlatform } from '../lib/platform'
 import { matchesShortcut, shortcutLabel } from '../lib/shortcuts'
 import { LocalDiff, type Composer } from './localReview/LocalDiff'
@@ -56,6 +57,9 @@ function Review({ sessionId }: { sessionId: string }) {
   const [composer, setComposer] = useState<Composer | null>(null)
   const [draft, setDraft] = useState('')
   const [confirming, setConfirming] = useState(false)
+  // One send at a time; what went wrong with the last one (the comments stay).
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -140,23 +144,40 @@ function Review({ sessionId }: { sessionId: string }) {
   }
 
   const blocker = session?.blocker
+  // Delivered or queued: the comments are the session's now. Dropped or failed: they stay, with the reason.
+  const deliver = (text: string) => {
+    if (sending) return
+    setSending(true)
+    setSendError(null)
+    void window.hub.localReview.send(sessionId, text).then(
+      (delivery) => {
+        const outcome = sendOutcome(delivery)
+        if (outcome.done) {
+          setComments([])
+          window.close()
+          return
+        }
+        setSendError(t(outcome.message))
+        setSending(false)
+      },
+      (e: unknown) => {
+        setSendError(t('localReview.sendFailed', { message: errorText(e) }))
+        setSending(false)
+      }
+    )
+  }
+
   const sendAll = () => {
-    if (blocker) return
+    if (blocker || sending) return
     const all = composer && draft.trim() ? commitDraft() : comments
     if (!all.length) return
-    void window.hub.localReview.send(sessionId, reviewMessage(all)).then(() => {
-      setComments([])
-      window.close()
-    })
+    deliver(reviewMessage(all))
   }
 
   const looksGood = (tell: boolean) => {
     setConfirming(false)
     if (!tell || blocker) return window.close()
-    void window.hub.localReview.send(sessionId, LOOKS_GOOD_MESSAGE).then(() => {
-      setComments([])
-      window.close()
-    })
+    deliver(LOOKS_GOOD_MESSAGE)
   }
 
   useEffect(() => {
@@ -199,6 +220,11 @@ function Review({ sessionId }: { sessionId: string }) {
               t('localReview.reading')
             )}
           </div>
+          {sendError && (
+            <div role="alert" className="mt-0.5 text-xs text-danger" data-testid="review-send-error">
+              {sendError}
+            </div>
+          )}
         </div>
         {loading && review && <Spinner className="size-4" />}
         <div role="radiogroup" aria-label={t('localReview.scope')} title={t('localReview.scopeHint')} className="inline-flex h-8 items-center rounded-md border border-border bg-surface p-0.5">
@@ -218,14 +244,14 @@ function Review({ sessionId }: { sessionId: string }) {
         <RefreshButton size="md" iconClassName="size-4" label={t('localReview.reload')} loading={loading} onRefresh={reload} />
         <Button
           variant={comments.length ? 'primary' : 'secondary'}
-          disabled={!!blocker || (comments.length === 0 && !(composer && draft.trim()))}
+          disabled={!!blocker || sending || (comments.length === 0 && !(composer && draft.trim()))}
           title={blocker ? t(`localReview.blocker.${blocker}`) : t('localReview.sendHint', { shortcut: sendShortcut })}
           onClick={sendAll}
           data-testid="review-send"
         >
           {comments.length ? tn('localReview.send', comments.length, { agent }) : t('localReview.sendEmpty', { agent })}
         </Button>
-        <Button variant={comments.length ? 'secondary' : 'primary'} title={t('localReview.looksGoodHint')} onClick={() => setConfirming(true)}>
+        <Button variant={comments.length ? 'secondary' : 'primary'} disabled={sending} title={t('localReview.looksGoodHint')} onClick={() => setConfirming(true)}>
           {t('localReview.looksGood')}
         </Button>
       </header>

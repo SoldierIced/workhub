@@ -38,6 +38,9 @@ const DEFAULT_ENDPOINT = 'https://api.linear.app/graphql'
 
 const ISSUE_FIELDS = `identifier title url priorityLabel state { name type } assignee { name } cycle { id name number startsAt endsAt isActive }`
 const LIST_EXTRA = `description comments(first: 20) { nodes { body } }`
+/** At most this many assigned tickets, read in at most `LIST_PAGES` pages. */
+const LIST_CAP = 500
+const LIST_PAGES = 10
 
 /** Linear's state types: backlog and unstarted are to-do, started is in progress, the rest is done. */
 export function linearCategory(type: unknown): StatusCategory {
@@ -100,12 +103,22 @@ export class LinearTracker implements TicketTracker {
   }
 
   async listAssigned(options: ListTicketsOptions = {}): Promise<Ticket[]> {
-    const data = await this.query(
-      `query { viewer { assignedIssues(first: 100, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) { nodes { ${ISSUE_FIELDS} ${LIST_EXTRA} } } } }`
-    )
+    const nodes: Json[] = []
+    let after: string | null = null
+    for (let page = 0; page < LIST_PAGES && nodes.length < LIST_CAP; page++) {
+      const data = await this.query(
+        `query($first: Int!, $after: String) { viewer { assignedIssues(first: $first, after: $after, orderBy: updatedAt, filter: { state: { type: { nin: ["completed", "canceled"] } } }) { nodes { ${ISSUE_FIELDS} ${LIST_EXTRA} } pageInfo { hasNextPage endCursor } } } }`,
+        { first: Math.min(100, LIST_CAP - nodes.length), after }
+      )
+      const issues = data['viewer']?.assignedIssues as Json | undefined
+      const got = (issues?.['nodes'] as Json[] | undefined) ?? []
+      nodes.push(...got)
+      const info = issues?.['pageInfo'] as Json | undefined
+      after = info?.['hasNextPage'] && typeof info['endCursor'] === 'string' ? info['endCursor'] : null
+      if (!after || got.length === 0) break
+    }
     const hidden = new Set((options.ignoredStatuses ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean))
-    const nodes = (data['viewer']?.assignedIssues?.nodes as Json[] | undefined) ?? []
-    return nodes.map((n) => this.toTicket(n)).filter((t) => !hidden.has(t.status.toLowerCase()))
+    return nodes.slice(0, LIST_CAP).map((n) => this.toTicket(n)).filter((t) => !hidden.has(t.status.toLowerCase()))
   }
 
   async getTicket(key: string): Promise<TicketDetail | null> {

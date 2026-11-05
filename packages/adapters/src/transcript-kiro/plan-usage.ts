@@ -147,6 +147,8 @@ async function askKiro(options: KiroPlanUsageOptions, track: (child: KiroChild, 
   }
   child.on('error', (err?: NodeJS.ErrnoException) => failAll(err?.code === 'ENOENT' ? new KiroMissingError() : (err ?? new Error('kiro-cli failed'))))
   child.on('exit', () => failAll(new PlanUsageError('unreadable', 'kiro-cli exited before answering')))
+  // Writing to a kiro-cli that is gone (or never started) fails with EPIPE; `error`/`exit` report it.
+  child.stdin.on('error', () => {})
   child.stdout.setEncoding('utf8')
   child.stdout.on('data', (chunk: string) => {
     buffer += chunk

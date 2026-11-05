@@ -90,8 +90,21 @@ describe('applying a read', () => {
     expect(second.state.messages['C01']?.map((m) => m.ts)).toEqual(['101.000001', '100.000001'])
   })
 
+  it('seeds a channel added after the first read instead of treating its history as fresh', () => {
+    const seeded: ChatWatcherState = { ...EMPTY_CHAT_STATE, seeded: true, cursors: { C01: '100.000001' } }
+    const myPrs = new Set(['https://github.com/acme/web/pull/1'])
+    const first = applyDigest(seeded, { channels: [{ id: 'C02', messages: [msg('90.000001'), msg('95.000001')] }], threads: [], me: '' }, { channelIds: ['C01', 'C02'], myPullRequests: myPrs })
+    expect(first.fresh).toEqual([])
+    expect(first.notices).toEqual([])
+    expect(first.state.cursors['C02']).toBe('95.000001')
+    expect(first.state.messages['C02']?.map((m) => m.ts)).toEqual(['95.000001', '90.000001'])
+    const second = applyDigest(first.state, { channels: [{ id: 'C02', messages: [msg('95.000001'), msg('96.000001')] }], threads: [], me: '' }, { channelIds: ['C01', 'C02'], myPullRequests: myPrs })
+    expect(second.fresh.map((m) => m.ts)).toEqual(['96.000001'])
+    expect(second.notices).toEqual([expect.objectContaining({ kind: 'myPullRequest', channelId: 'C02' })])
+  })
+
   it('ignores channels that are not watched and notifies about my PRs', () => {
-    const seeded: ChatWatcherState = { ...EMPTY_CHAT_STATE, seeded: true }
+    const seeded: ChatWatcherState = { ...EMPTY_CHAT_STATE, seeded: true, cursors: { C01: '1.000001' } }
     const r = applyDigest(seeded, { channels: [{ id: 'C09', messages: [msg('5.000001')] }, { id: 'C01', messages: [msg('6.000001')] }], threads: [], me: '' }, { channelIds: ['C01'], myPullRequests: new Set(['https://github.com/acme/web/pull/1']) })
     expect(r.fresh.map((m) => m.channelId)).toEqual(['C01'])
     expect(r.notices).toEqual([expect.objectContaining({ kind: 'myPullRequest', prUrl: 'https://github.com/acme/web/pull/1' })])

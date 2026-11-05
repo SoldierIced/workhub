@@ -1,7 +1,45 @@
 import { describe, expect, it } from 'vitest'
-import { CONFIG_VERSION, ConfigParseError, ConfigVersionError, migrateConfig, parseConfig } from '../src'
+import { appOptions, CONFIG_VERSION, ConfigParseError, ConfigVersionError, DEFAULT_TRAY_POPOVER_OPTIONS, migrateConfig, parseConfig } from '../src'
 
 describe('parseConfig', () => {
+  it('clamps hand-edited out-of-range scalars instead of refusing the file', () => {
+    const parsed = parseConfig({
+      version: CONFIG_VERSION,
+      options: { speechRate: 5000 },
+      chatWatcher: { intervalMinutes: 0, startHour: -3, endHour: 30, usageThreshold: 140 },
+      automations: [
+        {
+          id: 'a1',
+          name: 'Nightly',
+          agentKey: 'claude',
+          runTimeoutMinutes: 0,
+          usageThreshold: -5,
+          triggers: { intervalMinutes: 0 },
+          window: { days: [1], startHour: 8.4, endHour: 99 },
+          limits: { maxRuns: 0, perMinutes: -2, maxPerDay: 0 }
+        }
+      ]
+    })
+    expect(parsed.options?.speechRate).toBe(300)
+    expect(parsed.chatWatcher).toMatchObject({ intervalMinutes: 1, startHour: 0, endHour: 24, usageThreshold: 100 })
+    expect(parsed.automations?.[0]).toMatchObject({
+      runTimeoutMinutes: 1,
+      usageThreshold: 0,
+      triggers: { intervalMinutes: 1 },
+      window: { startHour: 8, endHour: 24 },
+      limits: { maxRuns: 1, perMinutes: 1, maxPerDay: 1 }
+    })
+  })
+
+  it('reads the menu bar panel blocks: every block on and two meetings by default, bad values fall back', () => {
+    expect(appOptions(parseConfig({ version: CONFIG_VERSION })).trayPopover).toEqual(DEFAULT_TRAY_POPOVER_OPTIONS)
+    expect(DEFAULT_TRAY_POPOVER_OPTIONS).toEqual({ meetings: true, meetingCount: 2, plan: true, pullRequests: true, health: true, usage: true, recent: true })
+    const parsed = appOptions(parseConfig({ version: CONFIG_VERSION, options: { trayPopover: { usage: false, meetingCount: 3, plan: 'no', recent: false } } }))
+    expect(parsed.trayPopover).toEqual({ ...DEFAULT_TRAY_POPOVER_OPTIONS, usage: false, meetingCount: 3, recent: false })
+    expect(appOptions(parseConfig({ version: CONFIG_VERSION, options: { trayPopover: { meetingCount: 9 } } })).trayPopover.meetingCount).toBe(2)
+    expect(appOptions(parseConfig({ version: CONFIG_VERSION, options: { trayPopover: 'all' } })).trayPopover).toEqual(DEFAULT_TRAY_POPOVER_OPTIONS)
+  })
+
   it('returns an empty config for a missing document', () => {
     expect(parseConfig(null)).toEqual({ version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [] })
   })

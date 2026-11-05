@@ -85,6 +85,8 @@ export const localReviewEs: Record<keyof typeof localReviewEn, string> = {
   'localReview.delivery.queued': 'En cola: la sesión está ocupada y recibe el mensaje cuando quede libre',
   'localReview.delivery.dropped.closed': 'No se envió: la sesión se cerró',
   'localReview.delivery.dropped.busy': 'No se envió: la sesión siguió ocupada',
+  'localReview.delivery.dropped': 'No se envió: la sesión no tomó el mensaje',
+  'localReview.sendFailed': 'No se pudo enviar: {message}',
   'localReview.commentCount.one': '{count} comentario',
   'localReview.commentCount.other': '{count} comentarios',
 

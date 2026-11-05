@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { limitHunks, LocalChanges } from '../src/git-review'
+import { limitHunks, LocalChanges, untrackedFile } from '../src/git-review'
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim()
@@ -98,6 +98,18 @@ describe('LocalChanges on real repositories', () => {
     const empty = join(dir, 'empty')
     mkdirSync(empty)
     expect(await changes.load({ folder: empty, scope: 'branch' })).toMatchObject({ repos: [], scannedRepos: 0 })
+  })
+
+  it.skipIf(process.platform === 'win32')('does not follow an untracked symlink out of the repository', async () => {
+    const outside = join(dir, 'outside-secret.txt')
+    writeFileSync(outside, 'not part of the repo\n')
+    symlinkSync(outside, join(repo, 'link.txt'))
+    try {
+      const file = await untrackedFile(repo, 'link.txt')
+      expect(file).toMatchObject({ path: 'link.txt', note: 'unreadable', additions: 0, hunks: [] })
+    } finally {
+      rmSync(join(repo, 'link.txt'))
+    }
   })
 
   it('keeps the first lines of a long diff and counts the rest', () => {

@@ -53,6 +53,8 @@ import {
   type FlowAlert,
   type MetricAlert,
   type HealthAlert,
+  type HealthAlertChannel,
+  quietNow,
   moduleScreens,
   type FlowTraceSort,
   type HealthDetailRequest,
@@ -82,12 +84,13 @@ import type { PullRequestWindowTab } from '../shared/codehost-api'
 import { Notifier } from './notifier'
 import { TrayService } from './tray'
 import { TrayPopover } from './tray-popover'
+import { TrayToday } from './tray-today'
 import { flowAlertWords, healthAlertWords, isLocale, metricAlertWords, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
 import { profileWorkspaces } from './workspaces'
 import { NotificationPermissionCheck } from './notification-permission'
 import { testNotification } from './notification-test'
-import { FlowAlertWatcher, HealthWatcher, TicketWatcher } from './watchers'
+import { FlowAlertWatcher, HealthWatcher, TicketWatcher, ticketSummaryWords } from './watchers'
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
@@ -111,9 +114,9 @@ import { SessionDriver } from './session-driver'
 import { OwnerStarts } from './owner-starts'
 import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
-import { LocalReviewService, registerLocalReviewIpc } from './local-review'
-import { controlEnv, controlSocketPath, newControlToken, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
-import { createPlanControl } from './plan-control'
+import { LocalReviewService, opensAsProgram, registerLocalReviewIpc } from './local-review'
+import { CONTROL_ENV_KEYS, controlEnv, controlSocketPath, newControlToken, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
+import { createPlanControl, resolveControlProfile } from './plan-control'
 import { FLOW_HISTORY_FOLDER, FlowHistoryStore } from './flow-history'
 import { FLOW_MAPS_FOLDER, saveFlowMap } from './flow-maps'
 import { registerFlowMapsIpc } from './flow-maps-ipc'
@@ -132,10 +135,12 @@ import { buildAppMenuTemplate } from './app-menu'
 import { SessionNames } from './session-names'
 import { OpenSessions, type SavedOpenSessions } from './open-sessions'
 import { boundsOnScreen, SessionWindows, type SavedSessionWindows, type WindowBounds } from './session-windows'
+import { SettingsWindow, settingsSectionArg, type SavedSettingsWindow } from './settings-window'
+import { broadcastingConfigStore } from './config-broadcast'
 import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 import { createLinkService } from './link-service'
 import { listChromeProfiles, systemLinkDeps } from './link-system'
-import { profileSessionEnv, saveProfileEnv, storedProfileEnvNames } from './profile-env'
+import { accountSessionEnv, profileSessionEnv, saveAccountEnv, saveProfileEnv, storedAccountEnvNames, storedProfileEnvNames } from './profile-env'
 import { SetupService } from './setup-service'
 import { CalendarService } from './calendar-service'
 import { CalendarStateStore, CalendarWatcher } from './calendar-watcher'
@@ -147,6 +152,11 @@ import { addControlInboxItems, registerPlannerIpc } from './planner-ipc'
 import { expandHome } from './automations'
 import { gatePrompt, productCalendarEvents, ticketsInProgress, type CalendarState, type DueAction } from '@workhub/core'
 import type { SetupPage } from '../shared/setup-api'
+
+// The control endpoint of a Workhub this one was started from (a dev run launched from a session of
+// the installed app) must not leak into this app's processes: sessions get this app's own endpoint
+// or none, never the parent's. Dropped before anything spawns.
+for (const key of CONTROL_ENV_KEYS) delete process.env[key]
 
 // Dev layout: packages/app/out/main -> packages/app. A packaged app finds its extra resources
 // (the Claude bridge) under process.resourcesPath instead.
@@ -185,7 +195,10 @@ function revealLogs(): void {
   shell.showItemInFolder(diagnostics.logPath)
 }
 
-const configStore = new JsonConfigStore(join(dataDir, 'config.json'))
+// Every write tells every window (`config:changed`): a change in the Settings window shows in the main window.
+const configStore = broadcastingConfigStore(new JsonConfigStore(join(dataDir, 'config.json')), () =>
+  BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+)
 const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
 const configuration = new ConfigurationService(configStore, secrets)
 // WORKHUB_DEMO_SCENARIO=team-lead (`npm run demo`): the milestones, inbox and metric alerts of the scenario are written before
@@ -220,6 +233,7 @@ const SHARED_CHANNELS = new Set(['session:event', 'session:changed', 'session:re
 const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   if (SHARED_CHANNELS.has(channel)) sessionWindows.broadcastShared(channel, args)
+  settingsWindow.send(channel, args)
 }
 // Sessions in windows of their own ("Open in New Window"); the session's runtime stays here, shared.
 const sessionWindows = new SessionWindows({
@@ -234,6 +248,13 @@ const sessionWindows = new SessionWindows({
   },
   store: new StateFile<SavedSessionWindows>(join(dataDir, 'session-windows.json'), 500)
 })
+// Settings in a window of its own, one at a time (⌘,, the gear button, the menu bar icon, setup fixes).
+const settingsWindow = new SettingsWindow({
+  create: (hash, size, bounds) => createAuxWindow(hash, 'Workhub 2', size, bounds),
+  screens: () => screen.getAllDisplays().map((d) => d.workArea),
+  quitting: () => allowWindowClose,
+  store: new StateFile<SavedSettingsWindow>(join(dataDir, 'settings-window.json'), 500)
+})
 
 // Menu bar / notification area icon (tray.ts) and what it shows that main does not keep elsewhere.
 let trayService: TrayService | null = null
@@ -242,6 +263,8 @@ let trayPopover: TrayPopover | null = null
 /** Since when each session shows its state (the popover's times). */
 let sessionSince = new Map<string, SinceEntry>()
 let trayLocale: Locale = 'en'
+/** True once the renderer reported its language; until then the tray follows the system locale. */
+let trayLocaleFromRenderer = false
 /** The sessions with their unseen flags, as the renderer last reported them. */
 let rendererSessions: TraySession[] | null = null
 let lastSlack: SlackSnapshot | null = null
@@ -275,7 +298,13 @@ const notifier = new Notifier({
   supported: () => Notification.isSupported(),
   create: (content) => notificationPermission.observe(new Notification(content)),
   logPath: process.env['WORKHUB_NOTIFICATION_LOG'],
-  onShown: scheduleTray
+  onShown: scheduleTray,
+  // Quiet hours (Settings → Alerts): the profile the notification is about, else the active one.
+  quiet: async (kind, profileId, now) => {
+    const config = await configuration.current()
+    const id = profileId ?? config.activeProfileId
+    return quietNow(kind, config.profiles.find((p) => p.id === id)?.alerts?.quietHours, now)
+  }
 })
 
 // Workhub 1's Agent SDK bridge, run with Electron's own Node. Packaged: staged into the resources
@@ -361,9 +390,9 @@ const sessionNames = new SessionNames(new StateFile(join(dataDir, 'session-names
 // Tools an agent runs can ask Workhub for things (review, flow maps, Plan): a Unix socket, or on
 // Windows a loopback port with a per-launch token, known once it listens.
 const loopbackControl = usesLoopbackControl()
-const controlSocket = controlSocketPath(dataDir)
 const controlToken = newControlToken()
-let controlEndpoint: ControlEndpoint | null = loopbackControl ? null : { socket: controlSocket }
+// Set only once the endpoint listens; sessions started before (or when it cannot listen) get none.
+let controlEndpoint: ControlEndpoint | null = null
 const sessions = new SessionManager({
   config: configuration,
   worktrees: new GitWorktrees(),
@@ -373,6 +402,7 @@ const sessions = new SessionManager({
     const config = await configuration.current()
     return profileSessionEnv(config.profiles.find((p) => p.id === profileId), cwd, secrets, homedir())
   },
+  accountEnv: (account) => accountSessionEnv(account, secrets),
   runtimes,
   terminal,
   transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader({ kiroDir }), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
@@ -916,6 +946,11 @@ function registerIpc(): void {
     if (typeof path !== 'string' || !isAbsolute(path)) return false
     const isFolder = await stat(path).then((s) => s.isDirectory(), () => false)
     if (!isFolder) return false
+    // A macOS bundle (`Some.app`) is a folder that opening would launch: it is shown in its folder instead.
+    if (opensAsProgram(path, { isDirectory: true })) {
+      shell.showItemInFolder(path)
+      return true
+    }
     return (await shell.openPath(path)) === ''
   })
   ipc.handle('agents:availability', async () =>
@@ -957,11 +992,13 @@ function registerIpc(): void {
   ipc.on('setup:openWindow', (_e, page: SetupPage) => {
     if (page === 'welcome' || page === 'check' || page === 'help') openSetupWindow(page)
   })
-  ipc.on('setup:openSettings', (_e, tab: string) => {
-    if (typeof tab !== 'string') return
-    showMain()
-    win?.webContents.send('setup:openSettings', tab)
+  // A setup window's fix button (or a link inside Settings) asks for a Settings tab.
+  ipc.on('setup:openSettings', (_e, tab: unknown) => {
+    if (typeof tab === 'string') settingsWindow.open(settingsSectionArg(tab))
   })
+  ipc.on('settings:open', (_e, section: unknown) => settingsWindow.open(settingsSectionArg(section)))
+  ipc.on('settings:setDirty', (e, dirty: unknown) => settingsWindow.setDirty(e.sender.id, dirty === true))
+  ipc.on('settings:close', (e) => settingsWindow.close(e.sender.id))
   ipc.handle('setup:completeWelcome', async () => {
     if (!loadError) await configuration.saveOptions({ welcomeDone: true })
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
@@ -975,6 +1012,15 @@ function registerIpc(): void {
     if (typeof profileId !== 'string' || !values || typeof values !== 'object' || !Array.isArray(removed)) return
     const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v === 'string'))
     await saveProfileEnv(profileId, clean, removed.filter((n) => typeof n === 'string'), secrets)
+  })
+  ipc.handle('accountEnv:stored', async (_e, accountId: string) => {
+    const config = await configuration.current()
+    return storedAccountEnvNames(config.accounts.find((a) => a.id === accountId), secrets)
+  })
+  ipc.handle('accountEnv:save', async (_e, accountId: string, values: Record<string, string>, removed: string[]) => {
+    if (typeof accountId !== 'string' || !values || typeof values !== 'object' || !Array.isArray(removed)) return
+    const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v === 'string'))
+    await saveAccountEnv(accountId, clean, removed.filter((n) => typeof n === 'string'), secrets)
   })
   ipc.handle('systemNotifications:status', async () => ({ supported: await notificationPermission.allowed() }))
   ipc.handle('systemNotifications:test', (_e, body: unknown) => {
@@ -1059,7 +1105,7 @@ function registerIpc(): void {
 
   registerCodeHostIpc(ipc, { service: codeHost, openWindow: openPullRequestWindow, showInWorkhub: showPullRequestInMain, openExternal: (url, profileId) => openLink(profileId, url) })
   registerLinksIpc({ ipcMain: ipc, loadConfig: () => configuration.current(), mainWindow: () => win })
-  registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification })
+  registerPrEventsIpc(ipc, { service: prEvents, notify: showPullRequestNotification, recognizes: (profileId, url) => codeHost.recognizes(profileId, url) })
   ipc.handle('health:get', (_e, profileId: string | null, force?: boolean) => health.get(profileId, force === true))
   ipc.handle('health:details', (_e, profileId: string | null, environmentId: string, request: HealthDetailRequest, force?: boolean) => health.details(profileId, environmentId, request, force === true))
   ipc.handle('health:flowMaps', (_e, profileId: string | null) => health.flowMaps(profileId))
@@ -1097,7 +1143,7 @@ function registerIpc(): void {
   })
   registerAiReviewIpc(ipc, aiReview)
   registerAgentReviewIpc(ipc, agentReview)
-  registerLocalReviewIpc(ipc, localReview, { openWindow: openLocalReviewWindow, openPath: (path) => shell.openPath(path) })
+  registerLocalReviewIpc(ipc, localReview, { openWindow: openLocalReviewWindow, openPath: (path) => shell.openPath(path), showItemInFolder: (path) => shell.showItemInFolder(path) })
   registerFileViewerIpc(ipc, {
     createWindow: (hash, title) => createAuxWindow(hash, title, FILE_WINDOW_SIZE),
     home: homedir(),
@@ -1119,6 +1165,7 @@ function registerIpc(): void {
   ipc.on('tray:state', (_e, state: TrayRendererState) => {
     if (isLocale(state?.locale) && state.locale !== trayLocale) {
       trayLocale = state.locale
+      trayLocaleFromRenderer = true
       scheduleMenu()
     }
     if (Array.isArray(state?.sessions)) rendererSessions = state.sessions.slice(0, 500).filter(validTraySession)
@@ -1171,7 +1218,8 @@ function showPullRequestInMain(url: string, profileId: string | null): void {
   send('codeHost:focus', url, profileId)
 }
 
-function navigate(route: TrayRoute): void {
+function navigate(route: TrayRoute, section?: string): void {
+  if (route === 'settings') return settingsWindow.open(section)
   showMain()
   send('tray:navigate', route)
 }
@@ -1224,18 +1272,19 @@ function ticketNotification(profileId: string, change: TicketChange): void {
   void notifier.show('tickets', words, () => openTicketWindow?.(profileId, change.key), { ticket: change.key })
 }
 
-function healthNotification(alert: HealthAlert): void {
-  void notifier.show('health', healthAlertWords(alert, trayText(trayLocale).t), () => navigate('health'), { environmentId: alert.environmentId })
+function healthNotification(alert: HealthAlert, channels: HealthAlertChannel[]): void {
+  void notifier.show('health', healthAlertWords(alert, trayText(trayLocale).t), () => navigate('health'), { environmentId: alert.environmentId }, undefined, channels)
 }
 
 const healthWatcher = new HealthWatcher({
   activeProfileId: async () => (await configuration.current()).activeProfileId ?? null,
   read: (profileId) => health.get(profileId),
   alert: healthNotification,
+  alertSettings: async (profileId) => (await configuration.current()).profiles.find((p) => p.id === profileId)?.health?.alerts,
   changed: scheduleTray,
   cooldowns: (() => {
     const file = new StateFile<{ firedAt: Record<string, number> }>(join(dataDir, 'health-alerts.json'), 500)
-    return { load: () => file.load({ firedAt: {} }).firedAt ?? {}, save: (firedAt) => file.save({ firedAt }) }
+    return { load: () => file.load({ firedAt: {} }).firedAt ?? {}, save: (firedAt) => file.save({ firedAt }), flush: () => file.flush() }
   })()
 })
 
@@ -1259,7 +1308,7 @@ const flowAlertWatcher = new FlowAlertWatcher({
   alert: flowAlertNotification,
   cooldowns: (() => {
     const file = new StateFile<{ firedAt: Record<string, number> }>(join(dataDir, 'flow-alerts.json'), 500)
-    return { load: () => file.load({ firedAt: {} }).firedAt ?? {}, save: (firedAt) => file.save({ firedAt }) }
+    return { load: () => file.load({ firedAt: {} }).firedAt ?? {}, save: (firedAt) => file.save({ firedAt }), flush: () => file.flush() }
   })()
 })
 
@@ -1277,7 +1326,8 @@ function meetingReminder(profileId: string, action: DueAction): void {
 
 /** Demo calendar: a brief rule matched. Nothing starts; "Prepare brief" on the meeting does, on request. */
 async function demoBriefNotice(action: DueAction): Promise<void> {
-  const words = meetingReminderWords({ event: action.event, message: 'Demo: this rule would start a brief now. Open Plan and choose Prepare brief to start one.' }, Date.now(), trayText(trayLocale))
+  const { t } = trayText(trayLocale)
+  const words = { title: t('notify.brief.demo', { title: action.event.title || t('plan.untitled') }), body: t('notify.brief.demoBody') }
   void notifier.show('meeting', words, () => {
     showMain()
     send('plan:focus')
@@ -1336,7 +1386,9 @@ const ticketWatcher = new TicketWatcher({
   enabled: async () => appOptions(await configuration.current()).notifyTickets,
   list: (profileId) => ticketService.call(profileId, (t, ignored) => t.listAssigned({ ignoredStatuses: ignored })),
   store: new StateFile(join(dataDir, 'ticket-watch.json'), 500),
-  announce: ticketNotification
+  announce: ticketNotification,
+  // A burst (a profile not read for a day, a capped list) folds into one notification.
+  announceSummary: (_profileId, changes) => void notifier.show('tickets', ticketSummaryWords(changes, trayText(trayLocale).t), () => navigate('tickets'))
 })
 
 async function refreshOptionsCache(): Promise<void> {
@@ -1345,6 +1397,9 @@ async function refreshOptionsCache(): Promise<void> {
   appBadge.setEnabled(options.showAppBadge)
   scheduleTray()
 }
+
+/** The popover's "Today": the active profile's next meetings and the Plan tasks due. */
+const trayToday = new TrayToday({ readCalendar: (profileId) => calendar.read(profileId), dueToday: (profileId) => planner.dueToday(profileId) })
 
 /** Everything the menu bar icon shows, read fresh. */
 async function trayState(): Promise<TrayState> {
@@ -1356,7 +1411,7 @@ async function trayState(): Promise<TrayState> {
   const stamped = stampSince(sessionSince, listed, Date.now())
   sessionSince = stamped.since
   const sessionsNow = stamped.sessions
-  const lists = await codeHost.lists(profileId).catch(() => null)
+  const [lists, today] = await Promise.all([codeHost.lists(profileId).catch(() => null), trayToday.read(profileId)])
   const agentNames = new Map(knownAgents(config).map((a) => [a.id, a.name]))
   const slackOn = lastSlack && lastSlack.health !== 'off'
   const me = lastSlack?.me ?? ''
@@ -1380,7 +1435,10 @@ async function trayState(): Promise<TrayState> {
         ...(a.waitReason ? { waitReason: a.waitReason.split('.')[0]! } : {}),
         ...(a.lastError ? { lastError: a.lastError } : {})
       })),
-    notifications: notifier.recent().map((n) => ({ id: n.id, title: n.title, at: n.at })),
+    notifications: notifier.recent().map((n) => ({ id: n.id, title: n.title, at: n.at, ...(n.sessionId ? { sessionId: n.sessionId } : {}) })),
+    calendar: today.calendar,
+    planDueToday: today.planDueToday,
+    popover: options.trayPopover,
     pausedUntil: options.notificationsPausedUntil,
     canCheckForUpdates: app.isPackaged
   }
@@ -1397,6 +1455,14 @@ async function performTrayAction(action: TrayAction): Promise<void> {
       return navigate(action.route)
     case 'openPullRequest':
       return openPullRequestWindow(action.profileId || null, action.url)
+    case 'openMeeting': {
+      // Only a link the popover was given for that meeting is opened; without one, Plan shows it.
+      const url = trayToday.joinUrl(action.id)
+      if (url) return void openLink((await configuration.current()).activeProfileId ?? null, url)
+      return navigate('plan')
+    }
+    case 'openSettings':
+      return settingsWindow.open(settingsSectionArg(action.section))
     case 'openNotification':
       notifier.openRecent(action.id)
       return
@@ -1415,7 +1481,7 @@ async function performTrayAction(action: TrayAction): Promise<void> {
       return scheduleTray()
     }
     case 'checkForUpdates':
-      navigate('settings')
+      navigate('settings', 'general')
       void updates.check()
       return
     case 'quit':
@@ -1566,6 +1632,7 @@ function runMenuCommand(command: MenuCommand): void {
   const sessionCommand = command.kind === 'closeSession' || command.kind === 'showMode' || command.kind === 'openInWindow'
   if (sessionCommand && sessionWindow && focused) return focused.webContents.send('menu:command', command)
   if (sessionCommand && focused !== win) return
+  if (command.kind === 'navigate' && command.route === 'settings') return settingsWindow.open()
   showMain()
   send('menu:command', command)
 }
@@ -1681,12 +1748,17 @@ let controlServer: import('node:http').Server | null = null
 /** How the control endpoint finds the profile of a request (the calling session's, a named one, the active one). */
 const controlProfiles = {
   sessionProfile: (id: string) => sessions.list().find((s) => s.id === id)?.profileId,
+  // A reviewer may read the plan but never change it (writes answer 403).
+  sessionReadOnly: (id: string) => sessions.list().find((s) => s.id === id)?.readOnly === true,
   profiles: async () => {
     const config = await configuration.current()
     return { ids: config.profiles.map((p) => p.id), active: config.activeProfileId ?? null }
   }
 }
 void app.whenReady().then(async () => {
+  // A second launch only hands over to the running app (its 'second-instance'): it must not touch
+  // the socket, the config or any other file the running app owns.
+  if (!firstInstance) return
   const controlDeps: ControlDeps = {
     openReview: (sessionId, repos) => {
       const v = sessions.list().find((s) => s.id === sessionId)
@@ -1696,8 +1768,14 @@ void app.whenReady().then(async () => {
       openLocalReviewWindow(sessionId, true)
       return { ok: true }
     },
-    saveFlowMap: (map) => saveFlowMap(join(dataDir, FLOW_MAPS_FOLDER), map),
-    addInboxItems: (body) => addControlInboxItems({ service: planner, ...controlProfiles }, body),
+    saveFlowMap: (map) => saveFlowMap(join(dataDir, FLOW_MAPS_FOLDER), map, { keepAlerts: true }),
+    addInboxItems: async (body) => {
+      // A reviewer cannot propose items; a request without a session may (see resolveControlProfile).
+      const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>
+      const who = await resolveControlProfile(controlProfiles, { session: b['session'], profile: b['profile'] }, { write: true })
+      if (!who.ok) return who
+      return addControlInboxItems({ service: planner, ...controlProfiles }, body)
+    },
     plan: createPlanControl({
       ...controlProfiles,
       planner,
@@ -1710,10 +1788,16 @@ void app.whenReady().then(async () => {
     const started = await startLoopbackControlServer(controlToken, controlDeps)
     controlServer = started?.server ?? null
     if (started) controlEndpoint = { url: started.url, token: controlToken }
-  } else controlServer = await startControlServer(controlSocket, controlDeps)
-  if (!firstInstance) return
+  } else {
+    const socket = controlSocketPath(dataDir)
+    controlServer = await startControlServer(socket, controlDeps)
+    if (controlServer) controlEndpoint = { socket }
+  }
   try {
     await configuration.load()
+    // Account environment values written by older builds move from config.json to the secret store.
+    const moved = await configuration.migrateAccountEnv()
+    if (moved) diagnostics.log.info(`moved ${moved} account environment value(s) to the secret store`)
   } catch (err) {
     loadError = err instanceof Error ? err.message : String(err)
   }
@@ -1757,6 +1841,11 @@ void app.whenReady().then(async () => {
   flowAlertWatcher.start()
   metricAlerts.start()
   ticketWatcher.start()
+  // The first calendar check runs before the renderer reports its language: word it in the system's.
+  if (!trayLocaleFromRenderer) {
+    const system = app.getLocale().slice(0, 2)
+    if (isLocale(system)) trayLocale = system
+  }
   calendarWatcher.start()
   planner.start()
   // First run: no profile yet and the welcome was not finished.
@@ -1776,12 +1865,14 @@ let allowWindowClose = false
 nativeUpdater.on('before-quit-for-update', () => {
   allowWindowClose = true
   sessionWindows.suspend()
+  settingsWindow.flush()
   openSessions.freeze()
 })
 app.on('before-quit', (event) => {
   allowWindowClose = true
   // Session windows closing from here on stay remembered: the next launch reopens them.
   sessionWindows.suspend()
+  settingsWindow.flush()
   openSessions.freeze()
   if (quitting) return
   diagnostics.log.info('quit')

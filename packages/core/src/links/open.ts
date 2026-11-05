@@ -95,19 +95,76 @@ export interface LinkCommand {
 }
 
 /**
+ * The words of a quoted command line: `"/opt/My Tools/open" -P work` is the executable
+ * `/opt/My Tools/open` and the arguments `-P`, `work`. Double or single quotes group words; inside
+ * double quotes `\"` is a literal quote. Backslashes are otherwise literal (Windows paths). Null for
+ * an unterminated quote. Nothing is expanded: no variables, globs or pipes.
+ */
+export function splitCommandLine(text: string): string[] | null {
+  const words: string[] = []
+  let word = ''
+  let inWord = false
+  let quote: '"' | "'" | null = null
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
+    if (quote) {
+      if (c === quote) quote = null
+      else if (quote === '"' && c === '\\' && text[i + 1] === '"') word += text[++i]
+      else word += c
+    } else if (c === '"' || c === "'") {
+      quote = c
+      inWord = true
+    } else if (/\s/.test(c)) {
+      if (inWord) words.push(word)
+      word = ''
+      inWord = false
+    } else {
+      word += c
+      inWord = true
+    }
+  }
+  if (quote) return null
+  if (inWord) words.push(word)
+  return words
+}
+
+/**
+ * The executable and arguments of a custom link command. A command that starts with a quote is a
+ * command line (`"firefox" -P work`); any other is one executable, spaces included, as before.
+ */
+export function customCommandParts(command: string): { executable: string; args: string[] } | null {
+  const text = command.trim()
+  if (!text) return null
+  if (!text.startsWith('"') && !text.startsWith("'")) return { executable: text, args: [] }
+  const words = splitCommandLine(text)
+  if (!words?.length || !words[0]) return null
+  return { executable: words[0], args: words.slice(1) }
+}
+
+/** A command line that `customCommandParts` reads back as these words; the executable is always quoted. */
+export function joinCommandLine(executable: string, args: readonly string[]): string {
+  const quote = (w: string) => `"${w.replace(/"/g, '\\"')}"`
+  return [quote(executable), ...args.map((a) => (a && !/[\s"']/.test(a) ? a : quote(a)))].join(' ')
+}
+
+/**
  * How to open a web link in the browser a profile chose; null means "use the default browser".
  * `browser` is an application name on macOS (`open -a`) and an executable elsewhere. With a
  * `chromeProfile` (macOS only), a new Chrome instance starts on that profile directory. A custom
- * `command` wins over both and gets the link as its only argument.
+ * `command` wins over both and gets the link as its last argument, after the arguments of a
+ * quoted command line (see `customCommandParts`).
  */
 export function linkLaunch(platform: string, setting: { browser?: string; chromeProfile?: string; command?: string }, url: string): LinkCommand | null {
   if (!isWebUrl(url)) return null
   const custom = setting.command?.trim()
   if (custom) {
-    // A custom command is one executable (a name on the PATH or a path). `env` resolves it on the
+    // An executable (a name on the PATH or a path) with optional arguments. `env` resolves it on the
     // login-shell PATH like Workhub 1 did; a leading `-` would be an option of `env`, so it is refused.
-    if (custom.startsWith('-') || /[\r\n\0]/.test(custom)) return null
-    return platform === 'win32' ? { command: custom, args: [url] } : { command: '/usr/bin/env', args: [custom, url] }
+    if (/[\r\n\0]/.test(custom)) return null
+    const parts = customCommandParts(custom)
+    if (!parts || parts.executable.startsWith('-')) return null
+    const args = [...parts.args, url]
+    return platform === 'win32' ? { command: parts.executable, args } : { command: '/usr/bin/env', args: [parts.executable, ...args] }
   }
   const browser = setting.browser?.trim()
   const chromeProfile = setting.chromeProfile?.trim()
@@ -160,12 +217,22 @@ export function chromeDataDirName(app: string | undefined): string | null {
   return name && !name.startsWith('.') && !/[\0]/.test(name) ? name : null
 }
 
-/** What Workhub 1's `linkOpener` becomes: `open -a X` is the browser app X; any other command stays a command. */
+/**
+ * What Workhub 1's `linkOpener` becomes: `open -a X` is the browser app X; any other command stays a
+ * command. Workhub 1 ran the opener through a shell, so one with arguments (`firefox -P work`) is
+ * split into words and stored as a quoted command line (`"firefox" -P work`) that `linkLaunch`
+ * passes word by word.
+ */
 export function importedLinkOpener(opener: string | undefined): { linkBrowser: string } | { linkCommand: string } | null {
   const text = opener?.trim()
   if (!text) return null
   const app = /^open\s+-a\s+(?:"([^"]+)"|'([^']+)'|([^\s"']+))$/.exec(text)
   const name = app?.[1] ?? app?.[2] ?? app?.[3]
   if (name) return { linkBrowser: name }
-  return { linkCommand: text }
+  const words = splitCommandLine(text)
+  if (!words?.length || !words[0]) return { linkCommand: text }
+  const [executable, ...args] = words as [string, ...string[]]
+  // A single unquoted word keeps the plain form a person would type in Settings.
+  if (!args.length && !/[\s"']/.test(executable)) return { linkCommand: executable }
+  return { linkCommand: joinCommandLine(executable, args) }
 }

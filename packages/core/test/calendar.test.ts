@@ -151,6 +151,21 @@ describe('parseIcs', () => {
     expect(events[1]!.id).toBe(`daily|${Date.UTC(2026, 10, 4, 14)}`)
   })
 
+  it('shows an instance moved into the window from a slot weeks past its end, once', () => {
+    const window = { from: Date.UTC(2026, 10, 2), to: Date.UTC(2026, 10, 3) }
+    const events = parse(
+      cal(
+        vevent('UID:weekly', 'SUMMARY:Sync', 'DTSTART:20261026T140000Z', 'DTEND:20261026T143000Z', 'RRULE:FREQ=WEEKLY'),
+        vevent('UID:weekly', 'RECURRENCE-ID:20261116T140000Z', 'SUMMARY:Sync (moved)', 'DTSTART:20261102T170000Z', 'DTEND:20261102T173000Z')
+      ),
+      window
+    )
+    expect(events.map((e) => [iso(e.start), e.title, e.id])).toEqual([
+      ['2026-11-02T14:00:00.000Z', 'Sync', `weekly|${Date.UTC(2026, 10, 2, 14)}`],
+      ['2026-11-02T17:00:00.000Z', 'Sync (moved)', `weekly|${Date.UTC(2026, 10, 16, 14)}`]
+    ])
+  })
+
   it('leaves out cancelled events and events the owner declined', () => {
     const text = cal(
       vevent('UID:c', 'SUMMARY:Cancelled', 'STATUS:CANCELLED', 'DTSTART:20261102T140000Z'),
@@ -174,6 +189,29 @@ describe('parseIcs', () => {
     const plain = parse(cal(vevent('UID:p', 'SUMMARY:Pay', 'DTSTART:20260131T100000Z', 'RRULE:FREQ=MONTHLY;COUNT=3')))
     // Months without a 31st are skipped.
     expect(plain.map((e) => iso(e.start).slice(0, 10))).toEqual(['2026-01-31', '2026-03-31', '2026-05-31'])
+  })
+
+  it('applies BYSETPOS to the sorted candidates of each period', () => {
+    const days = (rrule: string, start: string) => parse(cal(vevent('UID:r', 'SUMMARY:R', `DTSTART:${start}`, `RRULE:${rrule}`))).map((e) => iso(e.start).slice(0, 10))
+    expect(days('FREQ=MONTHLY;BYDAY=TU;BYSETPOS=2;COUNT=3', '20261110T150000Z')).toEqual(['2026-11-10', '2026-12-08', '2027-01-12'])
+    // The last weekday of the month.
+    expect(days('FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1;COUNT=3', '20261130T150000Z')).toEqual(['2026-11-30', '2026-12-31', '2027-01-29'])
+    expect(days('FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=1,-1;COUNT=4', '20261102T150000Z')).toEqual(['2026-11-02', '2026-11-30', '2026-12-01', '2026-12-31'])
+  })
+
+  it('filters by BYMONTH and expands yearly rules on BYMONTH', () => {
+    const days = (rrule: string, start: string) => parse(cal(vevent('UID:r', 'SUMMARY:R', `DTSTART:${start}`, `RRULE:${rrule}`))).map((e) => iso(e.start).slice(0, 10))
+    expect(days('FREQ=MONTHLY;BYMONTHDAY=15;BYMONTH=1,7;COUNT=3', '20260115T100000Z')).toEqual(['2026-01-15', '2026-07-15', '2027-01-15'])
+    expect(days('FREQ=DAILY;BYMONTH=2;COUNT=3', '20260130T100000Z')).toEqual(['2026-01-30', '2026-02-01', '2026-02-02'])
+    expect(days('FREQ=YEARLY;BYMONTH=11;BYDAY=4TH;COUNT=2', '20261126T170000Z')).toEqual(['2026-11-26', '2027-11-25'])
+  })
+
+  it('shows only DTSTART for a rule with a part it does not expand', () => {
+    const days = (rrule: string) => parse(cal(vevent('UID:r', 'SUMMARY:R', 'DTSTART:20261102T120000Z', `RRULE:${rrule}`))).map((e) => iso(e.start).slice(0, 10))
+    expect(days('FREQ=WEEKLY;BYHOUR=9,15;COUNT=5')).toEqual(['2026-11-02'])
+    expect(days('FREQ=YEARLY;BYWEEKNO=20;COUNT=3')).toEqual(['2026-11-02'])
+    expect(days('FREQ=MONTHLY;BYDAY=MO;BYSETPOS=0;COUNT=3')).toEqual(['2026-11-02'])
+    expect(days('FREQ=YEARLY;BYDAY=20MO;COUNT=3')).toEqual(['2026-11-02'])
   })
 
   it('returns only the instances inside the window, counting from the first one', () => {

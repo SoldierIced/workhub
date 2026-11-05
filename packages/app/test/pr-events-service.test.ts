@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { emptyConfig, type PrEventState, type PrEventStore, type PullRequest, type PullRequestItem, type WorkhubConfig } from '@workhub/core'
-import { PrEventService, type PrEventSource } from '../src/main/pr-events-service'
+import type { IpcRegistrar } from '../src/main/ipc-guard'
+import { PrEventService, registerPrEventsIpc, type PrEventSource } from '../src/main/pr-events-service'
 import type { CodeHostLists } from '../src/shared/codehost-api'
 import type { PrEventBatch } from '../src/shared/pr-events-api'
 
@@ -170,3 +171,23 @@ describe('PrEventService', () => {
   })
 })
 
+describe('registerPrEventsIpc', () => {
+  it('shows a notification only for a pull request URL a connected host recognizes', async () => {
+    const listeners = new Map<string, (...args: any[]) => unknown>()
+    const ipc: IpcRegistrar = { handle: () => undefined, on: (c, l) => void listeners.set(c, l) }
+    const notified: string[] = []
+    const asked: [string | null, string][] = []
+    registerPrEventsIpc(ipc, {
+      service: {} as unknown as PrEventService,
+      notify: (n) => void notified.push(n.url),
+      recognizes: async (profileId, url) => (asked.push([profileId, url]), url.startsWith('https://github.com/acme/'))
+    })
+    const send = (n: unknown) => listeners.get('prEvents:notify')!({}, n)
+    send({ profileId: 'work', title: 'Merged', url: 'https://github.com/acme/api/pull/1' })
+    send({ profileId: '', title: 'Merged', url: 'https://example.com/phish' })
+    send({ profileId: 'work', title: 42, url: 'https://github.com/acme/api/pull/2' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(notified).toEqual(['https://github.com/acme/api/pull/1'])
+    expect(asked).toEqual([['work', 'https://github.com/acme/api/pull/1'], [null, 'https://example.com/phish']])
+  })
+})

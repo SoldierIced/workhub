@@ -301,6 +301,18 @@ describe('reconcileAlerts', () => {
     expect(reconcileAlerts(resolved, [], at(FRI, 13) + CLOSED_ALERT_LIFETIME_MS - 1).alerts).toHaveLength(1)
     expect(reconcileAlerts(resolved, [], at(FRI, 13) + CLOSED_ALERT_LIFETIME_MS).alerts).toEqual([])
   })
+
+  it('does not prune a resolved alert while its detection is still present', () => {
+    const first = reconcileAlerts([], [detection()], at(FRI)).alerts
+    const resolved = applyAlertAction(first, first[0]!.key, { type: 'resolve' }, at(FRI, 13))
+    const late = at(FRI, 13) + CLOSED_ALERT_LIFETIME_MS
+    // The source still reports Friday's detection a week later: it stays resolved, not reopened.
+    const kept = reconcileAlerts(resolved, [detection()], late)
+    expect(kept.opened).toEqual([])
+    expect(kept.alerts).toHaveLength(1)
+    expect(kept.alerts[0]).toMatchObject({ status: 'resolved', closedAt: at(FRI, 13) })
+    expect(reconcileAlerts(kept.alerts, [detection()], late + 60_000).opened).toEqual([])
+  })
 })
 
 describe('alert actions and order', () => {

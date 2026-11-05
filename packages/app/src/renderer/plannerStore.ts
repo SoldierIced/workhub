@@ -20,16 +20,26 @@ function set(profileId: string, patch: Partial<ProfilePlanner>): void {
   for (const l of listeners) l()
 }
 
+/** The newest request per profile: an older reply that arrives late is dropped, and `loading` stays on until the newest settles. */
+const newest = new Map<string, number>()
+let requests = 0
+
 async function track(profileId: string, op: () => Promise<PlannerView>): Promise<void> {
+  const request = ++requests
+  newest.set(profileId, request)
   set(profileId, { loading: true })
   try {
-    set(profileId, { view: await op(), loading: false, error: undefined })
+    const view = await op()
+    if (newest.get(profileId) === request) set(profileId, { view, loading: false, error: undefined })
   } catch (error) {
-    set(profileId, { loading: false, error: errorText(error) })
+    if (newest.get(profileId) === request) set(profileId, { loading: false, error: errorText(error) })
   }
 }
 
 export const loadPlanner = (profileId: string) => track(profileId, () => window.hub.planner.get(profileId))
+
+/** A profile's planner as stored now, outside React (tests). */
+export const plannerOf = (profileId: string): ProfilePlanner => state[profileId] ?? EMPTY
 
 function listen(): void {
   if (subscribed) return

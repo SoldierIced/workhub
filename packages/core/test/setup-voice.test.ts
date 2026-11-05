@@ -127,11 +127,12 @@ describe('config 7', () => {
     expect(parsed.profiles[0]).toEqual({ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } })
   })
 
-  it('keeps the new profile fields and refuses a bad variable name or speech rate', () => {
+  it('keeps the new profile fields, refuses a bad variable name and clamps the speech rate', () => {
     const profile = { id: 'p', name: 'P', symbol: 'rocket', ownsOutside: true, linkBrowser: 'Google Chrome', envNames: ['API_KEY'], folders: ['~/a'], folderOptions: { '~/a': { onlyGitRepos: true, subfoldersAreProjects: true } } }
     expect(parseConfig({ version: 8, profiles: [profile] }).profiles[0]).toMatchObject(profile)
     expect(() => parseConfig({ version: 8, profiles: [{ ...profile, envNames: ['1BAD'] }] })).toThrow()
-    expect(() => parseConfig({ version: 8, options: { speechRate: 9999 } })).toThrow()
+    expect(parseConfig({ version: 8, options: { speechRate: 9999 } }).options?.speechRate).toBe(300)
+    expect(parseConfig({ version: 8, options: { speechRate: 10 } }).options?.speechRate).toBe(120)
   })
 
   it('the master switch silences every kind', () => {

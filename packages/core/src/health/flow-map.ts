@@ -85,14 +85,22 @@ export const flowMapSchema = z.object({
    */
   entry: measure.optional(),
   /**
-   * When to notify about the flow (checked every minute over the last hour, see `flowAlertsOf`):
+   * When to notify about the flow (checked over a 1 h window, that is the last whole hour plus the
+   * part of the hour in course already gone; see `flowAlertsOf` and `flowTimingFromHistory`):
    * a p95 above `p95Ms` or a failure share above `errorRate`, for every measured part or per part
    * (keyed like the Parts tab: node id, stage id, edge id or `from->to`). A part's entry wins.
+   * A part with fewer than `minCalls` calls in the window (default `DEFAULT_FLOW_MIN_CALLS`) never
+   * breaks a limit; `notify: false` keeps the limits on screen without notifying.
    */
-  alerts: flowThreshold.extend({ parts: z.record(z.string(), flowThreshold).default({}) }).optional()
+  alerts: flowThreshold
+    .extend({ minCalls: z.number().int().min(0).max(1_000_000).optional(), notify: z.boolean().optional(), parts: z.record(z.string(), flowThreshold).default({}) })
+    .optional()
 })
 
 export type FlowThreshold = z.infer<typeof flowThreshold>
+export type FlowMapAlerts = NonNullable<FlowMap['alerts']>
+/** Below this many calls in the window a part breaks no limit: a handful of slow calls is noise. */
+export const DEFAULT_FLOW_MIN_CALLS = 20
 export type FlowMeasure = z.infer<typeof measure>
 export type FlowLane = z.infer<typeof lane>
 export type FlowNode = z.infer<typeof node>

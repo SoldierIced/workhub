@@ -60,11 +60,22 @@ export function oneLine(text: string, max = 100): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
 }
 
-/** Appends whole lines to a parser; an unfinished last line waits for the next read. */
+/** How much of a file one `read` call loads at a time. */
+const TAIL_CHUNK_BYTES = 4 * 1024 * 1024
+const EMPTY = Buffer.alloc(0)
+
+/**
+ * Appends whole lines to a parser; an unfinished last line waits for the next read. Lines are cut
+ * on the byte 0x0A before decoding, so a UTF-8 character split across two reads (or two chunks)
+ * decodes whole, and a large file is read in chunks rather than in one buffer.
+ */
 export class LineTail {
   private offset = 0
-  private partial = ''
-  constructor(readonly path: string) {}
+  private partial: Buffer = EMPTY
+  constructor(
+    readonly path: string,
+    private readonly chunkBytes = TAIL_CHUNK_BYTES
+  ) {}
 
   /** False when the file cannot be opened. A file that shrank is skipped until it grows past the old size. */
   async read(onLine: (line: string) => void): Promise<boolean> {
@@ -76,19 +87,30 @@ export class LineTail {
     }
     try {
       const { size } = await handle.stat()
-      if (size < this.offset) return true
-      const length = size - this.offset
-      if (length > 0) {
-        const buffer = Buffer.alloc(length)
-        await handle.read(buffer, 0, length, this.offset)
-        this.offset = size
-        const lines = (this.partial + buffer.toString('utf8')).split('\n')
-        this.partial = lines.pop() ?? ''
-        for (const line of lines) if (line.trim()) onLine(line)
+      if (size <= this.offset) return true
+      const buffer = Buffer.allocUnsafe(Math.min(this.chunkBytes, size - this.offset))
+      while (this.offset < size) {
+        const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, size - this.offset), this.offset)
+        if (bytesRead === 0) break
+        this.offset += bytesRead
+        this.take(buffer.subarray(0, bytesRead), onLine)
       }
       return true
     } finally {
       await handle.close()
     }
+  }
+
+  private take(chunk: Buffer, onLine: (line: string) => void): void {
+    let start = 0
+    for (let nl = chunk.indexOf(0x0a, start); nl !== -1; nl = chunk.indexOf(0x0a, start)) {
+      const piece = chunk.subarray(start, nl)
+      const line = (this.partial.length ? Buffer.concat([this.partial, piece]) : piece).toString('utf8')
+      this.partial = EMPTY
+      start = nl + 1
+      if (line.trim()) onLine(line)
+    }
+    // A copy: the read buffer is reused for the next chunk.
+    if (start < chunk.length) this.partial = Buffer.concat([this.partial, chunk.subarray(start)])
   }
 }

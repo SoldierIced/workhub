@@ -116,6 +116,12 @@ export function mapSearchResponse(stdout: string, provider = 'github'): PullRequ
   return nodes.map((n) => mapSearchNode(n, provider)).filter((p): p is PullRequest => p !== null)
 }
 
+/** The cursor of the next search page, or null on the last one (or when the answer has no page info). */
+export function searchNextCursor(stdout: string): string | null {
+  const info = obj(obj(obj(obj(JSON.parse(stdout))['data'])['search'])['pageInfo'])
+  return info['hasNextPage'] === true && typeof info['endCursor'] === 'string' && info['endCursor'] ? info['endCursor'] : null
+}
+
 /** Check runs (`conclusion`/`status`) and commit statuses (`state`) share one status scale. */
 export function mapCheckStatus(check: Json): CiStatus {
   const conclusion = str(check['conclusion']).toUpperCase()

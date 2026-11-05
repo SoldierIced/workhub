@@ -64,6 +64,8 @@ interface NativeSession {
   cancelled: boolean
   stopping: boolean
   models: ModelOption[]
+  /** The bridge's last `error` line, kept so its exit does not report the session as stopped. */
+  error?: string
 }
 
 type Obj = Record<string, unknown>
@@ -116,9 +118,14 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
     ready.catch(() => {})
 
     child.once('error', (err) => failStart(new Error(`could not start the Claude bridge: ${err.message}`)))
+    // A bridge that is gone (or never started) makes a write fail with EPIPE: the exit reports it.
+    child.stdin?.on('error', () => {})
     child.stderr?.setEncoding('utf8')
     child.stderr?.on('data', (d: string) => d.split('\n').filter(Boolean).forEach((line) => this.emit({ sessionId: id, type: 'stderr', line })))
-    createInterface({ input: child.stdout! }).on('line', (text) => {
+    const lines = createInterface({ input: child.stdout! })
+    let linesClosed = false
+    lines.once('close', () => (linesClosed = true))
+    lines.on('line', (text) => {
       let line: Obj
       try {
         line = JSON.parse(text) as Obj
@@ -130,14 +137,25 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
       this.onLine(session, line)
     })
     child.on('exit', (code) => {
-      failStart(new Error(`the Claude bridge exited during start (code ${code})`))
-      this.finishPending(session, 'cancelled')
-      this.emit({ sessionId: id, type: 'exit', code })
-      if (this.sessions.get(id) === session) {
-        this.sessions.delete(id)
-        const failed = !session.stopping && code !== 0
-        this.emit({ sessionId: id, type: 'state', state: failed ? 'error' : 'stopped', error: failed ? `Claude exited (code ${code})` : undefined })
+      // `exit` can come before the last stdout lines are read: wait for them (an `error` line decides
+      // the final state), but not forever, in case something else holds the pipe open.
+      let done = false
+      const finish = () => {
+        if (done) return
+        done = true
+        failStart(new Error(`the Claude bridge exited during start (code ${code})`))
+        this.finishPending(session, 'cancelled')
+        this.emit({ sessionId: id, type: 'exit', code })
+        if (this.sessions.get(id) === session) {
+          this.sessions.delete(id)
+          const failed = !session.stopping && (code !== 0 || session.error !== undefined)
+          this.emit({ sessionId: id, type: 'state', state: failed ? 'error' : 'stopped', error: failed ? (session.error ?? `Claude exited (code ${code})`) : undefined })
+        }
       }
+      // A stopping session ends as stopped whatever it printed last.
+      if (linesClosed || session.stopping) return finish()
+      lines.once('close', finish)
+      setTimeout(finish, 500).unref()
     })
 
     this.send(session, {
@@ -304,6 +322,7 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
     }
     if (line['type'] === 'error') {
       const error = String(line['message'] ?? 'the Claude bridge failed')
+      s.error = error
       for (const p of s.pending.splice(0)) p.reject(new Error(error))
       this.emit({ sessionId: s.id, type: 'state', state: 'error', error })
       return

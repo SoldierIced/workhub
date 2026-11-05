@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { parsePrWindowHash } from './lib/pullRequests'
 import { parseTicketHash, TicketWindowRoot } from './screens/TicketWindow'
+import { parseSettingsHash, SettingsWindowRoot } from './screens/SettingsWindow'
 import { TRAY_POPOVER_HASH } from '@shared/tray-api'
 import { readPrefs } from './lib/prefs'
 import { applyAppearance, useAppliedAppearance } from './lib/appearance'
@@ -29,7 +30,7 @@ startPerfReports()
 // `#tray-popover` is the menu bar popover, `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…`
 // a ticket, `#session?id=…` a session in its own window and `#subagent?session=…&id=…` a sub-agent's conversation.
 // `#review?session=…` a session's local review, `#file?path=…` the file viewer, `#flow-map?…` a flow map and
-// `#plan-item?profile=…&kind=inbox|milestone&id=…` a Plan inbox item or milestone.
+// `#plan-item?profile=…&kind=inbox|milestone&id=…` a Plan inbox item or milestone, `#settings?section=…` Settings.
 function root(hash: string): ReactElement {
   if (hash === TRAY_POPOVER_HASH) return <TrayPopover />
   const session = parseSessionWindowHash(hash)
@@ -50,6 +51,8 @@ function root(hash: string): ReactElement {
   if (flowMap) return <FlowMapWindow {...flowMap} />
   const planItem = parsePlanItemHash(hash)
   if (planItem) return <PlanItemWindow {...planItem} />
+  const settings = parseSettingsHash(hash)
+  if (settings) return <SettingsWindowRoot section={settings.section} />
   return <App />
 }
 

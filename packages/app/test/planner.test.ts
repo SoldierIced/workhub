@@ -210,6 +210,16 @@ describe('PlannerService links and history', () => {
     expect((await service.view('work')).inbox[0]).toMatchObject({ title: 'Old item', links, updatedAt: NOW, updatedBy: 'user' })
   })
 
+  it('hands the menu bar panel the tasks due today or overdue, and nothing while Plan is off', async () => {
+    const task = (id: string, due?: string) => ({ id, kind: 'task', title: id, detail: '', source: { type: 'manual' }, status: 'local', createdAt: NOW - 1000, ...(due ? { due } : {}) })
+    const stored = { profiles: { work: { milestones: [], counts: {}, errors: {}, tickets: {}, inbox: [task('later', '2026-11-07'), task('today', '2026-11-06'), task('old', '2026-11-01'), task('none')], proposals: [] } } }
+    const make = (on: boolean) =>
+      new PlannerService({ profiles: async () => [profile({}, on)], store: { load: () => stored as unknown as PlannerState, save: () => undefined }, tracker: async () => ({ error: 'none' }), changed: () => undefined, now: () => NOW })
+    expect((await make(true).dueToday('work')).map((i) => i.id)).toEqual(['old', 'today'])
+    expect(await make(false).dueToday('work')).toEqual([])
+    expect(await make(true).dueToday('missing')).toEqual([])
+  })
+
   it('marks edits in Workhub as the user\'s and changes through the endpoint as an agent\'s', async () => {
     const { service, setNow } = setup()
     await service.addItem('work', { kind: 'task', title: 'a', detail: '', links })

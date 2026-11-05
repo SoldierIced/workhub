@@ -23,16 +23,26 @@ function set(profileId: string, patch: Partial<ProfileMetricAlerts>): void {
   for (const l of listeners) l()
 }
 
+/** The newest request per profile: an older reply that arrives late is dropped, and `loading` stays on until the newest settles. */
+const newest = new Map<string, number>()
+let requests = 0
+
 async function track(profileId: string, op: () => Promise<MetricAlertsView>): Promise<void> {
+  const request = ++requests
+  newest.set(profileId, request)
   set(profileId, { loading: true })
   try {
-    set(profileId, { view: await op(), loading: false, error: undefined })
+    const view = await op()
+    if (newest.get(profileId) === request) set(profileId, { view, loading: false, error: undefined })
   } catch (error) {
-    set(profileId, { loading: false, error: errorText(error) })
+    if (newest.get(profileId) === request) set(profileId, { loading: false, error: errorText(error) })
   }
 }
 
 export const loadMetricAlerts = (profileId: string) => track(profileId, () => window.hub.metricAlerts.list(profileId))
+
+/** A profile's alerts as stored now, outside React (tests). */
+export const metricAlertsOf = (profileId: string): ProfileMetricAlerts => state[profileId] ?? EMPTY
 
 /** Main says a profile's alerts changed: read them again if anything shows them. */
 function listen(): void {

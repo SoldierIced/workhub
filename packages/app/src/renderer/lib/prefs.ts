@@ -33,6 +33,8 @@ export interface Prefs {
   monitorCollapsed: string[]
   /** Folders starred in the sidebar (Workhub 1's Favorites), in the order they were added. */
   favoriteFolders: string[]
+  /** Whether the part detail drawer of the Flow maps screen is folded. */
+  flowMapDrawerCollapsed: boolean
 }
 
 /** Ranges of the size preferences, as Workhub 1 offered them. */
@@ -55,7 +57,8 @@ export const DEFAULT_PREFS: Prefs = {
   monitorWidth: 320,
   sidebarWidth: 256,
   monitorCollapsed: [],
-  favoriteFolders: []
+  favoriteFolders: [],
+  flowMapDrawerCollapsed: false
 }
 
 /** A size clamped into its range, rounded; the default for anything that is not a number. */
@@ -85,7 +88,8 @@ export function parsePrefs(raw: string | null): Prefs {
       monitorWidth: clampSize('monitorWidth', v.monitorWidth),
       sidebarWidth: clampSize('sidebarWidth', v.sidebarWidth),
       monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
-      favoriteFolders: Array.isArray(v.favoriteFolders) ? [...new Set(v.favoriteFolders.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, 100) : []
+      favoriteFolders: Array.isArray(v.favoriteFolders) ? [...new Set(v.favoriteFolders.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, 100) : [],
+      flowMapDrawerCollapsed: v.flowMapDrawerCollapsed === true
     }
   } catch {
     return DEFAULT_PREFS

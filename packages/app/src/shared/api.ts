@@ -51,7 +51,7 @@ import type { LinksApi } from './links-api'
 import type { PrEventsApi } from './pr-events-api'
 import type { TicketsApi } from './tickets-api'
 import type { UpdatesApi } from './updates-api'
-import type { MenuApi, WindowsApi } from './windows-api'
+import type { MenuApi, SettingsWindowApi, WindowsApi } from './windows-api'
 import type { FilesApi, LocalReviewApi } from './local-review-api'
 
 export interface ConfigSnapshot {
@@ -461,8 +461,11 @@ export interface HubApi {
   tray: TrayApi
   windows: WindowsApi
   menu: MenuApi
+  settings: SettingsWindowApi
   setup: SetupApi
   profileEnv: ProfileEnvApi
+  /** The same, for an agent account's environment (ids are account ids). */
+  accountEnv: ProfileEnvApi
   systemNotifications: SystemNotificationsApi
   diagnostics: DiagnosticsApi
 }

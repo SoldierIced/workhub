@@ -53,6 +53,37 @@ export function sessionNameInfo(s: Pick<SessionData, 'items' | 'view'>): { title
   return resolveSessionName({ name: s.view.name, title: s.view.agentTitle, firstPrompt: firstPrompt?.kind === 'user' ? firstPrompt.text : undefined, cwd: s.view.cwd })
 }
 
+/**
+ * What a session's name depends on in its items: whether anything was asked, and the first real
+ * prompt. Streamed replies and tool calls leave it unchanged.
+ */
+function namingOf(items: SessionData['items']): string | null {
+  let asked = false
+  for (const item of items) {
+    if (item.kind !== 'user') continue
+    const text = item.text.trim()
+    if (!text) continue
+    asked = true
+    if (!BARE_COMMAND.test(text)) return text
+  }
+  return asked ? '' : null
+}
+
+/**
+ * Whether two session lists show the same rows: the same views, flags and naming prompt in the same
+ * order. Lists that only differ in streamed chat items compare equal, so the effects that read rows
+ * (tray, group members, history look-ups) skip the 50 ms flushes of a streaming reply.
+ */
+export function sameRows(a: readonly SessionData[], b: readonly SessionData[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  return a.every((s, i) => {
+    const o = b[i]!
+    if (s === o) return true
+    return s.view === o.view && s.unseen === o.unseen && awaitingAnswer(s) === awaitingAnswer(o) && (s.items === o.items || namingOf(s.items) === namingOf(o.items))
+  })
+}
+
 export function sessionName(s: Pick<SessionData, 'items' | 'view'>): string {
   return sessionNameInfo(s).title
 }

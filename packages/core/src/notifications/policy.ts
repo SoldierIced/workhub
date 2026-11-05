@@ -47,17 +47,30 @@ export function shouldNotify(kind: NotificationKind, options: AppOptions, now: n
   return toggle === null || options[toggle] !== false
 }
 
-export type PausePreset = 'hour' | 'tomorrow'
+export type PausePreset = 'hour' | 'tomorrow' | 'indefinite'
+
+/**
+ * The end of a pause "until I resume it": a date so far ahead (the year 9999) that only Resume
+ * ends it. Stored like any other pause, so every check of the pause keeps working unchanged.
+ */
+export const PAUSE_INDEFINITE_AT = Date.UTC(9999, 11, 31)
+
+/** Whether a pause lasts until the user resumes it (no end time to show). */
+export function pausedIndefinitely(until: number | null | undefined): boolean {
+  return typeof until === 'number' && until >= PAUSE_INDEFINITE_AT
+}
 
 /** The hour of the day "until tomorrow" ends, local time. */
 export const PAUSE_TOMORROW_HOUR = 8
 
 /**
- * When a pause chosen now ends (epoch ms): an hour from now, or tomorrow at 08:00 local time.
+ * When a pause chosen now ends (epoch ms): an hour from now, tomorrow at 08:00 local time, or
+ * `PAUSE_INDEFINITE_AT` for a pause until the user resumes it.
  * `now` is a Date so the local calendar (and its daylight-saving changes) decides "tomorrow".
  */
 export function pauseUntil(preset: PausePreset, now: Date): number {
   if (preset === 'hour') return now.getTime() + 60 * 60_000
+  if (preset === 'indefinite') return PAUSE_INDEFINITE_AT
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, PAUSE_TOMORROW_HOUR, 0, 0, 0)
   return end.getTime()
 }

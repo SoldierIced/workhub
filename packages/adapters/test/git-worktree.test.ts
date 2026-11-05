@@ -53,6 +53,8 @@ describe('GitWorktrees on a real repository', () => {
     expect(existsSync(join(dir, 'hook-ran'))).toBe(true)
     expect(await w.repoRootOf(path)).toBe(repo)
     expect(await w.status(path)).toEqual({ dirty: false, unpushed: 0, branch: 'feat/login' })
+    // No upstream: a plain `git push` must not go to main.
+    expect(() => execFileSync('git', ['rev-parse', '--abbrev-ref', '@{u}'], { cwd: path, stdio: 'pipe' })).toThrow()
 
     writeFileSync(join(path, 'b.txt'), 'b\n')
     expect((await w.status(path)).dirty).toBe(true)
@@ -77,6 +79,23 @@ describe('GitWorktrees on a real repository', () => {
     expect(git(repo, 'status', '--porcelain')).toBe('')
     await w.create(repo, { path: join(repo, '_worktrees', 'other'), branch: 'other', base: 'main' })
     expect(readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8').match(/\/_worktrees\//g)).toHaveLength(1)
+  })
+
+  it('refuses a base that is not a commit or looks like an option', async () => {
+    await expect(w.create(repo, { path: join(dir, 'y'), branch: 'feat/y', base: '--detach' })).rejects.toThrow(/not a commit/)
+    await expect(w.create(repo, { path: join(dir, 'y'), branch: 'feat/y', base: 'no-such-branch' })).rejects.toThrow(/not a commit/)
+    expect(existsSync(join(dir, 'y'))).toBe(false)
+  })
+
+  it('reports nothing unpushed in a repository with no remote', async () => {
+    const solo = join(dir, 'solo')
+    mkdirSync(solo)
+    git(solo, 'init', '--quiet', '-b', 'main')
+    writeFileSync(join(solo, 'a.txt'), 'a\n')
+    git(solo, 'add', '.')
+    git(solo, 'commit', '--quiet', '-m', 'init')
+    git(solo, 'commit', '--quiet', '--allow-empty', '-m', 'two')
+    expect(await w.status(solo)).toEqual({ dirty: false, unpushed: 0, branch: 'main' })
   })
 
   it('refuses a branch name git does not accept', async () => {

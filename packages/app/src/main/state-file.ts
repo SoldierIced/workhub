@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 /**
@@ -12,7 +12,8 @@ export class StateFile<T> {
 
   constructor(
     readonly path: string,
-    private readonly delayMs = 500
+    private readonly delayMs = 500,
+    private readonly log: (message: string) => void = (message) => console.warn(message)
   ) {}
 
   /** The stored value merged over `fallback`; `fallback` when the file is missing or unreadable. */
@@ -32,15 +33,29 @@ export class StateFile<T> {
     this.timer.unref?.()
   }
 
+  /**
+   * Writes the pending value now. A failed write keeps it pending (the next `save` or `flush`
+   * tries again), removes its temp file and is logged, never thrown: state files are best effort.
+   */
   flush(): void {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     if (this.pending === null) return
     const value = this.pending
-    this.pending = null
-    mkdirSync(dirname(this.path), { recursive: true })
     const tmp = `${this.path}.${process.pid}.${randomUUID()}.tmp`
-    writeFileSync(tmp, JSON.stringify(value), { mode: 0o600 })
-    renameSync(tmp, this.path)
+    try {
+      mkdirSync(dirname(this.path), { recursive: true })
+      writeFileSync(tmp, JSON.stringify(value), { mode: 0o600 })
+      renameSync(tmp, this.path)
+      // A `save` made while writing (none today: this is synchronous) would have replaced `pending`.
+      if (this.pending === value) this.pending = null
+    } catch (err) {
+      try {
+        rmSync(tmp, { force: true })
+      } catch {
+        // Nothing more to tidy.
+      }
+      this.log(`could not write ${this.path}: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 }

@@ -85,6 +85,13 @@ export function findItem(lists: Pick<CodeHostLists, 'mine' | 'toReview'> | undef
   return lists?.mine.find((i) => i.pr.url === url) ?? lists?.toReview.find((i) => i.pr.url === url)
 }
 
+/** The filter that holds a PR asked for from elsewhere (Home, a PR window); null while it is not listed. */
+export function focusFilter(lists: Pick<CodeHostLists, 'mine' | 'toReview'>, url: string): 'toReview' | 'stale' | 'mine' | null {
+  const item = findItem(lists, url)
+  if (!item) return null
+  return lists.toReview.some((i) => i.pr.url === url) ? 'toReview' : item.stale ? 'stale' : 'mine'
+}
+
 /** The hash a pull request window is opened with: `#pr?profile=<id>&url=<pull request url>`. */
 export function prWindowHash(profileId: string | null, url: string, tab?: PullRequestWindowTab): string {
   return `#pr?profile=${encodeURIComponent(profileId ?? '')}&url=${encodeURIComponent(url)}${tab ? `&tab=${tab}` : ''}`

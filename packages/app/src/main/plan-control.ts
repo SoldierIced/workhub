@@ -28,21 +28,32 @@ export interface ControlProfileDeps {
   sessionProfile: (sessionId: string) => string | null | undefined
   /** Whether a profile exists, and the active one. */
   profiles: () => Promise<{ ids: string[]; active: string | null }>
+  /** Whether a session is read-only (an AI reviewer): it may read the plan, never change it. */
+  sessionReadOnly?: (sessionId: string) => boolean
 }
 
 export type ControlProfile = { ok: true; profileId: string; session: string | null } | { ok: false; status: number; error: string }
 
 /**
  * The profile a control request acts on: the one of `session` (an agent passes `$WORKHUB_SESSION`),
- * else `profile` (a profile id), else the active one.
+ * else `profile` (a profile id), else the active one. A `session` that is sent but is not a session
+ * id (empty, a number, malformed) is a 400, never read as "no session". With `write`, a read-only
+ * session (a reviewer) gets a 403. A request without a session may still write: it comes from a
+ * process of the user's own (a terminal, a script) that can reach the endpoint, which is already
+ * limited to the user (a socket only they can open, or a per-launch token on Windows).
  */
-export async function resolveControlProfile(deps: ControlProfileDeps, ask: { session?: unknown; profile?: unknown }): Promise<ControlProfile> {
+export async function resolveControlProfile(deps: ControlProfileDeps, ask: { session?: unknown; profile?: unknown }, options: { write?: boolean } = {}): Promise<ControlProfile> {
+  let session: string | null = null
+  if (ask.session !== undefined && ask.session !== null) {
+    if (typeof ask.session !== 'string' || !SESSION_ID.test(ask.session)) return { ok: false, status: 400, error: '"session" must be a session id ($WORKHUB_SESSION); leave it out to use the active profile' }
+    session = ask.session
+  }
   const { ids, active } = await deps.profiles()
   let profileId: string | null = null
-  const session = typeof ask.session === 'string' && SESSION_ID.test(ask.session) ? ask.session : null
   if (session) {
     const owner = deps.sessionProfile(session)
     if (owner === undefined) return { ok: false, status: 404, error: 'unknown session' }
+    if (options.write && deps.sessionReadOnly?.(session)) return { ok: false, status: 403, error: 'a read-only session cannot change the plan' }
     profileId = owner
   }
   if (!profileId && typeof ask.profile === 'string' && ask.profile) {
@@ -357,7 +368,7 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
       if (!/^[\w.:-]{1,200}$/.test(id)) return fail(400, 'bad item id')
       const update = parseInboxUpdate(body)
       if (typeof update === 'string') return fail(400, update)
-      const who = await resolveControlProfile(deps, askOf(params, body))
+      const who = await resolveControlProfile(deps, askOf(params, body), { write: true })
       if (!who.ok) return fail(who.status, who.error)
       const r = await deps.planner.updateItem(who.profileId, id, update)
       if (!r.ok) return fail(r.reason === 'unknown' ? 404 : r.reason === 'tooLong' ? 400 : 409, r.error)
@@ -400,7 +411,7 @@ export function createPlanControl(deps: PlanControlDeps): PlanControl {
     },
     async changeMilestone(id, method, body, params) {
       if (id !== null && !/^[\w.:-]{1,64}$/.test(id)) return fail(400, 'bad milestone id')
-      const who = await resolveControlProfile(deps, askOf(params, body))
+      const who = await resolveControlProfile(deps, askOf(params, body), { write: true })
       if (!who.ok) return fail(who.status, who.error)
       const view = await deps.planner.view(who.profileId)
       if (!view.enabled) return fail(409, STATE_REASON.moduleOff!)

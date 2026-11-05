@@ -1,14 +1,19 @@
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { access, constants, mkdtemp, readdir, rename, rm } from 'node:fs/promises'
+import { access, constants, mkdtemp, readdir, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 
 const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+
+/** How long the server may take to answer a download or checksum request. */
+export const CONNECT_TIMEOUT_MS = 30_000
+/** How long a download may go without receiving a byte before it is given up. */
+export const IDLE_TIMEOUT_MS = 60_000
 
 /** What the macOS installer needs from the system; the tests replace it. */
 export interface MacUpdateDeps {
@@ -61,35 +66,85 @@ export async function installMacUpdate(options: { zipUrl: string; bundle: string
     const built = join(unpacked, app)
     const id = (await deps.run('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', join(built, 'Contents', 'Info.plist')])).trim()
     if (id !== appId) throw new Error(`the download is another app (${id})`)
-    const fresh = `${bundle}.new`
-    const old = `${bundle}.old`
-    await deps.remove(fresh)
-    await deps.remove(old)
-    await deps.run('ditto', [built, fresh])
-    await deps.run('xattr', ['-dr', 'com.apple.quarantine', fresh]).catch(() => '')
-    await deps.rename(bundle, old)
+    // Unique names: a leftover of an earlier update that could not be removed never blocks this one.
+    await removeLeftovers(bundle, deps)
+    const tag = randomBytes(4).toString('hex')
+    const fresh = `${bundle}.new-${tag}`
+    const old = `${bundle}.old-${tag}`
+    try {
+      await deps.run('ditto', [built, fresh])
+      await deps.run('xattr', ['-dr', 'com.apple.quarantine', fresh]).catch(() => '')
+      await deps.rename(bundle, old)
+    } catch (err) {
+      await deps.remove(fresh).catch(() => undefined)
+      throw err
+    }
     try {
       await deps.rename(fresh, bundle)
     } catch (err) {
-      await deps.rename(old, bundle)
+      try {
+        await deps.rename(old, bundle)
+      } catch (rollback) {
+        throw new Error(
+          `the new version could not take the place of ${bundle} (${messageOf(err)}) and the previous one could not be put back (${messageOf(rollback)}): the previous version is at ${old}, the new one at ${fresh}`
+        )
+      }
+      await deps.remove(fresh).catch(() => undefined)
       throw err
     }
-    await deps.remove(old)
+    // The new version is in place: leftovers are tidied up when possible, never a failed update.
+    await deps.remove(old).catch(() => undefined)
     await deps.run(LSREGISTER, ['-f', bundle]).catch(() => '')
   } finally {
-    await deps.remove(tmp)
+    await deps.remove(tmp).catch(() => undefined)
+  }
+}
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
+/** Best effort: removes `<bundle>.new*` / `<bundle>.old*` left by earlier updates; failures are ignored. */
+async function removeLeftovers(bundle: string, deps: MacUpdateDeps): Promise<void> {
+  const prefix = `${basename(bundle)}.`
+  const leftover = (entry: string) => entry.startsWith(prefix) && /^(new|old)(-[0-9a-f]+)?$/.test(entry.slice(prefix.length))
+  const names = await deps.list(dirname(bundle)).catch(() => [] as string[])
+  for (const entry of names) if (leftover(entry)) await deps.remove(join(dirname(bundle), entry)).catch(() => undefined)
+}
+
+/**
+ * Downloads `url` into `file`. The server must answer within `connectMs`, and the body must keep
+ * arriving: `idleMs` without a byte aborts it, so a stalled download fails instead of hanging.
+ */
+export async function downloadFile(url: string, file: string, options: { fetch?: typeof fetch; connectMs?: number; idleMs?: number } = {}): Promise<void> {
+  const { fetch: get = fetch, connectMs = CONNECT_TIMEOUT_MS, idleMs = IDLE_TIMEOUT_MS } = options
+  const controller = new AbortController()
+  let timer = setTimeout(() => controller.abort(new Error(`the server did not answer within ${Math.round(connectMs / 1000)} s`)), connectMs)
+  const idle = () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => controller.abort(new Error(`the download stalled (nothing received for ${Math.round(idleMs / 1000)} s)`)), idleMs)
+  }
+  try {
+    const res = await get(url, { signal: controller.signal })
+    if (!res.ok || !res.body) throw new Error(`download failed (${res.status})`)
+    idle()
+    const watch = new Transform({
+      transform(chunk, _encoding, done) {
+        idle()
+        done(null, chunk)
+      }
+    })
+    await pipeline(Readable.fromWeb(res.body as WebReadableStream<Uint8Array>), watch, createWriteStream(file), { signal: controller.signal })
+  } catch (err) {
+    throw controller.signal.aborted && controller.signal.reason instanceof Error ? controller.signal.reason : err
+  } finally {
+    clearTimeout(timer)
   }
 }
 
 /** The real system behind `MacUpdateDeps`. */
 export const nodeMacUpdateDeps: MacUpdateDeps = {
-  async download(url, file) {
-    const res = await fetch(url)
-    if (!res.ok || !res.body) throw new Error(`download failed (${res.status})`)
-    await pipeline(Readable.fromWeb(res.body as WebReadableStream<Uint8Array>), createWriteStream(file))
-  },
+  download: (url, file) => downloadFile(url, file),
   async text(url) {
-    const res = await fetch(url)
+    const res = await fetch(url, { signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS) })
     if (!res.ok) throw new Error(`could not read the checksum (${res.status})`)
     return res.text()
   },
@@ -108,5 +163,8 @@ export const nodeMacUpdateDeps: MacUpdateDeps = {
       () => false
     ),
   rename: (from, to) => rename(from, to),
-  remove: (path) => rm(path, { recursive: true, force: true })
+  // Not fs.rm: inside Electron, fs treats `app.asar` as a folder, so a recursive rm of a bundle
+  // cannot delete it and fails with ENOTEMPTY. /bin/rm sees the real file.
+  remove: (path) =>
+    new Promise((resolve, reject) => execFile('/bin/rm', ['-rf', '--', path], (err, _stdout, stderr) => (err ? reject(new Error(stderr.trim() || err.message)) : resolve())))
 }

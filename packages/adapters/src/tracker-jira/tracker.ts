@@ -39,6 +39,9 @@ const LIST_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee', '
 const DETAIL_FIELDS = 'summary,status,issuetype,priority,assignee,reporter,created,updated,labels,description,comment,parent,subtasks'
 const AGILE_CONCURRENCY = 5
 const SEARCH_PAGE = 100
+/** At most this many assigned tickets, read in at most `LIST_PAGES` pages. */
+const LIST_CAP = 500
+const LIST_PAGES = 10
 /** A Jira issue key, safe to put in JQL as it is. */
 const JIRA_KEY = /^[A-Z][A-Z0-9_]*-\d+$/
 
@@ -99,12 +102,21 @@ export class JiraTracker implements TicketTracker {
     const ignored = (options.ignoredStatuses ?? []).map((s) => s.trim()).filter(Boolean)
     if (ignored.length > 0) jql += ` AND status NOT IN (${ignored.map(quote).join(', ')})`
     const fields = sprintField ? [...LIST_FIELDS, sprintField] : LIST_FIELDS
-    const result = (await this.request('GET', '/rest/api/3/search/jql', {
-      jql: `${jql} ORDER BY updated DESC`,
-      fields: fields.join(','),
-      maxResults: '100'
-    })) as Json
-    const tickets = ((result['issues'] as Json[] | undefined) ?? []).flatMap((issue) => {
+    const issues: Json[] = []
+    let token: string | undefined
+    for (let page = 0; page < LIST_PAGES && issues.length < LIST_CAP; page++) {
+      const result = (await this.request('GET', '/rest/api/3/search/jql', {
+        jql: `${jql} ORDER BY updated DESC`,
+        fields: fields.join(','),
+        maxResults: String(Math.min(SEARCH_PAGE, LIST_CAP - issues.length)),
+        ...(token ? { nextPageToken: token } : {})
+      })) as Json
+      const got = (result['issues'] as Json[] | undefined) ?? []
+      issues.push(...got)
+      token = typeof result['nextPageToken'] === 'string' ? result['nextPageToken'] : undefined
+      if (!token || result['isLast'] === true || got.length === 0) break
+    }
+    const tickets = issues.slice(0, LIST_CAP).flatMap((issue) => {
       const ticket = this.toTicket(issue, sprintField)
       return ticket ? [ticket] : []
     })

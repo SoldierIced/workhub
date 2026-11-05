@@ -5,10 +5,12 @@ import type { PlanItemKind } from '@shared/plan-item-window'
 import type { MilestoneView, PlannerView } from '@shared/planner-api'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
 import { EmptyState, Field, Markdown, useToast } from '../../components/molecules'
+import { UnsavedPrompt } from '../../components/organisms/UnsavedChanges'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { errorText } from '../../lib/errorText'
+import { isDirty } from '../../lib/unsavedChanges'
 import { formToMilestone, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, linksToRows, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, milestoneToForm, PIECE_STATE_LABEL, PIECE_STATE_TONE, rowsToLinks, type LinkRow, type MilestoneForm } from '../../lib/planner'
 import { relativeTime } from '../../lib/pullRequests'
 import { usePlanner } from '../../plannerStore'
@@ -349,6 +351,9 @@ function InboxEditor({ profile, item, initial, onDone }: { profile: Profile; ite
   const [form, setForm] = useState(initial)
   const [problem, setProblem] = useState<MessageKey | null>(null)
   const [saving, setSaving] = useState(false)
+  // Esc with edits asks first ("Save your changes?"), like the other editors.
+  const [asking, setAsking] = useState(false)
+  const dirty = isDirty(initial, form)
   const settings = inboxSettings(plannerSettings(profile))
   const people = plannerSettings(profile).people
   const set = (patch: Partial<InboxForm>) => setForm((f) => ({ ...f, ...patch }))
@@ -377,10 +382,11 @@ function InboxEditor({ profile, item, initial, onDone }: { profile: Profile; ite
       className="flex flex-col gap-3"
       data-testid="plan-item-editor"
       onKeyDown={(e) => {
-        // Esc leaves the form and goes back to the details.
-        if (e.key !== 'Escape' || e.defaultPrevented) return
+        // Esc leaves the form and goes back to the details; with edits it asks first.
+        if (e.key !== 'Escape' || e.defaultPrevented || asking) return
         e.preventDefault()
-        onDone()
+        if (dirty) setAsking(true)
+        else onDone()
       }}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -425,6 +431,15 @@ function InboxEditor({ profile, item, initial, onDone }: { profile: Profile; ite
           {t('planner.detail.save')}
         </Button>
       </div>
+      <UnsavedPrompt
+        open={asking}
+        saving={saving}
+        onAnswer={(choice) => {
+          setAsking(false)
+          if (choice === 'discard') onDone()
+          else if (choice === 'save') void save()
+        }}
+      />
     </div>
   )
 }

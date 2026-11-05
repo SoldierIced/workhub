@@ -15,6 +15,7 @@ import {
   findDuplicate,
   moveInboxItem,
   groupInbox,
+  inboxDueBy,
   inboxSettings,
   INBOX_LIMITS,
   isAlertAction,
@@ -171,6 +172,19 @@ describe('inbox', () => {
     expect(g.tasks.rest.map((i) => i.id)).toEqual(['norm'])
     expect(g.decisions.map((i) => i.id)).toEqual(['dec'])
     expect(g.closed.map((i) => i.id)).toEqual(['gone'])
+  })
+
+  it('lists the approved tasks and bugs due today or overdue, overdue first (the menu bar panel)', () => {
+    const items = [
+      item({ id: 'pending', due: '2026-11-01' }),
+      item({ id: 'due', status: 'local', due: '2026-11-01', createdAt: 1 }),
+      item({ id: 'over', status: 'ticket', kind: 'bug', due: '2026-10-20' }),
+      item({ id: 'later', status: 'local', due: '2026-11-02' }),
+      item({ id: 'none', status: 'local' }),
+      item({ id: 'dec', kind: 'decision', status: 'local', due: '2026-11-01' }),
+      item({ id: 'done', status: 'done', due: '2026-11-01', closedAt: 9 })
+    ]
+    expect(inboxDueBy(items, '2026-11-01').map((i) => i.id)).toEqual(['over', 'due'])
   })
 
   it('prunes closed items a week after they closed, never open ones', () => {

@@ -357,6 +357,58 @@ describe('session identity', () => {
     await flush()
   })
 
+  it('returns the live session that already runs a conversation instead of starting a second process', async () => {
+    const { manager, native } = setup()
+    const first = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' })
+    await flush()
+    const again = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' })
+    expect(again.id).toBe(first.id)
+    // Two starts at the same moment end up as one session too.
+    const [x, y] = await Promise.all([
+      manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'def' }),
+      manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'def' })
+    ])
+    expect(x.id).toBe(y.id)
+    await flush()
+    expect(native.started.map((r) => r.agentSessionId)).toEqual(['abc', 'def'])
+    expect(manager.list()).toHaveLength(2)
+    // A hand-over starts it again on purpose; a stopped one is resumed as usual.
+    const handed = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' }, { handOver: true })
+    expect(handed.id).not.toBe(first.id)
+    await manager.stop(x.id)
+    const resumed = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'def' })
+    expect(resumed.id).not.toBe(x.id)
+    await flush()
+  })
+
+  it('marks a session stopped and not switching even when its runtime fails to stop', async () => {
+    const { manager, native, last } = setup()
+    const view = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    await flush()
+    native.stop = async () => {
+      throw new Error('process did not exit')
+    }
+    await expect(manager.stop(view.id)).rejects.toThrow(/did not exit/)
+    expect(last(view.id).state).toBe('stopped')
+    // Not stuck "switching": a later mode change is not ignored.
+    await manager.setMode(view.id, 'console')
+    expect(manager.engineOf(view.id)).toBe('console')
+    await flush()
+  })
+
+  it('gives reviewers and sessions without an endpoint empty control variables', async () => {
+    const plain = setup()
+    await plain.manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    const withEndpoint = setup(emptyConfig(), false, { sessionEnv: (id) => ({ WORKHUB_SESSION: id, WORKHUB_SOCKET: '/s.sock', WORKHUB_URL: '', WORKHUB_TOKEN: '' }) })
+    const normal = await withEndpoint.manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo' })
+    await withEndpoint.manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', readOnly: true })
+    await flush()
+    const none = { WORKHUB_SESSION: '', WORKHUB_SOCKET: '', WORKHUB_URL: '', WORKHUB_TOKEN: '' }
+    expect(plain.native.started[0]!.env).toMatchObject(none)
+    expect(withEndpoint.native.started[0]!.env).toMatchObject({ WORKHUB_SESSION: normal.id, WORKHUB_SOCKET: '/s.sock' })
+    expect(withEndpoint.native.started[1]!.env).toMatchObject(none)
+  })
+
   it('moves the group place to the id an agent only reports once it has started', async () => {
     const { manager, acp, last, replaceSessionIdentity } = setup()
     acp.start = async () => ({ agentName: 'Fake', permissionMode: null, agentSessionId: 'acp-real' })
@@ -755,6 +807,20 @@ describe('SessionManager worktrees', () => {
     const restored = await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/_worktrees/acme-x' }, { restored: true, worktree: { repoRoot: '/w/acme', path: '/w/_worktrees/acme-x', branch: 'x' } })
     expect(created).toEqual([])
     expect(restored.worktree?.branch).toBe('x')
+  })
+
+  it('makes no worktree for an agent without a runtime, and removes one when the environment fails', async () => {
+    const missing = fake()
+    const a = setup(config(), false, { worktrees: missing.worktrees, runtimes: {} })
+    await expect(a.manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: { branch: 'a' } })).rejects.toThrow(/no runtime/)
+    expect(missing.created).toEqual([])
+
+    const failing = fake({ remove: vi.fn(async () => Promise.reject(new Error('locked'))) })
+    const b = setup(config(), false, { worktrees: failing.worktrees, profileEnv: async () => Promise.reject(new Error('secret store locked')) })
+    await expect(b.manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: { branch: 'b' } })).rejects.toThrow(/secret store locked/)
+    expect(failing.created).toHaveLength(1)
+    expect(failing.worktrees.remove).toHaveBeenCalledWith('/w/acme', wt('acme-feat-b'), { force: true })
+    expect(b.manager.list()).toEqual([])
   })
 
   it('fails outside a repository unless the worktree is optional', async () => {

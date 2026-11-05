@@ -91,6 +91,11 @@ never breaks the session.
   view and edit form share it; a profile has one new-milestone window) and focuses it when it is
   asked for again; asking to edit an item whose window is open sends it `planner:edit`. Plan
   changes (`planner:changed`) go to every window, so an item's window stays live.
+- Settings is a window of its own too (`#settings?section=<id>`, `main/settings-window.ts`): one at
+  a time; asking for it again focuses it and sends it `settings:navigate`, which goes through the
+  unsaved-drafts guard. Its renderer reports whether drafts are unsaved, so the window's close
+  button asks first. Every config write tells every window (`config:changed`, from a wrapper around
+  the config store in `main/config-broadcast.ts`), so a change made there shows in the main window.
 - Web permissions (camera, microphone, geolocation, notifications and so on) are denied by default;
   only sanitized clipboard writes from the app's own renderer are allowed.
 - Secrets are never in `config.json`, only `secretRef` keys that point into `secrets.json`, which is

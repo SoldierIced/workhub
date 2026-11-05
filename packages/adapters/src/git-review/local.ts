@@ -4,7 +4,7 @@
  * only: git runs without a shell, hooks, optional locks or external diff drivers, and nothing is
  * written to the repositories.
  */
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { lstat, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import {
@@ -164,12 +164,16 @@ function addedFile(path: string): LocalReviewFile {
   return { path, status: 'added', binary: false, additions: 0, deletions: 0, hunks: [], hiddenLines: 0, untracked: true }
 }
 
-/** A file git does not track yet, shown as added: every line is new. */
+/**
+ * A file git does not track yet, shown as added: every line is new. A symbolic link is not followed
+ * (it may point outside the repository) and shows as `unreadable`, as anything that is not a plain
+ * file does.
+ */
 export async function untrackedFile(repo: string, path: string, lineLimit = LOCAL_LINE_LIMIT): Promise<LocalReviewFile> {
   const file = addedFile(path)
   const full = join(repo, path)
   try {
-    const info = await stat(full)
+    const info = await lstat(full)
     if (!info.isFile()) return { ...file, note: 'unreadable' }
     if (info.size > UNTRACKED_BYTE_LIMIT) return { ...file, note: 'tooLarge' }
     const data = await readFile(full)

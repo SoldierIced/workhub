@@ -121,12 +121,21 @@ export interface PrEventsIpcDeps {
   service: PrEventService
   /** Shows an OS notification whose click opens the pull request. */
   notify: (n: PrNotification) => void
+  /** Whether a connected code host recognizes the URL; a notification for any other URL is dropped. */
+  recognizes: (profileId: string | null, url: string) => Promise<boolean>
 }
 
-export function registerPrEventsIpc(ipc: IpcRegistrar, { service, notify }: PrEventsIpcDeps): void {
+export function registerPrEventsIpc(ipc: IpcRegistrar, { service, notify, recognizes }: PrEventsIpcDeps): void {
   ipc.on('prEvents:ready', () => service.rendererReady())
+  // The URL comes from the renderer and a click opens a window on it: only a pull request URL of a connected host.
   ipc.on('prEvents:notify', (_e, n: PrNotification) => {
-    if (n && typeof n.title === 'string' && typeof n.url === 'string' && typeof n.profileId === 'string') notify(n)
+    if (!n || typeof n.title !== 'string' || typeof n.url !== 'string' || typeof n.profileId !== 'string') return
+    void recognizes(n.profileId || null, n.url).then(
+      (known) => {
+        if (known) notify(n)
+      },
+      () => undefined
+    )
   })
   ipc.handle('prEvents:demoAdvance', () => service.demoAdvance())
 }

@@ -5,7 +5,8 @@
  * queued and retried every few seconds, like the PR events and the Slack wake-ups; it is dropped
  * when the session ends or stays busy past `PENDING_TTL_MS`.
  */
-import { isAbsolute, relative, resolve } from 'node:path'
+import { stat } from 'node:fs/promises'
+import { extname, isAbsolute, relative, resolve } from 'node:path'
 import type { LocalChanges } from '@workhub/adapters/git-review'
 import type { LocalReviewDelivery, LocalReviewScope, PullRequestItem, ReviewComment } from '@workhub/core'
 import type { SessionView } from '../shared/api'
@@ -189,9 +190,43 @@ export class LocalReviewService {
   }
 }
 
+/**
+ * Extensions the system runs (or installs, or follows to another place) instead of showing:
+ * scripts, apps and bundles, installers, shortcuts. Lower case, with the dot.
+ */
+const PROGRAM_EXTENSIONS = new Set([
+  // macOS: bundles, Terminal and Automator files, scripts, installers, disk images, shortcuts.
+  '.app', '.bundle', '.framework', '.plugin', '.prefpane', '.kext', '.appex', '.xpc', '.saver', '.qlgenerator', '.mdimporter',
+  '.command', '.terminal', '.tool', '.workflow', '.action', '.scpt', '.scptd', '.applescript', '.osax',
+  '.pkg', '.mpkg', '.dmg', '.webloc', '.inetloc', '.fileloc', '.url', '.lnk',
+  // Shells and interpreters, Java archives.
+  '.sh', '.bash', '.zsh', '.fish', '.csh', '.tcsh', '.ksh', '.jar', '.jnlp',
+  // Linux launchers and packages.
+  '.desktop', '.appimage', '.run', '.bin', '.deb', '.rpm', '.flatpakref',
+  // Windows programs, installers and script hosts.
+  '.exe', '.com', '.bat', '.cmd', '.msi', '.msix', '.appx', '.scr', '.pif', '.cpl', '.hta', '.reg', '.msc', '.ps1', '.psm1',
+  '.vbs', '.vbe', '.wsf', '.wsh', '.jse'
+])
+/** Windows runs these with its script host when opened, so there they count as programs too. */
+const WINDOWS_SCRIPT_EXTENSIONS = new Set(['.js'])
+
+/**
+ * Whether opening this path with the system's default app could run something instead of showing
+ * it: a known program, script, bundle or shortcut extension (for files and folders: a macOS bundle
+ * is a folder), or a file with an execute bit (not on Windows). Such paths are shown in their folder.
+ */
+export function opensAsProgram(path: string, file: { isDirectory?: boolean; mode?: number }, platform: NodeJS.Platform = process.platform): boolean {
+  const ext = extname(path.replace(/[\\/]+$/, '')).toLowerCase()
+  if (PROGRAM_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_SCRIPT_EXTENSIONS.has(ext))) return true
+  if (file.isDirectory) return false
+  return platform !== 'win32' && file.mode !== undefined && (file.mode & 0o111) !== 0
+}
+
 export interface LocalReviewIpcDeps {
   openWindow(sessionId: string): void
   openPath(path: string): Promise<string>
+  /** Shows a file in its folder: used instead of `openPath` for anything that could run (`opensAsProgram`). */
+  showItemInFolder(path: string): void
 }
 
 export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewService, deps: LocalReviewIpcDeps): void {
@@ -206,6 +241,12 @@ export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewSe
   ipc.handle('localReview:openFile', async (_e, sessionId: string, repoRoot: string, path: string) => {
     const full = service.filePath(String(sessionId), String(repoRoot), String(path))
     if (!full) return false
+    const info = await stat(full).catch(() => null)
+    if (!info) return false
+    if (opensAsProgram(full, { isDirectory: info.isDirectory(), mode: info.mode })) {
+      deps.showItemInFolder(full)
+      return true
+    }
     return (await deps.openPath(full)) === ''
   })
 }

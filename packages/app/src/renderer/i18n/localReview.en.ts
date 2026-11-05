@@ -83,6 +83,8 @@ export const localReviewEn = {
   'localReview.delivery.queued': 'Queued: the session is busy and gets the message once it is idle',
   'localReview.delivery.dropped.closed': 'Not sent: the session was closed',
   'localReview.delivery.dropped.busy': 'Not sent: the session stayed busy',
+  'localReview.delivery.dropped': 'Not sent: the session did not take the message',
+  'localReview.sendFailed': 'Could not send: {message}',
   'localReview.commentCount.one': '{count} comment',
   'localReview.commentCount.other': '{count} comments',
 

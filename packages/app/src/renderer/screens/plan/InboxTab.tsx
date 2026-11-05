@@ -1,12 +1,12 @@
 import { ExternalLink, Inbox, Plus, X } from 'lucide-react'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { availableInboxActions, filterInbox, groupInbox, inboxSettings, INBOX_KINDS, INBOX_STATUSES, plannerSettings, trackedState, type InboxAction, type InboxItem, type InboxKind, type Person, type TrackedTicket } from '@workhub/core'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
 import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, Field, useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
-import { BULK_CLEAR, BULK_KEEP, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, EMPTY_ITEM_FORM, formToProposal, inboxActionLabel, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, PIECE_STATE_LABEL, PIECE_STATE_TONE, plainPreview, type BulkForm, type InboxItemForm } from '../../lib/planner'
+import { BULK_CLEAR, BULK_KEEP, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, EMPTY_ITEM_FORM, formToProposal, inboxActionLabel, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, PIECE_STATE_LABEL, PIECE_STATE_TONE, plainPreview, selectedShown, type BulkForm, type InboxItemForm } from '../../lib/planner'
 import { usePlanner } from '../../plannerStore'
 import type { PlanTabContext } from './planTabs'
 
@@ -108,6 +108,13 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
   const bulkTitleId = useId()
   const items = view?.inbox ?? []
   const shown = useMemo(() => filterInbox(items, filters), [items, filters])
+  // Only what is still listed counts: a row a refresh removed never gets the bulk edit.
+  const picked = useMemo(() => selectedShown(selected, shown), [selected, shown])
+  // Another filter shows other rows: the selection (and its pending edit) starts over.
+  useEffect(() => {
+    setSelected([])
+    setBulk(EMPTY_BULK_FORM)
+  }, [filters])
   const groups = groupInbox(shown, view?.today ?? '', settings.criticalities)
   const canCreate = view?.tracker.create ?? false
   const areas = [...new Set([...settings.areas, ...items.map((i) => i.area).filter((a): a is string => Boolean(a))])]
@@ -138,10 +145,10 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
     toast(r.error, 'danger')
   }
   const bulkPatch = bulkFormToPatch(bulk)
-  const bulkChanges = bulkChangeCount(items.filter((i) => selected.includes(i.id)), bulkPatch)
+  const bulkChanges = bulkChangeCount(items.filter((i) => picked.includes(i.id)), bulkPatch)
   const applyBulk = async () => {
-    if (bulkChanges === 0) return
-    const r = await window.hub.planner.bulkEdit(profile.id, selected, bulkPatch)
+    if (bulkChanges === 0 || picked.length === 0) return
+    const r = await window.hub.planner.bulkEdit(profile.id, picked, bulkPatch)
     if (!r.ok) return toast(r.error, 'danger')
     setSelected([])
     setBulk(EMPTY_BULK_FORM)
@@ -251,11 +258,11 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
         )}
       </div>
 
-      {selected.length > 0 && (
+      {picked.length > 0 && (
         <div className="flex flex-col gap-2 rounded-lg border border-accent/40 bg-accent-soft px-3 py-2.5" role="group" aria-labelledby={bulkTitleId} data-testid="inbox-bulk">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id={bulkTitleId} className="text-sm font-semibold">
-              {tn('planner.inbox.bulkTitle', selected.length)}
+              {tn('planner.inbox.bulkTitle', picked.length)}
             </h2>
             <p className="flex-1 text-xs text-muted">{t('planner.inbox.bulkHint')}</p>
             <Button size="sm" variant="ghost" onClick={clearSelection}>
