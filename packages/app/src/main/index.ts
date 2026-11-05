@@ -93,7 +93,7 @@ import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
 import { AgentOptionsService, runsKiroCli } from './agent-options'
 import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
-import { AgentReviewService, registerAgentReviewIpc } from './agent-review'
+import { AgentReviewService, registerAgentReviewIpc, reviewLoopWindows } from './agent-review'
 import { AiReviewService, registerAiReviewIpc, reviewBudgetGate } from './ai-review'
 import { claudeConfigDirOf } from './claude-accounts'
 import { registerListenIpc } from './listen-ipc'
@@ -1091,7 +1091,7 @@ function registerIpc(): void {
     home: homedir()
   })
   registerAiReviewIpc(ipc, aiReview)
-  registerAgentReviewIpc(ipc, agentReview)
+  registerAgentReviewIpc(ipc, agentReview, reviewLoopWindows((hash, title) => createAuxWindow(hash, title, REVIEW_LOOP_WINDOW_SIZE)))
   registerLocalReviewIpc(ipc, localReview, { openWindow: openLocalReviewWindow, openPath: (path) => shell.openPath(path) })
   registerFileViewerIpc(ipc, {
     createWindow: (hash, title) => createAuxWindow(hash, title, FILE_WINDOW_SIZE),
@@ -1475,6 +1475,7 @@ interface AuxWindowSize {
 
 const TICKET_WINDOW_SIZE: AuxWindowSize = { width: 820, height: 760, minWidth: 560, minHeight: 420 }
 const FILE_WINDOW_SIZE: AuxWindowSize = { width: 900, height: 760, minWidth: 420, minHeight: 320 }
+const REVIEW_LOOP_WINDOW_SIZE: AuxWindowSize = { width: 860, height: 820, minWidth: 480, minHeight: 400 }
 const PLAN_ITEM_WINDOW_SIZE: AuxWindowSize = { width: 720, height: 780, minWidth: 460, minHeight: 400 }
 
 /** A secondary window (a pull request, a ticket) on the same renderer, routed by its hash. */

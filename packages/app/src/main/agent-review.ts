@@ -4,8 +4,9 @@
  * as a read-only session linked to it, sends it the brief, and then relays between the two: the
  * reviewer's findings to the author, the author's answer back for a re-review, until the reviewer
  * approves or the round limit is reached. Every message goes through the sessions' own prompt
- * path, so both chats show the whole exchange. Unlike the review loop (`ai-review.ts`), nothing is
- * parsed into findings: the texts go from one chat to the other as they are.
+ * path, so both chats show the whole exchange. The texts go from one chat to the other as they
+ * are, unless the user asked to approve the findings first: then the loop waits, shows the numbered
+ * findings (`parseLoopFindings`) and sends the author only the ones the user kept.
  */
 import {
   afterVerdict,
@@ -20,6 +21,8 @@ import {
   gatePrompt,
   MAX_REVIEW_ROUNDS,
   MIN_REVIEW_ROUNDS,
+  parseLoopFindings,
+  setAsideItems,
   parseReviewVerdict,
   pushBlockEnv,
   rejectOption,
@@ -29,11 +32,14 @@ import {
   type AiReviewSettings,
   type BudgetStatus,
   type EffectiveAgent,
+  type FindingSelection,
   type SessionOrigin,
   type WorkhubConfig
 } from '@workhub/core'
 import type { SessionView, StartSessionInput } from '../shared/api'
 import type { AgentReviewOptions, AgentReviewRequest, AgentReviewStartResult, ReviewLoopFailure, ReviewLoopView } from '../shared/ai-review-api'
+import type { BrowserWindow } from 'electron'
+import { reviewLoopWindowHash } from '../shared/review-loop-window'
 import type { IpcRegistrar } from './ipc-guard'
 
 export interface AgentReviewDeps {
@@ -84,6 +90,12 @@ interface LoopRun {
   waitingOn?: string
   /** Prompts the user allowed past a usage budget ("Run anyway"). */
   override: boolean
+  /** Ask the user which findings go to the author, each time the reviewer requests changes. */
+  approve: boolean
+  /** While the loop waits for the user: settles with their pick, or null when the loop stops. */
+  decide?: (choice: { keep: string[]; note?: string } | null) => void
+  /** Findings the user set aside so far (by round and title), told to the reviewer on every re-review. */
+  setAside: string[]
 }
 
 export class AgentReviewService {
@@ -151,7 +163,8 @@ export class AgentReviewService {
       reviewers: agents.map((a) => ({ key: a.key, label: a.label, agentId: a.agent.id, adapter: a.agent.adapter, installed: installed[a.agent.id] !== false })),
       ...(fallback ? { defaultReviewerKey: fallback.key } : {}),
       briefPrompt: briefPromptOf(settings),
-      maxRounds: settings.maxRounds
+      maxRounds: settings.maxRounds,
+      approveFindings: settings.approveFindings
     }
   }
 
@@ -177,13 +190,17 @@ export class AgentReviewService {
     // A finished loop of this session gives way to the new one.
     for (const [id, r] of this.loops) if (r.view.authorSessionId === view.id) this.loops.delete(id)
     const at = this.now()
+    const settings = aiReviewSettings(profile)
+    const approve = request.approveFindings ?? settings.approveFindings
     const run: LoopRun = {
-      view: { id: `loop-${at}-${++this.seq}`, authorSessionId: view.id, reviewerLabel: reviewer.label, round: 0, maxRounds: request.maxRounds, phase: 'briefing', startedAt: at, updatedAt: at },
-      override: request.override === true
+      view: { id: `loop-${at}-${++this.seq}`, authorSessionId: view.id, reviewerLabel: reviewer.label, round: 0, maxRounds: request.maxRounds, phase: 'briefing', ...(approve ? { approveFindings: true } : {}), startedAt: at, updatedAt: at },
+      override: request.override === true,
+      approve,
+      setAside: []
     }
     this.loops.set(run.view.id, run)
     this.changed()
-    void this.run(run, config, view, reviewer, request.prompt, aiReviewSettings(profile))
+    void this.run(run, config, view, reviewer, request.prompt, settings)
     return { ok: true, loopId: run.view.id }
   }
 
@@ -205,16 +222,19 @@ export class AgentReviewService {
         const { round, maxRounds } = run.view
         // A reply without a verdict line counts as changes requested: the author gets it and the round limit still ends the loop.
         const next = afterVerdict(parseReviewVerdict(review), round, maxRounds)
+        // With "ask me first", findings wait for the user's pick; an approval goes on as before.
+        const selection = run.approve && next !== 'approved' ? await this.pick(run, review, round, author.id, reviewerId) : undefined
         if (next !== 'fixing') {
           // The author always gets the reviewer's last answer, approved or not.
           this.set(run, { phase: 'fixing' })
-          await this.turn(run, config, author.id, authorKey, buildAuthorFinalPrompt({ review, reviewer: reviewer.label, outcome: next, round, maxRounds }), 'authorClosed')
+          await this.turn(run, config, author.id, authorKey, buildAuthorFinalPrompt({ review, reviewer: reviewer.label, outcome: next, round, maxRounds, ...(selection ? { selection } : {}) }), 'authorClosed')
           return this.set(run, { phase: next })
         }
         this.set(run, { phase: 'fixing' })
-        const answer = await this.turn(run, config, author.id, authorKey, buildAuthorFixPrompt({ review, reviewer: reviewer.label, round, maxRounds }), 'authorClosed')
+        const answer = await this.turn(run, config, author.id, authorKey, buildAuthorFixPrompt({ review, reviewer: reviewer.label, round, maxRounds, ...(selection ? { selection } : {}) }), 'authorClosed')
         this.set(run, { phase: 'reviewing', round: round + 1 })
-        review = await this.turn(run, config, reviewerId, reviewer.key, buildReReviewPrompt({ reply: answer, round: round + 1, maxRounds, language }), 'reviewerClosed')
+        const setAside = { items: run.setAside, ...(selection?.note ? { note: selection.note } : {}) }
+        review = await this.turn(run, config, reviewerId, reviewer.key, buildReReviewPrompt({ reply: answer, round: round + 1, maxRounds, language, ...(selection ? { setAside } : {}) }), 'reviewerClosed')
       }
     } catch (e) {
       if (isEnded(run.view)) return // stopped by the user meanwhile
@@ -223,6 +243,47 @@ export class AgentReviewService {
     } finally {
       run.waitingOn = undefined
     }
+  }
+
+  /**
+   * Waits for the user to pick which findings go to the author (`approveFindings`). The loop shows
+   * them in its card; Stop settles the wait with null and ends the loop, and either chat closing
+   * meanwhile fails it, as it would during a turn.
+   */
+  private async pick(run: LoopRun, review: string, round: number, authorId: string, reviewerId: string): Promise<FindingSelection> {
+    const findings = parseLoopFindings(review)
+    type Closed = { closed: 'authorClosed' | 'reviewerClosed'; detail?: string }
+    const choice = await new Promise<{ keep: string[]; note?: string } | null | Closed>((resolve) => {
+      const poll = setInterval(() => {
+        for (const [id, closed] of [[authorId, 'authorClosed'], [reviewerId, 'reviewerClosed']] as const) {
+          const v = this.view(id)
+          if (v && isLive(v)) continue
+          clearInterval(poll)
+          resolve({ closed, ...(v?.error ? { detail: v.error } : {}) })
+          return
+        }
+      }, this.deps.pollMs ?? 500)
+      run.decide = (c) => {
+        clearInterval(poll)
+        resolve(c)
+      }
+      this.set(run, { phase: 'awaitingApproval', findings, review })
+    })
+    run.decide = undefined
+    this.set(run, { findings: undefined, review: undefined })
+    if (choice && 'closed' in choice) throw new LoopEnd({ failure: choice.closed, ...(choice.detail ? { detail: choice.detail } : {}) })
+    if (!choice || isEnded(run.view)) throw new LoopEnd({ stoppedBy: 'user' })
+    const selection: FindingSelection = { findings, keep: choice.keep, ...(choice.note ? { note: choice.note } : {}) }
+    for (const item of setAsideItems(selection, round)) if (!run.setAside.includes(item)) run.setAside.push(item)
+    return selection
+  }
+
+  /** The user's pick while a loop waits for it: the findings to send (`all` for an unnumbered review) and a note. */
+  approve(loopId: string, keep: string[], note?: string): boolean {
+    const run = this.loops.get(loopId)
+    if (!run || run.view.phase !== 'awaitingApproval' || !run.decide) return false
+    run.decide({ keep, ...(note?.trim() ? { note: note.trim() } : {}) })
+    return true
   }
 
   /**
@@ -319,7 +380,8 @@ export class AgentReviewService {
     const run = this.loops.get(loopId)
     if (!run || isEnded(run.view)) return
     const waiting = run.waitingOn
-    this.set(run, { phase: 'stopped', stoppedBy: 'user' })
+    this.set(run, { phase: 'stopped', stoppedBy: 'user', findings: undefined, review: undefined })
+    run.decide?.(null)
     if (waiting) await this.deps.sessions.cancel(waiting).catch(() => undefined)
   }
 
@@ -344,11 +406,40 @@ export function validAgentReviewRequest(input: unknown): AgentReviewRequest | nu
     reviewerKey: o['reviewerKey'],
     prompt: o['prompt'].slice(0, 50_000),
     maxRounds: Math.min(MAX_REVIEW_ROUNDS, Math.max(MIN_REVIEW_ROUNDS, rounds)),
+    ...(typeof o['approveFindings'] === 'boolean' ? { approveFindings: o['approveFindings'] } : {}),
     ...(o['override'] === true ? { override: true } : {})
   }
 }
 
-export function registerAgentReviewIpc(ipc: IpcRegistrar, service: AgentReviewService): void {
+const FINDING_ID = /^(F\d{1,3}|all)$/
+
+/** Checks the renderer's pick: finding ids (at most 60) and a note of at most 5000 characters; null when it is not one. */
+export function validFindingPick(keep: unknown, note: unknown): { keep: string[]; note?: string } | null {
+  if (!Array.isArray(keep) || keep.length > 60 || !keep.every((k) => typeof k === 'string' && FINDING_ID.test(k))) return null
+  if (note !== undefined && typeof note !== 'string') return null
+  return { keep: [...new Set(keep as string[])], ...(typeof note === 'string' && note.trim() ? { note: note.trim().slice(0, 5000) } : {}) }
+}
+
+/** Opens a loop's window (one per loop; a second request focuses it). */
+export function reviewLoopWindows(createWindow: (hash: string, title: string) => BrowserWindow): (loopId: string) => void {
+  const open = new Map<string, BrowserWindow>()
+  return (loopId) => {
+    const existing = open.get(loopId)
+    if (existing && !existing.isDestroyed()) {
+      if (existing.isMinimized()) existing.restore()
+      existing.focus()
+      return
+    }
+    const win = createWindow(reviewLoopWindowHash(loopId), 'Review')
+    open.set(loopId, win)
+    win.on('closed', () => open.delete(loopId))
+  }
+}
+
+export function registerAgentReviewIpc(ipc: IpcRegistrar, service: AgentReviewService, openWindow?: (loopId: string) => void): void {
+  ipc.handle('agentReview:openWindow', (_e, loopId: unknown) => {
+    if (typeof loopId === 'string' && service.snapshot().some((l) => l.id === loopId)) openWindow?.(loopId)
+  })
   ipc.handle('agentReview:options', (_e, sessionId: string) => service.options(String(sessionId)))
   ipc.handle('agentReview:start', (_e, sessionId: string, request: unknown) => {
     const valid = validAgentReviewRequest(request)
@@ -357,4 +448,8 @@ export function registerAgentReviewIpc(ipc: IpcRegistrar, service: AgentReviewSe
   ipc.handle('agentReview:loops', () => service.snapshot())
   ipc.handle('agentReview:stop', (_e, loopId: string) => service.stop(String(loopId)))
   ipc.handle('agentReview:dismiss', (_e, loopId: string) => service.dismiss(String(loopId)))
+  ipc.handle('agentReview:approve', (_e, loopId: string, keep: unknown, note: unknown) => {
+    const pick = validFindingPick(keep, note)
+    return pick ? service.approve(String(loopId), pick.keep, pick.note) : false
+  })
 }

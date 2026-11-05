@@ -24,5 +24,6 @@ export const DEFAULT_AI_REVIEW_SETTINGS: AiReviewSettings = {
   reviewerModel: '',
   reviewerEffort: '',
   reviewerSession: 'same',
-  briefPrompt: ''
+  briefPrompt: '',
+  approveFindings: false
 }

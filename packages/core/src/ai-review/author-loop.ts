@@ -98,7 +98,7 @@ const REVIEW_METHOD = [
 
 /** Answered item by item: a reviewer that must write "OK, file X" for each one looks where it would otherwise skim. */
 const REVIEW_CHECKLIST = [
-  '## Checklist (answer every item explicitly in a section "## Checklist", one line each: OK / FINDING n / N/A, with the file you looked at)',
+  '## Checklist (answer every item explicitly in a section "## Checklist", one line each: OK / FINDING F<n> / N/A, with the file you looked at)',
   'C1. Every added or changed class, factory, service registration or option: does it differ from what the framework does by default? Name the default you compared with.',
   'C2. Every SQL `INSERT`: explicit column list?',
   'C3. Every `SELECT *`, raw SQL by interpolation, obsolete API, misleading comment, token or parameter that can never fire?',
@@ -122,7 +122,7 @@ const answerFormat = (language: string) =>
     ANSWER_LANGUAGE[language] ?? ANSWER_LANGUAGE.en,
     '1. One short paragraph: what the change does and your overall assessment.',
     '2. **Evidence**: the files you read in full (paths), the files you only skimmed, and what you could not verify and why. "I did not check X" is a valid and useful line.',
-    '3. Findings ranked by severity: **blocker**, **major**, **minor**, **nit**. For each: `path/to/file:line`, the problem, why it matters (what breaks, when, for whom) and a concrete fix. Severity is about consequence, not about whether the author already mentioned it: a documented risk that can take the service down is still a major.',
+    '3. Findings ranked by severity: **blocker**, **major**, **minor**, **nit**. Number them F1, F2, … and start each one on its own line as `F<n> [severity] path/to/file:line — the problem`, then why it matters (what breaks, when, for whom) and a concrete fix on the lines below it. Severity is about consequence, not about whether the author already mentioned it: a documented risk that can take the service down is still a major.',
     '4. The checklist section, one line per item.',
     '5. Do not invent findings and do not report pure taste (naming, formatting a formatter would handle). Do not downgrade a finding because it lives in pre-existing code that the change now executes.',
     '6. End your reply with exactly one verdict line, as its last line:',
@@ -156,17 +156,120 @@ export function buildLoopReviewerPrompt(input: LoopReviewerPromptInput): string 
   ].join('\n\n')
 }
 
+export const FINDING_SEVERITIES = ['blocker', 'major', 'minor', 'nit'] as const
+export type FindingSeverity = (typeof FINDING_SEVERITIES)[number]
+
+/** One finding of a reviewer's answer, as `parseLoopFindings` reads it. */
+export interface LoopFinding {
+  /** `F1`, `F2`, … as the reviewer numbered it. */
+  id: string
+  severity?: FindingSeverity
+  /** The finding's first line (file, line and problem), without its id and severity. */
+  title: string
+  /** The whole finding as the reviewer wrote it, first line included. */
+  text: string
+}
+
+/** The longest finding text kept, and the most findings read from one answer. */
+export const LOOP_FINDING_LIMITS = { text: 4000, count: 60 } as const
+
+const FINDING_START = /^\s*(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+)?[*_`]*(F\d{1,3})\b[*_`]*\s*[:.)\-–—]?\s*(.*)$/i
+const SEVERITY_TAG = /^[[(*_`]*\s*(blocker|major|minor|nit)\s*[\])*_`]*\s*[:\-–—]?\s*/i
+/** A section heading, a bare `Checklist` / `Evidence` label line, or the verdict: the findings are over. */
+const ENDS_FINDINGS = /^\s*(#{1,6}\s|[*_]*(checklist|evidence|evidencia)[*_]*\s*:?\s*[*_]*\s*$|[*`]*VERDICT\s*:)/i
+
+/**
+ * The findings of a reviewer's answer, in its order: each starts on a line with its id (`F1
+ * [major] src/a.ts:10 — …`, with list marks, bold or a heading allowed) and runs until the next
+ * one, a heading, a bare checklist or evidence label, or the verdict line. When the answer tags any
+ * finding with a severity, only tagged lines start findings: a re-review's status lines (`- F1:
+ * fixed`) are not new findings and close the one before them. An id seen twice keeps its first
+ * finding. Empty when the reviewer did not number its findings.
+ */
+export function parseLoopFindings(review: string): LoopFinding[] {
+  const out: LoopFinding[] = []
+  let current: { id: string; severity?: FindingSeverity; title: string; lines: string[] } | null = null
+  const close = () => {
+    if (current && !out.some((f) => f.id === current!.id) && out.length < LOOP_FINDING_LIMITS.count) {
+      const text = current.lines.join('\n').trim().slice(0, LOOP_FINDING_LIMITS.text)
+      out.push({ id: current.id, ...(current.severity ? { severity: current.severity } : {}), title: current.title.slice(0, 300), text })
+    }
+    current = null
+  }
+  const lines = review.split('\n')
+  const tagged = (line: string) => {
+    const m = FINDING_START.exec(line)
+    return !!m && SEVERITY_TAG.test(m[2] ?? '')
+  }
+  const strict = lines.some(tagged)
+  for (const line of lines) {
+    const start = FINDING_START.exec(line)
+    if (start && strict && !tagged(line)) {
+      close()
+      continue
+    }
+    if (start) {
+      close()
+      let rest = start[2] ?? ''
+      const tag = SEVERITY_TAG.exec(rest)
+      const severity = tag ? (tag[1]!.toLowerCase() as FindingSeverity) : FINDING_SEVERITIES.find((s) => new RegExp(`\\b${s}\\b`, 'i').test(rest.slice(0, 40)))
+      if (tag) rest = rest.slice(tag[0].length)
+      current = { id: start[1]!.toUpperCase(), ...(severity ? { severity } : {}), title: rest.replace(/[*_`]+/g, '').trim(), lines: [line] }
+      continue
+    }
+    if (current && ENDS_FINDINGS.test(line)) close()
+    else if (current) current.lines.push(line)
+  }
+  close()
+  return out
+}
+
+/**
+ * How the findings the user dropped are told to the reviewer on later rounds: by round and title,
+ * since every round numbers its findings from F1 again. Dropping an unnumbered review drops it whole.
+ */
+export function setAsideItems(selection: FindingSelection, round: number): string[] {
+  const keep = new Set(selection.keep)
+  if (selection.findings.length === 0) return keep.size ? [] : [`Everything in your round ${round} review.`]
+  return selection.findings.filter((f) => !keep.has(f.id)).map((f) => `Round ${round} ${f.id}: ${(f.title || f.text).slice(0, 200)}`)
+}
+
+/** What the user let through to the author: the findings kept (ids), and a note of their own. */
+export interface FindingSelection {
+  findings: readonly LoopFinding[]
+  keep: readonly string[]
+  note?: string
+}
+
+/** The part of the review the author gets after the user picked: the kept findings, the set-aside ids and the note. */
+function selectedReview(selection: FindingSelection, review: string): string[] {
+  const keep = new Set(selection.keep)
+  const kept = selection.findings.filter((f) => keep.has(f.id))
+  const dropped = selection.findings.filter((f) => !keep.has(f.id))
+  const note = selection.note?.trim()
+  // Unnumbered findings come as one item: keeping it sends the whole review.
+  const body = selection.findings.length === 0 ? (keep.size > 0 ? review.trim() : '') : kept.map((f) => f.text).join('\n\n')
+  return [
+    'The user read the reviewer\'s findings before they reached you and chose which ones you get.',
+    ...(body ? [`<review>\n${body}\n</review>`] : ['None of the findings was kept.']),
+    ...(dropped.length ? [`The user set these findings aside: do not fix them. ${dropped.map((f) => `${f.id}${f.title ? ` (${f.title.slice(0, 120)})` : ''}`).join('; ')}.`] : []),
+    ...(note ? [`<user-note>\n${note}\n</user-note>`] : [])
+  ]
+}
+
 /** The reviewer's findings as the author gets them: fix, then answer for the re-review. */
-export function buildAuthorFixPrompt(input: { review: string; reviewer: string; round: number; maxRounds: number }): string {
+export function buildAuthorFixPrompt(input: { review: string; reviewer: string; round: number; maxRounds: number; selection?: FindingSelection }): string {
   return [
     `Review round ${input.round} of ${input.maxRounds} by ${input.reviewer}: changes requested.`,
-    'The reviewer\'s findings are below. Fix the ones you agree with; for any you disagree with, say why. Then reply with what you changed (files, commits, and how to see the new diff) and what you left as is: your reply goes back to the reviewer for another review.',
-    `<review>\n${input.review.trim()}\n</review>`
+    input.selection
+      ? 'Fix the findings below that you agree with; for any you disagree with, say why. Follow the user\'s note when there is one. Then reply with what you changed (files, commits, and how to see the new diff) and what you left as is: your reply goes back to the reviewer for another review.'
+      : 'The reviewer\'s findings are below. Fix the ones you agree with; for any you disagree with, say why. Then reply with what you changed (files, commits, and how to see the new diff) and what you left as is: your reply goes back to the reviewer for another review.',
+    ...(input.selection ? selectedReview(input.selection, input.review) : [`<review>\n${input.review.trim()}\n</review>`])
   ].join('\n\n')
 }
 
 /** The reviewer's last answer as the author gets it when the loop ends: approved, or out of rounds. */
-export function buildAuthorFinalPrompt(input: { review: string; reviewer: string; outcome: 'approved' | 'maxRounds'; round: number; maxRounds: number }): string {
+export function buildAuthorFinalPrompt(input: { review: string; reviewer: string; outcome: 'approved' | 'maxRounds'; round: number; maxRounds: number; selection?: FindingSelection }): string {
   const head =
     input.outcome === 'approved'
       ? `Review round ${input.round} of ${input.maxRounds} by ${input.reviewer}: approved. The loop is over and nothing more goes back to the reviewer.`
@@ -175,15 +278,19 @@ export function buildAuthorFinalPrompt(input: { review: string; reviewer: string
     input.outcome === 'approved'
       ? 'The final review is below. Apply any remaining nits you agree with, then reply with a short summary of the review and of what, if anything, you changed.'
       : 'The reviewer\'s last findings are below. Fix the ones you agree with, say why for any you disagree with, and reply with a short summary of what you changed and what is still open.'
-  return [head, ask, `<review>\n${input.review.trim()}\n</review>`].join('\n\n')
+  return [head, ask, ...(input.selection ? selectedReview(input.selection, input.review) : [`<review>\n${input.review.trim()}\n</review>`])].join('\n\n')
 }
 
 /** The author's answer as the reviewer gets it: review again, same format, same verdict line. */
-export function buildReReviewPrompt(input: { reply: string; round: number; maxRounds: number; language?: string }): string {
+export function buildReReviewPrompt(input: { reply: string; round: number; maxRounds: number; language?: string; setAside?: { items: readonly string[]; note?: string } }): string {
   const reply = input.reply.trim() || '(the author replied with no text)'
+  const items = input.setAside?.items ?? []
+  const note = input.setAside?.note?.trim()
   return [
     'The author answered your review:',
     `<author-reply>\n${reply}\n</author-reply>`,
+    ...(items.length ? [`The user set aside these findings of yours from earlier rounds, and the author was told not to fix them: do not raise them again unless the new changes make them worse. Number this round's findings from F1 again.\n${items.map((i) => `- ${i}`).join('\n')}`] : []),
+    ...(note ? [`The user added a note for the author:\n<user-note>\n${note}\n</user-note>`] : []),
     'Review again: look at the new diffs (the author says where), check that each of your previous findings is fixed or answered convincingly, and look for anything the fixes broke. Then do a fresh pass over the whole change, not only over your previous findings: re-read the full diff and redo the method and checklist below, since a pull request, its description or its checks may exist now. The author\'s answer is a claim like the brief was: verify it in the code. Answer in the same format.',
     REVIEW_METHOD,
     REVIEW_CHECKLIST,

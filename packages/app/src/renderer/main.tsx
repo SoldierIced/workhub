@@ -17,6 +17,8 @@ import { FileViewerWindow } from './screens/FileViewerWindow'
 import { FlowMapWindow, parseFlowMapHash } from './screens/flowMaps/FlowMapWindow'
 import { PlanItemWindow } from './screens/plan/PlanItemWindow'
 import { parsePlanItemHash } from '@shared/plan-item-window'
+import { parseReviewLoopHash } from '@shared/review-loop-window'
+import { ReviewLoopWindow } from './screens/sessions/ReviewLoopWindow'
 import { startPerfReports } from './lib/perfReport'
 import './styles.css'
 
@@ -29,7 +31,7 @@ startPerfReports()
 // `#tray-popover` is the menu bar popover, `#pr?profile=…&url=…` is a pull request, `#/ticket?profile=…&key=…`
 // a ticket, `#session?id=…` a session in its own window and `#subagent?session=…&id=…` a sub-agent's conversation.
 // `#review?session=…` a session's local review, `#file?path=…` the file viewer, `#flow-map?…` a flow map and
-// `#plan-item?profile=…&kind=inbox|milestone&id=…` a Plan inbox item or milestone.
+// `#plan-item?profile=…&kind=inbox|milestone&id=…` a Plan inbox item or milestone, `#review-loop?id=…` a review loop.
 function root(hash: string): ReactElement {
   if (hash === TRAY_POPOVER_HASH) return <TrayPopover />
   const session = parseSessionWindowHash(hash)
@@ -50,6 +52,8 @@ function root(hash: string): ReactElement {
   if (flowMap) return <FlowMapWindow {...flowMap} />
   const planItem = parsePlanItemHash(hash)
   if (planItem) return <PlanItemWindow {...planItem} />
+  const reviewLoop = parseReviewLoopHash(hash)
+  if (reviewLoop) return <ReviewLoopWindow loopId={reviewLoop.loopId} />
   return <App />
 }
 

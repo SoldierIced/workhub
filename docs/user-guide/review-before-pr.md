@@ -18,7 +18,7 @@ The **Review before PR** button in a session's header opens **Review with anothe
    under, the coverage of each safeguard, the author's "not covered" items, tests, necessity,
    deploy and rollback, hygiene and other open pull requests, then answers a fixed checklist item
    by item. It answers in the profile's review language with an evidence section (files read in
-   full, skimmed, not verified), findings ranked **blocker**, **major**, **minor** and **nit**, and
+   full, skimmed, not verified), findings numbered `F1`, `F2`, … and ranked **blocker**, **major**, **minor** and **nit**, and
    ends with a `VERDICT: APPROVED` or `VERDICT: CHANGES_REQUESTED` line.
 3. If changes are requested, the findings go to the author, which fixes what it agrees with and
    explains what it disputes. Its reply goes back to the reviewer for another round.
@@ -33,6 +33,7 @@ In the dialog:
 | **Prompt for this session's agent** | Sent as is to the author. Edit or add to it. |
 | **Reviewer** | An agent of this profile with a chat. The default is an installed agent of a different kind than the session's own, in the profile's agent order. |
 | **Max rounds** | Reviews before the loop stops while the reviewer still requests changes. Default 3. |
+| **Ask me before the findings go to the author** | Pauses the loop after each review that requests changes; see below. The default comes from **Settings → Profiles → AI review**. |
 | **Send** | Starts the loop. |
 | **Review loop instead** | Starts a round of the branch review loop described below. |
 
@@ -41,6 +42,17 @@ reviewer**, **Waiting on the reviewer**, **Waiting on the author**), the round, 
 links between the two sessions (**Open reviewer**, **Open reviewed session**). Stopping or
 interrupting a turn of the loop in a chat stops the loop. The author must be idle when you start,
 and the session must be in App view.
+
+With **Ask me before the findings go to the author** on, a review that requests changes stops at
+**Waiting for you**. The card lists the reviewer's findings with their severity, all checked; open
+one to read it in full, or open **The reviewer's whole answer**. Uncheck what you do not want fixed,
+add an optional note and press **Send N findings to the author**. Only the checked findings go to
+the author; the unchecked ones are named as set aside ("do not fix them"), and the next review is
+told not to raise them again unless the new changes make them worse. With everything unchecked,
+**Send only my note** sends just your note. If the reviewer did not number its findings, the card
+shows a single item for the whole review. **Stop loop** ends the loop instead. **Open in a window**
+shows the same list in a window of its own, with every finding open and larger text; you can pick
+and send from either place.
 
 ### The base prompt
 
@@ -102,7 +114,8 @@ Settings are per profile, in **Settings → Profiles → AI review**:
 |---|---|
 | **AI review** | On by default. |
 | **Start automatically when a dev session goes idle with new commits** | Off by default; turn it on to review branches without asking. |
-| **Reviewer agent**, **Reviewer model** | Empty uses the first agent in the order and its default model. The model id is the agent's own (Kiro: `claude-opus-5.5`, say). |
+| **Reviewer agent**, **Reviewer model** | Empty uses the first agent in the order and its default model. **Reviewer model** lists the models of the chosen reviewer agent (Claude's for Claude, Kiro's for Kiro), and picking another reviewer goes back to its default model. An agent that has not listed its models yet (it lists them after its first session) gets a text field for the model id instead. |
+| **Ask me before the findings go to the author** | The default of the same check in the **Review with another agent** dialog. |
 | **Reviewer effort** | Optional reasoning effort for the reviewer (`high`, `xhigh`, …). Agents without the setting ignore it. A large model at high effort finds far more in one pass and takes longer (15–20 minutes on a mid-sized change). |
 | **Reviewer across rounds** | **Same reviewer for every round** (default) keeps one reviewer session and its checkout for the whole review: later rounds continue its conversation instead of reading everything again. It is replaced by a new one when it was closed, when a round failed, or when the reviewer agent, model or effort changed. **New reviewer each round** starts every round with an empty context. |
 | **Base branch** | The pull request target (default `develop`). If it does not exist, the repository's default branch is used. It is fetched before every round. |
