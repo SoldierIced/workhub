@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type Ref } from 'react'
-import { edgeId, formatMs, layoutFlowMap, placeFlowLabels, routeFlowEdge, type FlowCoverage, type FlowLabelSpot, type FlowMap, type FlowMapReading, type FlowNodeKind, type FlowPartRank, type FlowPartRef, type FlowTrace } from '@workhub/core'
+import { edgeId, flowPartLabel, formatMs, layoutFlowMap, placeFlowLabels, routeFlowEdge, type FlowCoverage, type FlowLabelSpot, type FlowMap, type FlowMapReading, type FlowNodeKind, type FlowPartRank, type FlowPartRef, type FlowTrace } from '@workhub/core'
+import { pressable } from '../../lib/pressable'
 
 /** Stroke per node kind; fixed colours so the map reads the same in both themes. */
 export const KIND_COLOR: Record<FlowNodeKind, string> = { app: '#22d3ee', orchestrator: '#2dd4bf', service: '#f59e0b', worker: '#a78bfa', datastore: '#60a5fa', queue: '#f472b6', external: '#94a3b8' }
@@ -24,6 +25,9 @@ export interface FlowMapSvgProps {
 }
 
 const sameRef = (a: FlowPartRef | null, b: FlowPartRef): boolean => a !== null && a.of === b.of && a.key === b.key
+
+/** A part of the diagram: pointer cursor, and a glow instead of the browser outline when focused from the keyboard. */
+export const PART_CLASS = 'cursor-pointer outline-none focus-visible:[filter:drop-shadow(0_0_4px_#2dd4bf)]'
 
 /**
  * The Archify-style diagram: lanes, nodes, orthogonal edges with their p50 as label, stage chips, and
@@ -117,7 +121,7 @@ export function FlowMapSvg({ map, reading, trace, flow, picked, onPick, ranks, c
       width={layout.width * scale}
       height={layout.height * scale}
       className="block select-none text-text"
-      role="img"
+      role="group"
       aria-label={map.name}
       data-testid="flow-map-svg"
       onClick={(e) => {
@@ -166,7 +170,7 @@ export function FlowMapSvg({ map, reading, trace, flow, picked, onPick, ranks, c
             const active = sameRef(picked, ref)
             const second = trace ? (hop ? formatMs(hop.durationMs) : undefined) : timing ? formatMs(timing.p50Ms) : undefined
             return (
-              <g key={s.id} className="cursor-pointer" opacity={dim(ref) * traced(ref)} onClick={() => onPick(ref)} data-part={`stages:${s.id}`}>
+              <g key={s.id} className={PART_CLASS} opacity={dim(ref) * traced(ref)} data-part={`stages:${s.id}`} {...pressable(() => onPick(ref), { label: s.label, pressed: active })}>
                 <rect x={c.x} y={c.y} width={c.w} height={c.h} rx={7} fill={fillOf(ref)} className="text-surface" stroke={active ? PICK : '#475569'} strokeWidth={active ? 2 : widthOf(ref, 1)} strokeOpacity={outlineOpacity(ref)} strokeDasharray={dash(ref)} filter={active ? 'url(#fm-glow)' : undefined} />
                 <text x={c.x + c.w / 2} y={c.y + (second ? 13 : 19)} fontSize={9.5} textAnchor="middle" fill="currentColor" className="text-text">{s.label}</text>
                 {second && <text x={c.x + c.w / 2} y={c.y + 25} fontSize={9} textAnchor="middle" fill="currentColor" className="text-muted">{second}</text>}
@@ -183,7 +187,7 @@ export function FlowMapSvg({ map, reading, trace, flow, picked, onPick, ranks, c
         const touches = pickedNode !== null && (x.e.from === pickedNode || x.e.to === pickedNode)
         const color = active ? PICK : wait ? WAIT : x.e.emphasis ? PICK : x.hop?.failed ? WAIT : '#64748b'
         return (
-          <g key={x.key} className="cursor-pointer" opacity={dim(ref, touches) * traced(ref)} onClick={() => onPick(ref)} data-part={`edges:${x.key}`}>
+          <g key={x.key} className={PART_CLASS} opacity={dim(ref, touches) * traced(ref)} data-part={`edges:${x.key}`} {...pressable(() => onPick(ref), { label: flowPartLabel(map, ref), pressed: active })}>
             <path
               ref={(el) => void (pathRefs.current[i] = el)}
               d={x.d}
@@ -215,7 +219,7 @@ export function FlowMapSvg({ map, reading, trace, flow, picked, onPick, ranks, c
             ? `p50 ${formatMs(timing.p50Ms)} · p95 ${formatMs(timing.p95Ms)}`
             : n.subtitle ?? ''
         return (
-          <g key={n.id} className="cursor-pointer" opacity={dim(ref) * traced(ref)} onClick={() => onPick(ref)} data-part={`nodes:${n.id}`}>
+          <g key={n.id} className={PART_CLASS} opacity={dim(ref) * traced(ref)} data-part={`nodes:${n.id}`} {...pressable(() => onPick(ref), { label: n.label, pressed: active })}>
             <title>{[n.label, n.subtitle, n.note, timing ? `p50 ${formatMs(timing.p50Ms)} · p95 ${formatMs(timing.p95Ms)} · ${timing.count}` : undefined].filter(Boolean).join('\n')}</title>
             <rect
               x={b.x}
@@ -247,7 +251,7 @@ export function FlowMapSvg({ map, reading, trace, flow, picked, onPick, ranks, c
         const touches = pickedNode !== null && (x.e.from === pickedNode || x.e.to === pickedNode)
         const spot = labelSpots[i]!
         return (
-          <g key={`label:${x.key}`} className="cursor-pointer" opacity={dim(ref, touches) * traced(ref)} onClick={() => onPick(ref)}>
+          <g key={`label:${x.key}`} className="cursor-pointer" opacity={dim(ref, touches) * traced(ref)} onClick={() => onPick(ref)} aria-hidden>
             <EdgeLabel spot={spot} text={x.label} color={wait ? WAIT : active ? PICK : x.hop?.failed ? WAIT : undefined} />
             {rankBadge(ref, spot.x, spot.y + 15)}
           </g>
