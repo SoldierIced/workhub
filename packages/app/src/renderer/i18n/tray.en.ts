@@ -84,6 +84,7 @@ export const trayEn = {
   'notify.ticket.assignedBody': '{title} · {status}',
   'notify.ticket.left': '{key} left your tickets',
   'notify.ticket.leftBody': '{title}',
+  'notify.ticket.summary': '{count} changes in your tickets',
   'notify.health.degraded': '{environment} is degraded',
   'notify.health.degradedBody': 'Something in this environment needs attention.',
   'notify.health.unreachable': '{environment} is unreachable',
@@ -139,5 +140,8 @@ export const trayEn = {
   'settings.keepInTrayHint': 'Sessions, watchers and notifications go on; the icon opens the window again. Turned off, closing the window quits.',
   'settings.keepInTrayWindows': 'Keep running in the notification area when the window is closed',
   'settings.keepInTrayLinux': 'Keep running in the status area when the window is closed',
-  'settings.keepInTrayLinuxNote': 'On Linux the icon needs a desktop with status icons (AppIndicator / StatusNotifier); without one, keep this off so closing the window quits.'
+  'settings.keepInTrayLinuxNote': 'On Linux the icon needs a desktop with status icons (AppIndicator / StatusNotifier); without one, keep this off so closing the window quits.',
+  'tray.pause.indefinite': 'Until I resume',
+  'tray.pausedIndefinitely': 'Notifications paused until you resume them',
+  'settings.pausedIndefinitely': 'Paused until you resume'
 } as const

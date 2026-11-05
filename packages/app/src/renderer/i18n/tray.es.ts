@@ -82,6 +82,7 @@ export const trayEs: Record<keyof typeof trayEn, string> = {
   'notify.ticket.assignedBody': '{title} · {status}',
   'notify.ticket.left': '{key} salió de tus tickets',
   'notify.ticket.leftBody': '{title}',
+  'notify.ticket.summary': '{count} cambios en tus tickets',
   'notify.health.degraded': '{environment} está degradado',
   'notify.health.degradedBody': 'Algo en este entorno necesita atención.',
   'notify.health.unreachable': '{environment} está inalcanzable',
@@ -137,5 +138,8 @@ export const trayEs: Record<keyof typeof trayEn, string> = {
   'settings.keepInTrayHint': 'Las sesiones, vigilancias y notificaciones siguen; el ícono vuelve a abrir la ventana. Apagado, cerrar la ventana cierra la app.',
   'settings.keepInTrayWindows': 'Seguir funcionando en el área de notificación al cerrar la ventana',
   'settings.keepInTrayLinux': 'Seguir funcionando en el área de estado al cerrar la ventana',
-  'settings.keepInTrayLinuxNote': 'En Linux el ícono necesita un escritorio con íconos de estado (AppIndicator / StatusNotifier); sin eso, déjalo apagado para que cerrar la ventana cierre la app.'
+  'settings.keepInTrayLinuxNote': 'En Linux el ícono necesita un escritorio con íconos de estado (AppIndicator / StatusNotifier); sin eso, déjalo apagado para que cerrar la ventana cierre la app.',
+  'tray.pause.indefinite': 'Hasta que lo reanude',
+  'tray.pausedIndefinitely': 'Notificaciones en pausa hasta que las reanudes',
+  'settings.pausedIndefinitely': 'En pausa hasta que la reanudes'
 }

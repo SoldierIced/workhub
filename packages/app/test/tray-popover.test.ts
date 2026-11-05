@@ -4,7 +4,7 @@ vi.mock('electron', () => ({ BrowserWindow: class {}, screen: {}, Menu: {}, nati
 
 import { POPOVER_MAX_HEIGHT, POPOVER_MIN_HEIGHT, popoverHeight, popoverWindowOptions } from '../src/main/tray-popover'
 import { trayClickBehavior } from '../src/main/tray'
-import { elapsed, nextFocus, popoverMenuItems, sessionChip } from '../src/renderer/lib/trayPopover'
+import { countdown, elapsed, nextFocus, popoverMenuItems, sessionChip } from '../src/renderer/lib/trayPopover'
 import { trayPopoverEn } from '../src/renderer/i18n/trayPopover.en'
 import { trayPopoverEs } from '../src/renderer/i18n/trayPopover.es'
 import { placeholders } from '../src/renderer/i18n/translate'
@@ -37,14 +37,33 @@ describe('tray popover window', () => {
 })
 
 describe('tray popover renderer helpers', () => {
-  it("offers what the native menu did in the popover's own menu: pause presets or resume, updates, quit", () => {
-    const ids = (v: { pausedUntil: number | null; canCheckForUpdates: boolean }) => popoverMenuItems(v).map((i) => i.id)
-    expect(ids({ pausedUntil: null, canCheckForUpdates: true })).toEqual(['pauseHour', 'pauseTomorrow', 'checkForUpdates', 'quit'])
-    expect(ids({ pausedUntil: 123, canCheckForUpdates: false })).toEqual(['resume', 'quit'])
-    const items = popoverMenuItems({ pausedUntil: null, canCheckForUpdates: true })
-    expect(items.find((i) => i.id === 'pauseTomorrow')?.action).toEqual({ kind: 'pause', preset: 'tomorrow' })
-    expect(items.at(-1)).toMatchObject({ action: { kind: 'quit' }, separated: true })
-    for (const item of items) expect(trayPopoverEn[item.label as keyof typeof trayPopoverEn]).toBeDefined()
+  it('splits the footer menus: the bell offers the pauses and the settings (Resume first while paused), "⋯" offers updates (when the build can) and quit', () => {
+    const ids = (menu: 'notifications' | 'more', canCheckForUpdates: boolean, pausedUntil: number | null = null) => popoverMenuItems(menu, { canCheckForUpdates, pausedUntil }).map((i) => i.id)
+    expect(ids('notifications', true)).toEqual(['pauseHour', 'pauseTomorrow', 'pauseIndefinite', 'adjustNotifications'])
+    expect(ids('notifications', true, 123)).toEqual(['resume', 'pauseHour', 'pauseTomorrow', 'pauseIndefinite', 'adjustNotifications'])
+    expect(ids('more', true)).toEqual(['checkForUpdates', 'quit'])
+    expect(ids('more', false)).toEqual(['quit'])
+    const bell = popoverMenuItems('notifications', { canCheckForUpdates: false, pausedUntil: null })
+    expect(bell.map((i) => i.action)).toEqual([
+      { kind: 'pause', preset: 'hour' },
+      { kind: 'pause', preset: 'tomorrow' },
+      { kind: 'pause', preset: 'indefinite' },
+      { kind: 'openSettings', section: 'notifications' }
+    ])
+    expect(bell.at(-1)?.separated).toBe(true)
+    expect(popoverMenuItems('notifications', { canCheckForUpdates: false, pausedUntil: 1 })[0]).toMatchObject({ action: { kind: 'resume' } })
+    expect(popoverMenuItems('more', { canCheckForUpdates: true, pausedUntil: null }).at(-1)).toMatchObject({ action: { kind: 'quit' }, separated: true })
+    expect(popoverMenuItems('more', { canCheckForUpdates: false, pausedUntil: null })[0]).toMatchObject({ separated: false })
+    for (const menu of ['notifications', 'more'] as const)
+      for (const item of popoverMenuItems(menu, { canCheckForUpdates: true, pausedUntil: 1 })) expect(trayPopoverEn[item.label as keyof typeof trayPopoverEn]).toBeDefined()
+  })
+
+  it('words a meeting countdown in minutes, then hours and minutes', () => {
+    const now = 10_000_000_000
+    expect(countdown(now + 12 * 60_000, now)).toEqual({ key: 'trayPopover.countdown.minutes', params: { minutes: 12 } })
+    expect(countdown(now + 30_000, now)).toEqual({ key: 'trayPopover.countdown.minutes', params: { minutes: 1 } })
+    expect(countdown(now + 160 * 60_000, now)).toEqual({ key: 'trayPopover.countdown.hoursMinutes', params: { hours: 2, minutes: 40 } })
+    expect(countdown(now + 180 * 60_000, now)).toEqual({ key: 'trayPopover.countdown.hours', params: { hours: 3 } })
   })
 
   it('words elapsed time compactly', () => {
