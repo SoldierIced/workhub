@@ -1,6 +1,6 @@
 import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { Connection, Result, SecretChange, WorkhubConfig } from '@workhub/core'
+import type { Connection, SecretChange } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, Input, Select, Switch } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow } from '../components/molecules'
@@ -9,6 +9,7 @@ import type { MessageKey } from '../i18n/translate'
 import { uniqueConnectionId } from '../lib/tickets'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { DeleteButton, useUnsavedForm } from '../components/organisms/UnsavedChanges'
+import type { Run } from './settings/run'
 
 /** The settings keys of a tracker connection; the main process reads the same ones. */
 const EMAIL = 'email'
@@ -49,13 +50,12 @@ function toForm(c: Connection, activeTracker: string | undefined): Form {
   }
 }
 
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
-
 /** Settings → Trackers: where the Tickets screen reads from, with a connection test. */
-export function TrackerSettings({ snap, run, initialId }: { snap: ConfigSnapshot; run: Run; initialId?: string }) {
+export function TrackerSettings({ snap, run, initialId, profileId }: { snap: ConfigSnapshot; run: Run; initialId?: string; /** The profile the tracker is used in; the active one when not given. */ profileId?: string | null }) {
   const { t } = useI18n()
   const trackers = snap.config.connections.filter((c) => c.kind === 'tracker')
-  const activeProfile = snap.config.profiles.find((p) => p.id === snap.config.activeProfileId)
+  // The profile being edited (named `activeProfile` from when it was always the active one).
+  const activeProfile = snap.config.profiles.find((p) => p.id === (profileId ?? snap.config.activeProfileId))
   const [demo, setDemo] = useState(false)
   const [form, setForm] = useState<Form>(() => {
     const initial = trackers.find((c) => c.id === initialId)

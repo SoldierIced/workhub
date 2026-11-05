@@ -1,12 +1,18 @@
-import { aiReviewSettings, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewerSessionMode, type ReviewLanguage } from '@workhub/core'
+import { useEffect, useState } from 'react'
+import { aiReviewSettings, orderAgents, resolveEffectiveAgents, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewerSessionMode, type ReviewLanguage } from '@workhub/core'
 import { Button, Input, Select, Switch, Textarea } from '../components/atoms'
-import { Field, SwitchRow } from '../components/molecules'
+import { Card, EmptyState, Field, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { useAgentOptions, withCurrent } from '../lib/agentOptions'
+import type { ConfigSnapshot } from '@shared/api'
+import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
+import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
+import type { Run } from './settings/run'
+import { saveProfilePatch } from './settings/shared'
 
 const clamp = (n: number, min: number, max: number, fallback: number) => (Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback)
 
-/** The profile's "AI review" fields (Settings → Profiles); edits the profile form, saved with it. */
+/** The profile's "AI review" fields (Settings → AI review); edits a draft, saved by `AiReviewSection`. */
 export function AiReviewProfileFields({ form, agents, onChange }: { form: Profile; agents: readonly EffectiveAgent[]; onChange: (aiReview: AiReviewSettings) => void }) {
   const { t } = useI18n()
   const s = aiReviewSettings(form)
@@ -103,5 +109,37 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
         <Textarea rows={8} value={briefPromptOf(s)} spellCheck={false} data-testid="ai-review-brief-prompt" onChange={(e) => set({ briefPrompt: e.target.value === DEFAULT_REVIEW_BRIEF_PROMPT ? '' : e.target.value })} />
       </Field>
     </div>
+  )
+}
+
+/**
+ * Settings → AI review: the fields above for one profile (the active one unless given), with their
+ * own save bar entry. Saving re-reads the profile, so other sections saved by the same bar stay.
+ */
+export function AiReviewSection({ snap, run, profileId }: { snap: ConfigSnapshot; run: Run; profileId?: string | null }) {
+  const { t } = useI18n()
+  const profile = snap.config.profiles.find((p) => p.id === (profileId ?? snap.config.activeProfileId))
+  const saved = profile ? aiReviewSettings(profile) : null
+  const [draft, setDraft] = useState<AiReviewSettings | null>(saved)
+  const [baseline, setBaseline] = useState<AiReviewSettings | null>(saved)
+  useEffect(() => {
+    const next = profile ? aiReviewSettings(profile) : null
+    setDraft(next)
+    setBaseline(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id])
+  const save = async (): Promise<SaveOutcome> => {
+    if (!profile || !draft) return { ok: true }
+    if (!(await saveProfilePatch(run, profile.id, (p) => ({ ...p, aiReview: draft })))) return { ok: false }
+    setBaseline(draft)
+    return { ok: true }
+  }
+  useUnsavedForm({ dirty: draft !== null && isDirty(baseline, draft), draft, save, discard: () => setDraft(baseline) })
+  if (!profile || !draft) return <EmptyState compact title={t('settings.profileFirst')} />
+  const agents = orderAgents(profile.preferredAgents, resolveEffectiveAgents(snap.config, profile.id))
+  return (
+    <Card className="px-4">
+      <AiReviewProfileFields form={{ ...profile, aiReview: draft }} agents={agents} onChange={setDraft} />
+    </Card>
   )
 }

@@ -1,11 +1,10 @@
 import { TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { appOptions, type Result, type WorkhubConfig } from '@workhub/core'
+import { appOptions, type WorkhubConfig } from '@workhub/core'
 import { Button, Switch } from '../components/atoms'
 import { SwitchRow, useToast } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
 
 /** True when the operating system will not show this app's notifications (the warning's condition). */
 export function useOsNotificationsOff(): boolean {

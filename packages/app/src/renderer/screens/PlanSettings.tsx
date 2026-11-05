@@ -17,9 +17,7 @@ import {
   unknownPlaceholders,
   type MeetingRule,
   type Profile,
-  type Result,
-  type SecretChange,
-  type WorkhubConfig
+  type SecretChange
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import type { CalendarTestResult } from '@shared/plan-api'
@@ -50,8 +48,8 @@ import { CRITICALITY_PRESET, formToInboxSettings, inboxSettingsToForm, type Inbo
 import { uniqueConnectionId } from '../lib/tickets'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { PersonFields } from './plan/PersonFields'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
+import { ModuleOffNote } from './settings/shared'
 
 /** The part of a profile's Plan setup this tab edits in one form (calendars are saved with their connection). */
 interface PlannerForm {
@@ -79,10 +77,10 @@ function plannerForm(profile: Profile | undefined): PlannerForm {
   }
 }
 
-/** Settings → Plan: the active profile's calendars, reminders, meeting rules, brief prompt and people. */
-export function PlanSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
+/** Settings → Plan: a profile's calendars (the active one unless given), reminders, meeting rules, brief prompt and people. */
+export function PlanSettings({ snap, run, profileId, onOpenModules }: { snap: ConfigSnapshot; run: Run; profileId?: string | null; onOpenModules?: () => void }) {
   const { t } = useI18n()
-  const profile = snap.config.profiles.find((p) => p.id === snap.config.activeProfileId)
+  const profile = snap.config.profiles.find((p) => p.id === (profileId ?? snap.config.activeProfileId))
   const calendars = snap.config.connections.filter((c) => c.kind === 'calendar')
   const [form, setForm] = useState<PlannerForm>(() => plannerForm(profile))
   const [baseline, setBaseline] = useState<PlannerForm>(form)
@@ -254,11 +252,8 @@ export function PlanSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) 
         </p>
       )}
 
-      <Card className="px-4">
-        <SwitchRow label={t('plan.settings.module')} hint={`${t('plan.settings.moduleHint')} (${profile.name})`}>
-          <Switch checked={profile.modules.planner} disabled={!editable} onChange={(on) => void saveProfile((p) => ({ ...p, modules: { ...p.modules, planner: on } }))} />
-        </SwitchRow>
-      </Card>
+      {/* The module switch lives in Settings → Modules and screens. */}
+      {!profile.modules.planner && onOpenModules && <ModuleOffNote module="planner" onOpenModules={onOpenModules} />}
 
       <Card>
         <CardHeader

@@ -8,9 +8,7 @@ import {
   DEFAULT_HEALTH_REFRESH_MINUTES,
   type HealthThresholds,
   type Profile,
-  type Result,
-  type SecretChange,
-  type WorkhubConfig
+  type SecretChange
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Button, Input, Select, Switch } from '../components/atoms'
@@ -32,15 +30,15 @@ import { uniqueConnectionId } from '../lib/tickets'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
 import { AlertRulesSettings } from './health/AlertRulesSettings'
-
-type Run = (op: () => Promise<Result<WorkhubConfig>>) => Promise<boolean>
+import type { Run } from './settings/run'
+import { ModuleOffNote } from './settings/shared'
 
 const THRESHOLD_KEYS = Object.keys(HEALTH_THRESHOLD_RANGES) as (keyof typeof HEALTH_THRESHOLD_RANGES)[]
 
-/** Settings → Health: the Elasticsearch connection of the active profile, its refresh interval and the environments to watch. */
-export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapshot; run: Run; focusSecret?: boolean }) {
+/** Settings → Health: the Elasticsearch connection of a profile (the active one unless given), its refresh interval and the environments to watch. */
+export function HealthSettings({ snap, run, focusSecret, profileId, onOpenModules }: { snap: ConfigSnapshot; run: Run; focusSecret?: boolean; profileId?: string | null; onOpenModules?: () => void }) {
   const { t } = useI18n()
-  const profile = snap.config.profiles.find((p) => p.id === snap.config.activeProfileId)
+  const profile = snap.config.profiles.find((p) => p.id === (profileId ?? snap.config.activeProfileId))
   const connection = snap.config.connections.find((c) => c.id === profile?.connections.health)
   const [demo, setDemo] = useState(false)
   const [form, setForm] = useState<ConnectionForm>(() => connectionToForm(connection))
@@ -162,15 +160,8 @@ export function HealthSettings({ snap, run, focusSecret }: { snap: ConfigSnapsho
         </p>
       )}
 
-      <Card className="px-4">
-        <SwitchRow label={t('health.settings.module')} help={t('help.health.module')} hint={`${t('health.settings.moduleHint')} (${profile.name})`}>
-          <Switch
-            checked={profile.modules.health}
-            disabled={!editable}
-            onChange={(on) => void saveProfile((p) => ({ ...p, modules: { ...p.modules, health: on } }))}
-          />
-        </SwitchRow>
-      </Card>
+      {/* The module switch lives in Settings → Modules and screens. */}
+      {!profile.modules.health && onOpenModules && <ModuleOffNote module="health" onOpenModules={onOpenModules} />}
 
       <Card>
         <CardHeader title={t('health.settings.connection')} help={t('help.health.connection')} />
