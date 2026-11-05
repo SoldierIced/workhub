@@ -7,6 +7,7 @@ import { CopyButton } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
+import { pressable } from '../../lib/pressable'
 import { WAIT } from './FlowMapSvg'
 
 export interface TracesPanelProps {
@@ -81,7 +82,7 @@ export function TracesPanel({ map, hours, list, selectedId, selected, loadingTra
               </thead>
               <tbody>
                 {traces.map((tr) => (
-                  <tr key={tr.traceId} className={cn('cursor-pointer border-t border-border hover:bg-surface-hover', tr.traceId === selectedId && 'bg-accent-soft')} onClick={() => onSelect(tr.traceId === selectedId ? null : tr.traceId)} title={tr.traceId}>
+                  <tr key={tr.traceId} className={cn('cursor-pointer border-t border-border hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none', tr.traceId === selectedId && 'bg-accent-soft')} title={tr.traceId} {...pressable(() => onSelect(tr.traceId === selectedId ? null : tr.traceId), { pressed: tr.traceId === selectedId })}>
                     <td className="px-2 py-1 tabular-nums">{when(tr.at)}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{formatMs(tr.durationMs)}</td>
                     <td className={cn('px-2 py-1 text-right', outcomeClass(tr.outcome))}>{t(`flowMaps.traces.outcome.${tr.outcome}`)}</td>
@@ -128,7 +129,7 @@ function TraceDetail({ map, trace, logs, loadingLogs, picked, onPick, onClear }:
           {hops.map((h) => {
             const active = picked?.of === h.of && picked.key === h.key
             return (
-              <li key={`${h.of}:${h.key}`} className={cn('grid cursor-pointer grid-cols-[minmax(120px,32%)_1fr_auto] items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-surface-hover', active && 'bg-accent-soft')} onClick={() => onPick(active ? null : { of: h.of, key: h.key })}>
+              <li key={`${h.of}:${h.key}`} className={cn('grid cursor-pointer grid-cols-[minmax(120px,32%)_1fr_auto] items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none', active && 'bg-accent-soft')} {...pressable(() => onPick(active ? null : { of: h.of, key: h.key }), { pressed: active })}>
                 <span className="truncate" title={flowPartLabel(map, h)}>{flowPartLabel(map, h)}</span>
                 <span className="relative h-3 rounded bg-surface-raised">
                   <span className="absolute inset-y-0 rounded" style={{ left: pct(h.startMs), width: `max(2px, ${pct(h.durationMs)})`, background: h.failed ? WAIT : 'var(--color-accent, #22d3ee)' }} />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type Ref } from 'react'
-import { edgeId, flowColumns, formatMs, type FlowCoverage, type FlowMap, type FlowMapReading, type FlowPartRank, type FlowPartRef, type FlowTrace } from '@workhub/core'
-import { KIND_COLOR, WAIT } from './FlowMapSvg'
+import { edgeId, flowColumns, flowPartLabel, formatMs, type FlowCoverage, type FlowMap, type FlowMapReading, type FlowPartRank, type FlowPartRef, type FlowTrace } from '@workhub/core'
+import { pressable } from '../../lib/pressable'
+import { KIND_COLOR, PART_CLASS, WAIT } from './FlowMapSvg'
 
 const PICK = '#2dd4bf'
 const HEAT = '#f97316'
@@ -27,6 +28,15 @@ export function sequenceLayout(map: FlowMap, trace?: FlowTrace | null): Sequence
   const sorted = trace ? [...keyed].sort((a, b) => (trace.hops[a.key]?.startMs ?? Infinity) - (trace.hops[b.key]?.startMs ?? Infinity) || a.index - b.index) : keyed
   const messages = sorted.map((m, row) => ({ ...m, y: G.firstRow + row * G.rowH }))
   return { width: G.left * 2 + Math.max(1, participants.length) * G.colW - (G.colW - G.headW), height: G.firstRow + Math.max(1, messages.length) * G.rowH + G.bottom, participants, messages }
+}
+
+/** Above this many services the sequence view stops shrinking to fit and scrolls sideways. */
+export const SEQUENCE_FIT_COLUMNS = 8
+
+/** The width the view fits to: the whole sequence, or its first `SEQUENCE_FIT_COLUMNS` lifelines when it has more. */
+export function sequenceFitWidth(layout: SequenceLayout): number {
+  const n = Math.min(SEQUENCE_FIT_COLUMNS, Math.max(1, layout.participants.length))
+  return G.left * 2 + n * G.colW - (G.colW - G.headW)
 }
 
 export interface FlowSequenceSvgProps {
@@ -113,7 +123,7 @@ export function FlowSequenceSvg({ map, reading, trace, flow = false, picked, onP
       width={layout.width * scale}
       height={layout.height * scale}
       className="block select-none text-text"
-      role="img"
+      role="group"
       aria-label={map.name}
       data-testid="flow-sequence-svg"
       onClick={(e) => {
@@ -143,7 +153,7 @@ export function FlowSequenceSvg({ map, reading, trace, flow = false, picked, onP
         const active = sameRef(picked, ref)
         const second = trace ? (hop ? `${formatMs(hop.durationMs)} · +${formatMs(hop.startMs)}` : '') : timing ? `p50 ${formatMs(timing.p50Ms)} · p95 ${formatMs(timing.p95Ms)}` : n.subtitle ?? ''
         return (
-          <g key={p.id} className="cursor-pointer" opacity={dim(ref) * traced(ref)} onClick={() => onPick(ref)} data-part={`nodes:${p.id}`}>
+          <g key={p.id} className={PART_CLASS} opacity={dim(ref) * traced(ref)} data-part={`nodes:${p.id}`} {...pressable(() => onPick(ref), { label: n.label, pressed: active })}>
             <title>{[n.label, n.subtitle, n.note].filter(Boolean).join('\n')}</title>
             <line x1={p.x} y1={lifelineTop} x2={p.x} y2={lifelineBottom} stroke={active ? PICK : '#475569'} strokeDasharray="4 4" strokeWidth={active ? 1.5 : 1} />
             <rect x={p.x - G.headW / 2} y={G.top} width={G.headW} height={G.headH} rx={9} fill="currentColor" className="text-surface" stroke={active ? PICK : hop?.failed ? WAIT : color} strokeWidth={active ? 2.4 : 1.3} strokeOpacity={unmeasured.has(`nodes:${p.id}`) ? 0.4 : 1} strokeDasharray={unmeasured.has(`nodes:${p.id}`) ? '2 3' : undefined} filter={active ? 'url(#fs-glow)' : undefined} />
@@ -169,7 +179,7 @@ export function FlowSequenceSvg({ map, reading, trace, flow = false, picked, onP
         const dir = x2 >= x1 ? 1 : -1
         const left = Math.min(x1, x2), right = Math.max(x1, x2)
         return (
-          <g key={m.key} className="cursor-pointer" opacity={dim(ref, touches) * traced(ref)} onClick={() => onPick(ref)} data-part={`edges:${m.key}`}>
+          <g key={m.key} className={PART_CLASS} opacity={dim(ref, touches) * traced(ref)} data-part={`edges:${m.key}`} {...pressable(() => onPick(ref), { label: flowPartLabel(map, ref), pressed: active })}>
             <line ref={(el) => void (rowRefs.current[i] = el)} x1={x1} y1={m.y} x2={x2 - dir * 6} y2={m.y} stroke={color} strokeWidth={active ? 2.4 : e.emphasis ? 2 : 1.4} strokeDasharray={wait ? '3 4' : e.kind === 'async' ? '5 4' : unmeasured.has(`edges:${m.key}`) ? '2 3' : undefined} markerEnd={`url(#fs-${wait ? 'wait' : active || e.emphasis ? 'emph' : 'arrow'})`} filter={active ? 'url(#fs-glow)' : undefined} />
             <line x1={left} y1={m.y} x2={right} y2={m.y} stroke="transparent" strokeWidth={14} />
             <circle cx={x1} cy={m.y} r={3} fill={color} />

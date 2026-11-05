@@ -1,4 +1,4 @@
-import { flowAlertsOf, flowCoverage, flowEntry, flowMeasures, flowPartLabel, formatMs, rankFlowDeviations, rankFlowParts, type FlowMap, type FlowMapReading, type FlowTrace, type FlowTraceLog } from '@workhub/core'
+import { flowAlertsOf, flowCoverage, flowEntry, flowMeasures, flowPartLabel, formatMs, rankFlowDeviations, rankFlowParts, type FlowMap, type FlowMapReading, type FlowPartRef, type FlowTrace, type FlowTraceLog } from '@workhub/core'
 import type { MessageKey } from '../../i18n/translate'
 
 type T = (key: MessageKey, params?: Record<string, string | number>) => string
@@ -11,6 +11,8 @@ export interface FlowMapPromptInput {
   trace?: FlowTrace | null
   /** The selected execution's APM errors and log lines, when loaded. */
   logs?: FlowTraceLog[] | null
+  /** "Investigate this part": the draft asks about this part first. */
+  focus?: FlowPartRef | null
   locale: string
 }
 
@@ -20,7 +22,7 @@ export interface FlowMapPromptInput {
  * beyond the map, and what to do with all that. Nothing is sent: the draft lands in the composer.
  */
 export function flowMapPrompt(t: T, input: FlowMapPromptInput): string {
-  const { map, file, environment, reading, trace, logs, locale } = input
+  const { map, file, environment, reading, trace, logs, focus, locale } = input
   const lines: string[] = [t('flowMapPrompt.title', { name: map.name, environment })]
   if (map.description) lines.push(map.description)
   lines.push('')
@@ -65,6 +67,11 @@ export function flowMapPrompt(t: T, input: FlowMapPromptInput): string {
     const first = logs.slice(0, 15)
     lines.push('', t('flowMapPrompt.logs', { count: first.length }))
     for (const l of first) lines.push(t('flowMapPrompt.logLine', { at: `${(Math.max(0, l.at - trace.at) / 1000).toFixed(2)} s`, service: l.service, level: l.level ?? (l.source === 'apm.error' ? 'error' : 'log'), message: l.message.replace(/\s+/g, ' ').slice(0, 300) }))
+  }
+  if (focus) {
+    const timing = reading?.[focus.of][focus.key]
+    const numbers = timing && timing.count > 0 ? t('flowMapPrompt.focusNumbers', { calls: timing.count.toLocaleString(locale), p50: formatMs(timing.p50Ms), p95: formatMs(timing.p95Ms), failed: timing.errorRate !== undefined ? rate(timing.errorRate) : '–' }) : t('flowMapPrompt.focusNoNumbers')
+    lines.push('', t('flowMapPrompt.focus', { label: flowPartLabel(map, focus), numbers }))
   }
   lines.push('', t('flowMapPrompt.ask'))
   return lines.join('\n')
