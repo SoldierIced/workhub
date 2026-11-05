@@ -1,9 +1,10 @@
 /**
  * Flow alerts: a map's `alerts` thresholds checked against a reading. The watcher reads every map
- * with thresholds over the last hour and announces the parts above them, each at most once an
- * hour; the Alerts tab shows the same check for the window on screen.
+ * with thresholds over a 1 h window (the last whole hour plus the part of the hour in course, see
+ * `flowTimingFromHistory`) and announces the parts above them, each at most once an hour; the
+ * Alerts tab shows the same check for the window on screen.
  */
-import { flowMeasures, flowPartLabel, type FlowMap, type FlowMapReading, type FlowPartRef, type FlowThreshold, type FlowTiming } from './flow-map'
+import { DEFAULT_FLOW_MIN_CALLS, flowMeasures, flowPartLabel, type FlowMap, type FlowMapReading, type FlowPartRef, type FlowThreshold, type FlowTiming } from './flow-map'
 
 export type FlowAlertKind = 'flowSlow' | 'flowErrors'
 
@@ -28,19 +29,27 @@ export function hasFlowAlerts(map: Pick<FlowMap, 'alerts'>): boolean {
   return a.p95Ms !== undefined || a.errorRate !== undefined || Object.values(a.parts).some((p) => p.p95Ms !== undefined || p.errorRate !== undefined)
 }
 
+/** The limits of one part, and the calls the window needs before they apply (`DEFAULT_FLOW_MIN_CALLS` when unset). */
+export type FlowLimits = FlowThreshold & { minCalls?: number }
+
 /** The limits one part must stay under: its own entry over the map's defaults, field by field. */
-export function flowThresholds(map: Pick<FlowMap, 'alerts'>, part: Pick<FlowPartRef, 'key'>): FlowThreshold {
+export function flowThresholds(map: Pick<FlowMap, 'alerts'>, part: Pick<FlowPartRef, 'key'>): FlowLimits {
   const own = map.alerts?.parts[part.key]
-  return { p95Ms: own?.p95Ms ?? map.alerts?.p95Ms, errorRate: own?.errorRate ?? map.alerts?.errorRate }
+  return { p95Ms: own?.p95Ms ?? map.alerts?.p95Ms, errorRate: own?.errorRate ?? map.alerts?.errorRate, minCalls: map.alerts?.minCalls }
 }
 
-/** The thresholds one timing breaks, in a fixed order (slow first). */
-export function breaches(timing: FlowTiming, limits: FlowThreshold): { kind: FlowAlertKind; value: number; threshold: number }[] {
+/** The thresholds one timing breaks, in a fixed order (slow first); none under the minimum calls. */
+export function breaches(timing: FlowTiming, limits: FlowLimits): { kind: FlowAlertKind; value: number; threshold: number }[] {
   const out: { kind: FlowAlertKind; value: number; threshold: number }[] = []
-  if (timing.count === 0) return out
+  if (timing.count === 0 || timing.count < (limits.minCalls ?? DEFAULT_FLOW_MIN_CALLS)) return out
   if (limits.p95Ms !== undefined && timing.p95Ms > limits.p95Ms) out.push({ kind: 'flowSlow', value: timing.p95Ms, threshold: limits.p95Ms })
   if (limits.errorRate !== undefined && timing.errorRate !== undefined && timing.errorRate > limits.errorRate && (timing.failed ?? 1) > 0) out.push({ kind: 'flowErrors', value: timing.errorRate, threshold: limits.errorRate })
   return out
+}
+
+/** Whether the watcher notifies about the map: it has limits and its `notify` is not off. */
+export function notifiesFlowAlerts(map: Pick<FlowMap, 'alerts'>): boolean {
+  return hasFlowAlerts(map) && map.alerts?.notify !== false
 }
 
 /** Every measured part of the map above its thresholds in this reading. */
