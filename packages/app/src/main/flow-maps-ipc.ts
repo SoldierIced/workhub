@@ -4,8 +4,8 @@
  */
 import { mkdirSync } from 'node:fs'
 import type { BrowserWindow } from 'electron'
-import type { FlowMapImportResult } from '../shared/flow-maps-api'
-import { deleteFlowMap, importFlowMapFiles } from './flow-maps'
+import type { FlowMapImportResult, FlowMapSetAlertsResult } from '../shared/flow-maps-api'
+import { deleteFlowMap, importFlowMapFiles, readFlowMapFiles, setFlowMapAlerts } from './flow-maps'
 import type { IpcRegistrar } from './ipc-guard'
 
 export interface FlowMapsIpcDeps {
@@ -35,6 +35,13 @@ export function registerFlowMapsIpc(ipc: IpcRegistrar, deps: FlowMapsIpcDeps): v
   ipc.on('flowMaps:reveal', () => deps.showItemInFolder(ensureDir()))
   ipc.handle('flowMaps:import', async (): Promise<FlowMapImportResult[]> => importFlowMapFiles(ensureDir(), await deps.pickFiles()))
   ipc.handle('flowMaps:remove', (_e, id: unknown) => (typeof id === 'string' ? deleteFlowMap(deps.dir, id) : false))
+  ipc.handle('flowMaps:get', (_e, mapId: unknown) => (typeof mapId === 'string' ? (readFlowMapFiles(deps.dir).find((f) => f.map?.id === mapId)?.map ?? null) : null))
+  ipc.handle('flowMaps:setAlerts', (_e, _profileId: unknown, mapId: unknown, alerts: unknown): FlowMapSetAlertsResult => {
+    if (typeof mapId !== 'string') return { ok: false, errors: ['id: not a map id'] }
+    if (alerts !== null && (typeof alerts !== 'object' || Array.isArray(alerts))) return { ok: false, errors: ['alerts: expected an object or null'] }
+    // setFlowMapAlerts validates the whole map with the map schema before anything is written.
+    return setFlowMapAlerts(deps.dir, mapId, alerts as Parameters<typeof setFlowMapAlerts>[2])
+  })
   ipc.handle('flowMaps:copyImage', (_e, dataUrl: unknown) => (typeof dataUrl === 'string' && dataUrl.startsWith('data:image/png;base64,') && dataUrl.length < 50_000_000 ? deps.writeImage(dataUrl) : false))
   ipc.on('flowMaps:openWindow', (_e, profileId: unknown, environmentId: unknown, mapId: unknown) => {
     if (typeof environmentId !== 'string' || typeof mapId !== 'string') return

@@ -47,7 +47,13 @@ hop of an existing flow, or asks to fix a map that Workhub lists as invalid.
      (traces). Leave it out when the leftmost measured node is the entry;
    - `alerts` when the user wants to be told: `{ "p95Ms": <about twice the entry's p95 over a
      day>, "errorRate": 0.05 }`, with `parts` for a stricter or looser part. Workhub checks the
-     last hour every five minutes and notifies once an hour per part.
+     last hour every five minutes and notifies once an hour per part. A part with fewer than
+     `minCalls` calls in the hour (default 20) never counts as over a limit; `"notify": false`
+     keeps the limits on screen without notifying. The user can also edit them in
+     **Settings → Alerts → Flow maps · limits**.
+   - When you redraw a map that already exists, leave `alerts` out unless the user asked to change
+     them: posting a map without `alerts` keeps the limits the stored map has. Send `alerts` to
+     replace them.
 
 3. **Install it.** Inside a Workhub session, post it to the control endpoint; the answer names the
    invalid fields if any:
@@ -60,6 +66,9 @@ hop of an existing flow, or asks to fix a map that Workhub lists as invalid.
    curl -H "Authorization: Bearer $WORKHUB_TOKEN" -X POST "$WORKHUB_URL/v1/flow-maps" \
      -H 'content-type: application/json' --data-binary @<map>.json
    ```
+
+   A posted map replaces the stored one with the same `id`, except that a map posted without
+   `alerts` keeps the stored map's `alerts`.
 
    Outside a session, save it as `<data folder>/flow-maps/<id>.json` or hand the file to the user
    for **Settings → Flow maps → Import JSON…**. Then tell the user to open Flow maps (⌘7) → the

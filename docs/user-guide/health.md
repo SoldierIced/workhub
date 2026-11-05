@@ -104,6 +104,21 @@ metrics with one alert of each kind; the demo never notifies.
 or recovers, a service stops reporting, a pod stops being ready, an error signal starts worsening.
 The top navigation and the menu bar panel show the state too.
 
+**Settings → Alerts → Health · environments** decides, per profile and per kind of alert, whether
+it is announced and where: **Notification** (the OS notification) and **Menu bar** (the menu bar's
+recent notifications). A kind turned off still shows on the Health screen. Two kinds take a
+threshold of their own: **A service stops reporting** (announced once it has been silent that many
+minutes; below the environment's *stopped reporting after* it changes nothing) and **Errors start
+worsening** (announced from that many times its typical day). Pods and the environment changes
+have no threshold to tune (shown as —). Left blank, the environment's thresholds decide, as before.
+The same screen holds the metric alerts' minimum severity and business days (the per-metric
+overrides stay in Settings → Health → Alert rules) and the profile's **Quiet hours**.
+
+**Quiet hours** (Settings → Alerts, per profile, may cross midnight, such as 22:00 to 07:00):
+Health, flow-map and metric alert notifications are not shown during them. They are still
+recorded and cooled down, so they do not all arrive when the quiet hours end. Session and meeting
+notifications are never held back.
+
 **Settings → General → Other notifications → Metric alerts**: a metric alert opens or escalates at
 or above the profile's minimum severity. Snoozed alerts stay quiet; several at once arrive as one
 notification. A click opens the Alerts tab.

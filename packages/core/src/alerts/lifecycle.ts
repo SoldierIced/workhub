@@ -2,7 +2,7 @@
  * The lifecycle of metric alerts: one alert per series key. A detection opens an alert or updates
  * the open one (its severity only rises while open); an alert not detected for 3 business days
  * proposes to be resolved; a snooze lasts a while or until the trend changes; resolved alerts are
- * pruned after 7 days.
+ * pruned after 7 days, unless their detection is still present (pruning it would reopen it as new).
  */
 import { businessDaysAfter, localDay } from './days'
 import { compareSeverity } from './rules'
@@ -10,7 +10,7 @@ import { DEFAULT_BUSINESS_DAYS, type AlertSeverity, type AlertStatus, type Metri
 
 /** Business days without a detection after which an alert proposes to be resolved. */
 export const PROPOSE_RESOLVE_AFTER_DAYS = 3
-/** Resolved alerts stay listed this long. */
+/** Resolved alerts stay listed this long (longer while their detection is still present). */
 export const CLOSED_ALERT_LIFETIME_MS = 7 * 24 * 60 * 60_000
 
 const DAY_MS = 24 * 60 * 60_000
@@ -69,7 +69,9 @@ export function reconcileAlerts(previous: readonly MetricAlert[], detections: re
         const fresh: MetricAlert = { ...fromDetection(d), status: 'new', firstSeenDay: d.day }
         alerts.push(fresh)
         opened.push(fresh)
-      } else if (old.closedAt === undefined || now - old.closedAt < CLOSED_ALERT_LIFETIME_MS) {
+      } else if (d || old.closedAt === undefined || now - old.closedAt < CLOSED_ALERT_LIFETIME_MS) {
+        // Still detected (same day, not worse): kept resolved, so the next evaluation does not
+        // mistake it for a key never seen and open it again.
         alerts.push(old)
       }
       continue
