@@ -4,6 +4,18 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.17](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.16...v2.0.0-alpha.17) (2026-11-05)
+
+
+### Features
+
+* **review:** approve the reviewer's findings before they reach the author ([fd5f0db](https://github.com/SoldierIced/workhub/commit/fd5f0db01ed48d4b0e047118ebd24894523c3c1f))
+
+
+### Bug Fixes
+
+* **monitor:** list only the repos a session changed in Local changes ([911ac45](https://github.com/SoldierIced/workhub/commit/911ac45367db110952a3d3c25917a6112ba5a39f))
+
 ## [2.0.0-alpha.16](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.14...v2.0.0-alpha.16) (2026-11-04)
 
 
