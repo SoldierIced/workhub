@@ -123,6 +123,17 @@ describe('custom command', () => {
   it('does not run for a link that is not a web link', () => {
     expect(linkLaunch('darwin', { command: 'open-work' }, 'file:///etc/passwd')).toBeNull()
   })
+  it('reads a command that starts with a quote as an executable with arguments; any other as one executable', () => {
+    const url = 'https://x.y/'
+    expect(linkLaunch('darwin', { command: '"/opt/My Tools/open" --new-window' }, url)).toEqual({ command: '/usr/bin/env', args: ['/opt/My Tools/open', '--new-window', url] })
+    expect(linkLaunch('linux', { command: `'/opt/a b/x' "say \\"hi\\""` }, url)).toEqual({ command: '/usr/bin/env', args: ['/opt/a b/x', 'say "hi"', url] })
+    expect(linkLaunch('win32', { command: '"C:\\Program Files\\Firefox\\firefox.exe" -P work' }, url)).toEqual({ command: 'C:\\Program Files\\Firefox\\firefox.exe', args: ['-P', 'work', url] })
+    // Stored before command lines existed: a path with spaces is still one executable.
+    expect(linkLaunch('darwin', { command: '/opt/My Tools/open-work' }, url)).toEqual({ command: '/usr/bin/env', args: ['/opt/My Tools/open-work', url] })
+    expect(linkLaunch('darwin', { command: '"/opt/x' }, url)).toBeNull()
+    expect(linkLaunch('darwin', { command: '"-i" x' }, url)).toBeNull()
+    expect(linkLaunch('darwin', { command: '""' }, url)).toBeNull()
+  })
 })
 
 describe('chromeDataDirName', () => {
@@ -141,9 +152,25 @@ describe('Workhub 1 linkOpener import', () => {
     expect(importedLinkOpener("open -a 'Safari'")).toEqual({ linkBrowser: 'Safari' })
     expect(importedLinkOpener(' open -a Firefox ')).toEqual({ linkBrowser: 'Firefox' })
     expect(importedLinkOpener('open-acme')).toEqual({ linkCommand: 'open-acme' })
-    expect(importedLinkOpener('open -na Foo --args x')).toEqual({ linkCommand: 'open -na Foo --args x' })
+    expect(importedLinkOpener('open -na Foo --args x')).toEqual({ linkCommand: '"open" -na Foo --args x' })
     expect(importedLinkOpener('  ')).toBeNull()
     expect(importedLinkOpener(undefined)).toBeNull()
+  })
+  it('splits an opener with arguments so the launch passes them word by word', () => {
+    const url = 'https://x.y/'
+    const imported = importedLinkOpener('firefox -P work')
+    expect(imported).toEqual({ linkCommand: '"firefox" -P work' })
+    const command = (imported as { linkCommand: string }).linkCommand
+    expect(linkLaunch('darwin', { command }, url)).toEqual({ command: '/usr/bin/env', args: ['firefox', '-P', 'work', url] })
+    expect(linkLaunch('win32', { command }, url)).toEqual({ command: 'firefox', args: ['-P', 'work', url] })
+  })
+  it('keeps a quoted path with spaces as one executable', () => {
+    const url = 'https://x.y/'
+    const imported = importedLinkOpener(`"/Applications/Firefox Dev.app/Contents/MacOS/firefox" -P 'my work'`)
+    expect(imported).toEqual({ linkCommand: '"/Applications/Firefox Dev.app/Contents/MacOS/firefox" -P "my work"' })
+    const command = (imported as { linkCommand: string }).linkCommand
+    expect(linkLaunch('darwin', { command }, url)).toEqual({ command: '/usr/bin/env', args: ['/Applications/Firefox Dev.app/Contents/MacOS/firefox', '-P', 'my work', url] })
+    expect(importedLinkOpener('"/opt/My Tools/open-work"')).toEqual({ linkCommand: '"/opt/My Tools/open-work"' })
   })
   it('lands in the imported profile, and fills an existing profile that has no setting', () => {
     const v1 = { profiles: [{ id: 'work', name: 'Work', linkOpener: 'open-acme' }, { id: 'home', name: 'Home', linkOpener: 'open -a Safari' }, { id: 'none', name: 'None' }] }

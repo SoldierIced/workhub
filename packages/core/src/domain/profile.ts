@@ -1,5 +1,6 @@
 import type { AiReviewSettings } from '../ai-review/types'
 import type { HealthSettings } from '../health/types'
+import type { ProfileAlertSettings } from '../alerts/quiet-hours'
 import type { PlannerSettings } from '../calendar/types'
 import type { WorktreeSettings } from '../worktrees/settings'
 import type { ConnectionKind } from './connection'
@@ -78,6 +79,8 @@ export interface Profile {
   color?: string
   /** Plan module setup: calendars, reminders, meeting rules, the brief prompt and people (see `plannerSettings` for the defaults). */
   planner?: PlannerSettings
+  /** Alerts across modules (Settings → Alerts): the quiet hours. Unset: none. */
+  alerts?: ProfileAlertSettings
 }
 
 /** Colours a profile without one of its own takes, by its place in the list (Workhub 1's accent palette). */

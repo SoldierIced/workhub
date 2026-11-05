@@ -1,11 +1,11 @@
 import { Flag, ListTodo } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { groupByMilestone, groupInbox, inboxSettings, milestoneHasItem, plannerSettings, type InboxItem } from '@workhub/core'
 import type { MilestoneView } from '@shared/planner-api'
 import { Badge, Spinner } from '../../components/atoms'
 import { EmptyState } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
-import { MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE } from '../../lib/planner'
+import { MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, selectedShown } from '../../lib/planner'
 import { requestPlanTab, usePlanner } from '../../plannerStore'
 import { ItemMilestones } from './ItemMilestones'
 import { applyFilters, BulkBar, InboxFilterBar, InboxRow, NO_FILTERS, useInboxActions, type InboxFilters } from './InboxTab'
@@ -35,6 +35,10 @@ export function TasksTab({ profile, openItem }: PlanTabContext) {
   const milestones = view?.milestones ?? []
   const today = view?.today ?? ''
   const shown = useMemo(() => applyFilters(items, filters), [items, filters])
+  // Only what is still listed counts: a row a refresh removed never gets the bulk edit.
+  const picked = useMemo(() => selectedShown(selected, shown), [selected, shown])
+  // Another filter shows other rows: the selection (and its pending edit) starts over.
+  useEffect(() => setSelected([]), [filters])
   const all = groupInbox(shown, today, settings.criticalities)
   const open = [...all.tasks.due, ...all.tasks.urgent, ...all.tasks.rest, ...all.tasks.tracker]
   const byMilestone = groupByMilestone(open, milestones, (m) => m.milestone)
@@ -84,7 +88,7 @@ export function TasksTab({ profile, openItem }: PlanTabContext) {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">{t('planner.tasks.intro')}</p>
       {items.some((i) => i.status !== 'pending') && <InboxFilterBar filters={filters} onChange={setFilters} areas={areas} />}
-      <BulkBar profileId={profile.id} items={items} selected={selected} onDone={() => setSelected([])} areas={areas} criticalities={settings.criticalities} />
+      <BulkBar profileId={profile.id} items={items} selected={picked} onDone={() => setSelected([])} areas={areas} criticalities={settings.criticalities} />
 
       {nothing ? (
         <EmptyState compact icon={<ListTodo className="size-5" aria-hidden />} title={t('planner.tasks.empty')} description={t('planner.tasks.emptyHint')} />

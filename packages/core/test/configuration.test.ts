@@ -10,6 +10,8 @@ import {
   RETYPE_SECRET_TO_TEST,
   secretForConnectionTest,
   updateConnection,
+  newAutomation,
+  DEFAULT_CHAT_WATCHER,
   updateProfile,
   validateConfig,
   type Result,
@@ -139,6 +141,30 @@ describe('accounts', () => {
     const c = config({ accounts: [claudeA], profiles: [profile({ accountIds: [claudeA.id] })] })
     expect(messages(deleteAccount(c, claudeA.id))).toEqual(['accounts.claude-a: used by profile(s): acme'])
   })
+
+  it('refuses to delete the account the chat watcher uses', () => {
+    const c = config({ accounts: [claudeA], chatWatcher: { ...DEFAULT_CHAT_WATCHER, accountId: claudeA.id } })
+    expect(messages(deleteAccount(c, claudeA.id))).toEqual(['accounts.claude-a: used by the chat watcher'])
+  })
+})
+
+describe('automation and chat watcher references', () => {
+  it('refuses to delete a profile an automation runs in', () => {
+    const c = config({ profiles: [profile()], activeProfileId: 'acme', automations: [newAutomation('nightly', { name: 'Nightly', profileId: 'acme' })] })
+    expect(messages(deleteProfile(c, 'acme'))).toEqual(['profiles.acme: used by automation(s): nightly'])
+  })
+
+  it('reports duplicate automation ids, unknown automation profiles and an unknown watcher account', () => {
+    const c = config({
+      automations: [newAutomation('a1', { name: 'One', profileId: 'gone' }), newAutomation('a1', { name: 'Two' })],
+      chatWatcher: { ...DEFAULT_CHAT_WATCHER, accountId: 'nobody' }
+    })
+    expect(validateConfig(c).map((i) => `${i.path}: ${i.message}`)).toEqual([
+      'automations.a1: duplicate id',
+      'automations.a1.profileId: unknown profile "gone"',
+      'chatWatcher.accountId: unknown account "nobody"'
+    ])
+  })
 })
 
 describe('ConfigurationService', () => {
@@ -194,6 +220,47 @@ describe('ConfigurationService', () => {
     const saved = store.saved.at(-1)!
     expect(saved.profiles).toHaveLength(1)
     expect(saved.profiles[0]?.name).toBe('Acme 2')
+  })
+})
+
+describe('ConfigurationService concurrency', () => {
+  /** A store whose saves take a while, so two writes issued together overlap. */
+  class SlowStore extends MemoryConfigStore {
+    override async save(c: WorkhubConfig): Promise<void> {
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+      await super.save(c)
+    }
+  }
+
+  it('lands both of two concurrent writes', async () => {
+    const store = new SlowStore(config())
+    const svc = new ConfigurationService(store, new MemorySecrets())
+    await svc.load()
+    const [a, b] = await Promise.all([svc.saveAccount(kiroWork), svc.saveOptions({ readAloud: true })])
+    expect(a.ok && b.ok).toBe(true)
+    const last = store.saved.at(-1)!
+    expect(last.accounts.map((x) => x.id)).toEqual([kiroWork.id])
+    expect(last.options?.readAloud).toBe(true)
+    expect((await svc.current()).accounts).toHaveLength(1)
+  })
+
+  it('keeps going after a write that throws', async () => {
+    const store = new SlowStore(config())
+    let fail = true
+    const orig = store.save.bind(store)
+    store.save = async (c) => {
+      if (fail) {
+        fail = false
+        throw new Error('disk full')
+      }
+      return orig(c)
+    }
+    const svc = new ConfigurationService(store, new MemorySecrets())
+    const first = svc.saveAccount(kiroWork)
+    const second = svc.saveOptions({ readAloud: true })
+    await expect(first).rejects.toThrow('disk full')
+    expect((await second).ok).toBe(true)
+    expect(store.saved.at(-1)?.options?.readAloud).toBe(true)
   })
 })
 

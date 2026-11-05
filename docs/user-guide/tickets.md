@@ -33,6 +33,9 @@ The token is stored encrypted by the operating system, never in the settings fil
 ## Notifications
 
 With **Tickets** on under **Settings → General → Other notifications**, Workhub notifies about status
-changes and about tickets assigned to you or taken away.
+changes and about tickets assigned to you or taken away. Only the active profile is read: when you
+switch to a profile not read for over a day, its tickets are recorded without notifying. More than
+five changes in one read arrive as one summary, and a very long list (100 tickets or more) never
+reports a ticket as taken away, since the tracker may have left it out.
 
 Next: [Slack](slack.md).

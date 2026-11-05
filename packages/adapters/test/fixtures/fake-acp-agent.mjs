@@ -4,6 +4,8 @@
 // makes the agent change its own mode (and model, in config style) before answering; prompt
 // "commands" reports its slash commands first.
 //
+// FAKE_ACP_SILENT=1 makes it read its input and never answer.
+//
 // FAKE_ACP_STYLE picks how session/new advertises models and modes:
 // - unset: ACP `modes` (permission modes) and `models` (session/set_mode, session/set_model).
 // - `config`: `configOptions` with `mode` and `model` selects (session/set_config_option), as
@@ -44,6 +46,8 @@ let nextId = 1000
 const waiting = new Map()
 
 createInterface({ input: process.stdin }).on('line', (line) => {
+  // FAKE_ACP_SILENT: an agent that starts and never answers.
+  if (process.env.FAKE_ACP_SILENT) return
   const msg = JSON.parse(line)
   if (msg.id !== undefined && !msg.method) {
     waiting.get(msg.id)?.(msg.result)

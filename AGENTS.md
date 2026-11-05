@@ -53,5 +53,6 @@ npm run demo         # dev build with synthetic data in .demo-data/ (add -- --re
   loopback HTTP with a token on Windows. Every session also gets `WORKHUB_SESSION`.
 - Agent skills that teach agents those endpoints: `skills/workhub-plan` and
   `skills/workhub-flow-map`. Keep a skill in step with the endpoint it describes.
-- Settings screen: `packages/app/src/renderer/screens/SettingsScreen.tsx`.
+- Settings screen: `packages/app/src/renderer/screens/SettingsScreen.tsx`, shown in its own window
+  (`screens/SettingsWindow.tsx`, `main/settings-window.ts`).
 - Product name, app id and release repository: `scripts/brand.mjs` only.

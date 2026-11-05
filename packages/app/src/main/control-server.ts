@@ -33,8 +33,9 @@
  *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/people?session=$WORKHUB_SESSION"
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { chmodSync, existsSync, statSync, unlinkSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, statSync, unlinkSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import type { PlanControl } from './plan-control'
@@ -67,20 +68,61 @@ export interface ControlDeps {
   log?: (message: string) => void
 }
 
+/** Unix socket paths are cut at about 104 bytes (macOS); a path longer than this is not used. */
+const MAX_SOCKET_PATH = 100
+
 /**
  * Where the socket endpoint listens for a data folder: a socket file in it (macOS and Linux). On
  * Windows it is a named pipe, which Node serves but curl cannot reach, so the app uses the loopback
  * endpoint there (`startLoopbackControlServer`); the pipe stays for tests and Node clients.
+ * A data folder too long for a socket path falls back to a folder only the user can open
+ * (`privateSocketDir`), made only when it is needed.
  */
-export function controlSocketPath(dataDir: string, platform: NodeJS.Platform = process.platform): string {
+export function controlSocketPath(dataDir: string, platform: NodeJS.Platform = process.platform, fallbackDir: () => string = privateSocketDir): string {
   const hash = createHash('sha256').update(dataDir).digest('hex').slice(0, 16)
   if (platform === 'win32') return `\\\\.\\pipe\\workhub-control-${hash}`
   const inData = join(dataDir, 'control.sock')
-  // Unix socket paths are cut at about 104 bytes: a long data folder falls back to the user's temp folder.
-  return Buffer.byteLength(inData) <= 100 ? inData : join(tmpdir(), `workhub-control-${hash}.sock`)
+  return Buffer.byteLength(inData) <= MAX_SOCKET_PATH ? inData : join(fallbackDir(), `workhub-control-${hash}.sock`)
 }
 
-/** The environment a session gets to reach the endpoint. */
+/**
+ * A folder for the socket that only the user can open (0700), so no other user can predict the
+ * path and take it first: `$XDG_RUNTIME_DIR/workhub` when that is set (and owned by the user),
+ * else a new random folder in the temp folder, else one in `/tmp` when the temp folder's path is
+ * too long for a socket.
+ */
+export function privateSocketDir(env: NodeJS.ProcessEnv = process.env, tmp: string = tmpdir()): string {
+  const room = (dir: string) => Buffer.byteLength(join(dir, 'workhub-control-0123456789abcdef.sock')) <= MAX_SOCKET_PATH
+  const runtime = env['XDG_RUNTIME_DIR']
+  if (runtime && isAbsolute(runtime)) {
+    const dir = join(runtime, 'workhub')
+    try {
+      mkdirSync(dir, { recursive: true, mode: 0o700 })
+      const st = lstatSync(dir)
+      const mine = typeof process.getuid !== 'function' || st.uid === process.getuid()
+      if (st.isDirectory() && !st.isSymbolicLink() && mine && room(dir)) {
+        chmodSync(dir, 0o700)
+        return dir
+      }
+    } catch {
+      /* the temp folder below */
+    }
+  }
+  // mkdtemp makes the folder 0700 with a random name.
+  const base = room(join(tmp, 'workhub-XXXXXX')) ? tmp : '/tmp'
+  return mkdtempSync(join(base, 'workhub-'))
+}
+
+/** The variables of the endpoint; a session gets all of them, the unused ones empty. */
+export const CONTROL_ENV_KEYS = ['WORKHUB_SESSION', 'WORKHUB_SOCKET', 'WORKHUB_URL', 'WORKHUB_TOKEN'] as const
+
+/**
+ * The environment of a session that must not reach any endpoint (a reviewer, or no endpoint is
+ * up): every variable set empty, so values inherited from a parent process (a Workhub started from
+ * a session of another Workhub) never point it at the other app.
+ */
+export const NO_CONTROL_ENV: Readonly<Record<string, string>> = Object.freeze(Object.fromEntries(CONTROL_ENV_KEYS.map((k) => [k, ''])))
+
 /** How sessions reach the endpoint: the socket path, or the loopback URL and its token (Windows); null before it listens. */
 export type ControlEndpoint = { socket: string } | { url: string; token: string }
 
@@ -90,10 +132,11 @@ export const usesLoopbackControl = (platform: NodeJS.Platform = process.platform
 /** A new token for the loopback endpoint (one per launch). */
 export const newControlToken = () => randomBytes(32).toString('hex')
 
+/** The environment a session gets to reach the endpoint; `NO_CONTROL_ENV` while none listens. */
 export function controlEnv(sessionId: string, endpoint: ControlEndpoint | null): Record<string, string> {
-  if (!endpoint) return { WORKHUB_SESSION: sessionId }
-  if ('socket' in endpoint) return { WORKHUB_SESSION: sessionId, WORKHUB_SOCKET: endpoint.socket }
-  return { WORKHUB_SESSION: sessionId, WORKHUB_URL: endpoint.url, WORKHUB_TOKEN: endpoint.token }
+  if (!endpoint) return { ...NO_CONTROL_ENV }
+  if ('socket' in endpoint) return { ...NO_CONTROL_ENV, WORKHUB_SESSION: sessionId, WORKHUB_SOCKET: endpoint.socket }
+  return { ...NO_CONTROL_ENV, WORKHUB_SESSION: sessionId, WORKHUB_URL: endpoint.url, WORKHUB_TOKEN: endpoint.token }
 }
 
 /** True when the request carries `Authorization: Bearer <token>` (compared in constant time). */
@@ -246,9 +289,36 @@ export async function handleControl(deps: ControlDeps, req: IncomingMessage, res
   return send(res, 200, { ok: true })
 }
 
-/** Starts the endpoint; a stale socket left by a crash is replaced. Resolves to null when it cannot listen. */
-export function startControlServer(socketPath: string, deps: ControlDeps): Promise<Server | null> {
+/**
+ * What is at a socket path: `live` when something accepts a connection (another Workhub serves
+ * it), `stale` when nothing is there or nothing listens (a socket left by a crash), `unknown` for
+ * anything else (no permission, not a socket, no answer in time). Only a stale one may be removed.
+ */
+export function probeSocket(socketPath: string, timeoutMs = 1000): Promise<'live' | 'stale' | 'unknown'> {
+  return new Promise((resolve) => {
+    const socket = connect(socketPath)
+    const done = (state: 'live' | 'stale' | 'unknown') => {
+      clearTimeout(timer)
+      socket.destroy()
+      resolve(state)
+    }
+    const timer = setTimeout(() => done('unknown'), timeoutMs)
+    socket.once('connect', () => done('live'))
+    socket.once('error', (e: NodeJS.ErrnoException) => done(e.code === 'ECONNREFUSED' || e.code === 'ENOENT' ? 'stale' : 'unknown'))
+  })
+}
+
+/**
+ * Starts the endpoint. A stale socket left by a crash is replaced; one another process still
+ * serves (a second Workhub on the same data folder) is left alone. Resolves to null when it cannot listen.
+ */
+export async function startControlServer(socketPath: string, deps: ControlDeps): Promise<Server | null> {
   if (process.platform !== 'win32' && existsSync(socketPath)) {
+    const state = await probeSocket(socketPath)
+    if (state !== 'stale') {
+      deps.log?.(`control endpoint not started: ${socketPath} is ${state === 'live' ? 'served by another process' : 'in use or not reachable'}`)
+      return null
+    }
     try {
       unlinkSync(socketPath)
     } catch {

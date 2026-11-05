@@ -8,7 +8,7 @@ import { DEFAULT_HEALTH_THRESHOLDS, emptyConfig, flowHistoryStart, hourStart, ty
 import type { HttpClient } from '@workhub/adapters/http'
 import type { FlowMapSummary } from '../src/shared/health-api'
 import { FlowHistoryStore, flowHistoryFileName } from '../src/main/flow-history'
-import { FLOW_HISTORY_REFRESH_MS, HEALTH_MIN_GAP_MS, HealthService } from '../src/main/health-service'
+import { FLOW_HISTORY_REFRESH_MS, FLOW_HISTORY_RETRY_BASE_MS, FLOW_HISTORY_RETRY_MAX_MS, HEALTH_MIN_GAP_MS, HealthService } from '../src/main/health-service'
 import { FlowMapList, groupFlowMaps } from '../src/renderer/screens/flowMaps/FlowMapList'
 
 const H = 3_600_000
@@ -20,7 +20,7 @@ const profile: Profile = { id: 'work', name: 'Work', connections: { health: 'es'
 
 /** Two maps sharing the BFF transaction; the second also measures the hop to orders. */
 const maps = [
-  { version: 1, id: 'checkout', name: 'Checkout', group: 'Payments', alerts: { p95Ms: 50 }, lanes: [{ id: 'app', label: 'App' }], nodes: [{ id: 'bff', lane: 'app', label: 'shop-bff', measure: { type: 'apm.transaction', service: 'shop-bff', transaction: 'POST /checkout' } }] },
+  { version: 1, id: 'checkout', name: 'Checkout', group: 'Payments', alerts: { p95Ms: 50, minCalls: 1 }, lanes: [{ id: 'app', label: 'App' }], nodes: [{ id: 'bff', lane: 'app', label: 'shop-bff', measure: { type: 'apm.transaction', service: 'shop-bff', transaction: 'POST /checkout' } }] },
   { version: 1, id: 'orders', name: 'Orders', lanes: [{ id: 'app', label: 'App' }], nodes: [{ id: 'bff', lane: 'app', label: 'shop-bff', measure: { type: 'apm.transaction', service: 'shop-bff', transaction: 'POST /checkout' } }, { id: 'orders', lane: 'app', label: 'orders' }], edges: [{ from: 'bff', to: 'orders', measure: { type: 'apm.span', service: 'shop-bff', destination: 'orders:8080' } }] }
 ]
 
@@ -111,6 +111,41 @@ describe('HealthService with the flow history', () => {
     const { service } = setup({ http, now: () => now })
     const result = await service.flowMap('work', 'dev', 'checkout', 24)
     expect(result.ok && result.reading?.errors.bff).toBeTruthy()
+  })
+
+  it('backs off a measure whose read failed instead of asking again on every ask', async () => {
+    let fail = true
+    const ok = cluster()
+    const bad = cluster(true)
+    const http: HttpClient = (req) => (fail ? bad.http(req) : ok.http(req))
+    let now = start
+    const { service } = setup({ http, now: () => now })
+    const first = await service.flowMap('work', 'dev', 'checkout', 24)
+    expect(first.ok && first.reading?.errors.bff).toBeTruthy()
+    // Asked again at once: the error stands, nothing is read.
+    const again = await service.flowMap('work', 'dev', 'checkout', 24)
+    expect(again.ok && again.reading?.errors.bff).toBeTruthy()
+    expect(bad.ranges).toHaveLength(1)
+    // The wait doubles per failure in a row: base, then twice the base.
+    now += FLOW_HISTORY_RETRY_BASE_MS
+    await service.flowMap('work', 'dev', 'checkout', 24)
+    expect(bad.ranges).toHaveLength(2)
+    now += FLOW_HISTORY_RETRY_BASE_MS
+    await service.flowMap('work', 'dev', 'checkout', 24)
+    expect(bad.ranges).toHaveLength(2)
+    now += FLOW_HISTORY_RETRY_BASE_MS
+    await service.flowMap('work', 'dev', 'checkout', 24)
+    expect(bad.ranges).toHaveLength(3)
+    // The refresh button waits only the minimum gap.
+    now += HEALTH_MIN_GAP_MS
+    await service.flowMap('work', 'dev', 'checkout', 24, true)
+    expect(bad.ranges).toHaveLength(4)
+    // Never more than the cap; a success clears the streak.
+    fail = false
+    now += FLOW_HISTORY_RETRY_MAX_MS
+    const healed = await service.flowMap('work', 'dev', 'checkout', 24)
+    expect(ok.ranges).toHaveLength(1)
+    expect(healed.ok && healed.reading?.errors.bff).toBeUndefined()
   })
 
   it('tells the map states from what is stored only', async () => {

@@ -41,6 +41,20 @@ describe('GitHubCodeHost lists', () => {
     expect(out[0]).toMatchObject({ number: 3, ci: 'none', reviewDecision: 'none', mergeable: 'unknown', state: 'open' })
   })
 
+  it('reads every search page through the cursor', async () => {
+    const node = (n: number) => ({ number: n, url: `https://github.com/acme/app/pull/${n}`, repository: { name: 'app', owner: { login: 'acme' } } })
+    const seen: string[][] = []
+    const run: CliRunner = async (_c, args) => {
+      seen.push(args)
+      const second = args.includes('after=cursor-1')
+      const search = second ? { pageInfo: { hasNextPage: false, endCursor: 'cursor-2' }, nodes: [node(3)] } : { pageInfo: { hasNextPage: true, endCursor: 'cursor-1' }, nodes: [node(1), node(2)] }
+      return { code: 0, stdout: JSON.stringify({ data: { search } }), stderr: '' }
+    }
+    expect((await new GitHubCodeHost({ run }).listAuthored({})).map((p) => p.number)).toEqual([1, 2, 3])
+    expect(seen).toHaveLength(2)
+    expect(seen[0]!.some((a) => a.startsWith('after='))).toBe(false)
+  })
+
   it('turns an unreadable answer into a CodeHostError', async () => {
     const run: CliRunner = async () => ({ code: 0, stdout: 'not json', stderr: '' })
     await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toBeInstanceOf(CodeHostError)

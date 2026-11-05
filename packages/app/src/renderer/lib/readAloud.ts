@@ -236,12 +236,17 @@ export function readsAloudByDefault(view: SessionData['view'], defaultOn: boolea
  */
 export function useReadAloud(sessions: Record<string, SessionData>, options: Pick<AppOptions, 'readAloud' | 'speechVoice' | 'speechRate'>, platform: Platform): void {
   const seen = useRef(new Map<string, number>())
+  // The last turn end each session was looked at for: a session whose turns did not end since is skipped
+  // (a streaming reply changes the sessions on every flush, but only the end of a turn can be read).
+  const checkedEnd = useRef(new Map<string, number | undefined>())
   const openedAt = useRef(Date.now())
   const latest = useRef(options)
   latest.current = options
 
   useEffect(() => {
     for (const [id, data] of Object.entries(sessions)) {
+      if (checkedEnd.current.has(id) && checkedEnd.current.get(id) === data.lastTurnEnd) continue
+      checkedEnd.current.set(id, data.lastTurnEnd)
       const reply = lastFinishedReply(data.items)
       if (!seen.current.has(id)) {
         seen.current.set(id, reply?.turnId ?? 0)

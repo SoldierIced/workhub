@@ -70,8 +70,10 @@ export function schemaIssues(config: WorkhubConfig): ValidationIssue[] {
 
 /**
  * Every shape rule of the schema (`schemaIssues`) plus the cross-reference rules it cannot express: unique ids, providers that exist and match
- * the connection kind, endpoint and secret where the provider needs them, and profiles that
- * only reference existing connections of the right kind and existing accounts and agents.
+ * the connection kind, endpoint and secret where the provider needs them, profiles that
+ * only reference existing connections of the right kind and existing accounts and agents,
+ * automations with unique ids that run in an existing profile, and a chat watcher that runs on
+ * an existing account.
  */
 export function validateConfig(config: WorkhubConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = schemaIssues(config)
@@ -144,5 +146,14 @@ export function validateConfig(config: WorkhubConfig): ValidationIssue[] {
   if (config.activeProfileId && !config.profiles.some((p) => p.id === config.activeProfileId)) {
     issues.push({ path: 'activeProfileId', message: `unknown profile "${config.activeProfileId}"` })
   }
+
+  const profiles = new Set(config.profiles.map((p) => p.id))
+  const automations = config.automations ?? []
+  for (const d of duplicates(automations.map((a) => a.id))) issues.push({ path: `automations.${d}`, message: 'duplicate id' })
+  for (const a of automations) {
+    if (a.profileId && !profiles.has(a.profileId)) issues.push({ path: `automations.${a.id}.profileId`, message: `unknown profile "${a.profileId}"` })
+  }
+  const watcherAccount = config.chatWatcher?.accountId
+  if (watcherAccount && !accounts.has(watcherAccount)) issues.push({ path: 'chatWatcher.accountId', message: `unknown account "${watcherAccount}"` })
   return issues
 }

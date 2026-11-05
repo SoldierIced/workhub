@@ -3,6 +3,12 @@ import type { UpdateStatus } from '@shared/updates-api'
 import { useI18n } from '../../i18n/I18nProvider'
 import { Button } from '../atoms/Button'
 import { Dialog } from '../molecules/Dialog'
+import { errorText } from '../../lib/errorText'
+
+/** What the dialog shows when the install call itself failed: the error state, with its message. */
+export function failedInstall(status: UpdateStatus, error: unknown): UpdateStatus {
+  return { ...status, state: 'error', message: errorText(error) }
+}
 
 /**
  * "A new version is available": main asks for it after an automatic check (at most once a day).
@@ -13,6 +19,7 @@ export function UpdatePromptDialog() {
   const { t } = useI18n()
   const [status, setStatus] = useState<UpdateStatus | null>(null)
   const [open, setOpen] = useState(false)
+  const [installing, setInstalling] = useState(false)
   useEffect(() => {
     const offPrompt = window.hub.updates.onPrompt((s) => {
       setStatus(s)
@@ -29,10 +36,18 @@ export function UpdatePromptDialog() {
   const version = status.version ?? ''
   const close = () => setOpen(false)
   const install = async () => {
-    const next = await window.hub.updates.install()
-    // Without self-install the release page opened: nothing more to wait for here.
-    if (!status.canInstall) close()
-    else setStatus(next)
+    if (installing) return
+    setInstalling(true)
+    try {
+      const next = await window.hub.updates.install()
+      // Without self-install the release page opened: nothing more to wait for here.
+      if (!status.canInstall) close()
+      else setStatus(next)
+    } catch (e) {
+      setStatus(failedInstall(status, e))
+    } finally {
+      setInstalling(false)
+    }
   }
 
   const ready = status.state === 'ready'
@@ -77,7 +92,7 @@ export function UpdatePromptDialog() {
             <Button variant="ghost" disabled={downloading} onClick={close}>
               {t('updates.later')}
             </Button>
-            <Button variant="primary" disabled={downloading || status.state !== 'available'} data-testid="update-now" onClick={() => void install()}>
+            <Button variant="primary" disabled={installing || downloading || status.state !== 'available'} data-testid="update-now" onClick={() => void install()}>
               {status.canInstall ? t('updates.updateNow') : t('updates.download')}
             </Button>
           </>

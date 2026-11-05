@@ -11,8 +11,11 @@ import type { FlowBaseline, FlowCodeCount, FlowHourPoint, FlowMeasure, FlowTimin
 
 const HOUR_MS = 3_600_000
 
-/** How many hours of history are kept: the longest window a map reads (a week). */
-export const FLOW_HISTORY_HOURS = 24 * 7
+/**
+ * How many hours of history are kept: the longest window a map reads (a week of whole hours) plus
+ * the hour in course, which every window includes (see `flowTimingFromHistory`).
+ */
+export const FLOW_HISTORY_HOURS = 24 * 7 + 1
 
 /**
  * APM documents arrive a few minutes late, so an hour counts as final only this long after it
@@ -145,13 +148,18 @@ function baseline(hours: readonly FlowHour[]): FlowBaseline {
 }
 
 /**
- * The numbers of one measure over the last `windowHours` (the hour in course included), read
- * from its stored hours: the window, the same length before it (`previous`) and the week (`weekly`).
+ * The numbers of one measure over the last `windowHours`, read from its stored hours. History is
+ * kept by whole hours, so the window is the `windowHours` full hours before the hour in course
+ * plus the part of that hour already gone (`windowHours` to `windowHours + 1` hours of real time,
+ * never less): a 1 h window read at 10:20 covers 9:00 to 10:20. `perMinute` divides by the
+ * minutes actually covered; `hourly` has one point per hour of the window (`windowHours + 1`);
+ * `previous` is the same number of whole hours just before the window, and `weekly` the stored week.
  */
 export function flowTimingFromHistory(hours: readonly FlowHour[], measure: FlowMeasure, now: number, windowHours: number): FlowTiming {
   const current = hourStart(now)
-  const from = current - (windowHours - 1) * HOUR_MS
-  const before = from - windowHours * HOUR_MS
+  const span = Math.max(0, Math.floor(windowHours))
+  const from = current - span * HOUR_MS
+  const before = from - (span + 1) * HOUR_MS
   const inWindow = hours.filter((h) => h.at >= from && h.at <= current)
   const byHour = new Map(inWindow.map((h) => [h.at, h]))
   const hourly: FlowHourPoint[] = []
@@ -159,6 +167,7 @@ export function flowTimingFromHistory(hours: readonly FlowHour[], measure: FlowM
     const h = byHour.get(at)
     hourly.push(h ? { at, count: h.count, p50Ms: histogramPercentileMs(h.latency, 50), p95Ms: histogramPercentileMs(h.latency, 95) } : { at, count: 0, p50Ms: 0, p95Ms: 0 })
   }
+  const minutes = (now - from) / 60_000
   const sum = sumFlowHours(inWindow)
   const p95 = histogramPercentileMs(sum.latency, 95)
   const timing: FlowTiming = {
@@ -168,7 +177,7 @@ export function flowTimingFromHistory(hours: readonly FlowHour[], measure: FlowM
     p99Ms: histogramPercentileMs(sum.latency, 99),
     errorRate: sum.failed / Math.max(sum.count, 1),
     failed: sum.failed,
-    perMinute: round2(sum.count / Math.max(windowHours * 60, 1)),
+    perMinute: round2(sum.count / Math.max(minutes, 1)),
     hourly,
     previous: baseline(hours.filter((h) => h.at >= before && h.at < from)),
     weekly: baseline(hours.filter((h) => h.at >= flowHistoryStart(now) && h.at <= current))

@@ -100,6 +100,18 @@ describe('SafeStorageSecretStore', () => {
     expect(await store.get('b')).toBe('2')
   })
 
+  it('does not see inherited keys as secrets', async () => {
+    const store = new SafeStorageSecretStore(join(dir, 'secrets.json'), fakeSafeStorage())
+    await store.set('a', '1')
+    expect(await store.has('toString')).toBe(false)
+    expect(await store.get('toString')).toBeNull()
+    await store.delete('constructor')
+    expect(await store.get('a')).toBe('1')
+    await store.set('__proto__', 'odd but stored')
+    expect(await new SafeStorageSecretStore(join(dir, 'secrets.json'), fakeSafeStorage()).get('__proto__')).toBe('odd but stored')
+    expect(await store.get('a')).toBe('1')
+  })
+
   it('refuses to store when OS encryption is unavailable', async () => {
     const path = join(dir, 'secrets.json')
     await expect(new SafeStorageSecretStore(path, fakeSafeStorage(false)).set('a', '1')).rejects.toBeInstanceOf(

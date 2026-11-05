@@ -1,11 +1,12 @@
 import { ExternalLink, GitPullRequest, Link, MessageSquarePlus, SquareTerminal, Sparkles, UserCheck } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { historyForTicket, listedPullRequests, pullRequestsForTicket, sessionsForTicket, type PullRequest, type SessionRef, type TicketDetail, type TicketRef, type TicketTransition } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import { Badge, Button, IconButton, Select, Spinner, StateDot, STATE_TONE, Textarea, TooltipProvider } from '../components/atoms'
 import { Markdown, PastSessions, ToastProvider, useToast, RefreshButton } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
+import { errorText } from '../lib/errorText'
 import { usePlatform } from '../lib/platform'
 import { resolveTheme, usePrefs, useSystemDark } from '../lib/prefs'
 import { CATEGORY_TONE, keyProviders, relativeTime, splitLinks } from '../lib/tickets'
@@ -62,17 +63,27 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // reload is an effect dependency: it reads the toast and the language through a ref.
+  const say = useRef({ notify, t })
+  say.current = { notify, t }
   const reload = useCallback(async () => {
-    const [detail, moves, st] = await Promise.all([
-      window.hub.tickets.get(profileId, ticketKey),
-      window.hub.tickets.transitions(profileId, ticketKey),
-      window.hub.tickets.status(profileId)
-    ])
-    setStatus(st)
-    if (!detail.ok) setLoad({ state: 'error', message: detail.error })
-    else if (!detail.value) setLoad({ state: 'missing' })
-    else setLoad({ state: 'ready', detail: detail.value })
-    setTransitions(moves.ok ? moves.value : [])
+    try {
+      const [detail, moves, st] = await Promise.all([
+        window.hub.tickets.get(profileId, ticketKey),
+        window.hub.tickets.transitions(profileId, ticketKey),
+        window.hub.tickets.status(profileId)
+      ])
+      setStatus(st)
+      if (!detail.ok) setLoad({ state: 'error', message: detail.error })
+      else if (!detail.value) setLoad({ state: 'missing' })
+      else setLoad({ state: 'ready', detail: detail.value })
+      setTransitions(moves.ok ? moves.value : [])
+    } catch (e) {
+      // A ticket on screen stays; the first read failing shows the error in its place.
+      const message = errorText(e)
+      setLoad((prev) => (prev.state === 'ready' ? prev : { state: 'error', message }))
+      say.current.notify(`${say.current.t('ticket.loadError', { key: ticketKey })}: ${message}`, 'danger')
+    }
   }, [profileId, ticketKey])
 
   useEffect(() => {
@@ -103,11 +114,17 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
 
   const act = async (op: () => Promise<{ ok: true } | { ok: false; error: string }>, done?: string) => {
     setBusy(true)
-    const r = await op()
-    setBusy(false)
-    if (!r.ok) notify(`${t('ticket.actionError')}: ${r.error}`)
-    else if (done) notify(done)
-    return r.ok
+    try {
+      const r = await op()
+      if (!r.ok) notify(`${t('ticket.actionError')}: ${r.error}`, 'danger')
+      else if (done) notify(done)
+      return r.ok
+    } catch (e) {
+      notify(`${t('ticket.actionError')}: ${errorText(e)}`, 'danger')
+      return false
+    } finally {
+      setBusy(false)
+    }
   }
 
   // The latest live session that works on this ticket: "Open session" goes there (Workhub 1's toolbar).
@@ -199,14 +216,20 @@ function TicketWindow({ profileId, ticketKey }: { profileId: string; ticketKey: 
             {d.description ? <RichText text={d.description} markdown={markdown} /> : <p className="text-sm text-subtle">{t('ticket.noDescription')}</p>}
           </Section>
 
-          {(d.parent || d.children.length > 0) && (
-            <Section title={d.parent ? t('ticket.parent') : t('ticket.subtasks')}>
+          {d.parent && (
+            <Section title={t('ticket.parent')}>
               <ul className="flex flex-col gap-1">
-                {[...(d.parent ? [d.parent] : []), ...d.children].map((r) => (
+                <RefRow ticketRef={d.parent} onOpen={() => void window.hub.tickets.openWindow(profileId, d.parent!.key)} />
+              </ul>
+            </Section>
+          )}
+          {d.children.length > 0 && (
+            <Section title={t('ticket.subtasks')}>
+              <ul className="flex flex-col gap-1">
+                {d.children.map((r) => (
                   <RefRow key={r.key} ticketRef={r} onOpen={() => void window.hub.tickets.openWindow(profileId, r.key)} />
                 ))}
               </ul>
-              {d.parent && d.children.length > 0 && <h3 className="mt-3 mb-1 text-sm font-medium text-muted">{t('ticket.subtasks')}</h3>}
             </Section>
           )}
 

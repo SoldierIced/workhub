@@ -74,6 +74,20 @@ describe('LinearTracker', () => {
     expect(tickets[0]).toMatchObject({ provider: 'linear', url: 'https://linear.example.com/t/ENG-1', priority: 'High' })
   })
 
+  it('follows pageInfo through the assigned tickets', async () => {
+    const { tracker, calls } = fakeLinear([
+      [
+        'assignedIssues',
+        (v) =>
+          v.after === 'cursor-1'
+            ? { data: { viewer: { assignedIssues: { nodes: [node('ENG-3', { name: 'Todo', type: 'unstarted' })], pageInfo: { hasNextPage: false, endCursor: 'cursor-2' } } } } }
+            : { data: { viewer: { assignedIssues: { nodes: [node('ENG-1', { name: 'Todo', type: 'unstarted' }), node('ENG-2', { name: 'Todo', type: 'unstarted' })], pageInfo: { hasNextPage: true, endCursor: 'cursor-1' } } } } }
+      ]
+    ])
+    expect((await tracker.listAssigned()).map((t) => t.key)).toEqual(['ENG-1', 'ENG-2', 'ENG-3'])
+    expect(calls.map((c) => c.variables.after)).toEqual([null, 'cursor-1'])
+  })
+
   it('reads the detail with comments oldest first', async () => {
     const { tracker } = fakeLinear([
       [

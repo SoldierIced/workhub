@@ -326,16 +326,17 @@ export class SlackWatcherService {
     try {
       const now = this.now()
       for (const [id, at] of this.opening) if (now - at > 600_000) this.opening.delete(id)
-      for (const thread of this.state.threads) {
-        if (!isListening(thread) || !thread.pendingWake.length) continue
-        await this.wake(thread)
-      }
+      // By id, read again before each wake: a wake awaits, and replies that arrive meanwhile (for
+      // this thread or the next) live only in the current state, never in a copy taken before.
+      for (const id of this.state.threads.map((t) => t.id)) await this.wake(id)
     } finally {
       this.delivering = false
     }
   }
 
-  private async wake(thread: TrackedThread): Promise<void> {
+  private async wake(threadId: string): Promise<void> {
+    const thread = this.state.threads.find((t) => t.id === threadId)
+    if (!thread || !isListening(thread) || !thread.pendingWake.length) return
     const owner = thread.owner!
     const now = this.now()
     const views = this.deps.driver.views()
@@ -353,11 +354,17 @@ export class SlackWatcherService {
       transcriptCwd: located?.cwd ?? null
     })
     const update = (change: (t: TrackedThread) => TrackedThread) => this.setState(updateThread(this.state, thread.id, change))
+    // Only the replies this wake handed over leave the queue; any that arrived while it ran wait for the next pass.
+    const handed = new Set(thread.pendingWake.map((r) => r.ts))
+    const settled = (t: TrackedThread, outcome: 'delivered' | 'notifyOnly', detail: string): TrackedThread => ({
+      ...recordWake(t, outcome, detail, this.now(), true),
+      pendingWake: t.pendingWake.filter((r) => !handed.has(r.ts))
+    })
     if (await this.pausedByBudget(thread, plan, views, located?.configDir)) return
     switch (plan.kind) {
       case 'deliver': {
         const outcome = await this.deps.driver.deliver(plan.sessionId, wakeText(thread, thread.pendingWake))
-        update((t) => (outcome === 'delivered' ? recordWake(t, 'delivered', 'delivered', this.now(), true) : recordWake(t, 'pending', 'busy', this.now(), false)))
+        update((t) => (outcome === 'delivered' ? settled(t, 'delivered', 'delivered') : recordWake(t, 'pending', 'busy', this.now(), false)))
         return
       }
       case 'wait':
@@ -367,7 +374,7 @@ export class SlackWatcherService {
         // The replies were handed over as a notice: the next ones may open the session again.
         if (plan.reason === 'openFailed') this.opening.delete(owner)
         this.deps.notice({ kind: 'notWoken', threadId: thread.id, title: thread.title, reason: plan.reason, replies: thread.pendingWake.map((r) => ({ user: r.user, text: r.text })) })
-        update((t) => recordWake(t, 'notifyOnly', plan.reason, this.now(), true))
+        update((t) => settled(t, 'notifyOnly', plan.reason))
         return
       case 'missing':
         update((t) => recordWake(t, 'pending', 'transcriptMissing', this.now(), false))

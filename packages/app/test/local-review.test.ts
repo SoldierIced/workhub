@@ -1,11 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { LocalReview } from '@workhub/core'
 import type { SessionView } from '../src/shared/api'
 import { readForViewer, textPayload } from '../src/main/file-viewer'
-import { insideRoot, LocalReviewService, PENDING_TTL_MS, validComment } from '../src/main/local-review'
+import type { IpcRegistrar } from '../src/main/ipc-guard'
+import { insideRoot, LocalReviewService, opensAsProgram, PENDING_TTL_MS, registerLocalReviewIpc, validComment } from '../src/main/local-review'
 import { folderLabel, formatBytes, parseFileHash, parseReviewHash, sessionFiles } from '../src/renderer/lib/localReview'
 import type { ChatItem } from '../src/renderer/store'
 
@@ -165,5 +166,44 @@ describe('renderer helpers for the review and the viewer', () => {
     expect(folderLabel('/w/app/a.ts', '/w/app/')).toBe('./')
     expect(folderLabel('/tmp/x.png', '/w/app')).toBe('/tmp')
     expect(formatBytes(1536, 'en')).toBe('1.5 KB')
+  })
+})
+
+describe('opening a file of the review', () => {
+  it('treats programs, scripts, bundles and executable files as things to show, not open', () => {
+    for (const path of ['/r/run.command', '/r/Tool.app', '/r/Tool.app/', '/r/x.terminal', '/r/lib.jar', '/r/build.sh', '/r/SETUP.EXE', '/r/link.webloc', '/r/a.desktop']) expect(opensAsProgram(path, {}, 'darwin')).toBe(true)
+    expect(opensAsProgram('/r/Tool.app', { isDirectory: true }, 'darwin')).toBe(true)
+    expect(opensAsProgram('/r/src', { isDirectory: true, mode: 0o40755 }, 'darwin')).toBe(false)
+    expect(opensAsProgram('/r/README.md', { mode: 0o100644 }, 'darwin')).toBe(false)
+    expect(opensAsProgram('/r/tool', { mode: 0o100755 }, 'linux')).toBe(true)
+    // Windows runs .js with its script host; mode bits mean nothing there.
+    expect(opensAsProgram('C:\\r\\index.js', {}, 'win32')).toBe(true)
+    expect(opensAsProgram('/r/index.js', { mode: 0o100644 }, 'darwin')).toBe(false)
+    expect(opensAsProgram('C:\\r\\notes.txt', { mode: 0o100777 }, 'win32')).toBe(false)
+  })
+
+  it.skipIf(process.platform === 'win32')('shows a risky file in its folder and opens the rest', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-open-'))
+    try {
+      writeFileSync(join(dir, 'notes.md'), '# notes')
+      writeFileSync(join(dir, 'run.command'), 'echo hi')
+      writeFileSync(join(dir, 'tool'), 'echo hi')
+      chmodSync(join(dir, 'tool'), 0o755)
+      const handlers = new Map<string, (...args: any[]) => unknown>()
+      const ipc: IpcRegistrar = { handle: (c, l) => void handlers.set(c, l), on: () => undefined }
+      const service = { filePath: (_s: string, _r: string, path: string) => join(dir, path) } as unknown as LocalReviewService
+      const opened: string[] = []
+      const shown: string[] = []
+      registerLocalReviewIpc(ipc, service, { openWindow: () => undefined, openPath: async (p) => (opened.push(p), ''), showItemInFolder: (p) => void shown.push(p) })
+      const open = (path: string) => handlers.get('localReview:openFile')!({}, 's1', dir, path)
+      expect(await open('notes.md')).toBe(true)
+      expect(await open('run.command')).toBe(true)
+      expect(await open('tool')).toBe(true)
+      expect(await open('missing.md')).toBe(false)
+      expect(opened).toEqual([join(dir, 'notes.md')])
+      expect(shown).toEqual([join(dir, 'run.command'), join(dir, 'tool')])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

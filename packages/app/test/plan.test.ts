@@ -198,6 +198,31 @@ describe('CalendarWatcher', () => {
     expect(reminded).toHaveLength(1)
   })
 
+  it('shows one reminder per meeting when two reminder rules come due in the same look', async () => {
+    const { file } = memoryFile()
+    const reminded: string[] = []
+    const settings: PlannerSettings = {
+      ...DEFAULT_PLANNER_SETTINGS,
+      rules: [
+        { id: 'r10', name: 'Ten', enabled: true, action: 'remind', leadMinutes: 10, match: {} },
+        { id: 'r5', name: 'Five', enabled: true, action: 'remind', leadMinutes: 5, match: {} }
+      ]
+    }
+    const store = new CalendarStateStore(file, () => NOW + 27 * MIN)
+    const w = new CalendarWatcher({
+      profiles: async () => [{ id: 'work' }],
+      read: async () => ({ events: [event()], settings }),
+      store,
+      remind: (_p, a) => reminded.push(a.ruleId),
+      brief: async () => undefined,
+      now: () => NOW + 27 * MIN // both leads passed: 3 min before the start
+    })
+    await w.tick()
+    await w.tick()
+    expect(reminded).toEqual(['r10'])
+    expect(Object.keys(store.get().fired).sort()).toEqual([`work|remind|r10|${event().id}`, `work|remind|r5|${event().id}`])
+  })
+
   it('starts the brief of a matching brief rule once', async () => {
     const { file } = memoryFile()
     const briefs: string[] = []

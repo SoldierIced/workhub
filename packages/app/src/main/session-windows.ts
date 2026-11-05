@@ -58,7 +58,7 @@ export interface SessionWindowsDeps {
   defer?: (fn: () => void) => void
 }
 
-const isBounds = (b: unknown): b is WindowBounds =>
+export const isBounds = (b: unknown): b is WindowBounds =>
   Boolean(b && typeof b === 'object' && ['x', 'y', 'width', 'height'].every((k) => Number.isFinite((b as Record<string, unknown>)[k])))
 
 /** Parses the stored file; anything malformed is left out. */

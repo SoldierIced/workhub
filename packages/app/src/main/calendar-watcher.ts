@@ -85,9 +85,15 @@ export class CalendarWatcher {
         const due = dueActions(read.events, read.settings, now, (key) => `${profile.id}|${key}` in fired)
         if (!due.length) continue
         this.deps.store.update((s) => ({ ...s, fired: { ...s.fired, ...Object.fromEntries(due.map((d) => [`${profile.id}|${d.key}`, now])) } }))
+        // Every due key is stored, but a meeting gets one reminder per look: two reminder rules that
+        // come due together (overlapping leads, or the app was asleep past both) would repeat it.
+        const reminded = new Set<string>()
         for (const action of due) {
-          if (action.action === 'remind') this.deps.remind(profile.id, action)
-          else void this.deps.brief(profile.id, action).catch((error: unknown) => this.deps.log?.(`brief failed: ${error instanceof Error ? error.message : 'error'}`))
+          if (action.action === 'remind') {
+            if (reminded.has(action.event.id)) continue
+            reminded.add(action.event.id)
+            this.deps.remind(profile.id, action)
+          } else void this.deps.brief(profile.id, action).catch((error: unknown) => this.deps.log?.(`brief failed: ${error instanceof Error ? error.message : 'error'}`))
         }
       }
     } catch (error) {

@@ -44,6 +44,7 @@ import {
 } from '@workhub/core'
 import { terminalChannel, type SessionMode, type SessionView, type SetModeOptions, type StartSessionInput } from '../shared/api'
 import { ConsoleActivity } from './console-activity'
+import { NO_CONTROL_ENV } from './control-server'
 import { pathInsideFolder } from './reveal'
 import { SendGate } from './send-gate'
 import { cleanSessionName, type SessionNameStore } from './session-names'
@@ -98,7 +99,13 @@ export interface SessionManagerDeps {
   config: ConfigurationService
   /** Environment variables the session's profile adds (Settings → Profiles); applied before the internal ones. */
   profileEnv?: (profileId: string | null, cwd: string) => Promise<Record<string, string>>
-  /** Environment Workhub itself gives a session (its id and the control endpoint); none for reviewers. */
+  /** Environment variables the session's agent account adds, read from the secret store (Settings → Agents and accounts). */
+  accountEnv?: (account: AgentAccount) => Promise<Record<string, string>>
+  /**
+   * Environment Workhub itself gives a session (its id and the control endpoint). Reviewers, and
+   * every session when this is not set, get `NO_CONTROL_ENV`: the variables set to empty strings,
+   * so an agent never reaches an endpoint through values inherited from a parent process.
+   */
   sessionEnv?: (sessionId: string) => Record<string, string>
   runtimes: Partial<Record<AgentAdapterKind, AgentRuntime>>
   /** Runs consoles and shells. */
@@ -194,11 +201,17 @@ export class SessionManager {
   /**
    * `internal` is for the main process only (never the renderer's IPC input): extra environment
    * for the agent process, e.g. the AI review's push block.
+   *
+   * Resuming a conversation a live session already runs returns that session instead of starting
+   * a second process on the same agent session id; `internal.handOver` is for a caller that
+   * deliberately starts it again (it has stopped, or is stopping, the other one itself).
    */
   async start(
     asked: StartSessionInput,
-    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; worktree?: SessionWorktree } = {}
+    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; worktree?: SessionWorktree; handOver?: boolean } = {}
   ): Promise<SessionView> {
+    const running = internal.handOver ? undefined : this.liveWith(asked.resumeAgentSessionId ?? asked.identity)
+    if (running) return running.view
     const config = await this.deps.config.current()
     // A session belongs to the profile that owns its folder (its AI review, links and environment
     // follow it), whatever profile was active when it was opened, as long as that profile offers the agent.
@@ -207,13 +220,43 @@ export class SessionManager {
     const owned: StartSessionInput = owner && owner.id !== asked.profileId && resolveChoice(config, owner.id, asked.agentKey) ? { ...asked, profileId: owner.id } : asked
     const choice = resolveChoice(config, owned.profileId, owned.agentKey)
     if (!choice) throw new Error(`agent "${owned.agentKey}" is not offered by this profile`)
-    const placed = await this.placeInWorktree(owned, config, internal)
-    const input: StartSessionInput = { ...owned, cwd: placed.cwd }
     const { account } = choice
     // An account can run another build of the agent (its own command).
     const agent = accountAgent(choice.agent, account)
     const runtime = agent.adapter === 'terminal' ? this.deps.terminal : this.deps.runtimes[agent.adapter]
+    // Checked before a worktree is made, so a session that cannot run leaves nothing behind.
     if (!runtime) throw new Error(`no runtime for adapter "${agent.adapter}"`)
+    const placed = await this.placeInWorktree(owned, config, internal)
+    try {
+      return await this.launch(config, choice, agent, account, runtime, { ...owned, cwd: placed.cwd }, placed, internal)
+    } catch (err) {
+      // A worktree made for this session goes when the session cannot start (the environment failed).
+      if (placed.worktree && !internal.worktree) await this.deps.worktrees?.remove(placed.worktree.repoRoot, placed.worktree.path, { force: true }).catch(() => undefined)
+      throw err
+    }
+  }
+
+  /** A live session (starting, running or idle) that runs this agent session id or identity. */
+  private liveWith(key: string | undefined): ManagedSession | undefined {
+    if (!key) return undefined
+    for (const s of this.sessions.values()) {
+      if (s.view.state === 'stopped' || s.view.state === 'error') continue
+      if (s.view.agentSessionId === key || s.view.identity === key) return s
+    }
+    return undefined
+  }
+
+  /** The rest of `start`, once the runtime is known and the session has its folder. */
+  private async launch(
+    config: WorkhubConfig,
+    choice: EffectiveAgent,
+    agent: AgentDefinition,
+    account: AgentAccount | null,
+    runtime: AgentRuntime,
+    input: StartSessionInput,
+    placed: { cwd: string; worktree?: SessionWorktree },
+    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; handOver?: boolean }
+  ): Promise<SessionView> {
 
     const capabilities = runtime.capabilities(agent)
     const modes: SessionMode[] = []
@@ -228,8 +271,16 @@ export class SessionManager {
     // Sidebar groups (and names) key a session by this: the agent's own id when there is one.
     const identity = agentSessionId ?? input.identity ?? randomUUID()
     const name = this.deps.names?.get(identity)
+    const id = randomUUID()
+    // Built before the session is listed: a profile environment that fails leaves no session behind.
+    const env = {
+      ...launchEnvironment(agent, account, account ? await this.deps.accountEnv?.(account) : undefined),
+      ...((await this.deps.profileEnv?.(input.profileId, input.cwd)) ?? {}),
+      ...(input.readOnly ? NO_CONTROL_ENV : (this.deps.sessionEnv?.(id) ?? NO_CONTROL_ENV)),
+      ...(internal.env ?? {})
+    }
     const view: SessionView = {
-      id: randomUUID(),
+      id,
       identity,
       ...(name ? { name } : {}),
       agentId: agent.id,
@@ -262,7 +313,7 @@ export class SessionManager {
       view,
       agent,
       account,
-      env: { ...launchEnvironment(agent, account), ...((await this.deps.profileEnv?.(input.profileId, input.cwd)) ?? {}), ...(input.readOnly ? {} : (this.deps.sessionEnv?.(view.id) ?? {})), ...(internal.env ?? {}) },
+      env,
       runtime,
       engine,
       switching: false,
@@ -275,6 +326,9 @@ export class SessionManager {
       reportsActiveTime: false,
       toolStatus: new Map()
     }
+    // Another start of the same conversation may have got here while this one awaited.
+    const raced = internal.handOver ? undefined : this.liveWith(input.resumeAgentSessionId ?? input.identity)
+    if (raced) return raced.view
     this.sessions.set(view.id, session)
     this.deps.emitChanged(view)
 
@@ -430,12 +484,16 @@ export class SessionManager {
     this.sends.withdraw(id)
     this.clearPending(s)
     s.switching = true
-    await Promise.all([
-      s.engine === 'app' ? s.runtime.stop(id) : this.deps.terminal.stop(terminalChannel(id, 'console')),
-      this.deps.terminal.stop(terminalChannel(id, 'shell'))
-    ])
-    s.switching = false
-    this.update(id, { state: 'stopped', shellRunning: false, pendingMode: undefined })
+    try {
+      await Promise.all([
+        s.engine === 'app' ? s.runtime.stop(id) : this.deps.terminal.stop(terminalChannel(id, 'console')),
+        this.deps.terminal.stop(terminalChannel(id, 'shell'))
+      ])
+    } finally {
+      // Marked stopped even when a runtime failed to stop: the session must not stay "switching".
+      s.switching = false
+      this.update(id, { state: 'stopped', shellRunning: false, pendingMode: undefined })
+    }
   }
 
   /**

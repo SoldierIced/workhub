@@ -63,7 +63,9 @@ export interface ApplyResult {
 /**
  * Stores what a read brought: new channel messages after each cursor, new replies of followed
  * threads (queued for their owner when the thread wakes it). The first read only learns what is
- * already there: it notifies and triggers nothing.
+ * already there: it notifies and triggers nothing. The same holds per channel: a channel with no
+ * cursor yet (added after the first read) is seeded on its first read, so the day of history the
+ * prompt asks for is stored without counting as fresh.
  */
 export function applyDigest(state: ChatWatcherState, digest: ChatDigest, ctx: ApplyContext): ApplyResult {
   const notify = state.seeded
@@ -78,6 +80,7 @@ export function applyDigest(state: ChatWatcherState, digest: ChatDigest, ctx: Ap
   for (const channel of digest.channels) {
     if (!known.has(channel.id)) continue
     const cursor = cursors[channel.id]
+    const seeding = !notify || cursor === undefined
     const stored = messages[channel.id] ?? []
     const seen = new Set(stored.map((m) => m.ts))
     const added: ChatMessage[] = []
@@ -90,11 +93,11 @@ export function applyDigest(state: ChatWatcherState, digest: ChatDigest, ctx: Ap
     // A channel the agent could not read keeps its cursor, so nothing is skipped next time.
     if (!added.length) continue
     newMessages += added.length
-    fresh.push(...added)
+    if (!seeding) fresh.push(...added)
     const all = [...stored, ...added].sort((a, b) => tsToMs(b.ts) - tsToMs(a.ts))
     messages[channel.id] = all.slice(0, MESSAGE_CAP)
     cursors[channel.id] = added.reduce((max, m) => (isAfter(m.ts, max) ? m.ts : max), added[0]!.ts)
-    if (notify && ctx.myPullRequests?.size) {
+    if (!seeding && ctx.myPullRequests?.size) {
       for (const m of added) {
         if (isMe(m.user, me)) continue
         const root = isReply(m) ? all.find((x) => x.ts === m.threadTs) : undefined
@@ -132,7 +135,7 @@ export function applyDigest(state: ChatWatcherState, digest: ChatDigest, ctx: Ap
 
   return {
     state: { ...state, messages, cursors, threads, seeded: true, me },
-    fresh: notify ? fresh : [],
+    fresh,
     messages: newMessages,
     replies: newReplies,
     notices

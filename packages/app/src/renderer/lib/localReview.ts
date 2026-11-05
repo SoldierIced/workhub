@@ -1,4 +1,5 @@
-import { fileTouchOf, summarizeTouches, type FileTouch, type SessionFile } from '@workhub/core'
+import { fileTouchOf, summarizeTouches, type FileTouch, type LocalReviewDelivery, type SessionFile } from '@workhub/core'
+import type { MessageKey } from '../i18n/translate'
 import type { ChatItem } from '../store'
 
 /** `#review?session=…`: the local review window of a session. */
@@ -57,4 +58,13 @@ export function formatBytes(n: number, locale: string): string {
 /** A new comment id, unique enough within a session's drafts. */
 export function newCommentId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+/**
+ * What the review window does after a send: a delivered or queued message clears the comments and
+ * closes the window; a dropped one keeps them and says why.
+ */
+export function sendOutcome(delivery: Pick<LocalReviewDelivery, 'state' | 'reason'>): { done: true } | { done: false; message: MessageKey } {
+  if (delivery.state === 'delivered' || delivery.state === 'queued') return { done: true }
+  return { done: false, message: delivery.reason ? `localReview.delivery.dropped.${delivery.reason}` : 'localReview.delivery.dropped' }
 }

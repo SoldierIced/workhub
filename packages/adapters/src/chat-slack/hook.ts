@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, copyFile, mkdir, readdir, readFile, rename, unlink } from 'node:fs/promises'
+import { access, copyFile, mkdir, readdir, readFile, realpath, rename, unlink } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 import type { ChatTrackingHook, HookRecord, HookStatus } from '@workhub/core'
 import { commonCliFolders } from '../shared/cli'
@@ -168,7 +168,10 @@ export class SlackTrackingHook implements ChatTrackingHook {
     const { settings, changed } = change(parseSettings(text))
     if (!changed) return
     if (text !== null) await writeFileAtomic(`${file}.bak`, text)
-    await writeFileAtomic(file, JSON.stringify(settings, null, 2) + '\n')
+    // A settings.json that links to a dotfiles checkout stays a link: the real file is replaced,
+    // atomically, in its own folder.
+    const target = await realpath(file).catch(() => file)
+    await writeFileAtomic(target, JSON.stringify(settings, null, 2) + '\n')
   }
 
   /** Takes every waiting record. The inbox is renamed first, so lines the hook writes meanwhile go to a fresh one. */

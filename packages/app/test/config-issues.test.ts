@@ -45,7 +45,7 @@ describe('stored config problems in plain words', () => {
     expect(humanIssue({ path: 'profiles.acme.connections.codeHost', message: 'unknown connection "gone"' }, config(), providers, label)).toMatchObject({
       message: 'issues.profileConnection',
       params: { name: 'Acme', kind: '[kind.codeHost]' },
-      action: { target: { tab: 'profiles', id: 'acme' } }
+      action: { target: { tab: 'modules', id: 'acme' } }
     })
     expect(humanIssue({ path: 'accounts.claude-work.agentId', message: 'unknown agent "ghost"' }, config(), providers, label)).toMatchObject({ message: 'issues.accountAgent', params: { name: 'Claude laboral', agent: 'ghost' } })
   })

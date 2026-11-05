@@ -128,13 +128,13 @@ describe('flowTimingFromHistory', () => {
 
   it('reads the window hour by hour, the hour in course included', () => {
     const t = flowTimingFromHistory(hours, tx, NOW, 24)
-    expect(t.hourly).toHaveLength(24)
-    expect(t.hourly[0]!.at).toBe(open - 23 * H)
+    expect(t.hourly).toHaveLength(25)
+    expect(t.hourly[0]!.at).toBe(open - 24 * H)
     expect(t.hourly.at(-1)).toMatchObject({ at: open, count: 1 })
     expect(t.count).toBe(4)
     expect(t.failed).toBe(1)
     expect(t.errorRate).toBeCloseTo(0.25)
-    expect(t.perMinute).toBeCloseTo(4 / (24 * 60), 2)
+    expect(t.perMinute).toBeCloseTo(4 / (24 * 60 + 30), 2)
     expect(t.codes).toEqual([{ code: 'HTTP 2xx', count: 2 }, { code: 'HTTP 5xx', count: 1 }])
   })
 
@@ -151,6 +151,21 @@ describe('flowTimingFromHistory', () => {
   it('is all zeros without calls', () => {
     const t = flowTimingFromHistory([], tx, NOW, 3)
     expect(t).toMatchObject({ count: 0, p50Ms: 0, p95Ms: 0, failed: 0 })
-    expect(t.hourly.map((h) => h.count)).toEqual([0, 0, 0])
+    expect(t.hourly.map((h) => h.count)).toEqual([0, 0, 0, 0])
+  })
+
+  it('covers a full hour of real time with a 1 h window, early in the hour', () => {
+    // 12:30: the window is 11:00 to 12:30, not only the half hour in course.
+    const t = flowTimingFromHistory([hour(open - H, [10, 10, 10]), hour(open, [10])], tx, NOW, 1)
+    expect(t.count).toBe(4)
+    expect(t.hourly.map((h) => h.at)).toEqual([open - H, open])
+    expect(t.perMinute).toBeCloseTo(4 / 90, 2)
+  })
+
+  it('compares with as many whole hours as the window has, just before it', () => {
+    const t = flowTimingFromHistory([hour(open - 3 * H, [10]), hour(open - 2 * H, [10, 10]), hour(open - 4 * H, [10, 10, 10, 10])], tx, NOW, 1)
+    // Window: open - 1 h and open. Previous: open - 3 h and open - 2 h.
+    expect(t.count).toBe(0)
+    expect(t.previous?.count).toBe(3)
   })
 })

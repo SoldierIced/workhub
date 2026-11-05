@@ -9,6 +9,8 @@ export const planEs: Record<keyof typeof planEn, string> = {
   'notify.meeting.soon': '{title} en {minutes} min',
   'notify.meeting.now': '{title} está empezando',
   'notify.meeting.call': 'Hacé clic para unirte a la llamada',
+  'notify.brief.demo': 'Demo: se prepararía un resumen para {title}',
+  'notify.brief.demoBody': 'Abrí Plan y elegí Preparar resumen para hacerlo.',
 
   'plan.subtitle': 'Tus reuniones de hoy y mañana, resúmenes preparados por un agente y las personas con las que te reunís.',
   'plan.demo': 'Datos de demostración',

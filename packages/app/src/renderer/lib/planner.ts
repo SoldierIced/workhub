@@ -258,6 +258,15 @@ export function bulkFormToPatch(form: BulkForm): InboxBulkPatch {
   return patch
 }
 
+/**
+ * The selected ids that are still on screen and selectable (pending or local): a selection never
+ * acts on rows a filter hid or that left the inbox. In the order of `shown`.
+ */
+export function selectedShown(selected: readonly string[], shown: readonly Pick<InboxItem, 'id' | 'status'>[]): string[] {
+  const picked = new Set(selected)
+  return shown.filter((i) => picked.has(i.id) && (i.status === 'pending' || i.status === 'local')).map((i) => i.id)
+}
+
 /** How many of these items the patch would change; Apply waits until it is at least one. */
 export function bulkChangeCount(items: readonly Pick<InboxItem, 'area' | 'criticality' | 'due'>[], patch: InboxBulkPatch): number {
   const keys = (['area', 'criticality', 'due'] as const).filter((k) => patch[k] !== undefined)

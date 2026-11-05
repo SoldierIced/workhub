@@ -116,6 +116,10 @@ export const FLOW_MAP_HOURS = { min: 1, max: 24 * 7, default: 24 }
 
 /** A flow-map measure is read again at most this often (the refresh button: `HEALTH_MIN_GAP_MS`). */
 export const FLOW_HISTORY_REFRESH_MS = 2 * 60_000
+/** After a failed read, a measure waits this long before the next one, doubled per failure in a row... */
+export const FLOW_HISTORY_RETRY_BASE_MS = HEALTH_MIN_GAP_MS
+/** ...up to this. A forced read (the refresh button) waits only `HEALTH_MIN_GAP_MS`. */
+export const FLOW_HISTORY_RETRY_MAX_MS = 30 * 60_000
 /** Flow-history reads that may run against the cluster at once. */
 export const FLOW_HISTORY_CONCURRENCY = 4
 
@@ -145,6 +149,8 @@ export class HealthService {
   private readonly inflight = new Map<string, Promise<HealthView>>()
   /** Flow-history reads under way, by `<scope>|<measure key>`: two maps sharing a measure share the read. */
   private readonly measureReads = new Map<string, Promise<{ message: string; connection: boolean } | undefined>>()
+  /** The last failed read of each measure and how many failed in a row, for the back-off. */
+  private readonly measureFailures = new Map<string, { at: number; streak: number; error: { message: string; connection: boolean } }>()
   private reading = 0
   private readonly waiting: (() => void)[] = []
   private readonly now: () => number
@@ -295,10 +301,11 @@ export class HealthService {
     if (!file) return { ok: false, error: 'This flow map is no longer in the folder' }
     if (!file.map) return { ok: false, error: `The flow map file is invalid: ${file.error ?? 'unreadable'}` }
     const map = file.map
+    // Without Health, or without an environment (an empty id), the map is still drawn, without numbers.
     const r = await this.resolve(profileId)
-    if ('view' in r) return { ok: false, error: 'Health is not set up for this profile' }
+    if ('view' in r) return { ok: true, map }
     const env = r.environments.find((e) => e.id === environmentId)
-    if (!env) return { ok: false, error: 'This environment is no longer configured' }
+    if (!env) return environmentId ? { ok: false, error: 'This environment is no longer configured' } : { ok: true, map }
     const window = Math.min(FLOW_MAP_HOURS.max, Math.max(FLOW_MAP_HOURS.min, Math.round(hours) || FLOW_MAP_HOURS.default))
     if (r.provider.flowMeasureHours && this.deps.flowHistory) return this.flowMapFromHistory(r, env, map, window, force, storedOnly)
     if (storedOnly || !r.provider.flowMap) return { ok: true, map }
@@ -368,15 +375,25 @@ export class HealthService {
     if (running) return running
     const history = store.get(scope, key)
     if (history && this.now() - history.fetchedAt < (force ? HEALTH_MIN_GAP_MS : FLOW_HISTORY_REFRESH_MS)) return undefined
+    // A measure whose read failed is not asked again on every ask (each one can be a week-long query):
+    // the last error stands until its back-off passes, and what is stored is shown meanwhile.
+    const failed = this.measureFailures.get(id)
+    if (failed) {
+      const wait = force ? HEALTH_MIN_GAP_MS : Math.min(FLOW_HISTORY_RETRY_MAX_MS, FLOW_HISTORY_RETRY_BASE_MS * 2 ** (failed.streak - 1))
+      if (this.now() - failed.at < wait) return failed.error
+    }
     const run = this.limit(async () => {
       const now = this.now()
       const { from, to } = flowHistoryGap(store.get(scope, key), now)
       try {
         const hours = await provider.flowMeasureHours!(env, measure, from, to)
         store.set(scope, key, mergeFlowHistory(store.get(scope, key), hours, from, now))
+        this.measureFailures.delete(id)
         return undefined
       } catch (error) {
-        return { message: error instanceof Error ? error.message : String(error), connection: error instanceof HealthConnectionError }
+        const failure = { message: error instanceof Error ? error.message : String(error), connection: error instanceof HealthConnectionError }
+        this.measureFailures.set(id, { at: this.now(), streak: (this.measureFailures.get(id)?.streak ?? 0) + 1, error: failure })
+        return failure
       }
     }).finally(() => this.measureReads.delete(id))
     this.measureReads.set(id, run)

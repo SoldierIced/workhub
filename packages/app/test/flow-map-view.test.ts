@@ -5,8 +5,10 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { edgeId, flowCoverage, parseFlowMap, rankFlowParts, type FlowMap, type FlowMapReading, type FlowTrace, type FlowTraceLog } from '@workhub/core'
 import { FlowMapSvg } from '../src/renderer/screens/flowMaps/FlowMapSvg'
-import { FlowSequenceSvg, sequenceLayout } from '../src/renderer/screens/flowMaps/FlowSequenceSvg'
-import { AlertsTab, DeviationLine, PartsTab } from '../src/renderer/screens/flowMaps/FlowMapView'
+import { FlowSequenceSvg, sequenceFitWidth, sequenceLayout } from '../src/renderer/screens/flowMaps/FlowSequenceSvg'
+import { TooltipProvider } from '../src/renderer/components/atoms'
+import { FlowMapList } from '../src/renderer/screens/flowMaps/FlowMapList'
+import { AlertsTab, PartDrawer, PartsTab, VerdictStrip } from '../src/renderer/screens/flowMaps/FlowMapView'
 import { LogsSection } from '../src/renderer/screens/flowMaps/TracesPanel'
 import { flowMapPrompt } from '../src/renderer/screens/flowMaps/flowMapPrompt'
 import { en } from '../src/renderer/i18n/en'
@@ -121,7 +123,7 @@ const noop = () => {}
 describe('Parts tab: richer numbers', () => {
   it('shows p99, per minute, failures and the ratios against the previous window and the week', () => {
     const ranks = rankFlowParts(map, rich)
-    const html = renderToStaticMarkup(createElement(PartsTab, { map, reading: rich, ranks, coverage: flowCoverage(map, rich), trace: null, picked: null, onPick: noop }))
+    const html = renderToStaticMarkup(createElement(PartsTab, { map, reading: rich, ranks, coverage: flowCoverage(map, rich), picked: null, onPick: noop }))
     expect(html).toContain('4.1 s')
     expect(html).toContain('>42<')
     expect(html).toContain('30 · 3.0 %')
@@ -132,38 +134,103 @@ describe('Parts tab: richer numbers', () => {
 
   it('shows a dash when there is no baseline', () => {
     const plain: FlowMapReading = { ...rich, nodes: { bff: { ...rich.nodes.bff!, previous: undefined, weekly: undefined } } }
-    const html = renderToStaticMarkup(createElement(PartsTab, { map, reading: plain, ranks: rankFlowParts(map, plain), coverage: flowCoverage(map, plain), trace: null, picked: null, onPick: noop }))
+    const html = renderToStaticMarkup(createElement(PartsTab, { map, reading: plain, ranks: rankFlowParts(map, plain), coverage: flowCoverage(map, plain), picked: null, onPick: noop }))
     expect(html).not.toContain('×')
     expect(html).toContain('>–<')
   })
 
-  it('the detail of a picked part lists result codes with their share and both baselines', () => {
-    const html = renderToStaticMarkup(createElement(PartsTab, { map, reading: rich, ranks: rankFlowParts(map, rich), coverage: flowCoverage(map, rich), trace: null, picked: { of: 'nodes', key: 'bff' }, onPick: noop }))
-    expect(html).toContain('flow-part-codes')
-    expect(html).toContain('HTTP 4xx')
-    expect(html).toContain('18.9 %')
-    expect(html).toContain('Previous window')
-    expect(html).toContain('Last 7 days')
-    expect(html).toContain('p50 300 ms · p95 1.0 s · 6,000 calls · 1.0 % failed')
+  it('picks a part from its row with the keyboard as well as the pointer', () => {
+    const html = renderToStaticMarkup(createElement(PartsTab, { map, reading: rich, ranks: rankFlowParts(map, rich), coverage: flowCoverage(map, rich), picked: { of: 'nodes', key: 'bff' }, onPick: noop }))
+    expect(html).toContain('role="button" tabindex="0" aria-pressed="true"')
+    // The detail moved to the drawer beside the diagram.
+    expect(html).not.toContain('flow-part-detail')
   })
 })
 
-describe('Today against the 7-day usual', () => {
-  it('names the worst deviating part as a button', () => {
-    const html = renderToStaticMarkup(createElement(DeviationLine, { map, reading: rich, onPick: noop }))
-    expect(html).toContain('<button')
+describe('Part drawer', () => {
+  const drawer = (props: Partial<Parameters<typeof PartDrawer>[0]> = {}) =>
+    renderToStaticMarkup(
+      createElement(TooltipProvider, null, createElement(PartDrawer, { map, reading: rich, ranks: rankFlowParts(map, rich), coverage: flowCoverage(map, rich), trace: null, picked: { of: 'nodes', key: 'bff' }, collapsed: false, onToggle: noop, onInvestigate: noop, ...props }))
+    )
+
+  it('shows the picked part with its kind, rank, stats, result codes as tags and both baselines', () => {
+    const html = drawer()
+    expect(html).toContain('shop-bff')
+    expect(html).toContain('>app<')
+    expect(html).toContain('#1 of 1 · 100 % of the flow&#x27;s time')
+    expect(html).toContain('flow-part-stats')
+    expect(html).toContain('400 ms / 2.4 s')
+    expect(html).toContain('30 · 3.0 %')
+    expect(html).toContain('×1.2')
+    expect(html).toContain('×2.4')
+    expect(html).toContain('flow-part-codes')
+    expect(html).toContain('HTTP 4xx · 18.9 %')
+    expect(html).toContain('Previous window: p50 380 ms')
+    expect(html).toContain('Last 7 days: p50 300 ms · p95 1.0 s · 6,000 calls · 1.0 % failed')
+    expect(html).toContain('Investigate this part')
+  })
+
+  it('lists the limits, flags the exceeded ones and links to adjust them', () => {
+    const limited: FlowMap = { ...map, alerts: { p95Ms: 2000, errorRate: 0.05, parts: {} } }
+    const html = drawer({ map: limited, onAdjust: noop })
+    expect(html).toContain('p95 up to 2.0 s')
+    expect(html).toContain('failures up to 5.0 %')
+    expect((html.match(/>exceeded</g) ?? []).length).toBe(1)
+    expect(html).toContain('>adjust<')
+    expect(drawer({ map: { ...map, alerts: undefined } })).toContain('No limits for this part.')
+  })
+
+  it('hints when nothing is picked, folds to a rail, and says when there are no numbers', () => {
+    expect(drawer({ picked: null })).toContain('Pick a service, a hop or a stage')
+    const folded = drawer({ collapsed: true })
+    expect(folded).toContain('data-collapsed')
+    expect(folded).toContain('aria-label="Show the part detail"')
+    expect(folded).not.toContain('flow-part-stats')
+    const off = drawer({ reading: undefined, ranks: [], coverage: flowCoverage(map), onTurnOnHealth: noop })
+    expect(off).toContain('no numbers')
+    expect(off).toContain('turn on Health')
+  })
+})
+
+describe('Verdict tiles', () => {
+  const tiles = (props: Partial<Parameters<typeof VerdictStrip>[0]> = {}) =>
+    renderToStaticMarkup(createElement(VerdictStrip, { map, reading: rich, coverage: flowCoverage(map, rich), ranks: rankFlowParts(map, rich), breached: 0, onTab: noop, onPick: noop, ...props }))
+
+  it('shows coverage with a link to its tab, the slowest part, the alerts and the worst deviation', () => {
+    const html = tiles()
+    const c = flowCoverage(map, rich)
+    expect(html).toContain(`${c.measured} / ${c.total} measured`)
+    expect(html).toMatch(/without a measure.*→/)
+    expect(html).toContain('p95 2.4 s · 100 % of the flow&#x27;s time')
+    expect(html).toContain('Within the limits')
+    expect(tiles({ map: { ...map, alerts: undefined } })).toContain('No limits set')
+    expect(html).toContain('1 deviation')
     expect(html).toContain('«shop-bff» is ×2.4 slower than its 7-day usual')
-    expect(html).not.toContain('No part deviates')
+    expect(html).toMatch(/data-testid="flow-tile-usual" data-tone="danger"/)
+  })
+
+  it('turns the alerts tile red when parts are over their limits', () => {
+    const html = tiles({ breached: 2 })
+    expect(html).toContain('2 parts over their limits')
+    expect(html).toMatch(/data-testid="flow-tile-alerts" data-tone="danger"/)
   })
 
   it('says nothing deviates when every part is near its usual', () => {
     const calm: FlowMapReading = { ...rich, nodes: { bff: { ...rich.nodes.bff!, weekly: { count: 6000, p50Ms: 400, p95Ms: 2300, errorRate: 0.03 } } } }
-    expect(renderToStaticMarkup(createElement(DeviationLine, { map, reading: calm, onPick: noop }))).toContain('No part deviates from its 7-day usual.')
+    const html = tiles({ reading: calm, ranks: rankFlowParts(map, calm) })
+    expect(html).toContain('In line with its 7 days')
+    expect(html).toContain('No part deviates from its 7-day usual.')
   })
 
   it('words a failure-share deviation in points', () => {
     const failing: FlowMapReading = { ...rich, nodes: { bff: { ...rich.nodes.bff!, weekly: { count: 6000, p50Ms: 400, p95Ms: 2300, errorRate: -0.01 } } } }
-    expect(renderToStaticMarkup(createElement(DeviationLine, { map, reading: failing, onPick: noop }))).toContain('«shop-bff» fails 4 pts more than usual')
+    expect(tiles({ reading: failing })).toContain('«shop-bff» fails 4 pts more than usual')
+  })
+
+  it('without Health keeps the coverage of the file and says the rest has no numbers', () => {
+    const html = tiles({ reading: undefined, ranks: [], coverage: flowCoverage(map), healthOff: true, onTurnOnHealth: noop })
+    expect(html).toContain(`${flowCoverage(map).measured} / ${flowCoverage(map).total} measured`)
+    expect((html.match(/turn on Health/g) ?? []).length).toBe(3)
   })
 })
 
@@ -264,5 +331,49 @@ describe('FlowSequenceSvg', () => {
     expect(html).toContain('data-part="nodes:bff"')
     expect(html).toContain('data-part="edges:bff-&gt;orders"')
     expect(html).toContain('880 ms')
+  })
+})
+
+describe('Keyboard access and fitting', () => {
+  it('makes every node, hop and stage of both views a focusable button named after the part', () => {
+    const html = renderToStaticMarkup(createElement(FlowMapSvg, { map, reading, flow: false, picked: null, onPick: noop }))
+    expect(html).toContain('data-part="nodes:bff" role="button" tabindex="0" aria-label="shop-bff"')
+    expect(html).toContain('data-part="edges:bff-&gt;orders" role="button" tabindex="0" aria-label="shop-bff → orders')
+    expect((html.match(/role="button"/g) ?? []).length).toBe(map.nodes.length + map.edges.length + map.stages.length)
+    const seq = renderToStaticMarkup(createElement(FlowSequenceSvg, { map, reading, picked: null, onPick: noop }))
+    expect((seq.match(/role="button"/g) ?? []).length).toBe(map.nodes.length + map.edges.length)
+  })
+
+  it('fits the whole sequence up to eight services, and the first eight lifelines beyond that', () => {
+    const base = sequenceLayout(map)
+    expect(sequenceFitWidth(base)).toBe(base.width)
+    const many: FlowMap = { ...map, nodes: Array.from({ length: 12 }, (_, i) => ({ ...map.nodes[0]!, id: `n${i}`, label: `n${i}`, measure: undefined })), edges: [], stages: [] }
+    const wide = sequenceLayout(many)
+    expect(sequenceFitWidth(wide)).toBeLessThan(wide.width)
+    expect(sequenceFitWidth(wide)).toBe(sequenceFitWidth(sequenceLayout({ ...many, nodes: many.nodes.slice(0, 8) })))
+  })
+})
+
+describe('Map list', () => {
+  it('shows how many parts are over their limits next to the state dot', () => {
+    const maps = [
+      { id: 'checkout', name: 'Checkout', file: 'checkout.json', nodes: 3, edges: 2 },
+      { id: 'refunds', name: 'Refunds', file: 'refunds.json', nodes: 2, edges: 1 }
+    ]
+    const html = renderToStaticMarkup(createElement(FlowMapList, { maps, states: { checkout: 'alert', refunds: 'ok' }, alerts: { checkout: 3 }, opened: 'checkout', query: '', onQuery: noop, onOpen: noop }))
+    expect((html.match(/data-testid="flow-map-over"/g) ?? []).length).toBe(1)
+    expect(html).toContain('title="3 parts over their limits"')
+    expect(html).toContain('w-56')
+  })
+})
+
+describe('Claude draft focused on one part', () => {
+  const t = (key: string, params?: Record<string, string | number>) => interpolate(en[key as keyof typeof en] ?? key, params)
+  it('names the part and its numbers before the closing ask', () => {
+    const draft = flowMapPrompt(t as never, { map, file: 'x.json', environment: 'Production', reading: rich, focus: { of: 'nodes', key: 'bff' }, locale: 'en' })
+    expect(draft).toContain('Start with «shop-bff» (1,000 calls, p50 400 ms, p95 2.4 s, 3.0 % failed)')
+    expect(draft.indexOf('Start with')).toBeLessThan(draft.indexOf('Please:'))
+    const bare = flowMapPrompt(t as never, { map, file: 'x.json', environment: 'Production', focus: { of: 'nodes', key: 'acquirer' }, locale: 'en' })
+    expect(bare).toContain('no numbers in this window')
   })
 })

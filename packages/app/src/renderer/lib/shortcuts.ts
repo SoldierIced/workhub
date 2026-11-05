@@ -8,6 +8,8 @@ export interface Shortcut {
   key: string
   shift?: boolean
   alt?: boolean
+  /** False: the key without the primary modifier (Alt+↑ moves a sidebar row). */
+  mod?: false
 }
 
 /** The part of a KeyboardEvent shortcut matching reads. */
@@ -26,9 +28,9 @@ export function shortcutKeys(shortcut: Shortcut, platform: Platform): string[] {
   if (mac) {
     if (shortcut.alt) keys.push('⌥')
     if (shortcut.shift) keys.push('⇧')
-    keys.push('⌘')
+    if (shortcut.mod !== false) keys.push('⌘')
   } else {
-    keys.push('Ctrl')
+    if (shortcut.mod !== false) keys.push('Ctrl')
     if (shortcut.alt) keys.push('Alt')
     if (shortcut.shift) keys.push('Shift')
   }
@@ -43,7 +45,7 @@ export function shortcutLabel(shortcut: Shortcut, platform: Platform): string {
 
 /** True when the event is the shortcut on this platform (the other platform's modifier must be up). */
 export function matchesShortcut(e: KeyLike, shortcut: Shortcut, platform: Platform): boolean {
-  const mod = platform === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
+  const mod = shortcut.mod === false ? !e.metaKey && !e.ctrlKey : platform === 'mac' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
   return (
     mod &&
     e.shiftKey === Boolean(shortcut.shift) &&

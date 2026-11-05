@@ -71,6 +71,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         // A local command: its output comes as a system message, then a result without a model turn.
         sdk({ type: 'system', subtype: 'local_command_output', content: `<local-command-stdout>Total cost: $0.00 (${text})</local-command-stdout>` })
         sdk({ type: 'result', subtype: 'success', is_error: false, result: 'Total cost: $0.00', local_command: 'cost' })
+      } else if (text === 'crash') {
+        // The bridge's error path, as an older bridge ended it: an error line, then exit code 0.
+        process.stdout.write(JSON.stringify({ type: 'error', message: 'acme sdk crashed' }) + '\n', () => process.exit(0))
       } else if (text === 'wait') {
         // Answered by an interrupt.
       } else if (text === 'ignore close') {

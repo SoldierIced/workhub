@@ -1,12 +1,12 @@
 import { ExternalLink, Inbox, Plus, X } from 'lucide-react'
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { availableInboxActions, filterInbox, inboxSettings, INBOX_KINDS, plannerSettings, trackedState, type CriticalityLevel, type InboxAction, type InboxItem, type InboxKind, type Person, type TrackedTicket } from '@workhub/core'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
 import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, Field, useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
-import { BULK_CLEAR, BULK_KEEP, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, EMPTY_ITEM_FORM, formToProposal, inboxActionLabel, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, PIECE_STATE_LABEL, PIECE_STATE_TONE, plainPreview, type BulkForm, type InboxItemForm } from '../../lib/planner'
+import { BULK_CLEAR, BULK_KEEP, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, EMPTY_ITEM_FORM, formToProposal, inboxActionLabel, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, PIECE_STATE_LABEL, PIECE_STATE_TONE, plainPreview, selectedShown, type BulkForm, type InboxItemForm } from '../../lib/planner'
 import { ItemMilestones } from './ItemMilestones'
 import { requestPlanTab, usePlanner } from '../../plannerStore'
 import type { PlanTabContext } from './planTabs'
@@ -115,7 +115,10 @@ export function InboxFilterBar({ filters, onChange, areas }: { filters: InboxFil
   )
 }
 
-/** Area, criticality or due date for the selected items at once. */
+/**
+ * Area, criticality or due date for the selected items at once. `selected` holds only rows still on
+ * screen (see `selectedShown`); the form starts over whenever the selection empties.
+ */
 export function BulkBar({ profileId, items, selected, onDone, areas, criticalities }: { profileId: string; items: readonly InboxItem[]; selected: string[]; onDone: () => void; areas: string[]; criticalities: readonly CriticalityLevel[] }) {
   const { t, tn } = useI18n()
   const toast = useToast()
@@ -123,12 +126,16 @@ export function BulkBar({ profileId, items, selected, onDone, areas, criticaliti
   const titleId = useId()
   const patch = bulkFormToPatch(bulk)
   const changes = bulkChangeCount(items.filter((i) => selected.includes(i.id)), patch)
+  const none = selected.length === 0
+  useEffect(() => {
+    if (none) setBulk(EMPTY_BULK_FORM)
+  }, [none])
   const done = () => {
     setBulk(EMPTY_BULK_FORM)
     onDone()
   }
   const apply = async () => {
-    if (changes === 0) return
+    if (changes === 0 || none) return
     const r = await window.hub.planner.bulkEdit(profileId, selected, patch)
     if (!r.ok) return toast(r.error, 'danger')
     done()
@@ -231,6 +238,10 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
   const milestones = view?.milestones ?? []
   const pending = useMemo(() => items.filter((i) => i.status === 'pending').sort((a, b) => b.createdAt - a.createdAt), [items])
   const shown = applyFilters(pending, filters)
+  // Only what is still listed counts: a row a refresh removed never gets the bulk edit.
+  const picked = selectedShown(selected, shown)
+  // Another filter shows other rows: the selection (and its pending edit) starts over.
+  useEffect(() => setSelected([]), [filters])
   const working = items.filter((i) => i.status === 'local' || i.status === 'ticket').length
   const canCreate = view?.tracker.create ?? false
   const areas = [...new Set([...settings.areas, ...items.map((i) => i.area).filter((a): a is string => Boolean(a))])]
@@ -326,7 +337,7 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
       )}
 
       {pending.length > 0 && <InboxFilterBar filters={filters} onChange={setFilters} areas={areas} />}
-      <BulkBar profileId={profile.id} items={items} selected={selected} onDone={() => setSelected([])} areas={areas} criticalities={settings.criticalities} />
+      <BulkBar profileId={profile.id} items={items} selected={picked} onDone={() => setSelected([])} areas={areas} criticalities={settings.criticalities} />
 
       {!view ? (
         <p className="flex items-center gap-2 py-6 text-sm text-muted" role="status">

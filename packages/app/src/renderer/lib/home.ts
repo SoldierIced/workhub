@@ -120,9 +120,14 @@ export function recentFolders(sessions: SessionSummary[], profileFolders: string
   return [...seen]
 }
 
-/** Compact token counts: 950, 12.3k, 5.5M. */
-export function formatTokens(n: number): string {
-  if (n < 1000) return String(n)
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`
-  return `${(n / 1_000_000).toFixed(1)}M`
+const compactFormats = new Map<string, Intl.NumberFormat>()
+
+/** Compact token counts in the app's language: 950, 1.2K, 646K, 5.5M (English); 1,2 mil, 5,5 M (Spanish). */
+export function formatTokens(n: number, locale = 'en'): string {
+  let format = compactFormats.get(locale)
+  if (!format) {
+    format = new Intl.NumberFormat(locale, { notation: 'compact' })
+    compactFormats.set(locale, format)
+  }
+  return format.format(n)
 }

@@ -45,11 +45,30 @@ export interface SessionData {
   monitor: SessionMonitorSnapshot
   /** Why the session needs a look: set while it is off screen, cleared when it is viewed. */
   unseen?: AttentionKind
+  /**
+   * A permission request or question waits for an answer. The store keeps it as items change, so
+   * readers (sidebar, tray, header) do not scan every item on each render.
+   */
+  awaiting?: boolean
+  /** Id of the last turn-end item, kept as items change; absent before the first turn ends. */
+  lastTurnEnd?: number
+}
+
+const scanAwaiting = (items: readonly ChatItem[]): boolean => items.some((i) => i.kind === 'permission' && i.answer === undefined)
+
+function scanLastTurnEnd(items: readonly ChatItem[]): number | undefined {
+  for (let i = items.length - 1; i >= 0; i--) if (items[i]!.kind === 'turnEnd') return items[i]!.id
+  return undefined
+}
+
+/** The derived flags of a session whose items were replaced wholesale. */
+function withDerived(s: SessionData): SessionData {
+  return { ...s, awaiting: scanAwaiting(s.items), lastTurnEnd: scanLastTurnEnd(s.items) }
 }
 
 /** Whether a permission request or a question is still waiting for the user's answer. */
-export function awaitingAnswer(s: Pick<SessionData, 'items'>): boolean {
-  return s.items.some((i) => i.kind === 'permission' && i.answer === undefined)
+export function awaitingAnswer(s: Pick<SessionData, 'items'> & { awaiting?: boolean }): boolean {
+  return s.awaiting ?? scanAwaiting(s.items)
 }
 
 // What the user is looking at: a session counts as seen only while its screen is up in a focused window.
@@ -96,7 +115,7 @@ export function seedSession(id: string, snapshot: { items: unknown[]; monitor: S
   const s = sessions[id]
   if (!s) return
   const items = (snapshot.items as ChatItem[]).map((i) => ({ ...i, id: ++seq }))
-  set({ ...sessions, [id]: { ...s, items, monitor: mergeMonitor(s.monitor, snapshot.monitor) } })
+  set({ ...sessions, [id]: withDerived({ ...s, items, monitor: mergeMonitor(s.monitor, snapshot.monitor) }) })
 }
 
 /** Called when a session needs a look while it is off screen (an OS notification, for one). */
@@ -240,7 +259,8 @@ export function withTurnEnd(s: SessionData, stopReason: string, next: () => numb
       : s.items.map((i) =>
           i.kind === 'tool' && (i.status === 'pending' || i.status === 'in_progress') ? { ...i, status: 'cancelled' } : i.kind === 'compaction' && i.phase === 'running' ? { ...i, phase: 'failed' as const } : i
         )
-  return { ...s, items: [...items, { id: next(), at: Date.now(), kind: 'turnEnd', stopReason }] }
+  const turnEnd = next()
+  return { ...s, items: [...items, { id: turnEnd, at: Date.now(), kind: 'turnEnd', stopReason }], lastTurnEnd: turnEnd }
 }
 
 /**
@@ -262,10 +282,10 @@ export function withCompaction(s: SessionData, e: Extract<AgentEvent, { type: 'c
 }
 
 export function markPermission(id: string, requestId: string, answer: string): void {
-  patch(id, (s) => ({
-    ...s,
-    items: s.items.map((i) => (i.kind === 'permission' && i.requestId === requestId ? { ...i, answer } : i))
-  }))
+  patch(id, (s) => {
+    const items = s.items.map((i) => (i.kind === 'permission' && i.requestId === requestId ? { ...i, answer } : i))
+    return { ...s, items, awaiting: scanAwaiting(items) }
+  })
 }
 
 /**
@@ -330,7 +350,7 @@ export function replayItems(messages: HistoryMessage[], next: () => number): Cha
  * the stored conversation already holds the earlier chat and the console's turns.
  */
 export function withReplay(s: SessionData, messages: HistoryMessage[], next: () => number): SessionData {
-  return { ...s, items: [...replayItems(messages, next), { id: next(), kind: 'replayStart', count: messages.length }] }
+  return withDerived({ ...s, items: [...replayItems(messages, next), { id: next(), kind: 'replayStart', count: messages.length }] })
 }
 
 function onReplay(id: string, messages: HistoryMessage[]): void {
@@ -344,13 +364,24 @@ function onReplay(id: string, messages: HistoryMessage[]): void {
  */
 export function withdrawOpenRequests(s: SessionData): SessionData {
   if (!awaitingAnswer(s)) return s
-  return { ...s, items: s.items.map((i) => (i.kind === 'permission' && i.answer === undefined ? { ...i, answer: '—' } : i)) }
+  return { ...s, awaiting: false, items: s.items.map((i) => (i.kind === 'permission' && i.answer === undefined ? { ...i, answer: '—' } : i)) }
 }
 
+/**
+ * Ids that got a push (`changed` or `removed`) while the startup `sessions.list()` was in flight:
+ * the push is newer than the list, so the list's copy of those sessions is ignored. Null otherwise.
+ */
+let pushedDuringStartup: Set<string> | null = null
+
 export function onChanged(view: SessionView): void {
+  pushedDuringStartup?.add(view.id)
+  applyView(view)
+}
+
+function applyView(view: SessionView): void {
   const prev = sessions[view.id]
   const ended = view.state === 'starting' || view.state === 'stopped' || view.state === 'error' || view.mode === 'console'
-  const data = prev ? { ...prev, view } : { view, items: [], monitor: {} }
+  const data = prev ? { ...prev, view } : { view, items: [], monitor: {}, awaiting: false }
   set({ ...sessions, [view.id]: ended ? withdrawOpenRequests(data) : data })
   const kind = attentionFromTransition(prev?.view.state, view.state)
   if (kind) raise(view.id, kind)
@@ -358,6 +389,7 @@ export function onChanged(view: SessionView): void {
 
 /** A session left the main process's list: drop it (its transcript stays in History). */
 export function onRemoved(id: string): void {
+  pushedDuringStartup?.add(id)
   scrollback.dropSession(id)
   if (!sessions[id]) return
   const { [id]: _gone, ...rest } = sessions
@@ -398,9 +430,11 @@ export function applyEvent(s: SessionData, e: AgentEvent, next: () => number): S
       return { ...s, items }
     }
     case 'permission':
-      return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'permission', requestId: e.requestId, title: e.title, detail: e.detail, options: e.options, questions: e.questions }] }
-    case 'permissionCancelled':
-      return { ...s, items: s.items.map((i) => (i.kind === 'permission' && i.requestId === e.requestId && !i.answer ? { ...i, answer: '—' } : i)) }
+      return { ...s, awaiting: true, items: [...s.items, { id: next(), at: Date.now(), kind: 'permission', requestId: e.requestId, title: e.title, detail: e.detail, options: e.options, questions: e.questions }] }
+    case 'permissionCancelled': {
+      const items = s.items.map((i) => (i.kind === 'permission' && i.requestId === e.requestId && !i.answer ? { ...i, answer: '—' } : i))
+      return { ...s, items, awaiting: scanAwaiting(items) }
+    }
     case 'notice':
       return { ...s, items: [...s.items, { id: next(), at: Date.now(), kind: 'notice', noticeKind: e.kind, title: e.title, text: e.text, failed: e.failed }] }
     case 'compaction':
@@ -447,7 +481,26 @@ export function startStore(): void {
   window.hub.sessions.onRemoved(onRemoved)
   window.hub.sessions.onEvent(onEvent)
   window.hub.sessions.onReplay(onReplay)
-  void window.hub.sessions.list().then((list) => list.forEach(onChanged))
+  void startupList(() => window.hub.sessions.list())
+}
+
+/**
+ * Applies the sessions main had when this window started, except those a push already updated or
+ * removed meanwhile: a reply that arrives after a push would bring back a stale or closed session.
+ */
+export function startupList(list: () => Promise<SessionView[]>): Promise<void> {
+  const pushed = new Set<string>()
+  pushedDuringStartup = pushed
+  const done = () => {
+    if (pushedDuringStartup === pushed) pushedDuringStartup = null
+  }
+  return list().then(
+    (views) => {
+      done()
+      for (const v of views) if (!pushed.has(v.id)) applyView(v)
+    },
+    done
+  )
 }
 
 /** The current sessions, outside React (tests, serialized writers). */

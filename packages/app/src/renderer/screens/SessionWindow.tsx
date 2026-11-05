@@ -3,6 +3,10 @@ import { Dialog as RDialog } from 'radix-ui'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Badge, Button, IconButton, Input, STATE_TONE, StateDot, TooltipProvider } from '../components/atoms'
 import { ToastProvider, useToast } from '../components/molecules'
+import { CloseSessionDialog } from '../components/organisms/CloseSessionDialog'
+import { isWorking } from '../components/organisms/SessionList'
+import { currentConfig, refreshConfig } from '../configStore'
+import { requestSessionClose } from '../lib/closeSession'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { useAppearance } from '../lib/appearance'
 import { cn } from '../lib/cn'
@@ -89,16 +93,26 @@ function InlineName({ id, name, fallback }: { id: string; name: string | undefin
   )
 }
 
+/** The window's title before a session names it: what the page was opened with (the app's name). */
+const initialTitle = typeof document === 'undefined' ? '' : document.title
+
 function SessionWindow({ sessionId }: { sessionId: string }) {
   const { t } = useI18n()
+  const toast = useToast()
   const theme = useAppearance()
   const sessions = useSessions()
   const data = sessions[sessionId]
   const [loaded, setLoaded] = useState(false)
+  const [closing, setClosing] = useState(false)
   const seen = useRef(false)
+  const latest = useRef({ data, t, toast })
+  latest.current = { data, t, toast }
 
   useEffect(() => {
     startStore()
+    // The close dialog reads the profiles (whether a worktree is kept or removed on close).
+    void refreshConfig().catch(() => undefined)
+    const offConfig = window.hub.config.onChanged(() => void refreshConfig().catch(() => undefined))
     // The chat so far comes from the main window; the live events follow it (main orders the two).
     void window.hub.windows.snapshot(sessionId).then((snapshot) => {
       if (snapshot) seedSession(sessionId, snapshot)
@@ -107,7 +121,16 @@ function SessionWindow({ sessionId }: { sessionId: string }) {
     const offPrompted = window.hub.automations.onPrompted((id, text) => id === sessionId && pushUser(id, text))
     const offTurnEnded = window.hub.automations.onTurnEnded((id, stopReason) => id === sessionId && pushTurnEnd(id, stopReason))
     const offMenu = window.hub.menu.onCommand((command) => {
-      if (command.kind === 'closeSession') void window.hub.sessions.close(sessionId)
+      // ⌘⇧W asks like the main window does: a working session, or a worktree to keep or remove.
+      const current = latest.current.data
+      if (command.kind === 'closeSession' && current) {
+        void requestSessionClose(current.view, isWorking(current), {
+          profiles: async () => (currentConfig() ?? (await refreshConfig())).config.profiles,
+          ask: () => setClosing(true),
+          close: () => window.hub.sessions.close(sessionId),
+          fail: (e) => latest.current.toast(latest.current.t('sessions.closeFailed', { message: errorText(e) }), 'danger')
+        })
+      }
       if (command.kind === 'showMode') void window.hub.sessions.setMode(sessionId, command.mode).catch(() => undefined)
     })
     void window.hub.sessions.list().then(() => setLoaded(true))
@@ -115,6 +138,7 @@ function SessionWindow({ sessionId }: { sessionId: string }) {
       offPrompted()
       offTurnEnded()
       offMenu()
+      offConfig()
     }
   }, [sessionId])
 
@@ -129,7 +153,7 @@ function SessionWindow({ sessionId }: { sessionId: string }) {
 
   const title = data ? sessionTitle(data.view) : ''
   useEffect(() => {
-    document.title = data ? `${title} · ${folderName(data.view.cwd)}` : 'Workhub 2'
+    document.title = data ? `${title} · ${folderName(data.view.cwd)}` : initialTitle
   }, [title, data])
 
   if (!data) {
@@ -159,6 +183,7 @@ function SessionWindow({ sessionId }: { sessionId: string }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <SessionPane data={data} visible theme={theme} />
       </div>
+      {closing && <CloseSessionDialog session={data} working={isWorking(data)} onDone={() => setClosing(false)} onError={(message) => toast(message, 'danger')} />}
     </div>
   )
 }

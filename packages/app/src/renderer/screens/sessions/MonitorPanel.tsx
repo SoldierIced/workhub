@@ -176,7 +176,7 @@ function TicketList({ keys, profileId }: { keys: string[]; profileId: string | n
  * Sections fold; the panel is resizable. Data an agent does not report is left out, never made up.
  */
 export function MonitorPanel({ data, visible }: { data: SessionData; visible: boolean }) {
-  const { t, tn, formatNumber } = useI18n()
+  const { t, tn, formatNumber, locale } = useI18n()
   const prefs = usePrefs()
   const config = useConfig()
   const m = data.monitor
@@ -221,7 +221,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
   const subagents = m.subagents ?? []
   // MCP controls act on the running chat; the console has its own /mcp.
   const controls = v.controls && v.mode !== 'console' && (v.state === 'ready' || v.state === 'busy')
-  const n = (x: number | undefined) => (x === undefined ? '–' : formatTokens(x))
+  const n = (x: number | undefined) => (x === undefined ? '–' : formatTokens(x, locale))
   const showTokens = fields.includes('tokens') || fields.includes('cost') || fields.includes('credits')
   const total = changes ? changesTotal(changes) : null
 
@@ -354,7 +354,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
           <MonitorSection id="context" title={t('monitor.context')}>
             <div className="flex flex-col gap-1.5">
               <div className="flex items-baseline justify-between text-sm tabular-nums">
-                <span>{ctx.used !== undefined && ctx.size !== undefined ? `${formatTokens(ctx.used)} / ${formatTokens(ctx.size)}` : '–'}</span>
+                <span>{ctx.used !== undefined && ctx.size !== undefined ? `${formatTokens(ctx.used, locale)} / ${formatTokens(ctx.size, locale)}` : '–'}</span>
                 <span className={cn(ctx.high ? 'font-medium text-warning' : 'text-muted')} data-testid="monitor-context-percent">
                   {Math.round(ctx.fraction * 100)}%
                 </span>
@@ -371,10 +371,10 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
             <div className="flex flex-col gap-1.5">
               <div className="flex h-11 items-end gap-[3px]" role="img" aria-label={t('monitor.requests')}>
                 {requests.bars.map((bar, i) => (
-                  <div key={i} className="min-w-[3px] flex-1 rounded-sm bg-info" style={{ height: `${Math.round(bar.fraction * 100)}%` }} title={t('monitor.requestTip', { value: formatTokens(bar.value) })} />
+                  <div key={i} className="min-w-[3px] flex-1 rounded-sm bg-info" style={{ height: `${Math.round(bar.fraction * 100)}%` }} title={t('monitor.requestTip', { value: formatTokens(bar.value, locale) })} />
                 ))}
               </div>
-              <p className="text-xs text-muted">{t('monitor.requestsSummary', { count: requests.bars.length, max: formatTokens(requests.max) })}</p>
+              <p className="text-xs text-muted">{t('monitor.requestsSummary', { count: requests.bars.length, max: formatTokens(requests.max, locale) })}</p>
             </div>
           </MonitorSection>
         )}
@@ -431,7 +431,7 @@ export function MonitorPanel({ data, visible }: { data: SessionData; visible: bo
                     <div className="flex items-center gap-2">
                       <StateDot tone={s.status === 'failed' ? 'danger' : s.status === 'running' ? 'info' : s.status === 'completed' ? 'success' : 'neutral'} pulse={s.status === 'running'} />
                       <span className="min-w-0 flex-1 truncate">{s.description ?? s.name ?? s.type ?? s.id}</span>
-                      {s.tokens?.total !== undefined && <span className="text-xs text-subtle tabular-nums">{formatTokens(s.tokens.total)}</span>}
+                      {s.tokens?.total !== undefined && <span className="text-xs text-subtle tabular-nums">{formatTokens(s.tokens.total, locale)}</span>}
                     </div>
                     {(s.model || s.lastStep) && <div className="ml-4 truncate text-xs text-subtle">{[s.model, s.lastStep].filter(Boolean).join(' · ')}</div>}
                   </button>

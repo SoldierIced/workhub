@@ -27,8 +27,9 @@ The session environment has `WORKHUB_SESSION` (this session's id) and the endpoi
 port and its token, Windows). Pass the session on every call: the answer is about the profile this
 session runs in. Pass also your working folder (`"cwd"` in a body, `cwd` in `$S`): when the
 session is missing or has no profile, the profile that owns that folder is used instead of the
-active one. With none of them you are not in a Workhub session: say so and stop; do not look
-for the endpoint.
+active one. With none of them (or all empty) you are not in a Workhub session: say so and stop; do
+not look for the endpoint. An empty or malformed `session` answers `400`; a read-only (reviewer)
+session answers `403` to every change.
 
 `W` works on both (bash, including Git Bash on Windows): it calls `http://workhub/...` over the
 socket, or rewrites it to `$WORKHUB_URL` with the token.

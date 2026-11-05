@@ -199,7 +199,7 @@ export const setupEs: Record<keyof typeof setupEn, string> = {
   'profileExtra.linkChromeProfile': 'Perfil de Chrome',
   'profileExtra.linkChromeProfileHint': 'Los enlaces se abren en una ventana nueva de Chrome con este perfil.',
   'profileExtra.linkCommand': 'Comando personalizado',
-  'profileExtra.linkCommandHint': 'Un ejecutable (un nombre en tu PATH o una ruta completa) que recibe el enlace como único argumento, por ejemplo un script que abre un perfil de un navegador de trabajo. Si falla, el navegador predeterminado abre el enlace.',
+  'profileExtra.linkCommandHint': 'Un ejecutable (un nombre en tu PATH o una ruta completa) que recibe el enlace como último argumento, por ejemplo un script que abre un perfil de un navegador de trabajo. Para pasar argumentos, poné el ejecutable entre comillas: "firefox" -P work. Si falla, el navegador predeterminado abre el enlace.',
   'profileExtra.linkChromeNone': 'No se encontraron perfiles para esta aplicación de Chrome; escribe el directorio del perfil (Default, Profile 1).',
   'profileExtra.linkChromeApp': 'Aplicación de Chrome',
   'profileExtra.linkChromeAppHint': 'Vacío: Google Chrome. Indica otra aplicación de Chrome.',

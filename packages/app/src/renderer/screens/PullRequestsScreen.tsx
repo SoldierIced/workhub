@@ -1,13 +1,13 @@
 import { AppWindow, ExternalLink, GitPullRequest, GitPullRequestClosed, Link, Search, TriangleAlert } from 'lucide-react'
 import { ContextMenu } from 'radix-ui'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { itemsForFilter, PULL_REQUEST_FILTERS, prName, searchPullRequests, STALE_DAYS, type PullRequest, type PullRequestFilter, type PullRequestItem, type Profile } from '@workhub/core'
 import type { CodeHostLists } from '@shared/codehost-api'
 import { Badge, Button, Input, Spinner } from '../components/atoms'
 import { EmptyState, SlackBadge, useToast, RefreshButton } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
-import { defaultFilter, findItem, initials, installUrl, loginCommand, relativeTime } from '../lib/pullRequests'
+import { defaultFilter, findItem, focusFilter, initials, installUrl, loginCommand, relativeTime } from '../lib/pullRequests'
 import { applyNarrowing, NO_NARROWING, type PrNarrowing } from '../lib/prNarrowing'
 import { usePullRequestSlack } from '../lib/slackLinks'
 import { refreshPullRequests, usePullRequestLists } from '../pullRequestsStore'
@@ -19,9 +19,11 @@ import { TicketChip } from './pullRequests/TicketChip'
 
 export interface PullRequestsScreenProps {
   profile: Profile | undefined
-  /** A PR to select when the screen opens (from a Home card). */
-  focusUrl?: string | null
+  /** A PR to select when the screen opens (from a Home card); a new object each time it is asked for. */
+  focus?: { url: string } | null
   onOpenSettings: (tab?: string) => void
+  /** Whether the screen is on screen: a kept-mounted, hidden screen does not poll the code host. */
+  visible?: boolean
 }
 
 /** Why there is nothing to list: no connection, a missing CLI, no login, or a failed read. */
@@ -152,10 +154,10 @@ function Row({ item, profileId, selected, showAuthor, mine, onSelect, onOpenWind
 }
 
 /** Pull requests (⌘2): mine and waiting for my review, with a detail view beside the list. */
-export function PullRequestsScreen({ profile, focusUrl, onOpenSettings }: PullRequestsScreenProps) {
+export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: shown = true }: PullRequestsScreenProps) {
   const { t, tn, locale } = useI18n()
   const profileId = profile?.id ?? null
-  const { lists, loading, refresh } = usePullRequestLists(profileId)
+  const { lists, loading, refresh } = usePullRequestLists(profileId, shown)
   const [filter, setFilter] = useState<PullRequestFilter>('toReview')
   const [chosenFilter, setChosenFilter] = useState(false)
   const [query, setQuery] = useState('')
@@ -168,16 +170,19 @@ export function PullRequestsScreen({ profile, focusUrl, onOpenSettings }: PullRe
     if (lists && !chosenFilter) setFilter(defaultFilter(lists))
   }, [lists, chosenFilter])
 
-  // A PR asked for from Home: show it under the filter that holds it.
+  // A PR asked for from Home: show it under the filter that holds it, once per request; later
+  // refreshes of the lists leave the user's filter, search and selection alone.
+  const appliedFocus = useRef<{ url: string } | null>(null)
   useEffect(() => {
-    if (!lists || !focusUrl) return
-    const item = findItem(lists, focusUrl)
-    if (!item) return
-    setFilter(lists.toReview.some((i) => i.pr.url === focusUrl) ? 'toReview' : item.stale ? 'stale' : 'mine')
+    if (!lists || !focus || appliedFocus.current === focus) return
+    const target = focusFilter(lists, focus.url)
+    if (!target) return
+    appliedFocus.current = focus
+    setFilter(target)
     setChosenFilter(true)
     setQuery('')
-    setSelectedUrl(focusUrl)
-  }, [lists, focusUrl])
+    setSelectedUrl(focus.url)
+  }, [lists, focus])
 
   const ready = lists !== null && (lists.state === 'ready' || lists.mine.length > 0 || lists.toReview.length > 0)
   const scoped = useMemo(() => (lists ? itemsForFilter(lists, filter) : []), [lists, filter])

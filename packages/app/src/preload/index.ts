@@ -160,6 +160,8 @@ const api: HubApi = {
     reveal: () => ipcRenderer.send('flowMaps:reveal'),
     importFiles: () => ipcRenderer.invoke('flowMaps:import'),
     remove: (id) => ipcRenderer.invoke('flowMaps:remove', id),
+    get: (mapId) => ipcRenderer.invoke('flowMaps:get', mapId),
+    setAlerts: (profileId, mapId, alerts) => ipcRenderer.invoke('flowMaps:setAlerts', profileId, mapId, alerts),
     openWindow: (profileId, environmentId, mapId) => ipcRenderer.send('flowMaps:openWindow', profileId, environmentId, mapId),
     copyImage: (dataUrl) => ipcRenderer.invoke('flowMaps:copyImage', dataUrl),
     ask: (draft, folder) => ipcRenderer.send('flowMaps:ask', draft, folder),
@@ -269,12 +271,15 @@ const api: HubApi = {
     run: () => ipcRenderer.invoke('setup:run'),
     openWindow: (page) => ipcRenderer.send('setup:openWindow', page),
     openSettings: (tab) => ipcRenderer.send('setup:openSettings', tab),
-    onOpenSettings: (cb) => subscribe<[string]>('setup:openSettings', cb),
     completeWelcome: () => ipcRenderer.invoke('setup:completeWelcome')
   },
   profileEnv: {
     stored: (profileId) => ipcRenderer.invoke('profileEnv:stored', profileId),
     save: (profileId, values, removed) => ipcRenderer.invoke('profileEnv:save', profileId, values, removed)
+  },
+  accountEnv: {
+    stored: (accountId) => ipcRenderer.invoke('accountEnv:stored', accountId),
+    save: (accountId, values, removed) => ipcRenderer.invoke('accountEnv:save', accountId, values, removed)
   },
   systemNotifications: {
     status: () => ipcRenderer.invoke('systemNotifications:status'),
@@ -299,6 +304,13 @@ const api: HubApi = {
     copyPath: (path) => ipcRenderer.send('files:copyPath', path),
     reveal: (path) => ipcRenderer.invoke('files:reveal', path),
     openDefault: (path) => ipcRenderer.invoke('files:openDefault', path)
+  },
+  settings: {
+    open: (section) => ipcRenderer.send('settings:open', section),
+    setDirty: (dirty) => ipcRenderer.send('settings:setDirty', dirty),
+    close: () => ipcRenderer.send('settings:close'),
+    onNavigate: (cb) => subscribe<[string]>('settings:navigate', cb),
+    onCloseRequest: (cb) => subscribe<[]>('settings:closeRequest', cb)
   },
   tray: {
     setState: (state) => ipcRenderer.send('tray:state', state),

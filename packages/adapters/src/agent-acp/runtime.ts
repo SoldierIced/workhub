@@ -37,7 +37,7 @@ import type {
 import { findExecutable } from './availability'
 import { pathKeyOf } from '../shared/login-path'
 import { AcpMonitor, permissionMode, readConfigSelect, readModels, readModes, type SelectVia } from './monitor-mapping'
-import { planSpawn } from './spawn-plan'
+import { killProcessTree, planSpawn, type KillTreeDeps } from './spawn-plan'
 import { acpToolResult, acpToolView } from './tool-view'
 
 export type AcpDirection = 'client->agent' | 'agent->client'
@@ -54,7 +54,16 @@ export interface AcpRuntimeOptions {
   path?: () => string | undefined
   /** Every raw JSON-RPC message, for debugging. */
   onRaw?: (sessionId: string, direction: AcpDirection, message: AnyMessage) => void
+  /**
+   * How long an agent gets to answer `initialize`, `session/new` and the start-up mode and model
+   * switches before it is stopped and the start fails. 60 s by default.
+   */
+  startTimeoutMs?: number
+  /** How a stopping agent's process tree is signalled (tests fake it). */
+  killTree?: KillTreeDeps
 }
+
+const DEFAULT_START_TIMEOUT_MS = 60_000
 
 interface AcpSession {
   id: string
@@ -128,7 +137,8 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       cwd: req.cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
-      windowsVerbatimArguments: plan.windowsVerbatimArguments
+      windowsVerbatimArguments: plan.windowsVerbatimArguments,
+      detached: plan.detached
     })
 
     const monitor = new AcpMonitor()
@@ -153,6 +163,18 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       child.once('exit', (code) => reject(new Error(`agent exited during start (code ${code})`)))
     })
     spawnFailed.catch(() => {})
+    // An agent that starts but never answers would leave the session starting forever.
+    const startTimeoutMs = this.options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<never>((_, reject) => {
+      deadlineTimer = setTimeout(
+        () => reject(new Error(`"${req.agent.name}" did not finish starting within ${Math.round(startTimeoutMs / 1000)} s; it was stopped`)),
+        startTimeoutMs
+      )
+    })
+    deadline.catch(() => {})
+    const startGuard = Promise.race([spawnFailed, deadline])
+    startGuard.catch(() => {})
     child.stderr?.setEncoding('utf8')
     child.stderr?.on('data', (d: string) =>
       d.split('\n').filter(Boolean).forEach((line) => this.emit({ sessionId: id, type: 'stderr', line }))
@@ -203,12 +225,12 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
           clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
           clientInfo: { name: this.options.clientName, version: this.options.clientVersion }
         }),
-        spawnFailed
+        startGuard
       ])
       // Empty mcpServers: each agent loads its own MCP configuration (P0 finding).
       const created = await Promise.race([
         session.conn.agent.request('session/new', { cwd: req.cwd, mcpServers: [] }),
-        spawnFailed
+        startGuard
       ])
       session.agentSessionId = created.sessionId
       const modes = readModes(created)
@@ -226,7 +248,7 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       const wanted = readOnlyMode ?? (req.readOnly ? undefined : req.modeId)
       let modeIgnored = false
       if (wanted && wanted !== session.currentModeId) {
-        const applied = availableModes.some((m) => m.id === wanted) && (await this.applyMode(session, wanted, spawnFailed))
+        const applied = availableModes.some((m) => m.id === wanted) && (await this.applyMode(session, wanted, startGuard))
         // A reviewer that cannot get into its read-only mode does not start.
         if (!applied && readOnlyMode) throw new Error(`could not switch the reviewer to the "${readOnlyMode}" mode`)
         modeIgnored = !applied
@@ -234,7 +256,7 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       const currentModeId = session.currentModeId
       // A model asked for: ACP's session model selection, when the agent reports models and takes it.
       // An agent launched with the model on its command line already runs it, whatever it lists.
-      const modelIgnored = req.model ? !(await this.selectModel(session, req.model, spawnFailed)) && !req.agent.modelArgs?.length : false
+      const modelIgnored = req.model ? !(await this.selectModel(session, req.model, startGuard)) && !req.agent.modelArgs?.length : false
       const started: StartedSession = {
         agentSessionId: created.sessionId,
         agentName: init.agentInfo?.title ?? init.agentInfo?.name ?? req.agent.name,
@@ -257,6 +279,8 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       const message = err instanceof Error ? err.message : JSON.stringify(err)
       this.emit({ sessionId: id, type: 'state', state: 'error', error: message })
       throw new Error(message)
+    } finally {
+      clearTimeout(deadlineTimer)
     }
   }
 
@@ -392,14 +416,15 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
     }
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
-        child.kill('SIGKILL')
+        killProcessTree(child, 'SIGKILL', this.options.killTree)
         resolve()
       }, 2000)
       child.once('exit', () => {
         clearTimeout(timer)
         resolve()
       })
-      child.kill('SIGTERM')
+      // The whole tree: an agent started through `npx` or a script runs as a grandchild.
+      killProcessTree(child, 'SIGTERM', this.options.killTree)
     })
   }
 

@@ -46,6 +46,20 @@ export interface WindowsApi {
   replySnapshot(requestId: string, snapshot: SessionSnapshot | null): void
 }
 
+/** Settings in a window of its own (`#settings?section=…`); one at a time. */
+export interface SettingsWindowApi {
+  /** Opens the Settings window on a section (or an old tab id); an open one comes to the front and moves there. */
+  open(section?: string): void
+  /** Settings window only: whether its forms hold unsaved drafts (its close button asks about them first). */
+  setDirty(dirty: boolean): void
+  /** Settings window only: closes it (once the drafts were saved or discarded). */
+  close(): void
+  /** Settings window only: another opener asked for a section. */
+  onNavigate(cb: (section: string) => void): () => void
+  /** Settings window only: its close button was used while drafts were unsaved. */
+  onCloseRequest(cb: () => void): () => void
+}
+
 export interface MenuApi {
   onCommand(cb: (command: MenuCommand) => void): () => void
 }

@@ -8,6 +8,8 @@ export const planEn = {
   'notify.meeting.soon': '{title} in {minutes} min',
   'notify.meeting.now': '{title} is starting',
   'notify.meeting.call': 'Click to join the call',
+  'notify.brief.demo': 'Demo: a brief would start for {title}',
+  'notify.brief.demoBody': 'Open Plan and choose Prepare brief to start one.',
 
   'plan.subtitle': 'Your meetings today and tomorrow, briefs prepared by an agent, and the people you meet.',
   'plan.demo': 'Demo data',

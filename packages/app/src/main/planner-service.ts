@@ -12,6 +12,7 @@ import {
   DEFAULT_MILESTONE_MARGIN,
   findDuplicate,
   followsTicket,
+  inboxDueBy,
   inboxSettings,
   INBOX_LIMITS,
   linkTicket,
@@ -245,6 +246,13 @@ export class PlannerService {
         // The next tick tries again.
       }
     })
+  }
+
+  /** The profile's open tasks due today or overdue, overdue first (the menu bar popover); empty while Plan is off. */
+  async dueToday(profileId: string): Promise<InboxItem[]> {
+    const profile = await this.profile(profileId)
+    if (!profile || !planner(profile)) return []
+    return inboxDueBy(this.of(profileId).inbox, localDay(this.now()))
   }
 
   async view(profileId: string): Promise<PlannerView> {

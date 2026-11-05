@@ -1,4 +1,4 @@
-import type { AgentAccount, AgentDefinition } from '../domain/agent'
+import { accountEnvRef, isValidEnvName, type AgentAccount, type AgentDefinition } from '../domain/agent'
 import { connectionSecretRef, type Connection } from '../domain/connection'
 import type { Profile } from '../domain/profile'
 import { appOptions, type AppOptions, type WorkhubConfig } from '../config/schema'
@@ -61,11 +61,58 @@ export function updateAccount(config: WorkhubConfig, account: AgentAccount): Res
   return commit(config, { ...config, accounts: replaceById(config.accounts, account) })
 }
 
+/** Refused while a profile or the chat watcher uses the account, so nothing is left pointing at nothing. */
 export function deleteAccount(config: WorkhubConfig, id: string): Result<WorkhubConfig> {
   if (!config.accounts.some((a) => a.id === id)) return notFound(`accounts.${id}`)
   const users = config.profiles.filter((p) => p.accountIds.includes(id)).map((p) => p.id)
   if (users.length) return fail([{ path: `accounts.${id}`, message: `used by profile(s): ${users.join(', ')}` }])
+  if (config.chatWatcher?.accountId === id) return fail([{ path: `accounts.${id}`, message: 'used by the chat watcher' }])
   return commit(config, { ...config, accounts: config.accounts.filter((a) => a.id !== id) })
+}
+
+/** What `migrateAccountEnv` does: the config without plain account values, and the values to store. */
+export interface AccountEnvMigration {
+  config: WorkhubConfig
+  secrets: { ref: string; value: string }[]
+}
+
+/**
+ * Moves the plain values of `accounts[].env` out of the config: each valid name goes to `envNames`
+ * and its value to the secret store under `accountEnvRef`. The agent's config-folder variable
+ * (`accountConfigEnv`, e.g. `CLAUDE_CONFIG_DIR`) is a path, not a secret: it becomes the account's
+ * `configDir` when that is empty, so the usage readers still find the folder. Names that are not
+ * valid variable names stay where they are (validation reports them). Null when nothing moves.
+ */
+export function migrateAccountEnv(config: WorkhubConfig): AccountEnvMigration | null {
+  const agents = knownAgents(config)
+  const secrets: AccountEnvMigration['secrets'] = []
+  let changed = false
+  const accounts = config.accounts.map((account) => {
+    const entries = Object.entries(account.env ?? {})
+    if (!entries.length) return account
+    const configEnv = agents.find((a) => a.id === account.agentId)?.accountConfigEnv
+    const next: AgentAccount = { ...account }
+    const kept: Record<string, string> = {}
+    const names = [...(account.envNames ?? [])]
+    for (const [name, value] of entries) {
+      if (!isValidEnvName(name)) {
+        kept[name] = value
+        continue
+      }
+      changed = true
+      if (name === configEnv && !next.configDir) {
+        if (value) next.configDir = value
+        continue
+      }
+      secrets.push({ ref: accountEnvRef(account.id, name), value })
+      if (!names.includes(name)) names.push(name)
+    }
+    if (Object.keys(kept).length) next.env = kept
+    else delete next.env
+    if (names.length) next.envNames = names
+    return next
+  })
+  return changed ? { config: { ...config, accounts }, secrets } : null
 }
 
 // Custom agents
@@ -99,8 +146,11 @@ export function updateProfile(config: WorkhubConfig, profile: Profile): Result<W
   return commit(config, { ...config, profiles: replaceById(config.profiles, profile) })
 }
 
+/** Refused while an automation runs in the profile, so no automation is left pointing at nothing. */
 export function deleteProfile(config: WorkhubConfig, id: string): Result<WorkhubConfig> {
   if (!config.profiles.some((p) => p.id === id)) return notFound(`profiles.${id}`)
+  const users = (config.automations ?? []).filter((a) => a.profileId === id).map((a) => a.id)
+  if (users.length) return fail([{ path: `profiles.${id}`, message: `used by automation(s): ${users.join(', ')}` }])
   const profiles = config.profiles.filter((p) => p.id !== id)
   const next: WorkhubConfig = { ...config, profiles }
   if (config.activeProfileId === id) {
@@ -211,22 +261,27 @@ export async function secretForConnectionTest(
 /**
  * Config use cases bound to their stores. Every write validates first, then persists secrets,
  * then the config, so a rejected change touches neither store.
+ *
+ * Writes run one at a time, in call order: each reads the config inside its turn, so two writes
+ * issued together (an automation moving a session while the user saves Settings) both land
+ * instead of the later one overwriting the earlier one with a stale copy.
  */
 export class ConfigurationService {
   private cache: WorkhubConfig | null = null
+  private queue: Promise<unknown> = Promise.resolve()
 
   constructor(
     private readonly store: ConfigStore,
     private readonly secrets: SecretStore
   ) {}
 
+  /** Reads the store again; queued behind pending writes so it never caches a copy they replace. */
   async load(): Promise<WorkhubConfig> {
-    this.cache = await this.store.load()
-    return this.cache
+    return this.serial(() => this.read())
   }
 
   async current(): Promise<WorkhubConfig> {
-    return this.cache ?? this.load()
+    return this.cache ?? this.read()
   }
 
   async issues(): Promise<ValidationIssue[]> {
@@ -241,108 +296,152 @@ export class ConfigurationService {
     connection: Connection,
     secret: SecretChange = { action: 'keep' }
   ): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const previous = config.connections.find((c) => c.id === connection.id)
-    const ref = connectionSecretRef(connection.id)
-    const next: Connection = { ...connection }
-    if (secret.action === 'set') next.secretRef = ref
-    else if (secret.action === 'clear') delete next.secretRef
-    else if (previous?.secretRef && !next.secretRef) next.secretRef = previous.secretRef
+    return this.serial(async () => {
+      const config = await this.current()
+      const previous = config.connections.find((c) => c.id === connection.id)
+      const ref = connectionSecretRef(connection.id)
+      const next: Connection = { ...connection }
+      if (secret.action === 'set') next.secretRef = ref
+      else if (secret.action === 'clear') delete next.secretRef
+      else if (previous?.secretRef && !next.secretRef) next.secretRef = previous.secretRef
 
-    if (secret.action === 'set' && !secret.value) {
-      return fail([{ path: `connections.${connection.id}.secretRef`, message: 'the secret is empty' }])
-    }
-    const result = previous ? updateConnection(config, next) : createConnection(config, next)
-    if (!result.ok) return result
-    if (secret.action === 'set') await this.secrets.set(ref, secret.value)
-    if (secret.action === 'clear' && previous?.secretRef === ref) await this.secrets.delete(ref)
-    return this.persist(result)
+      if (secret.action === 'set' && !secret.value) {
+        return fail([{ path: `connections.${connection.id}.secretRef`, message: 'the secret is empty' }])
+      }
+      const result = previous ? updateConnection(config, next) : createConnection(config, next)
+      if (!result.ok) return result
+      if (secret.action === 'set') await this.secrets.set(ref, secret.value)
+      if (secret.action === 'clear' && previous?.secretRef === ref) await this.secrets.delete(ref)
+      return this.persist(result)
+    })
   }
 
   async deleteConnection(id: string): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const previous = config.connections.find((c) => c.id === id)
-    const result = deleteConnection(config, id)
-    if (!result.ok) return result
-    const saved = await this.persist(result)
-    // Only the secret Workhub manages for this connection; a shared ref is left alone.
-    if (previous?.secretRef === connectionSecretRef(id)) await this.secrets.delete(previous.secretRef)
-    return saved
+    return this.serial(async () => {
+      const config = await this.current()
+      const previous = config.connections.find((c) => c.id === id)
+      const result = deleteConnection(config, id)
+      if (!result.ok) return result
+      const saved = await this.persist(result)
+      // Only the secret Workhub manages for this connection; a shared ref is left alone.
+      if (previous?.secretRef === connectionSecretRef(id)) await this.secrets.delete(previous.secretRef)
+      return saved
+    })
   }
 
   async saveAccount(account: AgentAccount): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const exists = config.accounts.some((a) => a.id === account.id)
-    return this.persist(exists ? updateAccount(config, account) : createAccount(config, account))
+    return this.write((config) => (config.accounts.some((a) => a.id === account.id) ? updateAccount(config, account) : createAccount(config, account)))
   }
 
   async deleteAccount(id: string): Promise<Result<WorkhubConfig>> {
-    return this.persist(deleteAccount(await this.current(), id))
+    return this.serial(async () => {
+      const names = (await this.current()).accounts.find((a) => a.id === id)?.envNames ?? []
+      const saved = await this.persist(deleteAccount(await this.current(), id))
+      // The account's environment values go with it.
+      if (saved.ok) for (const name of names) await this.secrets.delete(accountEnvRef(id, name))
+      return saved
+    })
+  }
+
+  /**
+   * Moves plain account environment values from the config file to the secret store (see
+   * `migrateAccountEnv`). The values are stored before the config drops them, so a failure never
+   * loses one. Returns how many values moved to the secret store.
+   */
+  async migrateAccountEnv(): Promise<number> {
+    return this.serial(async () => {
+      const before = await this.current()
+      const plan = migrateAccountEnv(before)
+      if (!plan) return 0
+      for (const { ref, value } of plan.secrets) await this.secrets.set(ref, value)
+      await this.persist(ok(plan.config))
+      return plan.secrets.length
+    })
   }
 
   async saveProfile(profile: Profile): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const exists = config.profiles.some((p) => p.id === profile.id)
-    return this.persist(exists ? updateProfile(config, profile) : createProfile(config, profile))
+    return this.write((config) => (config.profiles.some((p) => p.id === profile.id) ? updateProfile(config, profile) : createProfile(config, profile)))
   }
 
   async deleteProfile(id: string): Promise<Result<WorkhubConfig>> {
-    return this.persist(deleteProfile(await this.current(), id))
+    return this.write((config) => deleteProfile(config, id))
   }
 
   async setActiveProfile(id: string): Promise<Result<WorkhubConfig>> {
-    return this.persist(setActiveProfile(await this.current(), id))
+    return this.write((config) => setActiveProfile(config, id))
   }
 
   async saveAgent(agent: AgentDefinition): Promise<Result<WorkhubConfig>> {
-    return this.persist(saveAgent(await this.current(), agent))
+    return this.write((config) => saveAgent(config, agent))
   }
 
   async saveOptions(options: Partial<AppOptions>): Promise<Result<WorkhubConfig>> {
-    return this.persist(setOptions(await this.current(), options))
+    return this.write((config) => setOptions(config, options))
   }
 
   async saveSessionGroups(groups: SessionGroups): Promise<Result<WorkhubConfig>> {
-    return this.persist(setSessionGroups(await this.current(), groups))
+    return this.write((config) => setSessionGroups(config, groups))
   }
 
   /** For automations and account moves: the new session takes the old one's group and place. */
   async replaceSessionIdentity(oldKey: string, newKey: string, meta?: Partial<Omit<GroupMember, 'key'>>): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const result = replaceStoredSessionIdentity(config, oldKey, newKey, meta)
-    // Nothing to move (the usual case): do not rewrite the file.
-    return result.ok && result.value === config ? result : this.persist(result)
+    return this.serial(async () => {
+      const config = await this.current()
+      const result = replaceStoredSessionIdentity(config, oldKey, newKey, meta)
+      // Nothing to move (the usual case): do not rewrite the file.
+      return result.ok && result.value === config ? result : this.persist(result)
+    })
   }
 
   async saveChatWatcher(settings: ChatWatcherSettings): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const r = setChatWatcher(config, settings)
-    return this.persist(r.ok ? commit(config, r.value) : r)
+    return this.write((config) => {
+      const r = setChatWatcher(config, settings)
+      return r.ok ? commit(config, r.value) : r
+    })
   }
 
   async saveAutomation(automation: AutomationDefinition): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const r = saveAutomation(config, automation)
-    return this.persist(r.ok ? commit(config, r.value) : r)
+    return this.write((config) => {
+      const r = saveAutomation(config, automation)
+      return r.ok ? commit(config, r.value) : r
+    })
   }
 
   async deleteAutomation(id: string): Promise<Result<WorkhubConfig>> {
-    const config = await this.current()
-    const r = deleteAutomation(config, id)
-    return this.persist(r.ok ? commit(config, r.value) : r)
+    return this.write((config) => {
+      const r = deleteAutomation(config, id)
+      return r.ok ? commit(config, r.value) : r
+    })
   }
 
   async addImported(additions: { profiles: Profile[]; accounts: AgentAccount[]; connections: Connection[] }): Promise<Result<WorkhubConfig>> {
-    return this.persist(addImported(await this.current(), additions))
+    return this.write((config) => addImported(config, additions))
   }
 
   /** Applies a Workhub 1 import plan (see `applyWorkhub1Import`); the result's notes are the plan's plus what was already here. */
   async applyImport(plan: ImportPlan): Promise<Result<WorkhubConfig>> {
-    return this.persist(applyWorkhub1Import(await this.current(), plan).result)
+    return this.write((config) => applyWorkhub1Import(config, plan).result)
   }
 
   async deleteAgent(id: string): Promise<Result<WorkhubConfig>> {
-    return this.persist(deleteAgent(await this.current(), id))
+    return this.write((config) => deleteAgent(config, id))
+  }
+
+  private async read(): Promise<WorkhubConfig> {
+    this.cache = await this.store.load()
+    return this.cache
+  }
+
+  /** Runs `task` after every task queued before it; a failed task does not stop the ones after it. */
+  private serial<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(task, task)
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  /** A queued write: `change` gets the config as it is when the write's turn comes. */
+  private write(change: (config: WorkhubConfig) => Result<WorkhubConfig>): Promise<Result<WorkhubConfig>> {
+    return this.serial(async () => this.persist(change(await this.current())))
   }
 
   private async persist(result: Result<WorkhubConfig>): Promise<Result<WorkhubConfig>> {
