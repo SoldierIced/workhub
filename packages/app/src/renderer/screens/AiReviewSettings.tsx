@@ -2,6 +2,7 @@ import { aiReviewSettings, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIE
 import { Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { Field, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
+import { useAgentOptions, withCurrent } from '../lib/agentOptions'
 
 const clamp = (n: number, min: number, max: number, fallback: number) => (Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback)
 
@@ -13,6 +14,8 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
   const reviewers = agents.filter((a) => a.agent.capabilities.appMode)
   const fallback = pickReviewer({ ...form, aiReview: { ...s, reviewerAgent: null } }, agents)
   const reviewer = pickReviewer(form, agents)
+  const { options } = useAgentOptions(reviewer?.key)
+  const models = options?.models ?? []
   return (
     <div className="flex flex-col gap-3 py-2" data-testid="ai-review-settings">
       <p className="text-sm text-subtle">{t('aiReview.settings.hint')}</p>
@@ -21,6 +24,9 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
       </SwitchRow>
       <SwitchRow label={t('aiReview.settings.auto')}>
         <Switch checked={s.auto} disabled={!s.enabled} onChange={(on) => set({ auto: on })} />
+      </SwitchRow>
+      <SwitchRow label={t('agentReview.approve')} hint={t('agentReview.approveHint')}>
+        <Switch checked={s.approveFindings} disabled={!s.enabled} onChange={(on) => set({ approveFindings: on })} />
       </SwitchRow>
       {reviewer && readOnlyGuard(reviewer.agent) === 'refusals' && (
         <p role="alert" className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning" data-testid="ai-review-no-readonly">
@@ -31,7 +37,7 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
         <Field label={t('aiReview.settings.reviewer')} help={t('help.aiReview.reviewer')}>
           <Select
             value={s.reviewerAgent ?? ''}
-            onChange={(v) => set({ reviewerAgent: v || null })}
+            onChange={(v) => set({ reviewerAgent: v || null, ...(v !== (s.reviewerAgent ?? '') ? { reviewerModel: '' } : {}) })}
             options={[
               { value: '', label: fallback ? t('aiReview.settings.reviewerDefault', { name: fallback.label }) : t('aiReview.settings.reviewerNone') },
               ...reviewers.map((a) => ({ value: a.key, label: a.label })),
@@ -40,7 +46,16 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
           />
         </Field>
         <Field label={t('aiReview.settings.reviewerModel')} hint={t('aiReview.settings.reviewerModelHint')}>
-          <Input value={s.reviewerModel} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerModel: e.target.value })} onBlur={() => set({ reviewerModel: s.reviewerModel.trim() })} />
+          {models.length ? (
+            <Select
+              value={s.reviewerModel}
+              onChange={(v) => set({ reviewerModel: v })}
+              data-testid="ai-review-reviewer-model"
+              options={[{ value: '', label: t('aiReview.settings.reviewerModelPlaceholder') }, ...withCurrent(models.map((m) => ({ value: m.id, label: m.name })), s.reviewerModel || undefined)]}
+            />
+          ) : (
+            <Input value={s.reviewerModel} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerModel: e.target.value })} onBlur={() => set({ reviewerModel: s.reviewerModel.trim() })} />
+          )}
         </Field>
         <Field label={t('aiReview.settings.reviewerEffort')} hint={t('aiReview.settings.reviewerEffortHint')}>
           <Input value={s.reviewerEffort} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerEffort: e.target.value })} onBlur={() => set({ reviewerEffort: s.reviewerEffort.trim() })} />

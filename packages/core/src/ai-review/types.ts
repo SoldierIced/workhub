@@ -51,6 +51,8 @@ export interface AiReviewSettings {
   reviewerSession: ReviewerSessionMode
   /** "Review with another agent": what the author is asked to write the brief; empty: `DEFAULT_REVIEW_BRIEF_PROMPT`. */
   briefPrompt: string
+  /** "Review with another agent": the loop waits for the user to pick which findings go to the author. */
+  approveFindings: boolean
 }
 
 export interface ReviewFinding {

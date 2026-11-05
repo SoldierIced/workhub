@@ -1,5 +1,5 @@
 // Types of the AI review bridge (window.hub.aiReview), shared by main, preload and renderer.
-import type { AgentDefinition, BranchReview, BudgetStatus, EscalationReason, FindingStatus } from '@workhub/core'
+import type { AgentDefinition, BranchReview, BudgetStatus, EscalationReason, FindingStatus, LoopFinding } from '@workhub/core'
 
 /** A review as the renderer shows it: the stored review plus the live dev session it belongs to. */
 export interface AiReviewView extends BranchReview {
@@ -52,6 +52,8 @@ export interface AgentReviewOptions {
   briefPrompt: string
   /** The profile's round limit, the dialog's default. */
   maxRounds: number
+  /** The profile's "ask me before the findings go to the author", the dialog's default. */
+  approveFindings: boolean
 }
 
 export interface AgentReviewRequest {
@@ -59,6 +61,8 @@ export interface AgentReviewRequest {
   /** The brief prompt as the user left it in the dialog: sent to the session's own agent. */
   prompt: string
   maxRounds: number
+  /** Wait for the user to pick the findings before they go to the author. */
+  approveFindings?: boolean
   /** "Run anyway" past a usage budget. */
   override?: boolean
 }
@@ -73,7 +77,7 @@ export type AgentReviewStartResult = { ok: true; loopId: string } | { ok: false;
  * fixing alternate; it ends approved, at its round limit, stopped (by the user, or a turn the user
  * cancelled) or failed.
  */
-export type ReviewLoopPhase = 'briefing' | 'starting' | 'reviewing' | 'fixing' | 'approved' | 'maxRounds' | 'stopped' | 'failed'
+export type ReviewLoopPhase = 'briefing' | 'starting' | 'reviewing' | 'awaitingApproval' | 'fixing' | 'approved' | 'maxRounds' | 'stopped' | 'failed'
 
 /** Why a loop failed; `detail` adds the agent's or the system's own words. */
 export type ReviewLoopFailure = 'authorClosed' | 'reviewerClosed' | 'reviewerStart' | 'noBrief' | 'emptyReview' | 'timeout' | 'budget' | 'error'
@@ -93,6 +97,11 @@ export interface ReviewLoopView {
   /** `cancelled`: a turn of the loop was cancelled in a chat; `user`: the Stop button. */
   stoppedBy?: 'user' | 'cancelled'
   detail?: string
+  /** The loop asks the user before the findings go to the author. */
+  approveFindings?: boolean
+  /** While `awaitingApproval`: the reviewer's findings to pick from (empty: it did not number them) and its whole answer. */
+  findings?: LoopFinding[]
+  review?: string
   startedAt: number
   updatedAt: number
 }
@@ -119,6 +128,11 @@ export interface AiReviewApi {
   stopLoop(loopId: string): Promise<void>
   /** Drops a finished loop from the panel. */
   dismissLoop(loopId: string): Promise<void>
+  /** While a loop waits for the user: the findings that go to the author (`all` for an unnumbered review) and a note. */
+  /** False when the loop no longer waits for a pick (it moved on, was stopped) or the pick was refused. */
+  approveFindings(loopId: string, keep: string[], note?: string): Promise<boolean>
+  /** Opens the loop in a window of its own, to read and pick the findings at full size. */
+  openLoopWindow(loopId: string): Promise<void>
   onLoopsChanged(cb: (loops: ReviewLoopView[]) => void): () => void
   onChanged(cb: (snapshot: AiReviewSnapshot) => void): () => void
   onNotice(cb: (notice: AiReviewNotice) => void): () => void

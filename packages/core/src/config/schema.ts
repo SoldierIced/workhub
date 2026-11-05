@@ -306,7 +306,8 @@ const aiReview = z.object({
   reviewerModel: z.string().trim().max(200).default(AI_REVIEW.reviewerModel),
   reviewerEffort: z.string().trim().max(40).default(AI_REVIEW.reviewerEffort),
   reviewerSession: z.enum(REVIEWER_SESSION_MODES).default(AI_REVIEW.reviewerSession),
-  briefPrompt: z.string().max(20_000).default(AI_REVIEW.briefPrompt)
+  briefPrompt: z.string().max(20_000).default(AI_REVIEW.briefPrompt),
+  approveFindings: z.boolean().default(AI_REVIEW.approveFindings)
 })
 
 // Plan module (optional, per profile). Every field defaults, so an older profile simply has none.

@@ -1,36 +1,15 @@
 import { useEffect, useState } from 'react'
 import { AUTOMATION_EFFORTS, CLAUDE_PERMISSION_MODES, fillFromPreset, supportsClearContext, type AutomationDefinition, type AutomationNotify, type EffectiveAgent, type WatchedChannel } from '@workhub/core'
-import type { AgentOptionsView } from '@shared/api'
 import { Button, Input, Kbd, Select, Switch, Textarea } from '../../components/atoms'
 import { Dialog, Field, SwitchRow } from '../../components/molecules'
 import { UnsavedPrompt, SAVE_SHORTCUT } from '../../components/organisms/UnsavedChanges'
 import { useI18n } from '../../i18n/I18nProvider'
 import { matchesShortcut } from '../../lib/shortcuts'
 import { isDirty } from '../../lib/unsavedChanges'
+import { useAgentOptions, withCurrent } from '../../lib/agentOptions'
 
 const DAYS = [1, 2, 3, 4, 5, 6, 0]
-/** Keeps a stored pick visible when the agent's list no longer (or not yet) offers it. */
-function withCurrent(list: { value: string; label: string }[], current: string | undefined) {
-  return current && !list.some((o) => o.value === current) ? [...list, { value: current, label: current }] : list
-}
 
-/** The models and modes the chosen agent offers (its CLI's listing, or what its last session reported). */
-function useAgentOptions(agentKey: string | undefined): { options: AgentOptionsView | null } {
-  const [options, setOptions] = useState<AgentOptionsView | null>(null)
-  useEffect(() => {
-    let live = true
-    setOptions(null)
-    if (!agentKey) return
-    void window.hub.agents.options(agentKey).then(
-      (o) => live && setOptions(o),
-      () => undefined
-    )
-    return () => {
-      live = false
-    }
-  }, [agentKey])
-  return { options }
-}
 
 const num = (v: string, fallback: number) => (Number.isFinite(Number(v)) && v.trim() !== '' ? Number(v) : fallback)
 

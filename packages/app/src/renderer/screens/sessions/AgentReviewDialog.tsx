@@ -37,6 +37,7 @@ export function AgentReviewDialog({ view, open, onOpenChange, onLoop }: { view: 
   const [prompt, setPrompt] = useState('')
   const [reviewerKey, setReviewerKey] = useState('')
   const [rounds, setRounds] = useState(3)
+  const [approve, setApprove] = useState(false)
   const [error, setError] = useState<{ text: string; budget: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -53,6 +54,7 @@ export function AgentReviewDialog({ view, open, onOpenChange, onLoop }: { view: 
           setOptions(o)
           setPrompt(o?.briefPrompt ?? '')
           setRounds(o?.maxRounds ?? 3)
+          setApprove(o?.approveFindings ?? false)
           setReviewerKey((k) => (o?.reviewers.some((r) => r.key === k) ? k : (o?.defaultReviewerKey ?? '')))
         },
         (e: unknown) => alive && setError({ text: errorText(e), budget: false })
@@ -71,7 +73,7 @@ export function AgentReviewDialog({ view, open, onOpenChange, onLoop }: { view: 
     setError(null)
     setBusy(true)
     try {
-      const r = await window.hub.aiReview.startLoop(view.id, { reviewerKey, prompt, maxRounds: rounds, ...(override ? { override } : {}) })
+      const r = await window.hub.aiReview.startLoop(view.id, { reviewerKey, prompt, maxRounds: rounds, approveFindings: approve, ...(override ? { override } : {}) })
       if (!r.ok) {
         setError({ text: t(AGENT_REVIEW_ERROR[r.reason], { detail: r.detail ?? '' }), budget: r.reason === 'budget' })
         return
@@ -157,6 +159,13 @@ export function AgentReviewDialog({ view, open, onOpenChange, onLoop }: { view: 
               <Input type="number" min={MIN_REVIEW_ROUNDS} max={MAX_REVIEW_ROUNDS} value={rounds} onChange={(e) => setRounds(clampRounds(e.target.valueAsNumber, rounds))} data-testid="agent-review-rounds" />
             </Field>
           </div>
+          <label className="flex cursor-pointer items-start gap-2 text-sm select-none" title={t('agentReview.approveHint')}>
+            <input type="checkbox" className="mt-0.5" checked={approve} onChange={(e) => setApprove(e.target.checked)} data-testid="agent-review-approve" />
+            <span>
+              {t('agentReview.approve')}
+              <span className="block text-xs text-subtle">{t('agentReview.approveHint')}</span>
+            </span>
+          </label>
           {error && (
             <div role="alert" className="flex items-center gap-2 text-sm text-danger" data-testid="agent-review-error">
               <span className="min-w-0 flex-1">{error.text}</span>

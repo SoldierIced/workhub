@@ -1,8 +1,9 @@
-import { ChevronRight, ScanSearch } from 'lucide-react'
+import { AppWindow, ChevronRight, ScanSearch } from 'lucide-react'
 import { useState } from 'react'
 import { REVIEW_SEVERITIES, cycleRound, roundLimit, aiReviewSettings, type FindingStatus, type ReviewFinding, type ReviewSeverity, type ReviewStatus } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import type { AiReviewStartBlocker, AiReviewView, ReviewLoopPhase, ReviewLoopView } from '@shared/ai-review-api'
+import type { LoopFinding } from '@workhub/core'
 import { Badge, Button, Select, Spinner, Textarea, type Tone } from '../../components/atoms'
 import { useToast } from '../../components/molecules'
 import { useAiReviews, autoOffForSession, holdForSession, reviewOfReviewer, loopForSession, reviewForSession, useReviewLoops } from '../../aiReviewStore'
@@ -128,7 +129,7 @@ function AutoReviewToggle({ view, compact }: { view: SessionView; compact?: bool
 }
 
 const LOOP_ENDED: ReviewLoopPhase[] = ['approved', 'maxRounds', 'stopped', 'failed']
-const LOOP_TONE: Record<ReviewLoopPhase, Tone> = { briefing: 'info', starting: 'info', reviewing: 'info', fixing: 'warning', approved: 'success', maxRounds: 'danger', stopped: 'neutral', failed: 'danger' }
+export const LOOP_TONE: Record<ReviewLoopPhase, Tone> = { briefing: 'info', starting: 'info', reviewing: 'info', awaitingApproval: 'warning', fixing: 'warning', approved: 'success', maxRounds: 'danger', stopped: 'neutral', failed: 'danger' }
 
 /** Where a "Review with another agent" loop is, in both of its chats: round, who it waits on, Stop. */
 export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sessionId: string }) {
@@ -142,13 +143,14 @@ export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sess
       <div className="flex items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-xs text-muted">{t('agentReview.loop.title', { reviewer: [loop.reviewerLabel, loop.reviewerModel].filter(Boolean).join(' · ') })}</span>
         <Badge tone={LOOP_TONE[loop.phase]} data-testid="review-loop-phase">
-          {!ended && <Spinner className="mr-1 size-2.5" />}
+          {!ended && loop.phase !== 'awaitingApproval' && <Spinner className="mr-1 size-2.5" />}
           {t(`agentReview.phase.${loop.phase}`)}
         </Badge>
       </div>
       {loop.round > 0 && <div className="text-xs text-subtle">{t('aiReview.round', { n: loop.round, max: loop.maxRounds })}</div>}
       {loop.phase === 'stopped' && loop.stoppedBy === 'cancelled' && <p className="text-xs text-subtle">{t('agentReview.stoppedByCancel')}</p>}
       {loop.phase === 'maxRounds' && <p className="text-xs text-subtle">{t('agentReview.maxRoundsHint')}</p>}
+      {loop.phase === 'awaitingApproval' && <FindingPicker key={`${loop.id}-${loop.round}`} loopId={loop.id} findings={loop.findings ?? []} review={loop.review ?? ''} />}
       {loop.failure && (
         <p className="text-xs break-words text-danger" data-testid="review-loop-failure">
           {t(`agentReview.failure.${loop.failure}`, { detail: loop.detail ?? '' })}
@@ -170,6 +172,72 @@ export function ReviewLoopCard({ loop, sessionId }: { loop: ReviewLoopView; sess
           </Button>
         )}
       </div>
+    </div>
+  )
+}
+
+/** The user picks which of the reviewer's findings go to the author; unchecked ones are set aside. */
+export function FindingPicker({ loopId, findings, review, roomy = false }: { loopId: string; findings: LoopFinding[]; review: string; roomy?: boolean }) {
+  const { t, tn } = useI18n()
+  const toast = useToast()
+  const ids = findings.length ? findings.map((f) => f.id) : ['all']
+  const [keep, setKeep] = useState<Set<string>>(() => new Set(ids))
+  const [note, setNote] = useState('')
+  const send = useAsyncAction(async () => {
+    if (!(await window.hub.aiReview.approveFindings(loopId, ids.filter((id) => keep.has(id)), note.trim() || undefined))) toast(t('agentReview.pick.notWaiting'))
+  })
+  const toggle = (id: string, on: boolean) => setKeep((prev) => { const next = new Set(prev); if (on) next.add(id); else next.delete(id); return next })
+  const count = keep.size
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="review-loop-picker">
+      <div className="flex items-center gap-1.5">
+        <span className={`flex-1 font-medium ${roomy ? 'text-sm' : 'text-xs'}`}>{t('agentReview.pick.title')}</span>
+        {!roomy && (
+          <Button size="sm" variant="ghost" onClick={() => void window.hub.aiReview.openLoopWindow(loopId)} title={t('agentReview.pick.openWindow')} data-testid="review-loop-open-window">
+            <AppWindow className="mr-1 size-3.5" />
+            {t('agentReview.pick.openWindow')}
+          </Button>
+        )}
+        {findings.length > 1 && (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setKeep(new Set(ids))}>{t('agentReview.pick.all')}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setKeep(new Set())}>{t('agentReview.pick.none')}</Button>
+          </>
+        )}
+      </div>
+      <p className="text-xs text-subtle">{t('agentReview.pick.hint')}</p>
+      <ul className={roomy ? 'flex flex-col gap-1.5' : 'flex max-h-72 flex-col gap-1 overflow-y-auto'}>
+        {findings.length === 0 ? (
+          <li className="flex items-start gap-1.5 text-sm" data-testid="review-loop-pick-all">
+            <input type="checkbox" className="mt-1" checked={keep.has('all')} onChange={(e) => toggle('all', e.target.checked)} aria-label={t('agentReview.pick.whole')} />
+            <span>{t('agentReview.pick.whole')}</span>
+          </li>
+        ) : (
+          findings.map((f) => (
+            <li key={f.id} className="flex items-start gap-1.5 rounded-md border border-border px-2 py-1 text-sm" data-testid={`review-loop-pick-${f.id}`}>
+              <input type="checkbox" className="mt-1" checked={keep.has(f.id)} onChange={(e) => toggle(f.id, e.target.checked)} aria-label={t('aiReview.select', { id: f.id })} />
+              <details className="min-w-0 flex-1" open={roomy}>
+                <summary className="cursor-pointer break-words">
+                  <span className="font-mono text-xs text-subtle">{f.id}</span>{' '}
+                  {f.severity && <Badge tone={SEVERITY_TONE[f.severity]} className="mr-1">{t(`aiReview.severity.${f.severity}`)}</Badge>}
+                  {f.title}
+                </summary>
+                <pre className={`mt-1 font-sans whitespace-pre-wrap break-words text-muted ${roomy ? 'text-sm' : 'text-xs'}`}>{f.text}</pre>
+              </details>
+            </li>
+          ))
+        )}
+      </ul>
+      {review && (
+        <details className={roomy ? 'text-sm' : 'text-xs'}>
+          <summary className="cursor-pointer text-muted">{t('agentReview.pick.showReview')}</summary>
+          <pre className={`mt-1 font-sans whitespace-pre-wrap break-words text-muted ${roomy ? '' : 'max-h-64 overflow-y-auto'}`}>{review}</pre>
+        </details>
+      )}
+      <Textarea rows={roomy ? 4 : 2} value={note} placeholder={t('agentReview.pick.note')} aria-label={t('agentReview.pick.note')} onChange={(e) => setNote(e.target.value)} data-testid="review-loop-pick-note" />
+      <Button size="sm" className="self-start" disabled={send.pending || (count === 0 && !note.trim())} onClick={() => send.run()} data-testid="review-loop-pick-send">
+        {count === 0 ? t('agentReview.pick.sendNoteOnly') : tn('agentReview.pick.send', count)}
+      </Button>
     </div>
   )
 }

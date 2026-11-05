@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { aiReviewSettings, CONFIG_VERSION, NO_CAPABILITIES, type BudgetStatus, type SessionOrigin, type SessionState, type WorkhubConfig } from '@workhub/core'
 import type { SessionView, StartSessionInput } from '../src/shared/api'
 import type { ReviewLoopView } from '../src/shared/ai-review-api'
-import { AgentReviewService, validAgentReviewRequest, type AgentReviewDeps } from '../src/main/agent-review'
+import { AgentReviewService, validAgentReviewRequest, validFindingPick, type AgentReviewDeps } from '../src/main/agent-review'
 
 function view(id: string, state: SessionState, over: Partial<SessionView> = {}): SessionView {
   return {
@@ -166,6 +166,73 @@ describe('AgentReviewService', () => {
     expect(s.prompts[3]![1]).toContain('round 2 of at most 3')
   })
 
+  it('waits for the user to pick findings: only the kept ones go to the author, the reviewer hears the rest were set aside', async () => {
+    const TWO = 'F1 [major] src/refund.ts:12 — refunds twice.\nF2 [nit] src/refund.ts:30 — rename x.\nVERDICT: CHANGES_REQUESTED'
+    const s = setup({ author: [BRIEF, 'Fixed F1.'], reviewer: [TWO, APPROVED] })
+    await s.service.start('dev', { ...request, approveFindings: true })
+    await until(() => s.loop()?.phase === 'awaitingApproval')
+    expect(s.loop()).toMatchObject({ approveFindings: true, findings: [{ id: 'F1', severity: 'major' }, { id: 'F2', severity: 'nit' }] })
+    expect(s.prompts).toHaveLength(2)
+    s.service.approve(s.loop()!.id, ['F1'], 'Keep the old name.')
+    await until(() => ended(s.loop()))
+    expect(s.loop()).toMatchObject({ phase: 'approved', round: 2 })
+    expect(s.loop()?.findings).toBeUndefined()
+    const fix = s.prompts[2]![1]
+    expect(fix).toContain('refunds twice')
+    expect(fix).not.toContain('F2 [nit]')
+    expect(fix).toContain('do not fix them')
+    expect(fix).toContain('Keep the old name.')
+    expect(s.prompts[3]![1]).toContain('F2')
+    expect(s.prompts[3]![1]).toContain('do not raise them again')
+  })
+
+  it('does not wait when approval is off, and Stop while waiting ends the loop', async () => {
+    const off = setup({ author: [BRIEF, 'fix'], reviewer: [CHANGES, APPROVED] })
+    await off.service.start('dev', request)
+    await until(() => ended(off.loop()))
+    expect(off.loop()?.phase).toBe('approved')
+    const s = setup({ author: [BRIEF], reviewer: [CHANGES] })
+    await s.service.start('dev', { ...request, approveFindings: true })
+    await until(() => s.loop()?.phase === 'awaitingApproval')
+    // Unnumbered findings: no list, the whole review is offered.
+    expect(s.loop()?.findings).toEqual([])
+    await s.service.stop(s.loop()!.id)
+    await until(() => ended(s.loop()))
+    expect(s.loop()).toMatchObject({ phase: 'stopped', stoppedBy: 'user' })
+    expect(s.prompts).toHaveLength(2)
+  })
+
+  it('names set-aside findings by round and title, so a later F2 is not confused with an earlier one', async () => {
+    const R1 = 'F1 [major] a.ts:1 — one\nF2 [nit] a.ts:2 — naming\nVERDICT: CHANGES_REQUESTED'
+    const R2 = 'F1 [major] b.ts:9 — leak\nF2 [minor] b.ts:10 — retry\nVERDICT: CHANGES_REQUESTED'
+    const s = setup({ author: [BRIEF, 'fixed', 'fixed'], reviewer: [R1, R2, APPROVED] })
+    await s.service.start('dev', { ...request, approveFindings: true })
+    await until(() => s.loop()?.phase === 'awaitingApproval')
+    expect(s.service.approve(s.loop()!.id, ['F1'])).toBe(true)
+    await until(() => s.loop()?.phase === 'awaitingApproval' && s.loop()?.round === 2)
+    expect(s.service.approve(s.loop()!.id, ['F2'])).toBe(true)
+    await until(() => ended(s.loop()))
+    // The author of round 2 gets the new F2 to fix; the last re-review lists both set-aside findings by round.
+    expect(s.prompts[4]![1]).toContain('b.ts:10 — retry')
+    const last = s.prompts[5]![1]
+    expect(last).toContain('- Round 1 F2: a.ts:2 — naming')
+    expect(last).toContain('- Round 2 F1: b.ts:9 — leak')
+    expect(last).not.toContain('Round 2 F2')
+  })
+
+  it('fails the wait when a chat closes, and refuses a pick once it no longer waits', async () => {
+    const s = setup({ author: [BRIEF], reviewer: [CHANGES] })
+    await s.service.start('dev', { ...request, approveFindings: true })
+    await until(() => s.loop()?.phase === 'awaitingApproval')
+    const id = s.loop()!.id
+    const i = s.views.findIndex((v) => v.id === 'rev1')
+    s.views[i] = { ...s.views[i]!, state: 'stopped' }
+    await until(() => ended(s.loop()))
+    expect(s.loop()).toMatchObject({ phase: 'failed', failure: 'reviewerClosed' })
+    expect(s.loop()?.findings).toBeUndefined()
+    expect(s.service.approve(id, ['all'])).toBe(false)
+  })
+
   it('stops at the round limit while the reviewer still requests changes', async () => {
     const s = setup({ author: [BRIEF, 'fix 1'], reviewer: [CHANGES, CHANGES, APPROVED] })
     await s.service.start('dev', { ...request, maxRounds: 2 })
@@ -244,5 +311,13 @@ describe('AgentReviewService', () => {
     expect(validAgentReviewRequest({ reviewerKey: 'kiro', prompt: ' ', maxRounds: 3 })).toBeNull()
     expect(validAgentReviewRequest({ reviewerKey: 'kiro', prompt: 'Brief' })).toBeNull()
     expect(validAgentReviewRequest({ prompt: 'Brief', maxRounds: 3 })).toBeNull()
+    expect(validAgentReviewRequest({ reviewerKey: 'kiro', prompt: 'Brief', maxRounds: 2, approveFindings: true })).toMatchObject({ approveFindings: true })
+  })
+
+  it('checks the picked findings', () => {
+    expect(validFindingPick(['F1', 'all'], ' note ')).toMatchObject({ keep: ['F1', 'all'] })
+    expect(validFindingPick([], undefined)).toEqual({ keep: [] })
+    expect(validFindingPick(['F1; rm'], undefined)).toBeNull()
+    expect(validFindingPick('F1', undefined)).toBeNull()
   })
 })
