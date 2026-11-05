@@ -4,6 +4,23 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.18](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.17...v2.0.0-alpha.18) (2026-11-05)
+
+
+### Features
+
+* **alerts:** configurable health and flow-map alerts with channels and quiet hours ([d1c2fe6](https://github.com/SoldierIced/workhub/commit/d1c2fe628de169f6e6cdfa181ff333664732aa88))
+* **flow-maps:** compact header, diagram/sequence toggle, collapsible drawer and stable fit ([c0bbb67](https://github.com/SoldierIced/workhub/commit/c0bbb67879cb157a698bb8d277109edceb75e676))
+* **flow-maps:** read maps from a local hourly history and list them by group ([e42418a](https://github.com/SoldierIced/workhub/commit/e42418acf05229261279009233c66c9585d7d411))
+* **settings:** settings as a searchable screen in its own window, accounts env in the secret store ([4a96a8d](https://github.com/SoldierIced/workhub/commit/4a96a8d083020627ca99904841272893d4b88245))
+* **tray:** flat menu bar panel with today block, per-account usage and a bell menu ([19a524e](https://github.com/SoldierIced/workhub/commit/19a524eb26dee2b7f4e0b677f8fdf7df36b27371))
+
+
+### Bug Fixes
+
+* **app:** keep macOS update paths posix and the control socket test separator-agnostic on Windows ([2cb29cc](https://github.com/SoldierIced/workhub/commit/2cb29cc039b44ae1ffe77cb0c8a43cd0b5830dd5))
+* review batch across core, adapters and app (serialized config writes, worktrees, updater, watchers, control server) ([6cb31e7](https://github.com/SoldierIced/workhub/commit/6cb31e780a2bea82e808d09cfa453056e30595a7))
+
 ## [2.0.0-alpha.17](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.16...v2.0.0-alpha.17) (2026-11-05)
 
 
