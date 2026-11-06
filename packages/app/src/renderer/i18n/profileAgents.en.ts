@@ -1,0 +1,27 @@
+/** Settings → Profiles → a profile → Agents, and the agent list of New session that follows its order. */
+export const profileAgentsEn = {
+  'profileAgents.title': 'Agents this profile offers, in order',
+  'profileAgents.hint': 'Drag ⋮⋮ or use ↑↓',
+  'profileAgents.ownSignIn': 'its own sign-in',
+  'profileAgents.notOffered': 'not offered in this profile',
+  'profileAgents.usage': '{percent} %',
+  'profileAgents.default': 'Default',
+  'profileAgents.drag': 'Drag {name}',
+  'profileAgents.up': 'Move {name} up',
+  'profileAgents.down': 'Move {name} down',
+  'profileAgents.offer': 'Offer {name}',
+  'profileAgents.footnote': 'Default = the first offered row. New session, opening a session from a PR or a ticket, and the pre-PR review when you picked no reviewer use it.',
+  'profileAgents.noProfile': 'This profile no longer exists.',
+  'profileAgents.switch.title': 'Account switch',
+  'profileAgents.switch.label': 'If a Claude account reaches its limit',
+  'profileAgents.switch.ask': 'Ask me',
+  'profileAgents.switch.automatic': 'Automatic',
+  'profileAgents.switch.off': 'Never',
+  'profileAgents.switch.hint': 'The session continues with the next Claude account of the list above (here: {order}), with the same context',
+  'profileAgents.switch.only': '{name} is the only Claude account offered: nothing to switch to',
+  'profileAgents.switch.none': 'This profile offers no Claude account: nothing to switch to',
+  'newSession.agentDefault': '{label} (default)',
+  'newSession.agentUsage': '{label} · {percent} %',
+  'newSession.orderAgents': 'Order and pick agents of {profile}…',
+  'newSession.accountDefaultModel': 'Account default'
+} as const
