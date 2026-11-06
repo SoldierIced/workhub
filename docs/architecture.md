@@ -124,7 +124,7 @@ never breaks the session.
 
 The data folder is, in order of precedence: `WORKHUB_DATA_DIR`; `packages/app/.dev-data/` in a
 development run (git-ignored, and Electron's own files go in `electron/` inside it); the app's
-`userData` folder in a packaged build. **Settings → General → Storage** shows the folder of the
+`userData` folder in a packaged build. **Settings → Advanced → Data** shows the folder of the
 running app.
 
 | Entry | Contents |

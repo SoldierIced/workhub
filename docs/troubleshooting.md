@@ -6,8 +6,8 @@ Workhub keeps an always-on log of the main process.
 
 - **Open it**: **Help → Reveal Logs** shows `main.log` in your file manager, with what is buffered
   written out first.
-- **Where it is**: `<dataDir>/logs/main.log`. The data folder is shown in **Settings → General →
-  Storage**. In a development run it is `packages/app/.dev-data/`, or `WORKHUB_DATA_DIR` when set.
+- **Where it is**: `<dataDir>/logs/main.log`. The data folder is shown in **Settings → Advanced →
+  Data**. In a development run it is `packages/app/.dev-data/`, or `WORKHUB_DATA_DIR` when set.
 - **Rotation**: when `main.log` reaches 4 MB it is renamed to `main.1.log`, the previous `main.1.log`
   becomes `main.2.log`, and the oldest copy is dropped. Two rotated copies are kept, so the logs
   never take more than about 12 MB. The file is created with owner-only permissions.
@@ -43,8 +43,8 @@ On the Health screen, an environment that cannot be read shows the reason and **
 
 | Message | Likely cause and fix |
 |---|---|
-| "Elasticsearch is unreachable (is the VPN up?)" | The host cannot be reached. Connect the VPN (a cached DNS answer can make the VPN look up while connections still fail), then **Try again**. Check the URL in **Settings → Health**. |
-| "Elasticsearch refused the credentials (HTTP 401)" (or 403) | The API key or password is wrong, expired or lacks read access. Enter it again in **Settings → Health** (leave the field empty only to keep the stored one) and use **Test connection**. |
+| "Elasticsearch is unreachable (is the VPN up?)" | The host cannot be reached. Connect the VPN (a cached DNS answer can make the VPN look up while connections still fail), then **Try again**. Check the URL in **Settings → Profiles → (profile) → Screens → Health**. |
+| "Elasticsearch refused the credentials (HTTP 401)" (or 403) | The API key or password is wrong, expired or lacks read access. Enter it again in **Settings → Profiles → (profile) → Screens → Health** (leave the field empty only to keep the stored one) and use **Test connection**. |
 | "The Elasticsearch certificate was rejected" | The server certificate is not trusted. Use **TLS certificate → Pin one certificate** with the server's SHA-256 fingerprint for a self-signed certificate. **No validation** works but exposes the credentials to anyone on the network path. |
 | "The query took longer than 20 s and was dropped" | The cluster is slow or overloaded. Try again later, or raise **Refresh every** so reads are less frequent. |
 | A figure "from {time}" | The last read failed, so the screen shows older data. |
@@ -71,7 +71,7 @@ Claude Code needs no separate install; sign in with a Claude account from the se
 
 ## A Plan calendar fails
 
-On the Plan screen and in **Settings → Plan → Calendars**, a calendar that cannot be read shows why.
+On the Plan screen and in **Settings → Profiles → (profile) → Screens → Plan → Calendars**, a calendar that cannot be read shows why.
 **Test calendar** runs the same read.
 
 | Message | Likely cause and fix |
@@ -103,7 +103,7 @@ terminal opened outside it has none of these variables.
 
 ## Updates
 
-- Update checks are off by default. Turn on **Settings → General → Updates → Check for updates**, or
+- Update checks are off by default. Turn on **Settings → General → Updates → Check for new versions automatically**, or
   press **Check now**. Updates are only checked in the installed app, not in a development run.
 - **Install update** downloads and installs the new version, then asks to **Restart now** or
   **Later** (it starts the next time you open Workhub). On Windows and the Linux AppImage, **Later**

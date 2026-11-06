@@ -11,8 +11,8 @@ levels and where tickets go are yours to set.
 
 ## Turning it on
 
-Plan is an optional module, off by default. Turn it on per profile in **Settings → Plan → Plan
-module** (or **Settings → Profiles → Modules**). The **Plan** screen (⌘9) then appears in the
+Plan is an optional module, off by default. Turn it on per profile with the **Plan** switch in
+**Settings → Profiles → (profile) → Screens**. The **Plan** screen (⌘9) then appears in the
 navigation and Home gets the **Next meetings**, **Inbox** and **Milestones at risk** cards. The Plan
 item in the navigation shows how many inbox items wait under **To review**.
 
@@ -37,7 +37,7 @@ Where to find it:
 - **iCloud Calendar**: in the Calendar app (or iCloud.com), share the calendar as a **Public
   Calendar** and copy the `webcal://` link. Anyone with the link can read it, as with the others.
 
-Then in **Settings → Plan → Calendars**, **Add calendar**:
+Then in **Settings → Profiles → (profile) → Screens → Plan → Calendars**, **Add calendar**:
 
 - **Name**: how the calendar shows in Workhub.
 - **Your address in this calendar** (optional): your email in that calendar. Meetings you declined
@@ -151,7 +151,7 @@ Workhub never starts a brief by itself unless a brief rule says so.
 
 ## People
 
-**Settings → Plan → People** (or the People tab) holds the people you meet:
+**Settings → Profiles → (profile) → Screens → Plan → People** (or the People tab) holds the people you meet:
 
 - **Email addresses** match them to meeting attendees.
 - **GitHub user**, **Jira name**, **Linear name** and **Slack handle** find the pull requests and
@@ -190,7 +190,7 @@ and, for a counted one, the counts and when they were read:
 | **Done** | All the work is done (100 %, every ticket of the query done, or every piece done). |
 | **Not started** | Before its start date. |
 | **Late** | Past its end date and not done. |
-| **At risk** | Progress is behind the share of time gone by more than the margin (default 10 points, **Settings → Plan → Inbox → At-risk margin**), or a counted milestone has started and its query finds no ticket, or a milestone made of pieces has started with no pieces. |
+| **At risk** | Progress is behind the share of time gone by more than the margin (default 10 points, **Settings → Profiles → (profile) → Screens → Plan → Inbox → At-risk margin**), or a counted milestone has started and its query finds no ticket, or a milestone made of pieces has started with no pieces. |
 | **On track** | Otherwise. |
 
 **Add milestone** opens the form of a new milestone in a window; saving creates it and closes the
@@ -317,7 +317,7 @@ Items come from:
   to propose follow-ups this way. See [Agents and the plan](#agents-and-the-plan) for everything
   else an agent can read and change.
 
-**Settings → Plan → Inbox** (saved with the rest of the tab):
+**Settings → Profiles → (profile) → Screens → Plan → Inbox** (saved with the rest of the tab):
 
 - **Areas**: the names you file items under (comma-separated).
 - **Criticality levels**: each with a name and the tracker priority it maps to (1 highest or
@@ -377,7 +377,7 @@ off in the profile, the answers are empty and say why.
 | `DELETE /v1/milestones/:id` | Deletes a milestone. |
 | `GET /v1/people` | Your people's names, emails and handles, to match attendees. Notes are not shared. |
 
-Milestone changes follow **Settings → Plan → Inbox → Milestone changes by agents**. With **Ask me
+Milestone changes follow **Settings → Profiles → (profile) → Screens → Plan → Inbox → Milestone changes by agents**. With **Ask me
 first** (the default) a change answers `202` with `pending: true` and waits under **Proposed by
 agents** on the Milestones tab, showing what would change; **Apply** saves it, **Reject** drops
 it. A proposal over a milestone you edited after the agent asked cannot be applied, so an old

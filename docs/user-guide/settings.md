@@ -14,31 +14,36 @@ Models come from the agent (Claude's aliases `opus`, `sonnet` and `haiku` until 
 efforts are **Low**, **Medium**, **High**, **Extra high** and **Max**. **Other…** opens a text field
 for any other value; a saved value the list does not know shows there, never lost.
 
-The navigation on the left has three groups. A red dot marks a section with a problem in the stored
-settings; the **Fix** buttons at the top open that section on the item to fix.
+The navigation on the left has six entries in three groups: what holds for the whole app (**This
+app**), what each profile has (**Per profile**), and **Advanced**. Everything outside **Profiles**
+applies to the whole app; everything inside a profile applies to that profile only. A red dot marks a
+section with a problem in the stored settings; the **Fix** buttons at the top open the place that
+fixes it (a profile's problem opens that profile on the right tab).
 
 | Group | Section | What it holds |
 |---|---|---|
-| Workhub | **General** | **Language** (System, English or Spanish), reopening sessions on launch, **Updates**, **Voice** (read aloud) and the Help and setup entries. |
-| | **Appearance** | Light, dark or system; the **Terminal color scheme**; terminal font and size; **App text size** and **Conversation text size** (kept on this computer). |
-| | **Notifications** | **Show notifications** (the master switch), **Send a test**, the system permission; sessions (Replied, Needs an answer, Error); Slack, Automations, Tickets, Health, Flow maps, meetings and metric alerts; **Pause notifications**; pull request notifications and **Protected branches**; the menu bar icon and the app icon badge; **Menu bar panel** (which blocks the panel shows, macOS and Windows). |
-| | **Alerts** | Thresholds and rules for the alerts Workhub raises. |
+| This app | **General** | **Language and appearance**: language (System, English or Spanish), **Light or dark**, **Terminal colours** (**Change…** opens the searchable list with a preview), **Use these colours in the whole app**, and **Text size** (**Adjust…**: app and conversation text, terminal font and size; kept on this computer). **On open and close**: **Reopen my sessions when Workhub starts** and **When the window closes, keep running in the menu bar** (notification area on Windows, status area on Linux). **Voice**: read replies of new sessions aloud, **Voice and speed** on one row with **Test**, and the **Model to summarize before reading**. **Updates**: **Check for new versions automatically**. |
+| | **Notifications and alerts** | What Workhub tells you about, where, and when it stays quiet; the app icon badge and the menu bar panel. |
 | | **Agents** | One card per agent installed on this computer, with its own sign-in and its accounts, **Add account** and each account's form; the usage reading switch under each agent. See [Agents](#agents). |
 | | **Connections** | The services Workhub reads, grouped by kind (Code, Tickets, Calendars, Slack, Health), each with the profiles and screens that use it. See [Connections](#connections). |
-| Profile | **Profile and folders** | Name, colour, folders, folder options, worktrees, links, environment variables and the Slack archive time. See [Profiles](profiles.md). |
-| | **Modules and screens** | Which optional screens the profile has (Health, Flow maps, Plan, Slack, Automations; Tickets and Pull requests are always on), the connection each one reads with an **Edit** link, and the profile's connections, accounts and agents. |
-| | **Tickets** | Jira and Linear. See [Tickets](tickets.md). |
-| | **Health** | Elasticsearch connection and environments. See [Health](health.md). |
-| | **Flow maps** | The maps folder (one JSON file per map, **Reveal folder**) and importing maps from JSON files. See [Flow maps](flow-maps.md). |
-| | **Plan** | Calendars (private ICS addresses, tested and stored as secrets), how often they are read, the default reminder, reminder and brief rules, the brief prompt and people. See [Plan](plan.md). |
-| | **Slack** | The watcher, channels and tracking hook (shared by every profile). See [Slack](slack.md). |
-| | **AI review** | The [review before PR](review-before-pr.md) settings. |
-| Advanced | **Storage and data** | Where `config.json` and `secrets.json` are. |
-| | **Import from Workhub 1** | macOS, while Workhub 1 is on this Mac. |
+| Per profile | **Profiles** | The list of profiles: colour and symbol, name, an **active** badge and a summary (folders, screens that are on, agents offered), with **Open** and a copy button that duplicates it; **New profile** adds one. See below. |
+| Advanced | **Advanced** | **Diagnostics and help** (**Setup check**, **Welcome tour**, **How Workhub works**) and **Data**: where `config.json` and `secrets.json` are kept and, on macOS while Workhub 1 is on this Mac, **Import from Workhub 1**. |
 
-The **Profile** group starts on the active profile. Its picker edits any other profile, or a new
-one, without changing the app's active profile; the sections of a module that is off for that
-profile say so and link to **Modules and screens**.
+### A profile
+
+**Open** on a profile shows it, with every profile listed under **Profiles** in the navigation (the
+open one marked). Editing a profile never changes which profile is active; that is chosen in the
+sidebar. Its header holds the name, colour and symbol, and **Delete**. Under it, four tabs:
+
+| Tab | What it holds |
+|---|---|
+| **Folders** | The profile's folders, the default folder for new sessions, each folder's options, and worktrees ("each new session in its own worktree"). |
+| **Screens** | One row per screen with its switch and the connection it reads on the same row: **Pull requests**, **Tickets**, **Slack**, **Automations**, **Health**, **Flow maps** (reads the Health connection), **Plan** and **Review before the pull request**. Opening a row shows that screen's settings for this profile: trackers ([Tickets](tickets.md)), the Slack archive time and the watcher ([Slack](slack.md)), the Elasticsearch connection, environments, alert kinds, metric rules and quiet hours ([Health](health.md)), the maps folder and limits ([Flow maps](flow-maps.md)), calendars, reminders, the brief, people and the inbox ([Plan](plan.md)), and the [review before PR](review-before-pr.md). **None** as the connection turns Pull requests or Tickets off. |
+| **Agents** | **Agents this profile offers, in order** (the first one offered is the default), **If a Claude account reaches its limit** (account failover), and which accounts and agents the profile offers. |
+| **Sessions and links** | **Open links with**, **Use this profile for folders without one**, and the environment variables of its sessions (values stored encrypted). |
+
+Old links into Settings keep working: a link to a former section (Tickets, Health, Plan, AI review…)
+opens the active profile on the **Screens** tab, on that screen's row.
 
 ## Profile › Agents
 
@@ -68,13 +73,14 @@ to the other.
 
 Type in the box at the top of the navigation, or press ⌘/Ctrl+F while Settings is open. Every
 setting's label, hint and help text is searched in the current language, without regard to case or
-accents. Each result shows where it lives (Group › Section › Subgroup), its label and hint. Enter (or
-a click) opens the section, scrolls to the setting and highlights it for a moment; the arrow keys
-move between results. Esc clears the search, and a second Esc closes Settings.
+accents. Each result shows where it lives (Group › Section › Subgroup, and for a profile's setting
+the tab and screen), its label and hint. Enter (or a click) opens the section, scrolls to the
+setting and highlights it for a moment; a profile's setting opens the profile that is open (else the
+active one) on its tab. The arrow keys move between results. Esc clears the search, and a second Esc closes Settings.
 
 ## Where settings live
 
-**Settings → Storage and data** shows the folder with `config.json` (settings, never secrets) and
+**Settings → Advanced → Data** shows the folder with `config.json` (settings, never secrets) and
 `secrets.json` (tokens, encrypted with the operating system keychain). Workhub makes no network
 calls except to services you configure and, if you turn it on, GitHub for update checks. There is no
 telemetry. See [SECURITY.md](../../SECURITY.md) for what is stored where.
@@ -187,12 +193,13 @@ Health, usage and recent notifications, each a chip that turns on or off.
 
 ## Read aloud
 
-**Voice** reads each finished reply aloud with a voice installed on your computer: pick the voice
-and speed, **Test voice**, and choose whether new sessions start with it. A session's own switch (in
+**Settings → General → Voice** reads each finished reply aloud with a voice installed on your
+computer: pick the voice and speed on one row, **Test** them, and choose whether new sessions start
+with it. A session's own switch (in
 its sidebar menu) overrides the default. Sessions opened by automations, reviews or Slack start with
 it off. Stop speaking with ⌘/Ctrl+Alt+. .
 
-**Summary model** is the Claude model the chat's **Listen** button summarizes a long agent message
+**Model to summarize before reading** is the Claude model the chat's **Listen** button summarizes a long agent message
 with before reading it (a list of Claude models with **Other…**; empty: **haiku**). Each summary is a small paid query on the session's
 Claude account; a small model costs the least. See [Sessions](sessions.md#the-composer).
 

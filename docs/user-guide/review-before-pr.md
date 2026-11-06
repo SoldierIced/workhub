@@ -33,7 +33,7 @@ In the dialog:
 | **Prompt for this session's agent** | Sent as is to the author. Edit or add to it. |
 | **Reviewer** | An agent of this profile with a chat. The default is an installed agent of a different kind than the session's own, in the profile's agent order. |
 | **Max rounds** | Reviews before the loop stops while the reviewer still requests changes. Default 3. |
-| **Ask me before the findings go to the author** | Pauses the loop after each review that requests changes; see below. The default comes from **Settings → Profiles → AI review**. |
+| **Ask me before the findings go to the author** | Pauses the loop after each review that requests changes; see below. The default comes from **Settings → Profiles → (profile) → Screens → Review before the pull request**. |
 | **Send** | Starts the loop. |
 | **Review loop instead** | Starts a round of the branch review loop described below. |
 
@@ -57,7 +57,7 @@ and send from either place.
 ### The base prompt
 
 The prompt in the dialog starts from a per-profile text. Change the default in **Settings →
-Profiles → AI review → Brief prompt for "Review with another agent"**; **Use the default** restores
+Profiles → (profile) → Screens → Review before the pull request → Brief prompt for "Review with another agent"**; **Use the default** restores
 the built-in one. Keep the instruction to put the brief between the `<review-brief>` markers, or
 Workhub sends the whole reply to the reviewer.
 
@@ -108,7 +108,7 @@ reviewer asks you to decide scope or design, when a finding stays open after two
 when the dev agent disputes a finding. A review is also held when the reviewer's account is past
 its usage ceiling (**Run anyway** overrides it).
 
-Settings are per profile, in **Settings → Profiles → AI review**:
+Settings are per profile, in **Settings → Profiles → (profile) → Screens → Review before the pull request**:
 
 | Setting | Meaning |
 |---|---|

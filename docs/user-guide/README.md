@@ -22,4 +22,4 @@ One page per area of Workhub 2. Names in **bold** are labels you see in the app 
 Back to the [documentation index](../README.md). Problems: [Troubleshooting](../troubleshooting.md).
 
 Screens tied to an optional module (Slack, Automations, Health, Flow maps, Plan) show up only when
-the active profile enables the module in **Settings → Profiles**.
+the active profile turns the screen on in **Settings → Profiles → (profile) → Screens**.

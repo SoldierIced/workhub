@@ -85,7 +85,7 @@ stays in the current view.
 - **Listen**: next to **Copy** under each agent message. A short message (under about 400
   characters once code, links and formatting are left out) is read aloud as it is. A longer one is
   first summarized into a few spoken sentences, in the message's language, by a small Claude model
-  (**haiku** by default, **Settings → General → Voice → Summary model**) on the session's Claude
+  (**haiku** by default, **Settings → General → Voice → Model to summarize before reading**) on the session's Claude
   account (Claude's default account for other agents). Each summary is one small paid query that
   spends a few hundred to a few thousand tokens of that account; it is not counted in the
   token spend on Home. While it summarizes, the button shows a spinner (click to cancel); while it
@@ -141,7 +141,7 @@ brings it back; its icon shows whether the panel is open.
 - **Close**: the close button on the row. A session that is working asks first (**Stop and
   close**). A session in a worktree Workhub created offers to keep or remove the worktree. The
   conversation stays in History.
-- **Reopen sessions on launch** (**Settings → General → Sessions**): the sessions that were open
+- **Reopen my sessions when Workhub starts** (**Settings → General → On open and close**): the sessions that were open
   when Workhub quit come back in the sidebar, in their groups and windows, and resume their
   conversations. Nothing is sent to the agents again.
 
