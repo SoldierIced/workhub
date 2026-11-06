@@ -4,6 +4,18 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.19](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.18...v2.0.0-alpha.19) (2026-11-06)
+
+
+### Features
+
+* **app:** log why a Listen summary failed to main.log ([932fe11](https://github.com/SoldierIced/workhub/commit/932fe112607e3da34dc8a28f48675a7ae5204a19))
+
+
+### Bug Fixes
+
+* **app:** launch the user's Claude Code on Windows and keep the window controls on the theme ([27ca3d6](https://github.com/SoldierIced/workhub/commit/27ca3d6ffacb91587e7be43f638cb215cc1160b5))
+
 ## [2.0.0-alpha.18](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.17...v2.0.0-alpha.18) (2026-11-05)
 
 
