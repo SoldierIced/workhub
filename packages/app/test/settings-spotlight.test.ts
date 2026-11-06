@@ -11,11 +11,15 @@ describe('Settings targets', () => {
     expect(parseSettingsTarget('profiles')).toEqual({ tab: 'profiles' })
     expect(parseSettingsTarget(undefined)).toEqual({})
     expect(parseSettingsTarget('#updates')).toEqual({ group: 'updates' })
+    expect(parseSettingsTarget('profiles/acme/screens#health')).toEqual({ tab: 'profiles', path: ['acme', 'screens'], group: 'health' })
+    expect(parseSettingsTarget('profiles//')).toEqual({ tab: 'profiles' })
   })
 
   it('maps a target to its section, keeping the group to point at', () => {
     expect(settingsTarget('general#updates')).toEqual({ section: 'general', group: 'updates' })
-    expect(settingsTarget('trackers')).toEqual({ section: 'tickets' })
+    expect(settingsTarget('trackers')).toEqual({ section: 'connections', group: 'tickets' })
+    expect(settingsTarget('appearance')).toEqual({ section: 'general', group: 'appearance' })
+    expect(settingsTarget('health#x')).toEqual({ section: 'profiles', profile: { tab: 'screens' }, group: 'x' })
     expect(settingsTarget('#updates')).toEqual({ section: 'general', group: 'updates' })
     expect(settingsTarget(null)).toEqual({ section: 'general' })
   })

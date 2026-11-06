@@ -32,6 +32,7 @@ import { planEs } from './plan.es'
 import { plannerEs } from './planner.es'
 import { alertsEs } from './alerts.es'
 import { settingsNavEs } from './settingsNav.es'
+import { settingsV2Es } from './settingsV2.es'
 import { settingsAccountsEs } from './settingsAccounts.es'
 import { notificationsAlertsEs } from './notificationsAlerts.es'
 import { profileAgentsEs } from './profileAgents.es'
@@ -508,6 +509,7 @@ export const es: Record<keyof typeof en, string> = {
   ...plannerEs,
   ...alertsEs,
   ...settingsNavEs,
+  ...settingsV2Es,
   ...settingsAccountsEs,
   ...notificationsAlertsEs,
   ...profileAgentsEs,

@@ -1,4 +1,4 @@
-/** Settings screen: the grouped navigation, the profile picker, search and the new sections. */
+/** Settings screen: the grouped navigation, search and the section texts (Settings v2 adds `settingsV2.*`). */
 export const settingsNavEn = {
   'settings.windowTitle': 'Settings — Workhub',
   'settings.navLabel': 'Settings sections',
@@ -39,7 +39,7 @@ export const settingsNavEn = {
   'settings.profileActive': '{name} (active)',
   'settings.profileNew': 'New profile…',
   'settings.profileEditing': 'Editing {name}. The active profile stays {active}.',
-  'settings.profileFirst': 'Create a profile first, in Profile and folders.',
+  'settings.profileFirst': 'Create a profile first, in Profiles.',
   'settings.search.placeholder': 'Search settings',
   'settings.search.empty': 'No setting matches "{query}".',
   'settings.search.results': 'Search results',

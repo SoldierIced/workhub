@@ -5,6 +5,8 @@ import type { MessageKey, Params } from '../i18n/translate'
 export interface IssueTarget {
   tab: 'connections' | 'trackers' | 'health' | 'profiles' | 'modules' | 'accounts' | 'plan'
   id?: string
+  /** For a profile's problem: the tab of the open profile that fixes it (`ProfileTab` in Settings). */
+  profileTab?: 'folders' | 'screens' | 'agents' | 'sessions'
 }
 
 /** A stored-config problem in plain words, with the action that fixes it. */
@@ -50,13 +52,14 @@ export function humanIssue(issue: ValidationIssue, config: WorkhubConfig, provid
     const p = config.profiles.find((x) => x.id === id)
     if (!p) return raw
     const target: IssueTarget = { tab: 'profiles', id: p.id }
-    // A profile's connection, account and agent picks live in Modules and screens.
-    const picks: IssueTarget = { tab: 'modules', id: p.id }
+    // A profile's connections are picked in its Screens tab; its accounts and agents in its Agents tab.
+    const picks: IssueTarget = { tab: 'modules', id: p.id, profileTab: 'screens' }
+    const offered: IssueTarget = { tab: 'modules', id: p.id, profileTab: 'agents' }
     const name = p.name || p.id
     const kind = issue.path.split('.')[3] as ConnectionKind | undefined
     if (field === 'connections' && kind && kind in KIND_KEY) return { key, message: 'issues.profileConnection', params: { name, kind: label(KIND_KEY[kind]) }, action: { label: 'issues.editProfile', target: picks }, technical }
-    if (field === 'accountIds') return { key, message: 'issues.profileAccount', params: { name }, action: { label: 'issues.editProfile', target: picks }, technical }
-    if (field === 'agentIds') return { key, message: 'issues.profileAgent', params: { name }, action: { label: 'issues.editProfile', target: picks }, technical }
+    if (field === 'accountIds') return { key, message: 'issues.profileAccount', params: { name }, action: { label: 'issues.editProfile', target: offered }, technical }
+    if (field === 'agentIds') return { key, message: 'issues.profileAgent', params: { name }, action: { label: 'issues.editProfile', target: offered }, technical }
     return { ...raw, action: { label: 'issues.editProfile', target } }
   }
 

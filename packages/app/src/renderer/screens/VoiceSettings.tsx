@@ -19,7 +19,7 @@ export function voiceOptions(voices: readonly { name: string; lang: string }[]):
     .map((v) => ({ value: v.name, label: `${v.name} (${v.lang.replace('_', '-')})` }))
 }
 
-/** Settings → read replies aloud: voice, speed, test and the default for new sessions. */
+/** Settings → General › Voice: the default for new sessions, voice and speed (with a test) on one row, and the summary model. */
 export function VoiceSettingsGroup({ config, editable, run }: { config: WorkhubConfig; editable: boolean; run: Run }) {
   const { t } = useI18n()
   const platform = usePlatform()
@@ -39,42 +39,58 @@ export function VoiceSettingsGroup({ config, editable, run }: { config: WorkhubC
   const voiceList = voiceOptions(voices)
   const missing = options.speechVoice !== '' && voices.length > 0 && !known
   return (
-    <SettingsGroup title={t('voice.group')} help={t('voice.help')} footnote={t('voice.shortcutNote', { keys: stopSpeakingKeys(platform) })}>
-      <SwitchRow label={t('voice.default')} hint={t('voice.defaultHint')}>
-        <Switch checked={options.readAloud} disabled={!editable} onChange={(on) => save({ readAloud: on })} />
+    <SettingsGroup anchor="voice" title={t('voice.group')} help={t('voice.help')} footnote={t('voice.shortcutNote', { keys: stopSpeakingKeys(platform) })}>
+      <SwitchRow label={t('settingsV2.voice.default')} hint={t('voice.defaultHint')}>
+        <Switch checked={options.readAloud} disabled={!editable} aria-label={t('settingsV2.voice.default')} onChange={(on) => save({ readAloud: on })} />
       </SwitchRow>
-      <SettingRow label={t('voice.voice')} hint={voices.length === 0 ? t('voice.unsupported') : missing ? t('voice.missing') : undefined}>
-        <Select
-          aria-label={t('voice.voice')}
-          value={options.speechVoice}
-          disabled={!editable}
-          onChange={(v) => save({ speechVoice: v })}
-          options={[
-            { value: '', label: t('voice.system') },
-            ...(missing ? [{ value: options.speechVoice, label: t('voice.notInstalled', { voice: options.speechVoice }) }] : []),
-            ...voiceList
-          ]}
-        />
-      </SettingRow>
-      <SettingRow label={t('voice.rate')} hint={t('voice.wpm', { wpm: rate })}>
-        <input
-          type="range"
-          aria-label={t('voice.rate')}
-          min={SPEECH_RATE_RANGE[0]}
-          max={SPEECH_RATE_RANGE[1]}
-          step={5}
-          value={rate}
-          disabled={!editable}
-          className="w-full accent-[var(--wh-accent)]"
-          onChange={(e) => setRate(Number(e.target.value) || DEFAULT_SPEECH_RATE)}
-          // One write when the thumb is let go, not one per step of the drag.
-          onPointerUp={() => rate !== options.speechRate && save({ speechRate: rate })}
-          onKeyUp={() => rate !== options.speechRate && save({ speechRate: rate })}
-        />
-      </SettingRow>
-      <SettingRow label={t('voice.listenModel')} hint={t('voice.listenModelHint')}>
+      {/* Voice and speed on one row, with the button that tries them. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3" data-settings-row>
+        <div className="min-w-0">
+          <span className="block text-base">{t('settingsV2.voice.voiceRate')}</span>
+          <p className="text-xs text-subtle">{voices.length === 0 ? t('voice.unsupported') : missing ? t('voice.missing') : t('voice.wpm', { wpm: rate })}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Select
+            className="w-56"
+            aria-label={t('voice.voice')}
+            value={options.speechVoice}
+            disabled={!editable}
+            onChange={(v) => save({ speechVoice: v })}
+            options={[
+              { value: '', label: t('voice.system') },
+              ...(missing ? [{ value: options.speechVoice, label: t('voice.notInstalled', { voice: options.speechVoice }) }] : []),
+              ...voiceList
+            ]}
+          />
+          <input
+            type="range"
+            aria-label={t('voice.rate')}
+            aria-valuetext={t('voice.wpm', { wpm: rate })}
+            min={SPEECH_RATE_RANGE[0]}
+            max={SPEECH_RATE_RANGE[1]}
+            step={5}
+            value={rate}
+            disabled={!editable}
+            className="w-28 accent-[var(--wh-accent)]"
+            onChange={(e) => setRate(Number(e.target.value) || DEFAULT_SPEECH_RATE)}
+            // One write when the thumb is let go, not one per step of the drag.
+            onPointerUp={() => rate !== options.speechRate && save({ speechRate: rate })}
+            onKeyUp={() => rate !== options.speechRate && save({ speechRate: rate })}
+          />
+          {speakingId === TEST_ID ? (
+            <Button size="sm" icon={<Square className="size-3.5" aria-hidden />} onClick={stopSpeaking}>
+              {t('voice.stop')}
+            </Button>
+          ) : (
+            <Button size="sm" icon={<Volume2 className="size-3.5" aria-hidden />} onClick={() => speak(t('voice.sample'), { id: TEST_ID, voice: options.speechVoice, wpm: rate })}>
+              {t('voice.test')}
+            </Button>
+          )}
+        </div>
+      </div>
+      <SettingRow label={t('settingsV2.voice.listenModel')} hint={t('voice.listenModelHint')}>
         <OptionOrCustom
-          aria-label={t('voice.listenModel')}
+          aria-label={t('settingsV2.voice.listenModel')}
           value={model}
           placeholder={DEFAULT_LISTEN_MODEL}
           disabled={!editable}
@@ -88,17 +104,6 @@ export function VoiceSettingsGroup({ config, editable, run }: { config: WorkhubC
           data-testid="voice-listen-model"
         />
       </SettingRow>
-      <div className="flex justify-end py-3">
-        {speakingId === TEST_ID ? (
-          <Button size="sm" icon={<Square className="size-3.5" aria-hidden />} onClick={stopSpeaking}>
-            {t('voice.stop')}
-          </Button>
-        ) : (
-          <Button size="sm" icon={<Volume2 className="size-3.5" aria-hidden />} onClick={() => speak(t('voice.sample'), { id: TEST_ID, voice: options.speechVoice, wpm: rate })}>
-            {t('voice.test')}
-          </Button>
-        )}
-      </div>
     </SettingsGroup>
   )
 }

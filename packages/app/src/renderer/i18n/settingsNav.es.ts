@@ -40,7 +40,7 @@ export const settingsNavEs: Record<keyof typeof settingsNavEn, string> = {
   'settings.profileActive': '{name} (activo)',
   'settings.profileNew': 'Perfil nuevo…',
   'settings.profileEditing': 'Editando {name}. El perfil activo sigue siendo {active}.',
-  'settings.profileFirst': 'Primero creá un perfil, en Perfil y carpetas.',
+  'settings.profileFirst': 'Primero creá un perfil, en Perfiles.',
   'settings.search.placeholder': 'Buscar en Ajustes',
   'settings.search.empty': 'Ningún ajuste coincide con "{query}".',
   'settings.search.results': 'Resultados de la búsqueda',

@@ -11,13 +11,19 @@ import { createUnsavedChanges } from '../src/renderer/lib/unsavedChanges'
 describe('Settings window route', () => {
   it('reads the section from the hash, mapping old tab ids', () => {
     expect(parseSettingsHash('#settings')).toEqual({ section: 'general' })
-    expect(parseSettingsHash('#settings?section=usage')).toEqual({ section: 'usage' })
-    expect(parseSettingsHash('#settings?section=trackers')).toEqual({ section: 'tickets' })
+    expect(parseSettingsHash('#settings?section=usage')).toEqual({ section: 'agents' })
+    expect(parseSettingsHash('#settings?section=trackers')).toEqual({ section: 'connections', group: 'tickets' })
     expect(parseSettingsHash('#settings?section=nonsense')).toEqual({ section: 'general' })
-    expect(parseSettingsHash(settingsWindowHash('aiReview'))).toEqual({ section: 'aiReview' })
+    expect(parseSettingsHash(settingsWindowHash('aiReview'))).toEqual({ section: 'profiles', profile: { tab: 'screens' }, group: 'aiReview' })
     expect(parseSettingsHash(settingsWindowHash())).toEqual({ section: 'general' })
     expect(parseSettingsHash(settingsWindowHash('general#updates'))).toEqual({ section: 'general', group: 'updates' })
-    expect(parseSettingsHash(settingsWindowHash('trackers#x'))).toEqual({ section: 'tickets', group: 'x' })
+    expect(parseSettingsHash(settingsWindowHash('trackers#x'))).toEqual({ section: 'connections', group: 'x' })
+    expect(parseSettingsHash(settingsWindowHash('profiles'))).toEqual({ section: 'profiles' })
+  })
+
+  it('opens a profile on a tab from the hash', () => {
+    expect(parseSettingsHash(settingsWindowHash('profiles/acme/agents'))).toEqual({ section: 'profiles', profile: { id: 'acme', tab: 'agents' } })
+    expect(parseSettingsHash(settingsWindowHash('profiles/acme#health'))).toEqual({ section: 'profiles', profile: { id: 'acme', tab: 'screens' }, group: 'health' })
   })
 
   it('leaves every other window hash alone', () => {

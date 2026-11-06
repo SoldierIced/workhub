@@ -5,14 +5,15 @@ import { refreshConfig, useConfig } from '../configStore'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { usePlatform } from '../lib/platform'
 import { createUnsavedChanges, type UnsavedChanges } from '../lib/unsavedChanges'
-import { SettingsScreen, type SettingsSpotlight } from './SettingsScreen'
-import { settingsTarget, type SettingsSectionId } from './settings/sections'
+import { SettingsScreen, type SettingsProfileRequest, type SettingsSpotlight } from './SettingsScreen'
+import { settingsTarget, type SettingsSectionId, type SettingsTarget } from './settings/sections'
 
 /**
- * `#settings` or `#settings?section=<id>` (`<id>#<anchor>` also points at a group) -> the section to
- * open (old tab ids map to theirs) and the group, or null for any other hash.
+ * `#settings` or `#settings?section=<id>` (`<id>#<anchor>` also points at a group,
+ * `profiles/<profileId>/<tab>` opens a profile) -> the place to open (old tab ids map to theirs),
+ * or null for any other hash.
  */
-export function parseSettingsHash(hash: string): { section: SettingsSectionId; group?: string } | null {
+export function parseSettingsHash(hash: string): SettingsTarget | null {
   if (hash !== '#settings' && !hash.startsWith('#settings?')) return null
   const params = new URLSearchParams(hash.slice('#settings'.length + 1))
   return settingsTarget(params.get('section'))
@@ -33,12 +34,12 @@ export function reportDirty(unsaved: Pick<UnsavedChanges, 'subscribe' | 'snapsho
 }
 
 /** The root of the Settings window: the same providers as the main window, Settings full-window. */
-export function SettingsWindowRoot({ section, group }: { section: SettingsSectionId; group?: string }) {
+export function SettingsWindowRoot({ section, group, profile }: SettingsTarget) {
   return (
     <I18nProvider>
       <TooltipProvider>
         <Toasts>
-          <SettingsWindow initial={section} initialGroup={group} />
+          <SettingsWindow initial={section} initialGroup={group} initialProfile={profile} />
         </Toasts>
       </TooltipProvider>
     </I18nProvider>
@@ -50,13 +51,15 @@ function Toasts({ children }: { children: ReactNode }) {
   return <ToastProvider label={t('common.notifications')}>{children}</ToastProvider>
 }
 
-function SettingsWindow({ initial, initialGroup }: { initial: SettingsSectionId; initialGroup?: string }) {
+function SettingsWindow({ initial, initialGroup, initialProfile }: { initial: SettingsSectionId; initialGroup?: string; initialProfile?: SettingsTarget['profile'] }) {
   const { t } = useI18n()
   const platform = usePlatform()
   const snap = useConfig()
   const [section, setSection] = useState(initial)
   // The group a `section#anchor` target points at; a new `at` points again.
   const [spotlight, setSpotlight] = useState<SettingsSpotlight | null>(() => (initialGroup ? { group: initialGroup, at: Date.now() } : null))
+  // The profile (and tab) a target opens; a new `at` opens it again.
+  const [profileRequest, setProfileRequest] = useState<SettingsProfileRequest | null>(() => (initialProfile ? { ...initialProfile, at: Date.now() } : null))
   const [unsaved] = useState(createUnsavedChanges)
   const sectionNow = useRef(section)
   sectionNow.current = section
@@ -78,9 +81,12 @@ function SettingsWindow({ initial, initialGroup }: { initial: SettingsSectionId;
   useEffect(
     () =>
       window.hub.settings.onNavigate((tab) => {
-        const { section: next, group } = settingsTarget(tab)
-        const point = () => setSpotlight(group ? { group, at: Date.now() } : null)
-        if (next === sectionNow.current) return point()
+        const { section: next, group, profile } = settingsTarget(tab)
+        const point = () => {
+          if (profile) setProfileRequest({ ...profile, at: Date.now() })
+          setSpotlight(group ? { group, at: Date.now() } : null)
+        }
+        if (next === sectionNow.current && !profile) return point()
         unsaved.requestLeave(() => {
           setSection(next)
           point()
@@ -91,7 +97,7 @@ function SettingsWindow({ initial, initialGroup }: { initial: SettingsSectionId;
 
   return (
     <div className="h-full bg-bg">
-      <SettingsScreen snap={snap} section={section} onSectionChange={setSection} onClose={close} unsaved={unsaved} windowChrome={platform} spotlight={spotlight} />
+      <SettingsScreen snap={snap} section={section} onSectionChange={setSection} onClose={close} unsaved={unsaved} windowChrome={platform} spotlight={spotlight} profileRequest={profileRequest} />
     </div>
   )
 }

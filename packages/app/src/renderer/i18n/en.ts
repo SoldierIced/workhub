@@ -31,6 +31,7 @@ import { planEn } from './plan.en'
 import { plannerEn } from './planner.en'
 import { alertsEn } from './alerts.en'
 import { settingsNavEn } from './settingsNav.en'
+import { settingsV2En } from './settingsV2.en'
 import { settingsAccountsEn } from './settingsAccounts.en'
 import { notificationsAlertsEn } from './notificationsAlerts.en'
 import { profileAgentsEn } from './profileAgents.en'
@@ -509,6 +510,7 @@ export const en = {
   ...plannerEn,
   ...alertsEn,
   ...settingsNavEn,
+  ...settingsV2En,
   ...settingsAccountsEn,
   ...notificationsAlertsEn,
   ...profileAgentsEn,

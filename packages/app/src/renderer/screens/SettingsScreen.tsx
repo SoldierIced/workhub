@@ -1,6 +1,6 @@
 import { TriangleAlert, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
-import type { OfferedModule, ValidationIssue } from '@workhub/core'
+import type { ValidationIssue } from '@workhub/core'
 import type { ConfigSnapshot, Platform } from '@shared/api'
 import { Button } from '../components/atoms'
 import { useToast } from '../components/molecules'
@@ -14,47 +14,30 @@ import { friendlyIssue, humanIssue, type IssueTarget } from '../lib/configIssues
 import { matchesShortcut } from '../lib/shortcuts'
 import type { UnsavedChanges } from '../lib/unsavedChanges'
 import { showWorkhub1Migration, showWorkhub1Tokens, useWorkhub1Preview } from '../lib/workhub1'
-import { AiReviewSection } from './AiReviewSettings'
-import { AlertsSettings } from './AlertsSettings'
-import { AppearanceSettings } from './AppearanceSettings'
-import { FlowMapsSettings } from './FlowMapsSettings'
-import { HealthSettings } from './HealthSettings'
-import { PlanSettings } from './PlanSettings'
-import { SetupEntryGroup } from './SetupEntryGroup'
-import { SlackSettings } from './SlackSettings'
-import { TrackerSettings } from './TrackerSettings'
 import { UsageSettings } from './UsageSettings'
 import { AccountsSection } from './settings/AccountsSection'
 import { ConnectionsSection } from './settings/ConnectionsSection'
 import { focusSettingGroup, focusSettingRow } from './settings/focusRow'
-import { ModulesSection, ProfileSection } from './settings/ProfileSections'
+import { NotificationsAlertsSection } from './settings/NotificationsAlertsSection'
+import { ProfilesSection, type OpenProfile } from './settings/ProfilesSection'
 import type { Run } from './settings/run'
-import { issueSection, sectionMeta, type SettingsNavGroup, type SettingsSectionId } from './settings/sections'
-import { SETTINGS_INDEX, searchSettings, type SettingsHit } from './settings/settings-index'
+import { isProfileScreen, issueSection, issueTarget, sectionMeta, type ProfileScreen, type ProfileTab, type SettingsNavGroup, type SettingsSectionId, type SettingsTarget } from './settings/sections'
+import { hitKey, SETTINGS_INDEX, searchSettings, type SettingsHit, type SettingsIndexEntry } from './settings/settings-index'
 import { SettingsNav } from './settings/SettingsNav'
-import { Issues, ModuleOffNote, NoProfileYet } from './settings/shared'
-import { GeneralSection, ImportSection, NotificationsSection, StorageSection } from './settings/WorkhubSections'
+import { Issues } from './settings/shared'
+import { AdvancedSection, GeneralSection } from './settings/WorkhubSections'
 
 /** The one-line description under each section's title. */
-const INTRO: Partial<Record<SettingsSectionId, MessageKey>> = {
-  general: 'settings.intro.general',
-  appearance: 'help.tab.appearance',
-  notifications: 'settings.intro.notifications',
-  alerts: 'settings.intro.alerts',
-  agents: 'settings.intro.agents',
-  usage: 'settings.intro.usage',
+const INTRO: Record<SettingsSectionId, MessageKey> = {
+  general: 'settingsV2.intro.general',
+  notifications: 'settingsV2.intro.notifications',
+  agents: 'settingsV2.intro.agents',
   connections: 'settings.intro.connections',
-  profile: 'settings.intro.profile',
-  modules: 'settings.intro.modules',
-  tickets: 'settings.intro.tickets',
-  slack: 'settings.slackAppWide',
-  aiReview: 'settings.intro.aiReview',
-  storage: 'settings.intro.storage',
-  import: 'settings.intro.import'
+  profiles: 'settingsV2.intro.profiles',
+  advanced: 'settingsV2.intro.advanced'
 }
 
-/** Per-profile sections of a module: they say so when the module is off for the profile. */
-const SECTION_MODULE: Partial<Record<SettingsSectionId, OfferedModule>> = { slack: 'chatWatcher' }
+const GROUP_LABEL: Record<SettingsNavGroup, MessageKey> = { app: 'settingsV2.navGroup.app', profile: 'settingsV2.navGroup.profile', advanced: 'settings.navGroup.advanced' }
 
 /** A row (by its label) or a group (by its anchor) to bring into view once its section is on screen. */
 interface PendingFocus {
@@ -66,6 +49,13 @@ interface PendingFocus {
 /** A Settings group to point at: its `anchor` and when it was asked for (a new `at` points again). */
 export interface SettingsSpotlight {
   group: string
+  at: number
+}
+
+/** A profile to open from outside (a link, the menu bar): `id` absent is the active one; a new `at` asks again. */
+export interface SettingsProfileRequest {
+  id?: string
+  tab: ProfileTab
   at: number
 }
 
@@ -81,6 +71,8 @@ export interface SettingsScreenProps {
   windowChrome?: Platform
   /** Scroll to this group of the section and highlight it, dimming the others for a moment (`general#updates`). */
   spotlight?: SettingsSpotlight | null
+  /** Open this profile (on this tab) in Profiles (`profiles/acme/screens`, `openSettings('health')`). */
+  profileRequest?: SettingsProfileRequest | null
 }
 
 /** Settings as a screen: a header (with a close button only when embedded), the grouped navigation with search on the left, the section on the right. */
@@ -92,12 +84,14 @@ export function SettingsScreen(props: SettingsScreenProps) {
   )
 }
 
-function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, windowChrome, spotlight }: SettingsScreenProps) {
+function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, windowChrome, spotlight, profileRequest }: SettingsScreenProps) {
   const { t } = useI18n()
   const notify = useToast()
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   // The item a "fix" button asked to open; the section's form starts on it.
   const [focus, setFocus] = useState<IssueTarget | null>(null)
+  // The notification row a search hit asked for (that section points at it itself).
+  const [notificationId, setNotificationId] = useState<string | undefined>(undefined)
   const [pendingFocus, setPendingFocus] = useState<PendingFocus | null>(null)
   const [query, setQuery] = useState('')
   const [activeHit, setActiveHit] = useState(0)
@@ -107,17 +101,37 @@ function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, window
   // Workhub 1 on this Mac (read again after every config change): drives the migration UI's visibility.
   const workhub1 = useWorkhub1Preview(snap?.config)
 
-  // The profile the profile group edits: the active one at first, any other one from the picker.
   const activeProfileId = snap?.config.activeProfileId ?? null
   const profiles = snap?.config.profiles ?? []
-  const [profileId, setProfileId] = useState<string | null>(() => activeProfileId ?? profiles[0]?.id ?? null)
-  const [creating, setCreating] = useState(false)
+  /** The profile to open: the asked one, else the open one, else the active one, else the first. */
+  const resolveProfile = (id: string | undefined, current: OpenProfile | null) => id ?? current?.id ?? activeProfileId ?? profiles[0]?.id ?? null
+  const [openProfile, setOpenProfile] = useState<OpenProfile | null>(() => {
+    if (!profileRequest) return null
+    const id = resolveProfile(profileRequest.id, null)
+    return id ? { id, tab: profileRequest.tab } : null
+  })
+  // A screen of the Screens tab to open (`#health`, a search hit inside it).
+  const [openScreen, setOpenScreen] = useState<{ key: ProfileScreen; at: number } | null>(() => (spotlight && isProfileScreen(spotlight.group) ? { key: spotlight.group, at: spotlight.at } : null))
+
+  // A deleted (or unknown) profile goes back to the list; a request made before the config loaded opens now.
   useEffect(() => {
-    // A deleted (or never set) profile falls back to the active one.
-    if (!creating && !profiles.some((p) => p.id === profileId)) setProfileId(activeProfileId ?? profiles[0]?.id ?? null)
-  }, [profiles, profileId, activeProfileId, creating])
-  const editedProfile = profiles.find((p) => p.id === profileId)
-  const editingId = creating ? null : (editedProfile?.id ?? null)
+    if (!snap) return
+    if (openProfile?.id && !profiles.some((p) => p.id === openProfile.id)) setOpenProfile(null)
+    else if (!openProfile && profileRequest && lastRequest.current === undefined) {
+      lastRequest.current = profileRequest.at
+      const id = resolveProfile(profileRequest.id, null)
+      if (id && profiles.some((p) => p.id === id)) setOpenProfile({ id, tab: profileRequest.tab })
+    }
+  }, [profiles, openProfile, snap]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A profile asked for from outside while Settings was already open.
+  const lastRequest = useRef<number | undefined>(snap ? profileRequest?.at : undefined)
+  useEffect(() => {
+    if (!snap || !profileRequest || profileRequest.at === lastRequest.current) return
+    lastRequest.current = profileRequest.at
+    const id = resolveProfile(profileRequest.id, null)
+    setOpenProfile(id ? { id, tab: profileRequest.tab } : null)
+  }, [profileRequest, snap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const run: Run = async (op) => {
     const r = await op()
@@ -137,10 +151,9 @@ function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, window
 
   const editable = snap ? !snap.loadError : false
   const importVisible = editable && showWorkhub1Migration(window.hub.platform, workhub1)
-  const visible = (id: SettingsSectionId) => id !== 'import' || importVisible
-  const groupLabel = (group: SettingsNavGroup) =>
-    group === 'profile' ? t('settings.navGroup.profile', { name: editedProfile ? editedProfile.name || editedProfile.id : t('settings.newProfile') }) : t(group === 'workhub' ? 'settings.navGroup.workhub' : 'settings.navGroup.advanced')
-  const hits = useMemo(() => searchSettings(SETTINGS_INDEX, query, { t, groupLabel, visible }), [query, t, editedProfile, importVisible]) // eslint-disable-line react-hooks/exhaustive-deps
+  const visible = (entry: SettingsIndexEntry) => entry.only !== 'workhub1' || importVisible
+  const groupLabel = (group: SettingsNavGroup) => t(GROUP_LABEL[group])
+  const hits = useMemo(() => searchSettings(SETTINGS_INDEX, query, { t, groupLabel, visible }), [query, t, importVisible]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => setActiveHit(0), [query])
 
   // Sections with a stored-config problem get a dot in the navigation.
@@ -165,46 +178,53 @@ function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, window
     }
     timer = window.setTimeout(attempt, 50)
     return () => window.clearTimeout(timer)
-  }, [pendingFocus, section])
+  }, [pendingFocus, section, openProfile])
 
   // A `section#anchor` target (the menu bar's "Check for updates…"): point at the group once it shows.
   useEffect(() => {
-    if (spotlight) setPendingFocus({ group: spotlight.group, nonce: spotlight.at })
+    if (!spotlight) return
+    if (isProfileScreen(spotlight.group)) setOpenScreen({ key: spotlight.group, at: spotlight.at })
+    setPendingFocus({ group: spotlight.group, nonce: spotlight.at })
   }, [spotlight])
 
-  const go = (next: SettingsSectionId, opts: { focus?: IssueTarget | null; label?: string } = {}) =>
+  /** Goes to a place (a section, a profile and its tab, a group); the drafts are asked about first. */
+  const navigate = (target: SettingsTarget, opts: { focus?: IssueTarget | null; label?: string; screen?: ProfileScreen; notificationId?: string } = {}) =>
     unsaved.requestLeave(() => {
+      const now = Date.now()
       setIssues([])
       setFocus(opts.focus ?? null)
+      setNotificationId(opts.notificationId)
       setQuery('')
-      onSectionChange(next)
-      if (opts.label) setPendingFocus({ label: opts.label, nonce: Date.now() })
+      onSectionChange(target.section)
+      if (target.profile) {
+        const id = resolveProfile(target.profile.id, openProfile)
+        setOpenProfile(id ? { id, tab: target.profile.tab } : null)
+      } else setOpenProfile(null)
+      const screen = opts.screen ?? (isProfileScreen(target.group) ? target.group : undefined)
+      if (screen) setOpenScreen({ key: screen, at: now })
+      if (opts.label) setPendingFocus({ label: opts.label, nonce: now })
+      else if (target.group) setPendingFocus({ group: target.group, nonce: now })
       content.current?.scrollTo({ top: 0 })
     })
-  const fix = (target: IssueTarget) => {
-    // A profile's problem opens that profile in the profile group.
-    if ((target.tab === 'profiles' || target.tab === 'modules') && target.id) {
-      unsaved.requestLeave(() => {
-        setCreating(false)
-        setProfileId(target.id!)
-        go(issueSection(target), { focus: target })
-      })
-      return
-    }
-    go(issueSection(target), { focus: target })
+  const fix = (target: IssueTarget) => navigate(issueTarget(target), { focus: target })
+  const openHit = (hit: SettingsHit) => {
+    const { entry } = hit
+    const label = entry.focus ? t(entry.focus) : hit.label
+    if (entry.section === 'notifications') return navigate({ section: 'notifications' }, { label, ...(entry.id ? { notificationId: entry.id } : {}) })
+    // A row of a profile opens the open profile (else the active one) on its tab.
+    const target: SettingsTarget = entry.tab ? { section: 'profiles', profile: { tab: entry.tab } } : { section: entry.section }
+    navigate(target, { label, ...(entry.screen ? { screen: entry.screen } : {}) })
   }
-  const openHit = (hit: SettingsHit) => go(hit.entry.section, { label: hit.label })
-  const pickProfile = (id: string | null) =>
-    unsaved.requestLeave(() => {
+  const openProfileAt = (next: OpenProfile | null, direct = false) => {
+    const apply = () => {
       setIssues([])
-      if (id === null) {
-        setCreating(true)
-        onSectionChange('profile')
-      } else {
-        setCreating(false)
-        setProfileId(id)
-      }
-    })
+      setFocus(null)
+      setOpenProfile(next)
+      content.current?.scrollTo({ top: 0 })
+    }
+    if (direct) apply()
+    else unsaved.requestLeave(apply)
+  }
 
   // ⌘F searches, Esc clears the search and then closes Settings; ⌘S saves.
   useEffect(() => {
@@ -248,75 +268,52 @@ function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, window
 
   if (!snap) return null
   const meta = sectionMeta(section)
-  const inProfileGroup = meta.group === 'profile'
   const focusId = (...tabs: IssueTarget['tab'][]) => (focus && tabs.includes(focus.tab) ? focus.id : undefined)
-  const openModules = () => go('modules')
-  const sectionKey = `${section}:${inProfileGroup ? (editingId ?? 'new') : ''}:${focus?.id ?? ''}`
-  const moduleOff = SECTION_MODULE[section]
+  const sectionKey = `${section}:${focus?.tab ?? ''}:${focus?.id ?? ''}`
+  const shownProfile = section === 'profiles' ? openProfile : null
+  const editedProfile = shownProfile?.id ? profiles.find((p) => p.id === shownProfile.id) : undefined
 
   const body = (): ReactNode => {
-    if (inProfileGroup && section !== 'profile' && !editedProfile) return <NoProfileYet />
     switch (section) {
       case 'general':
-        return (
-          <div className="flex flex-col gap-6">
-            <GeneralSection snap={snap} run={run} />
-            <SetupEntryGroup />
-          </div>
-        )
-      case 'appearance':
-        return <AppearanceSettings />
+        return <GeneralSection snap={snap} run={run} />
       case 'notifications':
-        return <NotificationsSection snap={snap} run={run} />
-      case 'alerts':
-        return <AlertsSettings snap={snap} run={run} />
-      case 'agents':
-        return <AccountsSection snap={snap} run={run} initialId={focusId('accounts')} profileId={editingId} />
-      case 'usage':
-        return <UsageSettings snap={snap} run={run} />
-      case 'connections':
-        return <ConnectionsSection snap={snap} run={run} initialId={focusId('connections')} />
-      case 'profile':
         return (
-          <ProfileSection
+          <NotificationsAlertsSection
             snap={snap}
             run={run}
-            profileId={editingId}
-            onCreated={(id) => {
-              setCreating(false)
-              setProfileId(id)
-            }}
-            onDeleted={() => {
-              setCreating(false)
-              setProfileId(activeProfileId)
-            }}
+            initialId={notificationId}
+            platform={window.hub.platform}
+            onOpenProfile={(id, tab) => navigate({ section: 'profiles', profile: { id, tab } })}
           />
         )
-      case 'modules':
-        return <ModulesSection snap={snap} run={run} profileId={editingId} onOpen={(s) => go(s)} />
-      case 'tickets':
-        return <TrackerSettings snap={snap} run={run} initialId={focusId('trackers')} profileId={editingId} />
-      case 'health':
-        return <HealthSettings snap={snap} run={run} focusSecret={focus?.tab === 'health'} profileId={editingId} onOpenModules={openModules} />
-      case 'flowMaps':
-        return <FlowMapsSettings snap={snap} run={run} profileId={editingId} onOpenModules={openModules} />
-      case 'plan':
-        return <PlanSettings snap={snap} run={run} profileId={editingId} onOpenModules={openModules} />
-      case 'slack':
+      case 'agents':
         return (
-          <div className="flex flex-col gap-4">
-            {moduleOff && editedProfile && !editedProfile.modules[moduleOff] && <ModuleOffNote module={moduleOff} onOpenModules={openModules} />}
-            <SlackSettings snap={snap} run={run} />
+          <div className="flex flex-col gap-6">
+            <AccountsSection snap={snap} run={run} initialId={focusId('accounts')} />
+            <UsageSettings snap={snap} run={run} />
           </div>
         )
-      case 'aiReview':
-        return <AiReviewSection snap={snap} run={run} profileId={editingId} />
-      case 'storage':
-        return <StorageSection snap={snap} />
-      case 'import':
-        return importVisible ? <ImportSection run={run} workhub1={workhub1} /> : null
+      case 'connections':
+        return <ConnectionsSection snap={snap} run={run} initialId={focusId('connections', 'trackers')} />
+      case 'profiles':
+        return (
+          <ProfilesSection
+            snap={snap}
+            run={run}
+            open={shownProfile}
+            onOpen={openProfileAt}
+            onTab={(tab) => setOpenProfile((o) => (o ? { ...o, tab } : o))}
+            openScreen={openScreen}
+            focusHealthSecret={focus?.tab === 'health'}
+          />
+        )
+      case 'advanced':
+        return <AdvancedSection snap={snap} run={run} workhub1={workhub1} importVisible={importVisible} />
     }
   }
+
+  const title = shownProfile ? `${t(meta.label)} › ${editedProfile ? editedProfile.name || editedProfile.id : t('settings.newProfile')}` : t(meta.label)
 
   return (
     <div ref={root} className="flex h-full flex-col" data-testid="settings-screen">
@@ -332,13 +329,12 @@ function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, window
       <div className="flex min-h-0 flex-1">
         <SettingsNav
           section={section}
-          onSection={(s) => go(s)}
-          visible={visible}
+          onSection={(s) => navigate({ section: s })}
           withIssues={withIssues}
           profiles={profiles}
           activeProfileId={activeProfileId}
-          profileId={editingId}
-          onProfile={pickProfile}
+          openProfileId={shownProfile ? shownProfile.id : undefined}
+          onProfile={(id) => navigate({ section: 'profiles', profile: { id, tab: shownProfile?.tab ?? 'folders' } })}
           query={query}
           onQuery={setQuery}
           onSearchKey={onSearchKey}
@@ -359,14 +355,9 @@ function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, window
             <section className={query ? 'hidden' : 'flex flex-col gap-4'} aria-labelledby="settings-section-title">
               <div className="flex flex-col gap-1">
                 <h2 id="settings-section-title" className="text-xl font-semibold tracking-tight">
-                  {inProfileGroup ? `${t(meta.label)} · ${editedProfile ? editedProfile.name || editedProfile.id : t('settings.newProfile')}` : t(meta.label)}
+                  {title}
                 </h2>
-                {INTRO[section] && <p className="max-w-3xl text-base text-muted">{t(INTRO[section]!)}</p>}
-                {inProfileGroup && editedProfile && activeProfileId && editedProfile.id !== activeProfileId && (
-                  <p className="text-sm text-subtle" data-testid="settings-editing-other">
-                    {t('settings.profileEditing', { name: editedProfile.name || editedProfile.id, active: profiles.find((p) => p.id === activeProfileId)?.name ?? activeProfileId })}
-                  </p>
-                )}
+                {!shownProfile && <p className="max-w-3xl text-base text-muted">{t(INTRO[section])}</p>}
               </div>
               <Issues issues={issues} />
               <div key={sectionKey}>{body()}</div>
@@ -389,7 +380,7 @@ function SearchResults({ hits, query, active, onOpen }: { hits: SettingsHit[]; q
       <h2 className="px-1 text-md font-semibold">{t('settings.search.results')}</h2>
       <ul className="flex flex-col gap-1">
         {hits.map((hit, i) => (
-          <li key={`${hit.entry.section}:${hit.entry.label}`}>
+          <li key={hitKey(hit.entry)}>
             <button
               type="button"
               onClick={() => onOpen(hit)}
