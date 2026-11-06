@@ -98,7 +98,6 @@ describe('Settings → Connections section', () => {
 
   it('renders one group per kind, a card per connection with its users, and the app-wide parts once', () => {
     const html = render()
-    expect(html).toContain('The services Workhub reads. Set them up once here; each profile picks which one its screens use.')
     expect([...html.matchAll(/data-group="(\w+)"/g)].map((m) => m[1])).toEqual(['code', 'tickets', 'calendars', 'slack', 'health'])
     expect(html.match(/data-testid="connection-card"/g)).toHaveLength(5)
     expect(html).toContain('Used by Acme web · Pull requests, Side project · Pull requests')

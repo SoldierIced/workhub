@@ -277,7 +277,6 @@ describe('Settings → Agents section', () => {
 
   it('renders one card per agent with its sign-in row, its accounts and where each is offered', () => {
     const html = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(AccountsSection, { snap: snapshot(stored), run })))
-    expect(html).toContain('The agents installed on this computer and the accounts they sign in with.')
     expect(html.match(/data-testid="agents-card"/g)?.length).toBe(BUILTIN_AGENTS.filter((a) => !a.accountsOf).length)
     expect(html).toContain('data-account="work"')
     expect(html).toContain('offered in Acme web (1st)')

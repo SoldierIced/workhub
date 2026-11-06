@@ -142,9 +142,6 @@ export function AccountsSection({ snap, run, initialId, profileId }: SectionProp
 
   return (
     <div ref={root} className="flex flex-col gap-6" data-testid="agents-section">
-      <p className="max-w-3xl px-1 text-sm text-muted" data-testid="agents-intro">
-        {t('settingsAgents.intro')}
-      </p>
       <div className="flex flex-col gap-4" data-setting-id={AGENTS_ROW_IDS.agents} data-settings-group="accounts">
         {shown.map((agent) => {
           const owner = accountAgentId(agent)
