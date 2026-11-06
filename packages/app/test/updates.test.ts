@@ -25,6 +25,7 @@ const updater = vi.hoisted(() => {
         handlers.clear()
       },
       checkForUpdates: vi.fn(async () => undefined as unknown),
+      setFeedURL: vi.fn(),
       downloadUpdate: vi.fn(async () => [] as string[]),
       quitAndInstall: vi.fn()
     }
@@ -163,5 +164,41 @@ describe('UpdateService', () => {
     expect(electron.app.relaunch).toHaveBeenCalledTimes(1)
     expect(electron.app.quit).toHaveBeenCalledTimes(1)
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('picking the release to check', () => {
+  const release = (tag_name: string, extra: Partial<{ draft: boolean; prerelease: boolean; assets: { name: string }[] }> = {}) => ({
+    tag_name,
+    draft: false,
+    prerelease: true,
+    assets: [{ name: 'latest-mac.yml' }, { name: 'latest.yml' }, { name: 'latest-linux.yml' }],
+    ...extra
+  })
+
+  it('points electron-updater at the newest published release that has this platform\'s manifest', async () => {
+    setPlatform('darwin')
+    const releases = [release('v2.0.0-alpha.21', { draft: true }), release('v2.0.0-alpha.20', { assets: [] }), release('v2.0.0-alpha.19')]
+    const service = new UpdateService(() => {}, async () => {}, undefined, async () => releases)
+    await service.check()
+    expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({ provider: 'generic', url: `https://github.com/${RELEASE_REPO}/releases/download/v2.0.0-alpha.19` })
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports no update when no published release has installers yet', async () => {
+    setPlatform('darwin')
+    const service = new UpdateService(() => {}, async () => {}, undefined, async () => [release('v2.0.0-alpha.21', { assets: [] })])
+    expect((await service.check()).state).toBe('none')
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+  })
+
+  it('checks as before when the GitHub API cannot be read', async () => {
+    setPlatform('darwin')
+    const service = new UpdateService(() => {}, async () => {}, undefined, async () => {
+      throw new Error('offline')
+    })
+    await service.check()
+    expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
   })
 })

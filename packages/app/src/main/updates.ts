@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import { join } from 'node:path'
 import type { UpdateStatus } from '../shared/updates-api'
 import { bundleOf, canSelfUpdate, installMacUpdate, nodeMacUpdateDeps, type MacUpdateDeps } from './mac-update'
+import { pickReleaseTag, type ReleaseSummary } from './release-pick'
 
 /** `owner/name` from scripts/brand.mjs, set at build time by electron.vite.config.ts (`define`). */
 declare const __WORKHUB_RELEASE_REPO__: string | undefined
@@ -11,6 +12,14 @@ declare const __WORKHUB_RELEASE_REPO__: string | undefined
 export const RELEASE_REPO = typeof __WORKHUB_RELEASE_REPO__ === 'string' ? __WORKHUB_RELEASE_REPO__ : 'example/workhub'
 /** Where releases are published; the same repository as the `publish` block of electron-builder.config.mjs. */
 const RELEASES = `https://github.com/${RELEASE_REPO}/releases`
+
+/** The newest releases, as the GitHub API lists them (drafts are not visible without a token). */
+export type FetchReleases = () => Promise<ReleaseSummary[]>
+const fetchReleasesFromGitHub: FetchReleases = async () => {
+  const res = await fetch(`https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=10`, { headers: { accept: 'application/vnd.github+json' } })
+  if (!res.ok) throw new Error(`GitHub API ${res.status}`)
+  return (await res.json()) as ReleaseSummary[]
+}
 
 /**
  * Update checks over electron-updater against the GitHub Releases. Nothing runs unless the user
@@ -28,7 +37,8 @@ export class UpdateService {
   constructor(
     private readonly onChanged: (status: UpdateStatus) => void,
     private readonly openUrl: (url: string) => Promise<void>,
-    private readonly mac: MacUpdateDeps = nodeMacUpdateDeps
+    private readonly mac: MacUpdateDeps = nodeMacUpdateDeps,
+    private readonly fetchReleases: FetchReleases = fetchReleasesFromGitHub
   ) {
     this.current = { state: app.isPackaged ? 'idle' : 'unsupported', currentVersion: app.getVersion(), canInstall: process.platform !== 'darwin' && this.canInstallElsewhere() }
     if (!app.isPackaged) this.current.message = 'Updates are only checked in the packaged app.'
@@ -44,6 +54,17 @@ export class UpdateService {
     this.wire()
     this.set({ state: 'checking', message: undefined, canInstall: await this.canInstall() })
     try {
+      // electron-updater follows the newest tag, which exists before its installers are uploaded
+      // (and for drafts). Point it at the newest release that has them; without the API, check as before.
+      const releases = await this.fetchReleases().catch(() => null)
+      if (releases) {
+        const tag = pickReleaseTag(releases, { prerelease: autoUpdater.allowPrerelease, platform: process.platform })
+        if (!tag) {
+          this.set({ state: 'none', version: undefined, releaseUrl: undefined })
+          return this.current
+        }
+        autoUpdater.setFeedURL({ provider: 'generic', url: `${RELEASES}/download/${tag}` })
+      }
       await autoUpdater.checkForUpdates()
     } catch (err) {
       this.set({ state: 'error', message: err instanceof Error ? err.message : String(err) })
