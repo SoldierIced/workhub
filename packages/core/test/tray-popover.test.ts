@@ -162,11 +162,13 @@ describe('tray popover "Today"', () => {
       { id: 't1', title: 'Answer the contract question', overdue: false }
     ])
     expect(view.today.plan).toHaveLength(TRAY_POPOVER_PLAN_LIMIT)
+    expect(view.planMore).toBe(1)
     expect(view.today.pullRequests).toEqual({ toReview: 31, mine: 4 })
     expect(hasToday(view.today)).toBe(true)
     const empty = buildTrayPopover(state(), NOW)
     expect(empty.today).toEqual({ meetings: [], plan: [], pullRequests: null, health: null, slack: null })
     expect(hasToday(empty.today)).toBe(false)
+    expect(empty.planMore).toBe(0)
   })
 
   it('leaves out the blocks the user turned off', () => {

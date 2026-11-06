@@ -3,7 +3,8 @@
  * small window of flat rows instead of a list of menu items. A header with one verdict line, a
  * "Today" block (the next meetings, Plan tasks due today, pull requests, and Health or Slack only
  * while they are in trouble), one usage bar per agent account, short session lists (needs you,
- * working) and the recent notifications, and a fixed footer. The blocks follow the user's choice
+ * working) and the recent notifications, and a fixed footer. Each list keeps a quota; what is
+ * left over is a count (`…More`) the popover shows as one "N more in the app" row. The blocks follow the user's choice
  * (Settings → Notifications → Menu bar panel). Pure data: the renderer words it, the main process
  * positions the window (popover-position.ts).
  */
@@ -83,6 +84,8 @@ export interface TrayPopoverView {
     /** Only while the Slack watcher fails. */
     slack: { error?: string; tone: TrayTone } | null
   }
+  /** Plan tasks due beyond `TRAY_POPOVER_PLAN_LIMIT` (the "N more in the app" row). */
+  planMore: number
   /** One row per agent account with a reading; empty hides the block. */
   usage: TrayPopoverUsage[]
   /** Most urgent first, at most `TRAY_POPOVER_NEEDS_YOU_LIMIT`. */
@@ -222,6 +225,7 @@ export function buildTrayPopover(state: TrayState, now = Date.now()): TrayPopove
       health: show.health && health?.state && HEALTH_SHOWN.includes(health.state) ? { state: health.state, degraded: [...health.degraded], tone: HEALTH_TONE[health.state] } : null,
       slack: state.slack?.health === 'failing' ? { ...(state.slack.error ? { error: state.slack.error } : {}), tone: 'danger' } : null
     },
+    planMore: Math.max(0, plan.length - TRAY_POPOVER_PLAN_LIMIT),
     usage: show.usage ? usageOf(state.usage, now) : [],
     needsYou: attention.sessions.slice(0, TRAY_POPOVER_NEEDS_YOU_LIMIT).map((a) => popoverSession(a.session)),
     needsYouMore: Math.max(0, attention.sessions.length - TRAY_POPOVER_NEEDS_YOU_LIMIT),
