@@ -1,5 +1,6 @@
 import type { EventLedger } from '../chat/ledger'
 import type { Money, SessionMonitorSnapshot } from '../domain/monitor'
+import { EFFORT_LEVELS } from '../domain/agent'
 
 /**
  * An automation sends a prompt or slash command to a dedicated, visible session when a chat
@@ -56,7 +57,7 @@ export function automationNotifies(notify: AutomationNotify | undefined, kind: '
 }
 
 /** Reasoning efforts Claude Code accepts, lowest first. */
-export const AUTOMATION_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+export const AUTOMATION_EFFORTS = EFFORT_LEVELS
 
 /** Claude Code's permission modes an unattended run can start in (Workhub 1's list). */
 export const CLAUDE_PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'] as const

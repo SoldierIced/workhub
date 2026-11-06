@@ -32,6 +32,7 @@ import { planEs } from './plan.es'
 import { plannerEs } from './planner.es'
 import { alertsEs } from './alerts.es'
 import { settingsNavEs } from './settingsNav.es'
+import { settingsAccountsEs } from './settingsAccounts.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -430,8 +431,8 @@ export const es: Record<keyof typeof en, string> = {
   'history.showMore': 'Mostrar más ({hidden} sesiones más)',
   'settings.planUsageHint': 'Cada 5 minutos, con el inicio de sesión de cada cuenta.',
   'settings.planUsageNote': 'Desactivado por defecto. Llama a un endpoint no documentado de Anthropic (el que usa /usage de Claude Code) con el inicio de sesión guardado de la cuenta; puede cambiar o dejar de funcionar en cualquier momento. Mientras está desactivado, el uso sale solo de lo que reportan las sesiones abiertas.',
-  'settings.folders': 'Carpetas (una por línea)',
-  'settings.foldersHint': 'Se muestran primero en la barra lateral para sesiones nuevas.',
+  'settings.folders': 'Carpetas',
+  'settings.foldersHint': 'Se muestran primero en la barra lateral para sesiones nuevas. Agrega cada carpeta de proyecto con el selector de carpetas.',
   'import.title': 'Importar desde Workhub 1',
   'import.hint': 'Lee perfiles, carpetas, cuentas de Claude, conexiones, automatizaciones, el lector de Slack, Salud, notificaciones y grupos de la barra lateral. Los secretos no forman parte de este paso (usa la importación de tokens) y Workhub 1 no se modifica.',
   'import.preview': 'Vista previa',
@@ -502,5 +503,6 @@ export const es: Record<keyof typeof en, string> = {
   ...planEs,
   ...plannerEs,
   ...alertsEs,
-  ...settingsNavEs
+  ...settingsNavEs,
+  ...settingsAccountsEs
 }

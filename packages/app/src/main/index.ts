@@ -844,8 +844,10 @@ function registerIpc(): void {
   })
   nativeTheme.on('updated', syncTitleBarOverlay)
   ipc.handle('hub:defaultCwd', () => homedir())
-  ipc.handle('hub:pickFolder', async () => {
-    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory'], defaultPath: homedir() })
+  ipc.handle('hub:pickFolder', async (e) => {
+    // The picker sits on the window that asked (Settings has a window of its own), not always on the main one.
+    const owner = BrowserWindow.fromWebContents(e.sender) ?? win!
+    const r = await dialog.showOpenDialog(owner, { properties: ['openDirectory', 'createDirectory'], defaultPath: homedir() })
     return r.canceled ? null : (r.filePaths[0] ?? null)
   })
   // Only the folders the profile lists (and their children) are read: never a path the renderer names.

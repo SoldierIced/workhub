@@ -3,11 +3,16 @@
 Open **Settings** with ⌘/Ctrl+, , the gear at the top right, the menu bar icon, or the app menu on
 macOS (**File** elsewhere). Settings opens in a window of its own, which can stay open while you
 work in a session: switch between them like any other window. There is one Settings window; opening
-it again brings it to the front on the section asked for. The close button at its top right, Esc or
-the window's own close button closes it. Changes show in the main window as soon as they are saved.
+it again brings it to the front on the section asked for. Esc or the window's own close control
+closes it. Changes show in the main window as soon as they are saved.
 Forms use a save bar (**Save**, **Discard**, ⌘/Ctrl+S); moving to another section or closing the
 window with unsaved changes asks first.
 Each section starts with a one-line description of what it is for.
+
+Fields that take a model or a reasoning effort are a list with the known choices and **Other…**.
+Models come from the agent (Claude's aliases `opus`, `sonnet` and `haiku` until it lists its own),
+efforts are **Low**, **Medium**, **High**, **Extra high** and **Max**. **Other…** opens a text field
+for any other value; a saved value the list does not know shows there, never lost.
 
 The navigation on the left has three groups. A red dot marks a section with a problem in the stored
 settings; the **Fix** buttons at the top open that section on the item to fix.
@@ -18,7 +23,7 @@ settings; the **Fix** buttons at the top open that section on the item to fix.
 | | **Appearance** | Light, dark or system; the **Terminal color scheme**; terminal font and size; **App text size** and **Conversation text size** (kept on this computer). |
 | | **Notifications** | **Show notifications** (the master switch), **Send a test**, the system permission; sessions (Replied, Needs an answer, Error); Slack, Automations, Tickets, Health, Flow maps, meetings and metric alerts; **Pause notifications**; pull request notifications and **Protected branches**; the menu bar icon and the app icon badge; **Menu bar panel** (which blocks the panel shows, macOS and Windows). |
 | | **Alerts** | Thresholds and rules for the alerts Workhub raises. |
-| | **Agents and accounts** | Every agent Workhub can run and its sign-ins, the agent order and account failover of the profile being edited, and the accounts. See [Profiles](profiles.md#accounts). |
+| | **Agents and accounts** | The accounts first, one card per sign-in with a **Default** badge, **Make default** and **Add account**; then every agent Workhub can run, and the agent order and account failover of the profile being edited. See [Profiles](profiles.md#accounts). |
 | | **Usage and budgets** | Usage reading, budgets and alerts. See [Usage and budgets](usage.md). |
 | | **Connections** | Code host, chat, Health and calendar connections: kind, provider, endpoint, secret and extra `key=value` options. Each one says which profiles use it. |
 | Profile | **Profile and folders** | Name, colour, folders, folder options, worktrees, links, environment variables and the Slack archive time. See [Profiles](profiles.md). |
@@ -71,7 +76,7 @@ its sidebar menu) overrides the default. Sessions opened by automations, reviews
 it off. Stop speaking with ⌘/Ctrl+Alt+. .
 
 **Summary model** is the Claude model the chat's **Listen** button summarizes a long agent message
-with before reading it (empty: **haiku**). Each summary is a small paid query on the session's
+with before reading it (a list of Claude models with **Other…**; empty: **haiku**). Each summary is a small paid query on the session's
 Claude account; a small model costs the least. See [Sessions](sessions.md#the-composer).
 
 ## Language

@@ -85,6 +85,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   ...rows('agents', 'settings.agentOrder', [['settings.agentOrder', 'settings.agentOrderHint', 'agents.orderHelp'], ['continuity.settings.mode', 'continuity.settings.hint', 'help.profile.accountFailover']]),
   ...rows('agents', 'settings.accountsList', [
     ['settings.accountsList', 'settings.accountsHint', 'help.accounts.list'],
+    ['accounts.add', 'accounts.intro'],
+    ['accounts.makeDefault', 'accounts.defaultHelp'],
     ['settings.configDir', undefined, 'help.account.configDir'],
     ['settings.envLines', 'settings.envStoredNote', 'help.account.env'],
     ['settings.accountCommand', undefined, 'help.account.command'],

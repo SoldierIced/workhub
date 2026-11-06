@@ -1,3 +1,4 @@
+import { FolderPlus, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import {
   automaticProfileColor,
@@ -8,12 +9,14 @@ import {
   type OfferedModule,
   type Profile
 } from '@workhub/core'
-import { Badge, Button, Input, Select, Switch, Textarea } from '../../components/atoms'
-import { Card, CardBody, CardHeader, Field, SwitchRow, useToast } from '../../components/molecules'
+import { Badge, Button, IconButton, Input, Select, Switch } from '../../components/atoms'
+import { Card, CardBody, CardHeader, Field, HelpTip, SwitchRow, useToast } from '../../components/molecules'
 import { DeleteButton, useUnsavedForm } from '../../components/organisms/UnsavedChanges'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { profileFieldErrors } from '../../lib/configIssues'
+import { addProfileFolder, removeProfileFolder } from '../../lib/profileFolders'
+import { abbreviateFolder } from '../../lib/sessionHeader'
 import { isDirty, type SaveOutcome } from '../../lib/unsavedChanges'
 import { ProfileColorField } from '../ProfileColorField'
 import { DefaultFolderField, ProfileExtraFields, prunedFolderOptions, useProfileEnvDraft } from '../ProfileExtraSettings'
@@ -167,17 +170,7 @@ export function ProfileSection({ snap, run, profileId, onCreated, onDeleted }: S
           automatic={automaticProfileColor(isNew ? snap.config.profiles.length : snap.config.profiles.findIndex((p) => p.id === saved.id))}
           onChange={(color) => setForm(({ color: _old, ...rest }) => (color ? { ...rest, color } : rest))}
         />
-        <Field label={t('settings.folders')} hint={t('settings.foldersHint')} help={t('help.profile.folders')}>
-          <Textarea
-            rows={3}
-            value={(form.folders ?? []).join('\n')}
-            spellCheck={false}
-            onChange={(e) => {
-              const folders = e.target.value.split('\n')
-              setForm({ ...form, folders: folders.some((f) => f.trim()) ? folders : undefined })
-            }}
-          />
-        </Field>
+        <FoldersField folders={form.folders} onChange={(folders) => setForm(({ folders: _old, ...rest }) => (folders ? { ...rest, folders } : rest))} />
         <DefaultFolderField form={form} onChange={(folder) => setForm(({ defaultFolder: _old, ...rest }) => (folder ? { ...rest, defaultFolder: folder } : rest))} />
         <ProfileExtraFields form={form} onChange={setForm} env={env} />
         <FieldGroup legend={t('nav.slack')} help={t('help.profile.slack')}>
@@ -185,6 +178,49 @@ export function ProfileSection({ snap, run, profileId, onCreated, onDeleted }: S
         </FieldGroup>
       </CardBody>
     </Card>
+  )
+}
+
+/**
+ * The profile's folders as a list: each one short with its full path under it, a button to
+ * remove it, and "Add folder…" opening the system folder picker (again for every folder). They are
+ * folders on this computer, where the sessions run, so there is no typed path.
+ */
+function FoldersField({ folders, onChange }: { folders: string[] | undefined; onChange: (folders: string[] | undefined) => void }) {
+  const { t } = useI18n()
+  const list = folders ?? []
+  const add = async () => {
+    const picked = await window.hub.pickFolder()
+    if (picked) onChange(addProfileFolder(folders, picked))
+  }
+  return (
+    <div className="flex flex-col gap-1.5" data-settings-row data-testid="profile-folders">
+      <span className="flex items-center gap-1.5">
+        <span className="text-sm font-medium text-muted">{t('settings.folders')}</span>
+        <HelpTip text={t('help.profile.folders')} label={t('settings.folders')} />
+      </span>
+      {list.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-subtle">{t('settings.foldersEmpty')}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+          {list.map((folder) => (
+            <li key={folder} className="flex items-center gap-2 px-3 py-1.5" data-testid="profile-folder">
+              <span className="min-w-0 flex-1" title={folder}>
+                <span className="block truncate text-base text-text">{abbreviateFolder(folder)}</span>
+                <span className="block truncate font-mono text-xs text-subtle">{folder}</span>
+              </span>
+              <IconButton size="sm" label={t('settings.folderRemove', { folder })} icon={<X className="size-3.5" aria-hidden />} onClick={() => onChange(removeProfileFolder(folders, folder))} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <div>
+        <Button size="sm" icon={<FolderPlus className="size-3.5" aria-hidden />} onClick={() => void add()} data-testid="profile-folder-add">
+          {t('settings.folderAdd')}
+        </Button>
+      </div>
+      <p className="text-xs text-subtle">{t('settings.foldersHint')}</p>
+    </div>
   )
 }
 

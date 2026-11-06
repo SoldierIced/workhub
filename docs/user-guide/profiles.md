@@ -22,7 +22,7 @@ and AI review has its own section.
 |---|---|
 | Name, Id | The id is a short permanent identifier (lowercase letters, digits, `.`, `_`, `-`). It cannot be changed after saving. |
 | Symbol, Colour | The icon of the profile in the sidebar (default: the first letter of its name) and the colour that marks its sessions down the left edge of their rows. |
-| Folders | One per line. New sessions offer them first, and the pull request search falls back to their repositories. |
+| Folders | A list of folders on this computer: **Add folder…** opens the system folder picker (once per folder, as many times as you need), each row shows the short and the full path, and ✕ removes it. New sessions offer them first, and the pull request search falls back to their repositories. |
 | Default folder | Where **New session** starts without asking: one of the folders, **Home folder**, or **Another folder…**. Empty means the first folder. |
 | Folder options | Per folder: **Only git repos**, and **Each subfolder is its own project** (**Automatic**, **On** or **Off**). With it on, sessions in a subfolder group under a project named after it; Automatic splits this way unless the folder is itself a git repository. **Worktree for new sessions** (**As the profile**, **On** or **Off**) overrides the profile's worktree setting for sessions in that folder. |
 | Accounts | The agent accounts offered when you start a session in this profile. |
@@ -68,15 +68,34 @@ itself. It is off by default.
 An account is one sign-in of an agent. Two Claude accounts, for example a personal one and a work
 one, keep separate logins, plan limits and history, because each uses its own config folder (for
 Claude, something like `~/.claude-work`; Workhub sets `CLAUDE_CONFIG_DIR`, and for Codex
-`CODEX_HOME`). Add them in **Settings → Agents and accounts**:
+`CODEX_HOME`).
+
+**Settings → Agents and accounts** lists them per agent, one card each: first the agent's
+**Sign-in on this computer** (its default folder, used by sessions without an account), then each
+account with its agent, its config folder and the variable it sets, and its extras. The account new
+sessions of the profile start with has a **Default** badge, and the line above the cards names it.
+**Make default** on another card puts that sign-in first in the profile's agent order (and offers the
+account in the profile); you can still pick any other one in each new session.
+
+To add a second Claude account, for example a work one next to your personal one:
+
+1. Click **Add account**.
+2. Type a name (`Claude work`), keep the agent on Claude and click **Choose…** to pick a folder of
+   its own, such as `~/.claude-work` (a new, empty folder is a new login).
+3. Leave **Offer in** the profile on, and click **Add account**. The first session with that account
+   asks you to sign in.
+
+The id (made from the name), environment variables, command and session defaults are under
+**More options**:
 
 | Field | Meaning |
 |---|---|
 | Agent, Name | The agent the account signs in to, and how it appears in menus and the sidebar. |
 | Config folder | Holds this account's login and settings. A different folder is a different account. |
+| Offer in the profile | Whether new sessions of the profile being edited can use the account. Other profiles turn it on in **Modules and screens**. |
 | Environment variables | Extra variables for this account's sessions, such as `OPENAI_API_KEY` for Codex. The names are saved in the settings; the values are kept encrypted in the secret store (`secrets.json`), never in `config.json`, and the fields are masked. Values saved in `config.json` by an older version move to the secret store the next time Workhub starts. |
 | Command | A different executable to run instead of the agent's own command. The agent's arguments are kept. |
-| Default model, Default agent or mode | What new sessions of this account start with. You can still change them in the session. |
+| Default model, Default agent or mode | What new sessions of this account start with: a list of what the agent offers, or **Other…** for any id. You can still change them in the session. |
 
 Agents without an account here (Kiro, Codex and so on) are still offered, with their own sign-in.
 Kiro has one sign-in per computer (`kiro-cli login`); an account for Kiro only runs it with other

@@ -114,9 +114,9 @@ Settings are per profile, in **Settings → Profiles → AI review**:
 |---|---|
 | **AI review** | On by default. |
 | **Start automatically when a dev session goes idle with new commits** | Off by default; turn it on to review branches without asking. |
-| **Reviewer agent**, **Reviewer model** | Empty uses the first agent in the order and its default model. **Reviewer model** lists the models of the chosen reviewer agent (Claude's for Claude, Kiro's for Kiro), and picking another reviewer goes back to its default model. An agent that has not listed its models yet (it lists them after its first session) gets a text field for the model id instead. |
+| **Reviewer agent**, **Reviewer model** | Empty uses the first agent in the order and its default model. **Reviewer model** lists the models of the chosen reviewer agent (Claude's for Claude, Kiro's for Kiro), and picking another reviewer goes back to its default model. An agent that has not listed its models yet (it lists them after its first session) offers Claude's aliases for Claude and nothing for the others; **Other…** takes any model id. |
 | **Ask me before the findings go to the author** | The default of the same check in the **Review with another agent** dialog. |
-| **Reviewer effort** | Optional reasoning effort for the reviewer (`high`, `xhigh`, …). Agents without the setting ignore it. A large model at high effort finds far more in one pass and takes longer (15–20 minutes on a mid-sized change). |
+| **Reviewer effort** | Optional reasoning effort for the reviewer: **Low** to **Max**, or **Other…** for another value. Agents without the setting ignore it. A large model at high effort finds far more in one pass and takes longer (15–20 minutes on a mid-sized change). |
 | **Reviewer across rounds** | **Same reviewer for every round** (default) keeps one reviewer session and its checkout for the whole review: later rounds continue its conversation instead of reading everything again. It is replaced by a new one when it was closed, when a round failed, or when the reviewer agent, model or effort changed. **New reviewer each round** starts every round with an empty context. |
 | **Base branch** | The pull request target (default `develop`). If it does not exist, the repository's default branch is used. It is fetched before every round. |
 | **Rounds before asking you** | Default 3. |
