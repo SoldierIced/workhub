@@ -11,14 +11,14 @@ numbers come from the Health environment you pick.
 
 ## Where maps live
 
-`flow-maps/` inside Workhub's data folder, one file per map, named after its `id`. **Settings →
-Flow maps** shows the folder, reveals it, imports JSON files into it and lists every map it holds
+`flow-maps/` inside Workhub's data folder, one file per map, named after its `id`. **Settings → Profiles → (profile) → Screens →
+Flow maps** (open the row) shows the folder, reveals it, imports JSON files into it and lists every map it holds
 (an invalid file is listed with its error, and can be deleted from there). The folder is read on
 every refresh, so a new or edited file shows up without a restart.
 
 Three ways to add one:
 
-- **Settings → Flow maps → Import JSON…** picks one or more files; each is validated and stored
+- **Settings → Profiles → (profile) → Screens → Flow maps → Import JSON…** picks one or more files; each is validated and stored
   under its `id`.
 - Drop the file in the folder.
 - Post it to the local control endpoint from inside a Workhub session (what the
@@ -39,8 +39,8 @@ port with a token made at each launch): replace `--unix-socket "$WORKHUB_SOCKET"
 
 ## Turning it on
 
-Flow maps is an optional module, like Health: **Settings → Flow maps → Flow maps screen** (or
-Settings → Profiles → Modules) turns the screen on for the active profile, and it appears in the
+Flow maps is an optional module, like Health: the **Flow maps** switch in
+**Settings → Profiles → (profile) → Screens** turns the screen on for that profile, and it appears in the
 sidebar next to Health as **⌘7**. The numbers come from the profile's Health connection and its
 environments, so Health has to be set up too; without it the maps are drawn but say so instead
 of showing numbers.
@@ -49,7 +49,7 @@ of showing numbers.
 
 **Flow maps (⌘7)** has one header row: the title, the Health environments as a segmented control
 (a dot for each one's state; hover it for the label), and **Reload** (reads the folder and the
-opened map again) and **Settings** (Settings → Flow maps) at the right.
+opened map again) and **Settings** (Settings → Profiles → (profile) → Screens → Flow maps) at the right.
 
 The left rail lists the maps of the folder that name the chosen environment (or name none): under
 their `group` heading (maps without one under **Other**, last), with a search box that matches name,
@@ -87,7 +87,7 @@ The map picked opens next to the rail with:
   p50 / p95, failures, calls per minute, how it compares with the previous window and with its
   seven-day usual (×1.3: a third slower; hover for the baseline's numbers), the hour-by-hour chart
   (bars: calls, line: p95, the slowest hour marked), its result codes (`transaction.result`:
-  "HTTP 2xx", "HTTP 4xx"…), its limits with the ones exceeded flagged (**adjust** opens Settings →
+  "HTTP 2xx", "HTTP 4xx"…), its limits with the ones exceeded flagged (**adjust** opens Settings → Profiles → (profile) → Screens →
   Flow maps), and **Investigate this part**, which opens the Ask Claude draft focused on it. The
   chevron folds the drawer; Workhub remembers it, and starts it folded when the screen is narrower
   than 1200 px.

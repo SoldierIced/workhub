@@ -85,12 +85,12 @@ The **Shell** view opens the shell named by the `COMSPEC` environment variable, 
 
 Uninstalling leaves your data folder in place. To remove it too, delete it by hand:
 `%APPDATA%\Workhub 2` on Windows, `~/Library/Application Support/Workhub 2` on macOS. The folder
-holds your settings, encrypted secrets and logs. **Settings → General → Storage** shows the exact
+holds your settings, encrypted secrets and logs. **Settings → Advanced → Data** shows the exact
 path.
 
 ## First run
 
-1. Open **Help → Setup Check…** (or **Settings → Profiles**, which has the same entry). It lists
+1. Open **Help → Setup Check…** (or **Settings → Advanced → Diagnostics and help**, which has the same entry). It lists
    what Workhub needs on this machine and the optional integrations. Each item shows **Ready**,
    **Needs a look**, **Missing** or **Not set up**, with a button to fix it. Nothing in the check
    changes a setting by itself.
@@ -98,8 +98,9 @@ path.
    folders you work in. You can add more later.
 3. In **Settings → Agents**, add the agent accounts you use. A Claude account is a config folder;
    Kiro and Codex use their own CLI sign-in. See [Profiles](profiles.md).
-4. In **Settings → Profiles**, give the profile folders, a default folder and the accounts it may
-   use, and turn on the optional modules you want (Health, Chat watcher, Automations).
+4. In **Settings → Profiles**, open the profile: give it folders and a default folder on the
+   **Folders** tab, the accounts it may use on **Agents**, and turn on the screens you want
+   (Health, Slack, Automations…) on **Screens**.
 5. Optional: connect a code host, a ticket tracker, Slack and Elasticsearch. See
    [Pull requests](pull-requests.md), [Tickets](tickets.md), [Slack](slack.md) and
    [Health](health.md).
@@ -109,14 +110,14 @@ Secrets you type into Settings (API tokens) are stored encrypted with the operat
 and never written to the settings file. If the system cannot encrypt, Workhub refuses to store
 them.
 
-If you used Workhub 1 on macOS, **Settings → General** offers **Import from Workhub 1**. It shows
+If you used Workhub 1 on macOS, **Settings → Advanced → Data** offers **Import from Workhub 1**. It shows
 a **Preview** of what would be added, never changes Workhub 1, and copies no secrets: connections
 that need one are marked "re-enter the secret". A separate **Import tokens from Workhub 1** step
 can copy Jira and Elastic tokens from the macOS Keychain, with a permission prompt per token.
 
 ## Updates
 
-**Settings → General → Updates** has a **Check for updates** switch, off by default: nothing
+**Settings → General → Updates** has a **Check for new versions automatically** switch, off by default: nothing
 contacts GitHub unless you turn it on or press **Check now**. On Windows and the Linux AppImage the
 app can download and install the new version (**Download and restart**). On macOS an unsigned app
 cannot replace itself, so Workhub only announces the new version and opens the release page: download
@@ -133,7 +134,7 @@ highlighted for a moment, where the result shows.
 
 Closing the window can keep Workhub running in the menu bar (macOS), the notification area
 (Windows) or the status area (Linux), so sessions, Slack and automations keep working. Turn this
-off in **Settings → General → Menu bar**. The icon opens a small panel with the sessions that need
+off in **Settings → General → On open and close**. The icon opens a small panel with the sessions that need
 you, plan usage, pull requests and notifications.
 
 Next: [Profiles](profiles.md).

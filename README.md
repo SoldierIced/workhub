@@ -143,7 +143,7 @@ folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`). 
 
 ### Updates
 
-Settings > General > Updates has a **Check for updates** switch, off by default: nothing contacts
+Settings > General > Updates has a **Check for new versions automatically** switch, off by default: nothing contacts
 GitHub unless you turn it on or press **Check now**. **Install update** downloads and installs the
 new version on macOS, Windows and the Linux AppImage, then asks whether to restart now or later.
 Elsewhere (the `.deb`, or a macOS app outside a writable folder) it opens the release page.
@@ -161,7 +161,7 @@ Elsewhere (the `.deb`, or a macOS app outside a writable folder) it opens the re
    environments. Secrets typed here (API tokens) go to `secrets.json`, encrypted with Electron
    `safeStorage` (macOS Keychain, Windows DPAPI, Linux libsecret/kwallet). If OS encryption is
    unavailable Workhub refuses to store a secret.
-5. Optional: **Import from Workhub 1** (Settings > General, macOS, shown only when Workhub 1
+5. Optional: **Import from Workhub 1** (Settings > Advanced > Data, macOS, shown only when Workhub 1
    settings exist) previews and imports profiles, folders, accounts, connections and more. It never
    writes to Workhub 1 and copies no secrets; connections that need one are marked "re-enter".
 

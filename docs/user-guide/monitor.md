@@ -84,7 +84,7 @@ thin border and the system shadow.
     **Health**, only while an environment is degraded or unreachable; **Slack**, only when watching
     stopped with an error.
   - **Usage**: one row per agent account that reports usage: the name, a bar for its most spent
-    window (amber from 75 %, red from 90 %) and the percentage. A click opens **Settings → Usage**.
+    window (amber from 75 %, red from 90 %) and the percentage. A click opens **Settings → Agents**.
     With more than 3 accounts the block folds into one row, **5 accounts · highest: …** with the
     bar of the most spent one; **▸** unfolds every account, most spent first.
   - **Needs you** (up to 5, with the state and how long ago) and **Working** (up to 3).

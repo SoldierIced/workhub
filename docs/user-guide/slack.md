@@ -5,13 +5,13 @@ follow. It is read-only, and it needs no Slack app and no Slack token: Workhub a
 Claude accounts, through that account's own Slack connector, for new messages and new replies. Tools
 that post or change anything are refused.
 
-It is an optional module. Turn on **Chat watcher** for the profile in **Settings → Profiles**, then
+It is an optional module. Turn on **Chat watcher** for the profile in **Settings → Profiles → (profile) → Screens**, then
 turn on the watcher itself. **Watch Slack is off by default**, and nothing is read until you turn it
 on.
 
 ## Set up the watcher
 
-In **Settings → Slack**:
+In **Settings → Profiles → (profile) → Screens → Slack** (open the row; the watcher is shared by every profile):
 
 | Setting | Meaning |
 |---|---|
@@ -35,7 +35,7 @@ A followed thread shows its replies, whether there are new ones (**New**) and wh
   to also set a title, a pull request, a ticket and a session, and whether replies wake the session.
   The same **Track a Slack link** action is on a pull request's **Slack** tab.
 - **Follow automatically**: with the tracking hook installed, every Slack message a Claude session
-  sends is recorded, and Workhub follows its thread. **Settings → Slack → Tracking hook →
+  sends is recorded, and Workhub follows its thread. **Settings → Profiles → (profile) → Screens → Slack → Tracking hook →
   Install** adds one `PostToolUse` entry to that account's Claude `settings.json` (a `.bak` copy is
   kept); **Remove** takes out only that entry. Nothing is edited until you click Install.
 - **Wake the session**: new replies are typed into the owning session when it is idle. **Send the
@@ -45,7 +45,7 @@ A followed thread shows its replies, whether there are new ones (**New**) and wh
 - **Stop following** / **Follow again**. A thread is dropped from following when its pull request
   merges or closes, or after a week without activity (**Not followed**).
 - **Archived (n)**: threads quiet for a while fold into **Archived**, on this screen and in the
-  session monitor. Set the delay in **Settings → Profiles → Slack** (default 15 minutes). Archived
+  session monitor. Set the delay in **Settings → Profiles → (profile) → Screens → Slack** (default 15 minutes). Archived
   threads are still watched, and a new reply brings them back.
 
 ## Links open in the Slack app

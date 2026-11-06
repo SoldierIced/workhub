@@ -5,7 +5,7 @@ sprint**, then **Backlog · no sprint**). Jira Cloud and Linear are supported.
 
 ## Set up
 
-1. **Settings → Trackers → New tracker**.
+1. **Settings → Profiles → (profile) → Screens → Tickets → New tracker** (open the row).
 2. Pick the provider:
    - **Jira**: the **Jira site** (for example `your-team.atlassian.net`), your **Account email** and
      an **API token** (create one at id.atlassian.com → Security → API tokens).

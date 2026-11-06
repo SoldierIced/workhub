@@ -4,7 +4,7 @@ An automation sends a prompt or slash command to a dedicated session, either whe
 message arrives in a Slack channel or on a schedule, inside a time window and under rate limits. Use
 it for repeatable chores such as a `/review-prs` skill.
 
-It is an optional module: turn on **Automations** for the profile in **Settings → Profiles**. With
+It is an optional module: turn on **Automations** for the profile in **Settings → Profiles → (profile) → Screens**. With
 the module off, the profile's automations do not run. The screen is at ⌘/Ctrl+5.
 
 ## Create one
@@ -20,7 +20,7 @@ ready-made one that runs on each pull request posted in your review channels.
 | **Permissions** | Unattended runs stop at every permission prompt, so pick a mode that lets the skill finish: **Ask permissions**, **Accept edits**, **Plan mode**, **Auto** or **Bypass permissions**. Understand what a mode lets the agent do before using it unattended. |
 | **Runs in** | **The chat** or **The console**. |
 | **Session** | **Reuse its session** (one dedicated session, resumed when it was closed) or **New session each run** (the new one takes the old one's sidebar place and the Slack threads it listens to). |
-| **Run on pull request messages in** | Slack channels that trigger it, and **Only pull requests of (owner)**: a GitHub organization or user (empty accepts any). Channels must also be watched in **Settings → Slack**. |
+| **Run on pull request messages in** | Slack channels that trigger it, and **Only pull requests of (owner)**: a GitHub organization or user (empty accepts any). Channels must also be watched in **Settings → Profiles → (profile) → Screens → Slack**. |
 | **Also every (minutes)** | An optional schedule. Empty means no schedule. |
 | **At most (runs)** in **In (minutes)**, **Per day** | Rate limits. |
 | **Wait above 5 h usage (%)** | Pauses while the account's usage is that high. |

@@ -3,11 +3,11 @@
 The **Health** screen (⌘/Ctrl+8) shows, for each environment, the errors, pods and slow endpoints
 of your services, read from Elasticsearch (Elastic APM and Kubernetes metrics). Nothing is called
 healthy unless it could be read. It is an optional module: turn on **Health** for the profile in
-**Settings → Profiles**.
+**Settings → Profiles → (profile) → Screens**.
 
 ## Set up
 
-In **Settings → Health**:
+In **Settings → Profiles → (profile) → Screens → Health** (open the row):
 
 1. **Elasticsearch URL**: `https` only (`http` is accepted for localhost).
 2. **Authentication**: **API key** or **Username and password**. Use a read-only key or user. The
@@ -60,7 +60,7 @@ service, stderr lines per container, calls to the slow endpoints per service and
 rate, one value per day (the last read of the day, a rolling 24 h figure). Series keep 45 days.
 
 **Rules.** Each metric is compared with its own previous 7 business days. Every limit is a
-default in **Settings → Health → Alert rules** and can be overridden per metric id.
+default in **Settings → Profiles → (profile) → Screens → Health → Alert rules** and can be overridden per metric id.
 
 | Rule | Fires when | Default |
 |---|---|---|
@@ -93,7 +93,7 @@ item waits under **To review** for you to choose **Create ticket** (which create
 task**, or discard it.
 Sending the same alert again while its item is open does not add a second one.
 
-**Settings → Health → Alert rules** holds the thresholds, the business days, the minimum severity
+**Settings → Profiles → (profile) → Screens → Health → Alert rules** holds the thresholds, the business days, the minimum severity
 that notifies (default high) and the per-metric overrides (minimum volume, jump percentage, rate
 points, critical, muted). With `WORKHUB_DEMO_HEALTH=1` the tab shows a month of synthetic product
 metrics with one alert of each kind; the demo never notifies.
@@ -112,7 +112,7 @@ minutes; below the environment's *stopped reporting after* it changes nothing) a
 worsening** (announced from that many times its typical day). Pods and the environment changes
 have no threshold to tune (shown as —). Left blank, the environment's thresholds decide, as before.
 The same screen holds the metric alerts' minimum severity and business days (the per-metric
-overrides stay in Settings → Health → Alert rules) and the profile's **Quiet hours**.
+overrides stay in Settings → Profiles → (profile) → Screens → Health → Alert rules) and the profile's **Quiet hours**.
 
 **Quiet hours** (Settings → Alerts, per profile, may cross midnight, such as 22:00 to 07:00):
 Health, flow-map and metric alert notifications are not shown during them. They are still

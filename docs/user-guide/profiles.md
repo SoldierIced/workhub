@@ -12,11 +12,12 @@ leaving with unsaved changes asks first.
 
 ## What a profile holds
 
-**Profile and folders** holds the name, symbol, colour, folders, folder options, worktrees, links,
-environment variables, Slack archive time and "owns everything outside". **Modules and screens**
-holds the optional modules, the connection each screen reads, and the profile's connections,
-accounts and agents offered. The agent order and account failover are in **Agents and accounts**,
-and AI review has its own section.
+**Settings → Profiles** lists the profiles; **Open** shows one. Its header holds the name, colour,
+symbol and **Delete**; its tabs hold the rest: **Folders** (folders, default folder, folder options,
+worktrees), **Screens** (each screen's switch and connection on one row, and under it that screen's
+settings, AI review included), **Agents** (the agent order, account failover, and the accounts and
+agents offered) and **Sessions and links** (links, "use this profile for folders without one",
+environment variables). Editing a profile never changes the active one. See [Settings](settings.md#a-profile).
 
 | Setting | What it does |
 |---|---|
@@ -28,8 +29,8 @@ and AI review has its own section.
 | Accounts | The agent accounts offered when you start a session in this profile. |
 | Agents offered | Which agents appear in the **New session** menu. |
 | Agent order | The first agent is the default, and the one Workhub picks on its own (opening a session from a pull request or ticket, asking Claude to review). |
-| Connections | At most one connection of each kind: code host, ticket tracker, chat, Health. **None** turns that feature off in this profile. Calendars are picked in **Settings → Plan**, where a profile can read several. Set in **Modules and screens**. |
-| Optional modules | **Health**, **Chat watcher** (the Slack screen), **Automations**, **Flow maps** and **Plan** (meetings, reminders, briefs, people; see [Plan](plan.md)). Off hides their screens. Each row of **Modules and screens** shows the connection the screen reads and an **Edit** link to its setup. |
+| Connections | At most one connection of each kind: code host, ticket tracker, chat, Health. **None** turns that feature off in this profile. Calendars are picked on the **Plan** row of **Screens**, where a profile can read several. Set on the **Screens** tab. |
+| Optional modules | **Health**, **Chat watcher** (the Slack screen), **Automations**, **Flow maps** and **Plan** (meetings, reminders, briefs, people; see [Plan](plan.md)). Off hides their screens. Each row of the **Screens** tab has the screen's switch, the connection it reads, and its settings under it. |
 | Account failover | **Ask**, **Automatic** or **Off**: what a session does when its Claude account reaches its usage limit or your ceiling. See [Usage and budgets](usage.md). |
 | AI review | Settings for the [review before PR](review-before-pr.md) feature. |
 | Worktrees | Whether new sessions on a git repository start in their own worktree and branch, where the worktrees go, the branch prefix, the branch new ones start from and what closing a session does. See [Worktree per session](#worktree-per-session). |
@@ -70,7 +71,7 @@ one, keep separate logins, plan limits and history, because each uses its own co
 Claude, something like `~/.claude-work`; Workhub sets `CLAUDE_CONFIG_DIR`, and for Codex
 `CODEX_HOME`).
 
-**Settings → Agents and accounts** lists them per agent, one card each: first the agent's
+**Settings → Agents** lists them per agent, one card each: first the agent's
 **Sign-in on this computer** (its default folder, used by sessions without an account), then each
 account with its agent, its config folder and the variable it sets, and its extras. The account new
 sessions of the profile start with has a **Default** badge, and the line above the cards names it.
@@ -92,7 +93,7 @@ The id (made from the name), environment variables, command and session defaults
 |---|---|
 | Agent, Name | The agent the account signs in to, and how it appears in menus and the sidebar. |
 | Config folder | Holds this account's login and settings. A different folder is a different account. |
-| Offer in the profile | Whether new sessions of the profile being edited can use the account. Other profiles turn it on in **Modules and screens**. |
+| Offer in the profile | Whether new sessions of the profile being edited can use the account. Other profiles turn it on in their **Agents** tab. |
 | Environment variables | Extra variables for this account's sessions, such as `OPENAI_API_KEY` for Codex. The names are saved in the settings; the values are kept encrypted in the secret store (`secrets.json`), never in `config.json`, and the fields are masked. Values saved in `config.json` by an older version move to the secret store the next time Workhub starts. |
 | Command | A different executable to run instead of the agent's own command. The agent's arguments are kept. |
 | Default model, Default agent or mode | What new sessions of this account start with: a list of what the agent offers, or **Other…** for any id. You can still change them in the session. |
@@ -132,7 +133,7 @@ Names use letters, digits and underscores and cannot start with a digit; an inva
   the sessions easy to tell apart in the sidebar.
 - A session started in a folder that belongs to another profile starts in that profile, with its
   agents.
-- **Settings → General** holds the Help and setup entries: **Setup check**, **Welcome tour**
+- **Settings → Advanced → Diagnostics and help** holds the Help and setup entries: **Setup check**, **Welcome tour**
   and **How Workhub works**.
 
 Next: [Sessions](sessions.md).
