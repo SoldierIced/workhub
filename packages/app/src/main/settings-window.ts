@@ -7,7 +7,8 @@ export const SETTINGS_WINDOW_SIZE: SessionWindowSize = { width: 1180, height: 80
 /** What the Settings window follows besides `config:changed` (sent to every window): the usage and update cards. */
 export const SETTINGS_CHANNELS: ReadonlySet<string> = new Set(['usage:changed', 'usage:sessionBudgetsChanged', 'updates:changed'])
 
-const SECTION = /^[A-Za-z][A-Za-z0-9]{0,39}(#[A-Za-z][A-Za-z0-9-]{0,39})?$/
+// A section id, or `profiles/<id>` and `profiles/<id>/<tab>`, optionally with `#anchor`.
+const SECTION = /^[A-Za-z][A-Za-z0-9]{0,39}(\/[A-Za-z0-9._-]{1,80}){0,2}(#[A-Za-z][A-Za-z0-9-]{0,39})?$/
 
 /**
  * A section (or old tab) id from a renderer, optionally `#anchor` for one of its groups

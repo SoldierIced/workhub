@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchesShortcut, shortcutKeys, shortcutLabel } from '../src/renderer/lib/shortcuts'
+import { matchesShortcut, platformShortcutText, shortcutKeys, shortcutLabel } from '../src/renderer/lib/shortcuts'
 import { toPlatform } from '../src/shared/api'
 
 const key = (k: string, mods: Partial<{ meta: boolean; ctrl: boolean; shift: boolean; alt: boolean }> = {}) => ({
@@ -53,5 +53,12 @@ describe('matchesShortcut', () => {
     expect(matchesShortcut(key('t', { meta: true, shift: true }), { key: 't' }, 'mac')).toBe(false)
     expect(matchesShortcut(key('1', { ctrl: true, alt: true }), { key: '1' }, 'windows')).toBe(false)
     expect(matchesShortcut(key('1'), { key: '1' }, 'windows')).toBe(false)
+  })
+})
+
+describe('platformShortcutText', () => {
+  it('keeps ⌘ on macOS and writes Ctrl+ elsewhere', () => {
+    expect(platformShortcutText('The Tickets screen (⌘3)', 'mac')).toBe('The Tickets screen (⌘3)')
+    expect(platformShortcutText('The Tickets screen (⌘3)', 'windows')).toBe('The Tickets screen (Ctrl+3)')
   })
 })

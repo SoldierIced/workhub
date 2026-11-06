@@ -36,6 +36,9 @@ describe('Settings window route', () => {
   it('accepts only plain section ids from a renderer', () => {
     expect(settingsSectionArg('flowMaps')).toBe('flowMaps')
     expect(settingsSectionArg('general#updates')).toBe('general#updates')
+    expect(settingsSectionArg('profiles/acme-web/agents')).toBe('profiles/acme-web/agents')
+    expect(settingsSectionArg('profiles/acme.web_1/screens#health')).toBe('profiles/acme.web_1/screens#health')
+    expect(settingsSectionArg('profiles/a/b/c')).toBeUndefined()
     expect(settingsSectionArg('general#')).toBeUndefined()
     expect(settingsSectionArg('general#a#b')).toBeUndefined()
     expect(settingsSectionArg(undefined)).toBeUndefined()

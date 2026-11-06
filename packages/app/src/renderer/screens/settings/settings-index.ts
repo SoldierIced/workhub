@@ -28,6 +28,10 @@ export interface SettingsIndexEntry {
   subgroup?: MessageKey;
   tab?: ProfileTab;
   screen?: ProfileScreen;
+  /** A row of one profile (the profile's own entry): the hit opens that profile, not the open one. */
+  profileId?: string;
+  /** A label that is not an i18n key (a profile's name); `label` is then only the row's key. */
+  text?: string;
   /** The row to point at when this one sits behind a closed "Adjust…" (its label is not on screen). */
   focus?: MessageKey;
   /** Only on some computers: `workhub1` while the Workhub 1 import shows. */
@@ -495,7 +499,7 @@ export function searchSettings(
     if (visible && !visible(entry)) return;
     const breadcrumb = entryBreadcrumb(entry, { t, groupLabel });
     if (!breadcrumb) return;
-    const label = t(entry.label);
+    const label = entry.text ?? t(entry.label);
     const hint = entry.hint ? t(entry.hint) : undefined;
     const foldedLabel = foldText(label);
     const haystack = foldText(
@@ -531,6 +535,22 @@ export function searchSettings(
 
 /** One key per place a row can be: section, tab, screen and label. */
 export const hitKey = (entry: SettingsIndexEntry) =>
-  [entry.section, entry.tab ?? "", entry.screen ?? "", entry.label].join(
-    "\u0000",
-  );
+  [
+    entry.section,
+    entry.tab ?? "",
+    entry.screen ?? "",
+    entry.profileId ?? "",
+    entry.label,
+  ].join("\u0000");
+
+/** One entry per profile, so a profile is found by its name and opens on its first tab. */
+export const profileEntries = (
+  profiles: readonly { id: string; name: string }[],
+): SettingsIndexEntry[] =>
+  profiles.map((p) => ({
+    section: "profiles",
+    tab: "folders",
+    profileId: p.id,
+    label: "settingsV2.nav.profiles",
+    text: p.name || p.id,
+  }));
