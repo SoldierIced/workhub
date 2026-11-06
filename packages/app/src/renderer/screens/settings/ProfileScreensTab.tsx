@@ -158,7 +158,7 @@ export function ProfileScreensTab({ snap, run, profileId, openScreen, focusHealt
               <div className="flex items-center justify-between gap-6 py-3" data-settings-row>
                 <div className="min-w-0">
                   <span className="block text-base">{t(row.label)}</span>
-                  <p className="text-xs text-subtle">{t(row.hint)}</p>
+                  <p className="text-xs text-subtle">{platformShortcutText(t(row.hint), window.hub.platform)}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">{controls(row)}</div>
               </div>
