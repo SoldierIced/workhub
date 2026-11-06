@@ -6,7 +6,7 @@
  * same folder); nothing is ever prompted again. The sidebar order and groups live in the config
  * (keyed by identity), so restored sessions land at their old places.
  */
-import { effectiveAgentKey, type SessionGroups, type SessionWorktree } from '@workhub/core'
+import { descendantIds, effectiveAgentKey, type SessionGroups, type SessionWorktree } from '@workhub/core'
 import type { SessionMode, SessionView, StartSessionInput } from '../shared/api'
 
 export interface SavedOpenSession {
@@ -114,7 +114,8 @@ export function restoreOrder(saved: readonly SavedOpenSession[], groups: Session
   const order: string[] = []
   for (const slot of groups.top) {
     if (slot.kind === 'session') order.push(slot.key)
-    else order.push(...(groups.groups.find((g) => g.id === slot.id)?.members.map((m) => m.key) ?? []))
+    // A group's sessions, then those of its sub-groups.
+    else for (const g of [slot.id, ...descendantIds(groups, slot.id)]) order.push(...(groups.groups.find((x) => x.id === g)?.members.map((m) => m.key) ?? []))
   }
   const rank = (s: SavedOpenSession) => {
     const i = order.indexOf(s.identity)

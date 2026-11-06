@@ -88,6 +88,7 @@ import { TrayToday } from './tray-today'
 import { flowAlertWords, healthAlertWords, isLocale, metricAlertWords, trayText } from './tray-text'
 import { AppBadge, attentionBadgeCount } from './app-badge'
 import { profileWorkspaces } from './workspaces'
+import { startPlaced } from './session-placement'
 import { NotificationPermissionCheck } from './notification-permission'
 import { testNotification } from './notification-test'
 import { FlowAlertWatcher, HealthWatcher, TicketWatcher, ticketSummaryWords } from './watchers'
@@ -1065,7 +1066,17 @@ function registerIpc(): void {
   ipc.on('sessions:ready', (e) => {
     if (win && !win.isDestroyed() && e.sender === win.webContents) void openSessions.restore()
   })
-  ipc.handle('sessions:start', (_e, input) => sessions.start(input))
+  // The New session dialog's Group: main saves the place, so it follows the session's identity.
+  ipc.handle('sessions:start', (_e, input: StartSessionInput) =>
+    startPlaced(input, {
+      start: (rest) => sessions.start(rest),
+      groups: async () => (await configuration.current()).sessionGroups,
+      saveGroups: (g) => configuration.saveSessionGroups(g),
+      replaceIdentity: (oldKey, newKey) => configuration.replaceSessionIdentity(oldKey, newKey),
+      current: (id) => sessions.list().find((v) => v.id === id),
+      changed: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+    })
+  )
   ipc.handle('sessions:reopen', (_e, identity: string, input: StartSessionInput) => {
     if (typeof identity !== 'string' || !identity) throw new Error('an identity is required')
     return ownerStarts.start(identity, input)

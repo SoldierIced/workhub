@@ -1,5 +1,5 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
-import type { ChromeProfile, SessionWorktree, WorktreeStatus } from '@workhub/core'
+import type { ChromeProfile, GroupChoice, SessionWorktree, WorktreeStatus } from '@workhub/core'
 import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type { ProfileEnvApi, SetupApi, SystemNotificationsApi } from './setup-api'
 import type {
@@ -184,6 +184,11 @@ export interface StartSessionInput {
    * the folder itself when it is not in a repository, instead of failing.
    */
   worktree?: { branch?: string; optional?: boolean }
+  /**
+   * The sidebar group the new session goes in (the New session dialog's Group): an existing group
+   * by id, or a group by name, made when none has it. Left out, the session starts ungrouped.
+   */
+  group?: GroupChoice
 }
 
 /** A past session, plus its agent and account names for the history screen. */

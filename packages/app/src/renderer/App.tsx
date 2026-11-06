@@ -83,7 +83,7 @@ function Shell() {
   const [prFocus, setPrFocus] = useState<{ url: string } | null>(null)
   // The agents of the profile they were read for: another profile's list never shows (or starts) here.
   const [agentList, setAgentList] = useState<{ profileId: string | null; list: EffectiveAgent[] } | null>(null)
-  const [dialog, setDialog] = useState<{ open: boolean; cwd?: string; agentKey?: string }>({ open: false })
+  const [dialog, setDialog] = useState<{ open: boolean; cwd?: string; agentKey?: string; groupId?: string }>({ open: false })
   const [renaming, setRenaming] = useState<SessionView | null>(null)
   const [resumeFolder, setResumeFolder] = useState<string | null>(null)
   const [closing, setClosing] = useState<SessionData | null>(null)
@@ -458,6 +458,7 @@ function Shell() {
               onOpenSlack={reachable.some((i) => i.route === 'slack') ? () => navigate('slack') : undefined}
               onRename={setRenaming}
               onOpenInWindow={(id) => window.hub.windows.openSession(id)}
+              onNewSessionInGroup={(groupId) => setDialog({ open: true, groupId })}
             />
           }
           attentionCount={sessions.filter((s) => s.unseen).length}
@@ -478,8 +479,6 @@ function Shell() {
           onOpenSettings={() => openSettings()}
           sidebarHidden={layout.sidebarHidden}
           onToggleSidebar={() => setPrefs({ sidebarHidden: !layout.sidebarHidden })}
-          monitorHidden={route === 'sessions' && selectedSession ? layout.monitorHidden : undefined}
-          onToggleMonitor={() => setPrefs({ monitorHidden: !layout.monitorHidden })}
         />
         <main className="relative min-h-0 flex-1">
           {/* Sessions stay mounted so terminals and chats survive a visit to another screen. */}
@@ -535,6 +534,8 @@ function Shell() {
         folders={workspaces}
         profiles={profiles}
         initialAgentKey={dialog.agentKey}
+        groups={groups}
+        initialGroupId={dialog.groupId}
         onStarted={openSession}
       />
       <SubagentSheet />

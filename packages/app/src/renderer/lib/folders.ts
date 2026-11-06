@@ -86,6 +86,76 @@ export function folderSections({ workspaces, favorites, sessions, profileId, que
   return { favorites: favoriteItems, recent: recentPaths.map(item), all, results }
 }
 
+/** One of the profile's folders with the folders (repositories) inside it: a foldable section of the sidebar. */
+export interface FolderGroup {
+  root: FolderItem
+  children: FolderItem[]
+}
+
+/** What the folders panel lists while the filter is set: the matches by profile folder, then the others. */
+export interface FolderMatches {
+  /** Folders with a match (the folder itself or one inside it), each with only its matching folders. */
+  groups: FolderGroup[]
+  /** Matches outside the profile's folders (a favorite or recent folder elsewhere). */
+  other: FolderItem[]
+}
+
+/**
+ * The profile's folders as sections: each folder of the profile (`root`) with the folders listed
+ * after it until the next one (the order `profileFolders` gives). A folder listed before any
+ * profile folder gets a section of its own.
+ */
+export function folderGroups(all: readonly FolderItem[]): FolderGroup[] {
+  const groups: FolderGroup[] = []
+  for (const f of all) {
+    const last = groups[groups.length - 1]
+    if (f.root || !last) groups.push({ root: f, children: [] })
+    else last.children.push(f)
+  }
+  return groups
+}
+
+/**
+ * The filter's matches (`results`, in their ranked order) by profile folder: a section for every
+ * folder that matches or holds a match, with the matching folders inside it, and the matches that
+ * belong to none of them.
+ */
+export function groupMatches(all: readonly FolderItem[], results: readonly FolderItem[]): FolderMatches {
+  const groups = folderGroups(all)
+  const owner = new Map<string, FolderGroup>()
+  for (const g of groups) {
+    owner.set(g.root.path, g)
+    for (const c of g.children) owner.set(c.path, g)
+  }
+  const found = new Map<FolderGroup, FolderGroup>()
+  const other: FolderItem[] = []
+  for (const r of results) {
+    const g = owner.get(r.path)
+    if (!g) {
+      other.push(r)
+      continue
+    }
+    let match = found.get(g)
+    if (!match) {
+      match = { root: g.root, children: [] }
+      found.set(g, match)
+    }
+    if (r.path !== g.root.path) match.children.push(r)
+  }
+  // Sections keep the profile's order; the folders inside them keep the ranking.
+  return { groups: groups.flatMap((g) => found.get(g) ?? []), other }
+}
+
+/** Whether a folder's section shows its folders: always while filtering (its matches), else when the user unfolded it. */
+export function isFolderOpen(path: string, expanded: readonly string[], filtering: boolean): boolean {
+  return filtering || expanded.some((f) => norm(f) === norm(path))
+}
+
+/** Unfolds a folder's section, or folds it again (the `expandedFolders` preference). */
+export function toggleExpanded(expanded: readonly string[], path: string): string[] {
+  return toggleFavorite(expanded, path)
+}
+
 /** Stars a folder, or takes its star away. */
 export function toggleFavorite(favorites: readonly string[], path: string): string[] {
   const key = norm(path)

@@ -1,7 +1,7 @@
 import { AgentIcon } from '../atoms/AgentIcon'
 import { FolderOpen } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { pickAgent, worktreeDefault, worktreeSettings, type EffectiveAgent, type Profile } from '@workhub/core'
+import { pickAgent, worktreeDefault, worktreeSettings, type EffectiveAgent, type Profile, type SessionGroups, EMPTY_SESSION_GROUPS } from '@workhub/core'
 import { newSessionProfile } from '../../lib/folders'
 import { useI18n } from '../../i18n/I18nProvider'
 import { installHintKey } from '../../lib/agents'
@@ -19,6 +19,7 @@ import { RefreshButton } from '../molecules/RefreshButton'
 import { errorText } from '../../lib/errorText'
 import { permissionModeLabel } from '../../lib/sessionHeader'
 import { currentConfig } from '../../configStore'
+import { groupChoiceOf, groupOptionsOf, NEW_GROUP } from '../../lib/sessionGroups'
 
 export interface NewSessionDialogProps {
   open: boolean
@@ -33,6 +34,10 @@ export interface NewSessionDialogProps {
   profiles?: readonly Profile[]
   /** The profile's folders and the folders inside them (the sidebar's list), offered as the folder is typed. */
   folders?: readonly WorkspaceFolder[]
+  /** The sidebar's session groups, offered in Group; the session is listed in the one picked. */
+  groups?: SessionGroups
+  /** The group picked when the dialog opens (a group header's "New session"); none by default. */
+  initialGroupId?: string
   onStarted: (sessionId: string) => void
 }
 
@@ -45,7 +50,7 @@ export function ownerAgentsLoading(sessionProfileId: string | null, profileId: s
 const optionDefault = (label: string, id: string | undefined) => (id ? `${label} (${id})` : label)
 
 /** Starts a session with the active profile: pick the agent, the folder, and the model and agent or mode where the agent has them. */
-export function NewSessionDialog({ open, onOpenChange, profileId, agents: activeAgents, preferredAgents: activePreferred, initialAgentKey, initialCwd, profiles = [], folders = [], onStarted }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, onOpenChange, profileId, agents: activeAgents, preferredAgents: activePreferred, initialAgentKey, initialCwd, profiles = [], folders = [], groups = EMPTY_SESSION_GROUPS, initialGroupId, onStarted }: NewSessionDialogProps) {
   const { t } = useI18n()
   const [agentKey, setAgentKey] = useState('')
   const [cwd, setCwd] = useState('')
@@ -101,6 +106,16 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
     setWorktreeChoice(null)
     setBranch('')
   }, [open])
+  // Group: none unless the dialog was opened from a group; a new one is named in the field below.
+  const [groupPick, setGroupPick] = useState('')
+  const [newGroupName, setNewGroupName] = useState('')
+  useEffect(() => {
+    if (!open) return
+    setGroupPick(initialGroupId ?? '')
+    setNewGroupName('')
+  }, [open, initialGroupId])
+  const groupChoice = groupChoiceOf(groupPick, newGroupName, groups.groups)
+  const groupUnnamed = groupPick === NEW_GROUP && !groupChoice
 
   useEffect(() => {
     if (!open) return
@@ -177,7 +192,8 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         ...(model ? { model } : {}),
         ...(modeId ? { modeId } : {}),
         // Asked for here: a folder outside a repository is an error the dialog shows; a default is not.
-        ...(useWorktree ? { worktree: { ...(branch.trim() ? { branch: branch.trim() } : {}), ...(worktreeChoice === null ? { optional: true } : {}) } } : {})
+        ...(useWorktree ? { worktree: { ...(branch.trim() ? { branch: branch.trim() } : {}), ...(worktreeChoice === null ? { optional: true } : {}) } } : {}),
+        ...(groupChoice ? { group: groupChoice } : {})
       })
       if (configurable) {
         rememberModel(agentKey, model || null)
@@ -213,7 +229,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" disabled={!agentKey || !cwd || busy || missing || ownerLoading} onClick={() => void start()}>
+          <Button variant="primary" disabled={!agentKey || !cwd || busy || missing || ownerLoading || groupUnnamed} onClick={() => void start()}>
             {t('newSession.start')}
           </Button>
         </>
@@ -224,7 +240,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault()
-          if (agentKey && cwd && !busy && !missing && !ownerLoading) void start()
+          if (agentKey && cwd && !busy && !missing && !ownerLoading && !groupUnnamed) void start()
         }}
       >
         <Field
@@ -310,6 +326,19 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         {useWorktree && (
           <Field label={t('newSession.branch')} hint={branchPrefix ? t('newSession.branchPrefix', { prefix: branchPrefix }) : undefined}>
             <Input aria-label={t('newSession.branch')} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder={t('newSession.branchPlaceholder')} spellCheck={false} />
+          </Field>
+        )}
+        <Field label={t('newSession.group')} hint={t('newSession.groupHint')}>
+          <Select
+            aria-label={t('newSession.group')}
+            value={groupPick}
+            onChange={setGroupPick}
+            options={[{ value: '', label: t('newSession.noGroup') }, ...groupOptionsOf(groups), { value: NEW_GROUP, label: t('newSession.newGroup') }]}
+          />
+        </Field>
+        {groupPick === NEW_GROUP && (
+          <Field label={t('newSession.newGroupName')}>
+            <Input aria-label={t('newSession.newGroupName')} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder={t('groups.defaultName')} autoFocus maxLength={120} />
           </Field>
         )}
         {error && (
