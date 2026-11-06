@@ -35,6 +35,7 @@ import { settingsNavEs } from './settingsNav.es'
 import { settingsAccountsEs } from './settingsAccounts.es'
 import { notificationsAlertsEs } from './notificationsAlerts.es'
 import { profileAgentsEs } from './profileAgents.es'
+import { settingsAgentsEs } from './settingsAgents.es'
 
 /** Spanish UI copy (neutral). Strings shared with Workhub 1 reuse its translations. */
 export const es: Record<keyof typeof en, string> = {
@@ -508,5 +509,6 @@ export const es: Record<keyof typeof en, string> = {
   ...settingsNavEs,
   ...settingsAccountsEs,
   ...notificationsAlertsEs,
-  ...profileAgentsEs
+  ...profileAgentsEs,
+  ...settingsAgentsEs
 }
