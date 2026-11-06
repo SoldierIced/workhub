@@ -19,13 +19,13 @@ const config: WorkhubConfig = {
   options: { ...emptyConfig().options, listenModel: 'claude-haiku-4-5' } as WorkhubConfig['options']
 }
 
-function setup(summarize: (r: ListenSummaryRequest) => Promise<ListenSummaryResult>, sessions: Record<string, { agentId: string; accountId: string | null }> = { s1: { agentId: 'claude', accountId: 'work' } }) {
+function setup(summarize: (r: ListenSummaryRequest) => Promise<ListenSummaryResult>, sessions: Record<string, { agentId: string; accountId: string | null }> = { s1: { agentId: 'claude', accountId: 'work' } }, log: (message: string) => void = () => undefined) {
   const handlers = new Map<string, Handler>()
   const listeners = new Map<string, (event: unknown, ...args: unknown[]) => void>()
   const fake = vi.fn(summarize)
   registerListenIpc(
     { handle: (c, h) => handlers.set(c, h as Handler), on: (c, l) => listeners.set(c, l as (event: unknown, ...args: unknown[]) => void) },
-    { summarize: fake, config: async () => config, session: (id) => sessions[id] ?? null, home: '/h', env: {} }
+    { summarize: fake, config: async () => config, session: (id) => sessions[id] ?? null, home: '/h', env: {}, log }
   )
   const invoke = (...a: unknown[]) => handlers.get('listen:summarize')!({} as IpcMainInvokeEvent, ...a) as Promise<ListenSummaryResult>
   const cancel = (id: unknown) => listeners.get('listen:cancel')!({}, id)
@@ -46,6 +46,17 @@ describe('listen:summarize', () => {
         throw new Error('spawn failed')
       }).invoke('r1', 's1', 'x')
     ).toEqual({ ok: false, failure: 'failed', error: 'spawn failed' })
+  })
+
+  it('logs why a summary failed, but not a cancel', async () => {
+    const log = vi.fn()
+    await setup(async () => ({ ok: false, failure: 'noAccount', error: 'Not logged in' }), undefined, log).invoke('r1', 's1', 'x')
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('noAccount'))
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Not logged in'))
+    log.mockClear()
+    await setup(async () => ({ ok: false, failure: 'cancelled', error: 'Cancelled.' }), undefined, log).invoke('r1', 's1', 'x')
+    await setup(async () => ({ ok: true, summary: 'ok' }), undefined, log).invoke('r1', 's1', 'x')
+    expect(log).not.toHaveBeenCalled()
   })
 
   it('refuses a malformed request', async () => {

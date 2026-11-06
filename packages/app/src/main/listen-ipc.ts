@@ -17,6 +17,8 @@ export interface ListenIpcDeps {
   session: (id: string) => { agentId: string; accountId: string | null } | null
   home: string
   env?: NodeJS.ProcessEnv
+  /** Where a failed summary is reported; the app passes `main.log`. The renderer only gets the failure kind. */
+  log?: (message: string) => void
 }
 
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200
@@ -40,14 +42,19 @@ export function registerListenIpc(ipc: IpcRegistrar, deps: ListenIpcDeps): void 
     if (!isId(requestId) || !isId(sessionId) || typeof text !== 'string' || !text.trim()) throw new Error('Invalid listen request')
     const config = await deps.config()
     const configDir = listenConfigDir(config, deps.session(sessionId), deps.home, deps.env)
-    if (!configDir) return { ok: false, failure: 'noAccount', error: 'No Claude agent is set up.' }
+    const log = deps.log ?? ((message: string) => console.warn(message))
+    const report = (result: ListenSummaryResult): ListenSummaryResult => {
+      if (!result.ok && result.failure !== 'cancelled') log(`listen summary failed (${result.failure}, configDir ${configDir ?? 'none'}): ${result.error}`)
+      return result
+    }
+    if (!configDir) return report({ ok: false, failure: 'noAccount', error: 'No Claude agent is set up.' })
     running.get(requestId)?.abort()
     const controller = new AbortController()
     running.set(requestId, controller)
     try {
-      return await deps.summarize({ text: text.slice(0, MAX_TEXT), model: appOptions(config).listenModel, configDir, signal: controller.signal })
+      return report(await deps.summarize({ text: text.slice(0, MAX_TEXT), model: appOptions(config).listenModel, configDir, signal: controller.signal }))
     } catch (err) {
-      return { ok: false, failure: 'failed', error: err instanceof Error ? err.message : String(err) }
+      return report({ ok: false, failure: 'failed', error: err instanceof Error ? err.message : String(err) })
     } finally {
       if (running.get(requestId) === controller) running.delete(requestId)
     }
