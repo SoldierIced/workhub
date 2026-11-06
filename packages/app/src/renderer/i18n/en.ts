@@ -35,6 +35,7 @@ import { settingsAccountsEn } from './settingsAccounts.en'
 import { notificationsAlertsEn } from './notificationsAlerts.en'
 import { profileAgentsEn } from './profileAgents.en'
 import { settingsAgentsEn } from './settingsAgents.en'
+import { settingsConnectionsEn } from './settingsConnections.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -511,5 +512,6 @@ export const en = {
   ...settingsAccountsEn,
   ...notificationsAlertsEn,
   ...profileAgentsEn,
-  ...settingsAgentsEn
+  ...settingsAgentsEn,
+  ...settingsConnectionsEn
 } as const

@@ -7,14 +7,12 @@ import { Card, CardBody, CardHeader, EmptyState, Field, ListRow, SwitchRow } fro
 import { useI18n } from '../i18n/I18nProvider'
 import type { MessageKey } from '../i18n/translate'
 import { uniqueConnectionId } from '../lib/tickets'
+import { TRACKER_SETTINGS, trackerSiteUrl } from '../lib/trackerSettings'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
 import { DeleteButton, useUnsavedForm } from '../components/organisms/UnsavedChanges'
 import type { Run } from './settings/run'
 
-/** The settings keys of a tracker connection; the main process reads the same ones. */
-const EMAIL = 'email'
-const PROJECT_KEYS = 'projectKeys'
-const IGNORED = 'ignoredStatuses'
+const { email: EMAIL, projectKeys: PROJECT_KEYS, ignored: IGNORED } = TRACKER_SETTINGS
 
 const PROVIDERS = [
   { value: 'jira', label: 'Jira' },
@@ -102,7 +100,7 @@ export function TrackerSettings({ snap, run, initialId, profileId }: { snap: Con
       kind: 'tracker',
       provider: form.provider,
       ...(form.name.trim() ? { name: form.name.trim() } : {}),
-      ...(isJira && form.site.trim() ? { endpoint: /^https?:\/\//i.test(form.site.trim()) ? form.site.trim() : `https://${form.site.trim()}` } : {}),
+      ...(isJira && form.site.trim() ? { endpoint: trackerSiteUrl(form.site) } : {}),
       settings
     }
   }
