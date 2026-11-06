@@ -4,6 +4,15 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.20](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.19...v2.0.0-alpha.20) (2026-11-06)
+
+
+### Features
+
+* **sessions:** folder sections in the folders panel, group at session start and nested groups ([7f92c91](https://github.com/SoldierIced/workhub/commit/7f92c91185ddc25366a4d138e53ba220db8c5016))
+* **sessions:** panel toggles show their state, monitor toggle in the session header ([ef06bda](https://github.com/SoldierIced/workhub/commit/ef06bdabe6f1d89418e39a704439736263e2d691))
+* **settings:** clearer accounts, folder picker and model/effort pickers ([6e79ed4](https://github.com/SoldierIced/workhub/commit/6e79ed4100f3d84920493c8d513e27626a973a70))
+
 ## [2.0.0-alpha.19](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.18...v2.0.0-alpha.19) (2026-11-06)
 
 
