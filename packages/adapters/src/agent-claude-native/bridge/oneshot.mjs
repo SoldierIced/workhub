@@ -12,13 +12,13 @@
 // so the run is the prompt alone; with no tools of any kind, nothing can be called.
 // stdout (one JSON line, last line):
 //   {"ok","result","isError","subtype","errorMessage"?,"rateLimited","resetsAt"?,"costUsd"?,"durationMs","slackTools":[string],"deniedTools":[string]}
-import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import readline from "node:readline";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { agentEnv } from "./env.mjs";
+import { findClaude } from "./find-claude.mjs";
 
 const startedAt = Date.now();
 const DEFAULT_TIMEOUT_SECONDS = 300;
@@ -114,14 +114,6 @@ function findSlackPlugin(configDir) {
   }
 }
 
-// The user's `claude`, as their shell finds it (this runs inside their login shell).
-function findClaude() {
-  try {
-    return execFileSync("/bin/sh", ["-c", "command -v claude"], { encoding: "utf8" }).trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 async function readRequest() {
   const lines = readline.createInterface({ input: process.stdin });

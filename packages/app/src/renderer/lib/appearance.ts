@@ -46,16 +46,21 @@ export function useAppliedAppearance(): void {
   }, [prefs, systemDark])
 }
 
+/** The colors the native window controls overlay should take: the app's background and text as painted now. */
+export function chromeColorsOf(root: HTMLElement = document.documentElement): { color: string; symbolColor: string } {
+  const style = getComputedStyle(root)
+  return { color: style.getPropertyValue('--wh-bg').trim(), symbolColor: style.getPropertyValue('--wh-text').trim() }
+}
+
 export function useAppearance(): 'light' | 'dark' {
   const prefs = usePrefs()
   const systemDark = useSystemDark()
   const resolved = resolveAppearance(prefs, systemDark)
   const native = nativeTheme(prefs, systemDark)
-  useEffect(() => {
-    window.hub.setTheme(native)
-  }, [native])
+  // Paint first, then report: the overlay colors are read from what was just painted.
   useEffect(() => {
     applyAppearance(prefs, systemDark)
-  }, [prefs, systemDark])
+    window.hub.setTheme(native, chromeColorsOf())
+  }, [prefs, systemDark, native])
   return resolved
 }

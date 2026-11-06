@@ -397,6 +397,12 @@ export function toPlatform(nodePlatform: string): Platform {
 /** Appearance preference: follow the OS or force one theme. */
 export type ThemePreference = 'system' | 'light' | 'dark'
 
+/** Colors for the native window controls overlay: CSS hex colors. */
+export interface ChromeColors {
+  color: string
+  symbolColor: string
+}
+
 /** An OS notification about a session; clicking it asks the renderer to open that session. */
 export interface SessionNotification {
   title: string
@@ -423,8 +429,12 @@ export interface WorkspaceFolder {
 
 export interface HubApi {
   platform: Platform
-  /** Tells the main process the theme preference so native chrome (title bar, dialogs) follows it. */
-  setTheme(theme: ThemePreference): void
+  /**
+   * Tells the main process the theme preference so native chrome (title bar, dialogs) follows it,
+   * with the colors the window controls overlay (Windows, Linux) should take: the app's background
+   * and text, which a terminal theme applied to the app changes beyond light/dark.
+   */
+  setTheme(theme: ThemePreference, chrome?: ChromeColors): void
   getDefaultCwd(): Promise<string>
   pickFolder(): Promise<string | null>
   /** The profile's folders and the folders inside each (Workhub 1's "All folders"); empty without a profile. */

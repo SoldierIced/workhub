@@ -136,6 +136,7 @@ import { SessionNames } from './session-names'
 import { OpenSessions, type SavedOpenSessions } from './open-sessions'
 import { boundsOnScreen, SessionWindows, type SavedSessionWindows, type WindowBounds } from './session-windows'
 import { SettingsWindow, settingsSectionArg, type SavedSettingsWindow } from './settings-window'
+import { chromeColorsFrom, type ChromeColors } from './chrome-colors'
 import { broadcastingConfigStore } from './config-broadcast'
 import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 import { createLinkService } from './link-service'
@@ -760,8 +761,11 @@ const CHROME = {
 } as const
 const TITLE_BAR_HEIGHT = 48
 
-function chromeColors() {
-  return nativeTheme.shouldUseDarkColors ? CHROME.dark : CHROME.light
+/** The renderer's own colors, once it reported them (a terminal theme applied to the app changes them). */
+let chromeOverride: ChromeColors | null = null
+
+function chromeColors(): ChromeColors {
+  return chromeOverride ?? (nativeTheme.shouldUseDarkColors ? CHROME.dark : CHROME.light)
 }
 
 /**
@@ -773,9 +777,20 @@ function windowChrome(): BrowserWindowConstructorOptions {
   return { titleBarStyle: 'hidden', titleBarOverlay: { ...chromeColors(), height: TITLE_BAR_HEIGHT } }
 }
 
-/** The overlay controls (Windows, Linux) follow the theme; nativeTheme fires `updated` on every change. */
+/**
+ * The overlay controls (Windows, Linux) of every window follow the theme: nativeTheme fires
+ * `updated` on a light/dark change and the renderer reports its colors on every theme change.
+ */
 function syncTitleBarOverlay(): void {
-  if (process.platform !== 'darwin' && win && !win.isDestroyed()) win.setTitleBarOverlay({ ...chromeColors(), height: TITLE_BAR_HEIGHT })
+  if (process.platform === 'darwin') return
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue
+    try {
+      w.setTitleBarOverlay({ ...chromeColors(), height: TITLE_BAR_HEIGHT })
+    } catch {
+      // A window without the overlay (the tray popover, the file viewer) throws; nothing to sync there.
+    }
+  }
 }
 
 /** Every external link goes through here (see link-service.ts). */
@@ -821,8 +836,11 @@ function registerIpc(): void {
   const report = rendererReporter(diagnostics.log)
   ipc.on('diag:report', (e, r: unknown) => report(e.sender === win?.webContents ? 'main' : 'aux', r))
   ipc.on('diag:revealLogs', revealLogs)
-  ipc.on('hub:setTheme', (_e, theme: ThemePreference) => {
+  ipc.on('hub:setTheme', (_e, theme: ThemePreference, chrome?: unknown) => {
     if (theme === 'system' || theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme
+    // The same light/dark with another palette fires no `updated`: sync here as well.
+    if (chrome !== undefined) chromeOverride = chromeColorsFrom(chrome)
+    syncTitleBarOverlay()
   })
   nativeTheme.on('updated', syncTitleBarOverlay)
   ipc.handle('hub:defaultCwd', () => homedir())

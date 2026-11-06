@@ -8,7 +8,6 @@ import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { errorText } from '../lib/errorText'
 import { usePlatform } from '../lib/platform'
-import { resolveTheme, usePrefs, useSystemDark } from '../lib/prefs'
 import { CATEGORY_TONE, keyProviders, relativeTime, splitLinks } from '../lib/tickets'
 import type { TicketsStatus } from '@shared/tickets-api'
 import { usePullRequestLists } from '../pullRequestsStore'
@@ -36,17 +35,9 @@ export function TicketWindowRoot({ profileId, ticketKey }: { profileId: string; 
   )
 }
 
+// The theme is painted by main.tsx's `Themed` wrapper, as in every secondary window.
 function ThemedToasts({ children }: { children: ReactNode }) {
   const { t } = useI18n()
-  const { theme } = usePrefs()
-  const systemDark = useSystemDark()
-  const resolved = resolveTheme(theme, systemDark)
-  useEffect(() => {
-    window.hub.setTheme(theme)
-  }, [theme])
-  useEffect(() => {
-    document.documentElement.dataset['theme'] = resolved
-  }, [resolved])
   return <ToastProvider label={t('common.notifications')}>{children}</ToastProvider>
 }
 

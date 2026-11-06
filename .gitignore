@@ -11,3 +11,6 @@ packages/app/screenshots/
 packages/app/.dev-data/
 packages/app/.stage/
 .demo-data/
+
+# Agent worktrees
+.claude/worktrees/

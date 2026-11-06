@@ -20,7 +20,7 @@ function subscribe<A extends unknown[]>(channel: string, cb: (...args: A) => voi
 
 const api: HubApi = {
   platform: toPlatform(process.platform),
-  setTheme: (theme) => ipcRenderer.send('hub:setTheme', theme),
+  setTheme: (theme, chrome) => ipcRenderer.send('hub:setTheme', theme, chrome),
   getDefaultCwd: () => ipcRenderer.invoke('hub:defaultCwd'),
   pickFolder: () => ipcRenderer.invoke('hub:pickFolder'),
   profileFolders: (profileId) => ipcRenderer.invoke('hub:profileFolders', profileId),
