@@ -24,6 +24,7 @@ import {
   toHistoryMessages
 } from '../src/agent-claude-native'
 import { agentEnv } from '../src/agent-claude-native/bridge/env.mjs'
+import { pickWindowsClaude } from '../src/agent-claude-native/bridge/find-claude.mjs'
 import { describeTool } from '../src/shared/claude-tools'
 import { parsePlist, workhub1SettingsFromPlist } from '../src/workhub1-import'
 
@@ -668,5 +669,31 @@ describe('Claude history with pasted prompts', () => {
   it('replays a pasted message without the tags', () => {
     const messages = toHistoryMessages([{ type: 'user', message: { content: 'look:\n\n<pasted_content id="e812">\nError: boom\n</pasted_content>' } }])
     expect(messages).toEqual([{ kind: 'user', text: 'look:\n\nError: boom' }])
+  })
+})
+
+describe('Claude executable on Windows', () => {
+  const home = 'C:\\Users\\dev'
+  const cli = 'C:\\nvm4w\\nodejs\\node_modules\\@anthropic-ai\\claude-code\\cli.js'
+
+  it('skips the npm shim `where` lists first and hands the SDK what it stands for: the package binary, else its cli.js', () => {
+    const lines = ['C:\\nvm4w\\nodejs\\claude', 'C:\\nvm4w\\nodejs\\claude.cmd', 'C:\\Users\\dev\\AppData\\Roaming\\npm\\claude', '']
+    const exe = 'C:\\nvm4w\\nodejs\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe'
+    expect(pickWindowsClaude(lines, (p) => p === exe, home)).toBe(exe)
+    expect(pickWindowsClaude(lines, (p) => p === cli, home)).toBe(cli)
+    // The first shim on PATH wins, as it does in the user's shell.
+    const second = 'C:\\Users\\dev\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe'
+    expect(pickWindowsClaude(lines, (p) => p === exe || p === second, home)).toBe(exe)
+  })
+
+  it('prefers a native claude.exe: on PATH first, then the native installer folder', () => {
+    expect(pickWindowsClaude(['C:\\nvm4w\\nodejs\\claude', 'C:\\tools\\claude.exe'], () => true, home)).toBe('C:\\tools\\claude.exe')
+    const native = `${home}\\.local\\bin\\claude.exe`
+    expect(pickWindowsClaude(['C:\\nvm4w\\nodejs\\claude'], (p) => p === native, home)).toBe(native)
+  })
+
+  it('leaves the SDK its bundled Claude Code when nothing launchable is found', () => {
+    expect(pickWindowsClaude(['C:\\nvm4w\\nodejs\\claude'], () => false, home)).toBeUndefined()
+    expect(pickWindowsClaude([], () => false, home)).toBeUndefined()
   })
 })

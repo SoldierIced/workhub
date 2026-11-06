@@ -25,7 +25,6 @@
 //   {"type":"mcp_error","name","message"}
 //   {"type":"permission_request","id","toolName","input","suggestions"}
 //   {"type":"permission_cancelled","id"} {"type":"error","message"} {"type":"closed"}
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -33,6 +32,7 @@ import { join } from "node:path";
 import readline from "node:readline";
 import { query, resolveSettings } from "@anthropic-ai/claude-agent-sdk";
 import { agentEnv } from "./env.mjs";
+import { findClaude } from "./find-claude.mjs";
 
 const send = (object) => process.stdout.write(JSON.stringify(object) + "\n");
 
@@ -94,17 +94,6 @@ function askHost(toolName, input, options) {
   });
 }
 
-// The user's `claude`, as their shell finds it; without one the SDK runs the Claude Code it bundles.
-function findClaude() {
-  try {
-    if (process.platform === "win32") {
-      return execFileSync("where", ["claude"], { encoding: "utf8" }).split(/\r?\n/).find((line) => line.trim())?.trim() || undefined;
-    }
-    return execFileSync("/bin/sh", ["-c", "command -v claude"], { encoding: "utf8" }).trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function slackPluginEnabled(configDir) {
   try {
