@@ -478,7 +478,16 @@ const groupMember = z.object({
 
 const sessionGroups = z.object({
   groups: z
-    .array(z.object({ id: z.string().min(1), name: z.string(), collapsed: z.boolean().default(false), members: z.array(groupMember).default([]) }))
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string(),
+        collapsed: z.boolean().default(false),
+        // A sub-group's group; older configs have none (every group at the top level).
+        parentId: z.string().min(1).optional(),
+        members: z.array(groupMember).default([])
+      })
+    )
     .default([]),
   top: z
     .array(z.discriminatedUnion('kind', [z.object({ kind: z.literal('group'), id: z.string().min(1) }), z.object({ kind: z.literal('session'), key: z.string().min(1) })]))

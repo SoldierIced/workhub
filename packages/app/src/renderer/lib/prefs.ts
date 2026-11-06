@@ -37,6 +37,11 @@ export interface Prefs {
   monitorHidden: boolean
   /** Folders starred in the sidebar (Workhub 1's Favorites), in the order they were added. */
   favoriteFolders: string[]
+  /**
+   * The profile folders whose section of the folders panel is unfolded. Sections start folded, as
+   * "All folders" did, so a folder holding dozens of repositories does not push the list down.
+   */
+  expandedFolders: string[]
   /** Whether the part detail drawer of the Flow maps screen is folded. */
   flowMapDrawerCollapsed: boolean
 }
@@ -64,6 +69,7 @@ export const DEFAULT_PREFS: Prefs = {
   sidebarHidden: false,
   monitorHidden: false,
   favoriteFolders: [],
+  expandedFolders: [],
   flowMapDrawerCollapsed: false
 }
 
@@ -96,12 +102,18 @@ export function parsePrefs(raw: string | null): Prefs {
       monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
       sidebarHidden: v.sidebarHidden === true,
       monitorHidden: v.monitorHidden === true,
-      favoriteFolders: Array.isArray(v.favoriteFolders) ? [...new Set(v.favoriteFolders.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, 100) : [],
+      favoriteFolders: pathList(v.favoriteFolders, 100),
+      expandedFolders: pathList(v.expandedFolders, 200),
       flowMapDrawerCollapsed: v.flowMapDrawerCollapsed === true
     }
   } catch {
     return DEFAULT_PREFS
   }
+}
+
+/** A list of folder paths: strings only, no empty or repeated ones, each and the list kept short. */
+function pathList(raw: unknown, max: number): string[] {
+  return Array.isArray(raw) ? [...new Set(raw.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, max) : []
 }
 
 function modelMap(raw: unknown): Record<string, string> {

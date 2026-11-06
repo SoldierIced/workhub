@@ -3,15 +3,20 @@ import { ContextMenu, DropdownMenu } from 'radix-ui'
 import { memo, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ElementType, type KeyboardEvent, type ReactNode } from 'react'
 import {
   accountColor,
+  canNestGroup,
   createGroup,
   deleteGroup,
   groupOf,
+  groupPath,
+  groupTree,
   memberAgentId,
   moveBy,
   moveGroupBy,
   moveGroupOnto,
   moveOnto,
   moveToGroup,
+  nestGroup,
+  parentIdOf,
   profileColor,
   reconcileTop,
   removeMember,
@@ -19,9 +24,11 @@ import {
   setGroupCollapsed,
   sidebarRows,
   statusLevel,
+  subtreeMembers,
   ungroup,
   type AgentAccount,
   type GroupMember,
+  type GroupRow,
   type Profile,
   type SessionGroup,
   type SessionGroups,
@@ -88,6 +95,8 @@ export interface SessionListProps {
   onRename?: (view: SessionData['view']) => void
   /** "Open in New Window" of an open session. */
   onOpenInWindow?: (id: string) => void
+  /** A group's "New session": the New session dialog, with the group picked. */
+  onNewSessionInGroup?: (groupId: string) => void
 }
 
 /** `key`: what React tells the items apart by when labels can repeat (two groups with one name); the label otherwise. */
@@ -96,7 +105,7 @@ type MenuItem = { label: string; key?: string; hint?: string; onSelect: () => vo
 const MOVE_UP: Shortcut = { key: '↑', alt: true, mod: false }
 const MOVE_DOWN: Shortcut = { key: '↓', alt: true, mod: false }
 
-type Dialogs = { kind: 'create'; member?: GroupMember } | { kind: 'rename'; group: SessionGroup } | { kind: 'delete'; group: SessionGroup } | null
+type Dialogs = { kind: 'create'; member?: GroupMember; parentId?: string } | { kind: 'rename'; group: SessionGroup } | { kind: 'delete'; group: SessionGroup } | null
 
 const MENU_CONTENT = 'z-50 min-w-48 animate-fade-in rounded-md border border-border bg-surface-raised p-1 shadow-lg'
 const MENU_ITEM = 'flex h-8 cursor-default select-none items-center justify-between gap-6 rounded-sm px-2 text-base outline-none data-[highlighted]:bg-accent-soft'
@@ -163,7 +172,7 @@ function readMember(e: DragEvent): GroupMember | null {
  * the user arranged them. Groups hold sessions by their stable identity, so a closed session
  * stays listed (dimmed, reopenable) until it is removed.
  */
-export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [], accounts = [], pastTitles, onOpenSlack, onRename, onOpenInWindow }: SessionListProps) {
+export function SessionList({ sessions, groups, selectedId, active, onSelect, onReopen, profiles = [], accounts = [], pastTitles, onOpenSlack, onRename, onOpenInWindow, onNewSessionInGroup }: SessionListProps) {
   const { t, tn } = useI18n()
   const platform = usePlatform()
   const listed = useMemo(() => listSessions(sessions), [sessions])
@@ -212,7 +221,9 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
       {
         label: t('groups.moveTo'),
         items: [
-          ...state.groups.filter((g) => g.id !== inGroup?.id).map((g): MenuItem => ({ label: g.name, key: `group:${g.id}`, onSelect: () => act((s) => moveToGroup(s, member, g.id)) })),
+          ...groupTree(state)
+            .filter(({ group: g }) => g.id !== inGroup?.id)
+            .map(({ group: g }): MenuItem => ({ label: groupPath(state, g.id).join(' / '), key: `group:${g.id}`, onSelect: () => act((s) => moveToGroup(s, member, g.id)) })),
           ...(state.groups.some((g) => g.id !== inGroup?.id) ? [{ separator: true } as MenuItem] : []),
           { label: t('groups.moveToNew'), onSelect: () => setDialog({ kind: 'create', member }) }
         ]
@@ -226,13 +237,31 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     return items
   }
 
-  const groupMenu = (group: SessionGroup): MenuItem[] => [
-    { label: t('groups.rename'), onSelect: () => setDialog({ kind: 'rename', group }) },
+  const groupMenu = (group: SessionGroup): MenuItem[] => {
+    const nested = parentIdOf(state, group.id) !== undefined
+    const targets = groupTree(state).filter(({ group: g }) => g.id !== parentIdOf(state, group.id) && canNestGroup(state, group.id, g.id))
+    const move: MenuItem[] = [
+      ...(targets.length
+        ? [
+            {
+              label: t('groups.moveInto'),
+              items: targets.map(({ group: g }): MenuItem => ({ label: groupPath(state, g.id).join(' / '), key: `into:${g.id}`, onSelect: () => act((s) => nestGroup(s, group.id, g.id)) }))
+            }
+          ]
+        : []),
+      ...(nested ? [{ label: t('groups.moveToTop'), onSelect: () => act((s) => nestGroup(s, group.id, null)) }] : [])
+    ]
+    return [
+      ...(onNewSessionInGroup ? [{ label: t('groups.newSession'), onSelect: () => onNewSessionInGroup(group.id) }, { separator: true } as MenuItem] : []),
+      { label: t('groups.newSubgroup'), onSelect: () => setDialog({ kind: 'create', parentId: group.id }) },
+      { label: t('groups.rename'), onSelect: () => setDialog({ kind: 'rename', group }) },
     { label: t('groups.moveUp'), hint: shortcutLabel(MOVE_UP, platform), onSelect: () => act((s) => moveGroupBy(s, group.id, -1)) },
-    { label: t('groups.moveDown'), hint: shortcutLabel(MOVE_DOWN, platform), onSelect: () => act((s) => moveGroupBy(s, group.id, 1)) },
-    { separator: true },
-    { label: t('groups.delete'), onSelect: () => setDialog({ kind: 'delete', group }) }
-  ]
+      { label: t('groups.moveDown'), hint: shortcutLabel(MOVE_DOWN, platform), onSelect: () => act((s) => moveGroupBy(s, group.id, 1)) },
+      ...move,
+      { separator: true },
+      { label: t('groups.delete'), onSelect: () => setDialog({ kind: 'delete', group }) }
+    ]
+  }
 
   const onDropOnSession = (e: DragEvent, targetKey: string) => {
     setOver(null)
@@ -335,36 +364,44 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
     />
   )
 
+  // A group, its sub-groups (first) and its sessions; folding it hides them all. Its header counts
+  // the sessions of its sub-groups too.
+  const groupItem = (row: GroupRow<ListedSession>): ReactNode => {
+    const { group } = row
+    const all = subtreeMembers(row)
+    const summary = groupSummary(all)
+    const selectedInside = active && all.some((m) => m.session !== undefined && m.session.data.view.id === selectedId)
+    return (
+      <li key={group.id} data-testid="group" data-group={group.name} data-depth={row.depth} data-attention={summary.count || undefined}>
+        <GroupHeader
+          group={group}
+          summary={summary}
+          selectedInside={selectedInside}
+          dropping={over === `g:${group.id}`}
+          menu={() => groupMenu(group)}
+          // Flipped on the stored state, not this render's: quick clicks each count while a save is on its way.
+          onToggle={() => act((s) => setGroupCollapsed(s, group.id, !s.groups.find((g) => g.id === group.id)?.collapsed))}
+          onMove={(step) => act((s) => moveGroupBy(s, group.id, step))}
+          onDragOver={(e) => accept(e, `g:${group.id}`, [SESSION_DRAG, GROUP_DRAG])}
+          onDragLeave={() => setOver(null)}
+          onDrop={(e) => onDropOnGroup(e, group)}
+        />
+        {!group.collapsed && (row.children.length > 0 || row.members.length > 0) && (
+          <ul className="mt-0.5 ml-3 flex flex-col gap-0.5 border-l border-border pl-1" aria-label={group.name}>
+            {row.children.map(groupItem)}
+            {row.members.map((m) => sessionItem(m.member, m.session, true))}
+          </ul>
+        )}
+      </li>
+    )
+  }
+
   return (
     <div data-testid="session-list">
       <ul className="mt-0.5 flex flex-col gap-0.5" aria-label={t('sidebar.sessionList')}>
         {rows.map((row) => {
           if (row.type === 'session') return sessionItem(memberOf(row.session), row.session, false)
-          const { group } = row
-          const summary = groupSummary(row.members)
-          const selectedInside = active && row.members.some((m) => m.session !== undefined && m.session.data.view.id === selectedId)
-          return (
-            <li key={group.id} data-testid="group" data-group={group.name} data-attention={summary.count || undefined}>
-              <GroupHeader
-                group={group}
-                summary={summary}
-                selectedInside={selectedInside}
-                dropping={over === `g:${group.id}`}
-                menu={() => groupMenu(group)}
-                // Flipped on the stored state, not this render's: quick clicks each count while a save is on its way.
-                onToggle={() => act((s) => setGroupCollapsed(s, group.id, !s.groups.find((g) => g.id === group.id)?.collapsed))}
-                onMove={(step) => act((s) => moveGroupBy(s, group.id, step))}
-                onDragOver={(e) => accept(e, `g:${group.id}`, [SESSION_DRAG, GROUP_DRAG])}
-                onDragLeave={() => setOver(null)}
-                onDrop={(e) => onDropOnGroup(e, group)}
-              />
-              {!group.collapsed && row.members.length > 0 && (
-                <ul className="mt-0.5 ml-3 flex flex-col gap-0.5 border-l border-border pl-1" aria-label={group.name}>
-                  {row.members.map((m) => sessionItem(m.member, m.session, true))}
-                </ul>
-              )}
-            </li>
-          )
+          return groupItem(row)
         })}
       </ul>
       <Button
@@ -382,7 +419,7 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
         dialog={dialog}
         closedLost={dialog?.kind === 'delete' ? dialog.group.members.filter((m) => !live.has(m.key)).length : 0}
         onClose={() => setDialog(null)}
-        onCreate={(name, member) => act((s) => createGroup(s, newGroupId(), name, member))}
+        onCreate={(name, member, parentId) => act((s) => createGroup(s, newGroupId(), name, member, undefined, parentId))}
         onRename={(id, name) => act((s) => renameGroup(s, id, name))}
         onDelete={(id) => act((s) => deleteGroup(s, id, live))}
       />
@@ -810,7 +847,7 @@ function GroupDialog({
   dialog: Dialogs
   closedLost: number
   onClose: () => void
-  onCreate: (name: string, member?: GroupMember) => void
+  onCreate: (name: string, member?: GroupMember, parentId?: string) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
 }) {
@@ -825,7 +862,7 @@ function GroupDialog({
   if (!dialog) return null
   const finish = () => {
     const trimmed = name.trim() || t('groups.defaultName')
-    if (dialog.kind === 'create') onCreate(trimmed, dialog.member)
+    if (dialog.kind === 'create') onCreate(trimmed, dialog.member, dialog.parentId)
     else if (dialog.kind === 'rename') onRename(dialog.group.id, trimmed)
     else onDelete(dialog.group.id)
     onClose()
@@ -856,7 +893,7 @@ function GroupDialog({
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={dialog.kind === 'create' ? t('groups.newTitle') : t('groups.renameTitle')}
+      title={dialog.kind === 'create' ? t(dialog.parentId ? 'groups.newSubgroupTitle' : 'groups.newTitle') : t('groups.renameTitle')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>

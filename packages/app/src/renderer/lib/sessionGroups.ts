@@ -7,9 +7,14 @@ import {
   reconcileTop,
   resolveSessionName,
   sessionIdentity,
+  GROUP_NAME_MAX,
+  groupPath,
+  groupTree,
   type AttentionSummary,
+  type GroupChoice,
   type GroupMember,
   type PastSessionInfo,
+  type SessionGroup,
   type SessionGroups
 } from '@workhub/core'
 import { refreshConfig } from '../configStore'
@@ -205,4 +210,26 @@ export function updateGroups(change: (state: SessionGroups) => SessionGroups, li
 /** A new group id; unique enough for one machine's config. */
 export function newGroupId(): string {
   return `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** The New session dialog's Group select value that reveals the new group's name field. */
+export const NEW_GROUP = '__new-group__'
+
+/**
+ * What the New session dialog's Group asks for: nothing (`''`, "No group"), an existing group by
+ * id, or a new group by the name typed. A blank name, or a group deleted while the dialog was
+ * open, asks for nothing.
+ */
+export function groupChoiceOf(selected: string, newName: string, groups: readonly Pick<SessionGroup, 'id'>[]): GroupChoice | undefined {
+  if (!selected) return undefined
+  if (selected === NEW_GROUP) {
+    const name = newName.trim().slice(0, GROUP_NAME_MAX)
+    return name ? { name } : undefined
+  }
+  return groups.some((g) => g.id === selected) ? { groupId: selected } : undefined
+}
+
+/** The Group select's groups, in sidebar order; a sub-group is named by its path ("Work / Backend"). */
+export function groupOptionsOf(state: SessionGroups): { value: string; label: string }[] {
+  return groupTree(state).map(({ group }) => ({ value: group.id, label: groupPath(state, group.id).join(' / ') }))
 }

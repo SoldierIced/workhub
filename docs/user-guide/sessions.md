@@ -14,9 +14,18 @@ declares what it supports, and the screen shows only the controls that agent has
   Kiro and OpenCode) and **Mode** (permission or approval mode). The lists come from what the agent
   reports, so a new agent shows its models and modes after its first session (**List again**
   refreshes them). **Use a worktree** and **Branch** start the session in its own git worktree;
-  see [Worktree per session](profiles.md#worktree-per-session).
-- In the sidebar, the **Folders** section lists the profile's folders, **Favorites**, **Recent**
-  and **All folders**, with a filter. **New session in {folder}** starts one there.
+  see [Worktree per session](profiles.md#worktree-per-session). **Group** lists the sidebar's
+  session groups (a sub-group by its path, such as "Work / Backend"); it starts on **No group**.
+  **New group…** shows a field for the name of a new group (a group with that name, if there is
+  one, is reused). The session starts in the group picked.
+- In the sidebar, the **Folders** section has a filter, **Favorites**, **Recent**, and then one
+  section per folder of the profile: its name, how many folders it holds, and those folders
+  (usually repositories) indented under it. Click a section's header to unfold or fold it; the
+  sections start folded and Workhub remembers which ones you unfolded. The **+** on a header (or
+  its right-click menu) starts a session in the folder itself. A folder that is a single project
+  (nothing listed inside it) is a plain row. Typing in **Filter folders** searches every folder
+  and shows the matches under their folder's section, unfolded. **New session in {folder}** starts
+  one in any row.
 - From a pull request or ticket, **Open session** or **New session about this ticket** start one
   with a prompt already in the composer. Nothing is sent until you press **Send**.
 - **File → New {agent} Session** starts a specific agent. ⌘/Ctrl+L starts the first one, ⌘/Ctrl+Y
@@ -105,6 +114,8 @@ stays in the current view.
 The header shows the agent, the account, the folder, what the agent is doing with a timer
 (**Starting**, **Working**, **Needs you**, **Idle**, **Stopped**, **Error**), the Slack threads
 that wake the session, and **Stop**. On a narrow window the secondary controls fold into **More**.
+The panel button at the right end (**Hide the monitor**, ⇧⌘M) folds the side panel away and
+brings it back; its icon shows whether the panel is open.
 
 - **Review before PR** and **Review changes**: see [Review before PR](review-before-pr.md).
 - **Files**: the files the agent edited, wrote or read in this session, opened in a file viewer
@@ -150,6 +161,12 @@ be opened in a new window.
   group…** and **Delete group** (its open sessions go back to the list; nothing is closed). A
   closed session stays in its group, marked **Closed**; click it to reopen, or **Remove from group**
   to forget it. Order within each group is kept.
+- **Sub-groups**: a group's menu (right click, or its **…**) has **New session** (the New session
+  dialog with that group picked), **New sub-group…**, **Move into group** and, for a sub-group,
+  **Move to the top level**. Sub-groups are listed inside their group, before its sessions, and
+  can nest at any depth; a group cannot go into one of its own sub-groups. Folding a group hides
+  its sub-groups too, and its header counts the sessions inside them. Deleting a group moves its
+  sub-groups and open sessions to where the group was.
 - Sub-agents of a session can be shown or hidden under it.
 - **Background work** (Claude): while the agent waits on something it left running, such as a
   command in the background ("wait for the CI checks") or a watcher, its row shows a timer with
