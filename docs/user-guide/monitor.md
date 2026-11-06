@@ -64,30 +64,51 @@ has no boxes: every line is a flat row (an icon or a colored dot, the text with 
 second line, a value on the right), with a small uppercase title per block and a thin line
 between blocks.
 
-- **Header**: the verdict (**2 sessions need you**, **3 working**, **All caught up** or **No open
-  sessions**), and below it the active profile, the number of open sessions and, while
+The panel has one fixed size, 360 × 520, whatever it shows: it never grows or shrinks while it is
+open, also when it is empty. Only on a screen too short for it does it open a little shorter. On
+macOS it sits on the system's translucent popover material; on Windows it is a solid panel with a
+thin border and the system shadow.
+
+- **Header** (fixed): the verdict (**2 sessions need you**, **3 working**, **All caught up** or **No
+  open sessions**), and below it the active profile, the number of open sessions and, while
   notifications are paused, until when (**muted** for a pause until you resume). A click on it
   opens the main window; **✕** closes the panel.
-- **Today**, left out when it has nothing:
-  - the next meetings of today from the Plan calendars (2 by default): the title, then the time,
-    the call service or the room and, when it is close, how soon. The one that starts within 15
-    minutes shows **Join** when it has a call link. A click joins the call, or opens Plan when there
-    is no link.
-  - Plan inbox tasks due today or overdue (up to 2); a click opens Plan.
-  - **Pull requests** (to review and mine), while the profile has a code host.
-  - **Health**, only while an environment is degraded or unreachable.
-  - **Slack**, only when watching stopped with an error.
-- **Usage**: one row per agent account that reports usage: the name, a bar for its most spent
-  window (amber from 75 %, red from 90 %) and the percentage. A click opens **Settings → Usage**.
-- **Sessions**, shown only when they have something: **Needs you** (up to 5, with the state and how
-  long ago), **Working** (up to 3) and **Recent** notifications (up to 4, with **Clear**). Recent
-  leaves out notifications about a session already listed above. **N more** opens the app.
-- **Footer**: **New session**; the bell, with **Pause for 1 hour**, **Pause until tomorrow**,
-  **Mute until I resume** and **Notification settings…** (while paused the bell turns amber and its
-  menu starts with **Resume**); **Settings**; and **⋯** with **Check for updates** (when available)
-  and **Quit**.
+- **The middle** is the only part that scrolls; it starts at the top each time the panel opens. A
+  soft shade at the bottom (and at the top once you scroll) says there is more. Its blocks, in this
+  order:
+  - **Today**, left out when it has nothing: the next meetings of today from the Plan calendars (2
+    by default) with the time, the call service or the room and, when it is close, how soon (the
+    one that starts within 15 minutes shows **Join** when it has a call link; a click joins the
+    call, or opens Plan when there is no link); Plan inbox tasks due today or overdue (up to 2; a
+    click opens Plan); **Pull requests** (to review and mine), while the profile has a code host;
+    **Health**, only while an environment is degraded or unreachable; **Slack**, only when watching
+    stopped with an error.
+  - **Usage**: one row per agent account that reports usage: the name, a bar for its most spent
+    window (amber from 75 %, red from 90 %) and the percentage. A click opens **Settings → Usage**.
+    With more than 3 accounts the block folds into one row, **5 accounts · highest: …** with the
+    bar of the most spent one; **▸** unfolds every account, most spent first.
+  - **Needs you** (up to 5, with the state and how long ago) and **Working** (up to 3).
+  - **Recent** notifications (up to 4), leaving out notifications about a session already listed
+    above. Its title shows how many there are, with **▸ Show** / **▾ Hide** and **Clear**. It starts
+    folded while sessions need you or are working, and unfolded when none are.
+  - With no open sessions, a **No open sessions** block fills the rest of the panel, with
+    **New session in** the active profile.
 
-Escape, a click outside the panel or **✕** closes it; the arrow keys move between rows and buttons.
+  A list longer than its quota ends with **N more in the app ›**, which opens the main window on
+  that list (Sessions, Plan, or the app for notifications). Usage and Recent unfold in place and
+  remember whether you left them open.
+- **Footer** (fixed): **New session**; the bell; **Settings**; and **⋯**. The bell and **⋯** replace
+  the middle with their own page, with **‹ Back** and a title, and stay highlighted while it is
+  open:
+  - the bell (**Notifications**): **Resume** while paused, **Pause for 1 hour** and **Pause until
+    tomorrow** (each with the time it would end), **Mute until I resume**, **Quiet hours** (the
+    active profile's hours, a click opens their settings) and **Adjust notifications…** (opens
+    **Settings → Notifications**). While paused the bell turns amber.
+  - **⋯** (**More**): **Check for updates** (when available) and **Quit**.
+
+Escape or **‹ Back** leaves the bell or **⋯** page and returns to the panel where you were. On the
+panel itself Escape, a click outside it or **✕** closes it; the arrow keys move between rows and
+buttons, scrolling the middle as needed.
 
 **Settings → Notifications → Menu bar panel** chooses the blocks: **Meetings** (and how many, 1 to
 3), **Plan tasks**, **Pull requests**, **Health**, **Usage** and **Recent notifications**. All are
