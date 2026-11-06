@@ -4,6 +4,29 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.21](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.20...v2.0.0-alpha.21) (2026-11-06)
+
+
+### Features
+
+* **core:** add profile agent rows, offer, move and failover helpers ([25d420c](https://github.com/SoldierIced/workhub/commit/25d420c6706f974f27c141aa38047a3483587129))
+* **sessions:** list New session agents in the profile order with the default marked ([93c4769](https://github.com/SoldierIced/workhub/commit/93c4769a388b899b5171887cf109aa4de5e92ac1))
+* **settings:** add the profile Agents tab with offer, order and account switch ([d29eb53](https://github.com/SoldierIced/workhub/commit/d29eb53cee42a709fb828a17f77231ae59f6bd4f))
+* **settings:** agents section with one card per agent and accounts edited in place ([4252d4f](https://github.com/SoldierIced/workhub/commit/4252d4fd842c5ed81cf4b7dcf0fdd1472c6b7525))
+* **settings:** connections grouped by kind with named fields per service ([f53590c](https://github.com/SoldierIced/workhub/commit/f53590c3ac75f7274c5b387d323ceca9e76e3685))
+* **settings:** notifications and alerts section with one table per source ([9ed930d](https://github.com/SoldierIced/workhub/commit/9ed930d745f01acf7734ca21efbb01e2435c7c42))
+* **settings:** search index and row ids for the Agents and Connections sections ([b23ee59](https://github.com/SoldierIced/workhub/commit/b23ee59bc949840c49254d3f62049d9dae9d2474))
+* **settings:** six-section layout with a profile list and per-profile tabs ([37ea711](https://github.com/SoldierIced/workhub/commit/37ea7118e1bf20c618fa719a3f09682e3b1397ac))
+* **tray:** fixed 360x520 menu bar panel with in-place expanders and sub-views ([ace57ee](https://github.com/SoldierIced/workhub/commit/ace57ee2195e34849475da3a60a9791ae6083836))
+
+
+### Bug Fixes
+
+* **settings:** Ctrl shortcuts in the screen rows without settings too ([b7e63e5](https://github.com/SoldierIced/workhub/commit/b7e63e5f49987a3abb0e58f9c3d4d6654c82a788))
+* **settings:** profile agent links from the app, quick picker order, profiles in search and Ctrl shortcuts on Windows ([60c2ffa](https://github.com/SoldierIced/workhub/commit/60c2ffadc3572140ddec0c112d57eac7b0fe26a8))
+* **settings:** protected branches under Connections and index fixes after rebase ([b5ab159](https://github.com/SoldierIced/workhub/commit/b5ab159d107ae0b6b3019554538c83fe4991192a))
+* **settings:** show each section's intro once ([e3af02d](https://github.com/SoldierIced/workhub/commit/e3af02dfde209dae43ca1cbec4ae9c85e8c52cb7))
+
 ## [2.0.0-alpha.20](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.19...v2.0.0-alpha.20) (2026-11-06)
 
 
