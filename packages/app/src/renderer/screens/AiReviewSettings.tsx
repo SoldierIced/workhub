@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { aiReviewSettings, orderAgents, resolveEffectiveAgents, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewerSessionMode, type ReviewLanguage } from '@workhub/core'
+import { aiReviewSettings, CLAUDE_MODEL_SUGGESTIONS, orderAgents, resolveEffectiveAgents, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewerSessionMode, type ReviewLanguage } from '@workhub/core'
 import { Button, Input, Select, Switch, Textarea } from '../components/atoms'
-import { Card, EmptyState, Field, SwitchRow } from '../components/molecules'
+import { Card, EmptyState, Field, OptionOrCustom, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
-import { useAgentOptions, withCurrent } from '../lib/agentOptions'
+import { useAgentOptions } from '../lib/agentOptions'
+import { agentGlyph } from '../lib/agents'
+import { effortOptions, modelOptions } from '../lib/optionOrCustom'
 import type { ConfigSnapshot } from '@shared/api'
 import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
@@ -52,19 +54,30 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
           />
         </Field>
         <Field label={t('aiReview.settings.reviewerModel')} hint={t('aiReview.settings.reviewerModelHint')}>
-          {models.length ? (
-            <Select
-              value={s.reviewerModel}
-              onChange={(v) => set({ reviewerModel: v })}
-              data-testid="ai-review-reviewer-model"
-              options={[{ value: '', label: t('aiReview.settings.reviewerModelPlaceholder') }, ...withCurrent(models.map((m) => ({ value: m.id, label: m.name })), s.reviewerModel || undefined)]}
-            />
-          ) : (
-            <Input value={s.reviewerModel} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerModel: e.target.value })} onBlur={() => set({ reviewerModel: s.reviewerModel.trim() })} />
-          )}
+          <OptionOrCustom
+            value={s.reviewerModel}
+            onChange={(v) => set({ reviewerModel: v })}
+            onCustomBlur={() => set({ reviewerModel: s.reviewerModel.trim() })}
+            data-testid="ai-review-reviewer-model"
+            aria-label={t('aiReview.settings.reviewerModel')}
+            emptyLabel={t('aiReview.settings.reviewerModelPlaceholder')}
+            options={modelOptions(
+              models.map((m) => ({ value: m.id, label: m.name })),
+              reviewer !== undefined && agentGlyph(reviewer.agent.id, reviewer.agent.adapter) === 'claude',
+              CLAUDE_MODEL_SUGGESTIONS
+            )}
+          />
         </Field>
         <Field label={t('aiReview.settings.reviewerEffort')} hint={t('aiReview.settings.reviewerEffortHint')}>
-          <Input value={s.reviewerEffort} spellCheck={false} placeholder={t('aiReview.settings.reviewerModelPlaceholder')} onChange={(e) => set({ reviewerEffort: e.target.value })} onBlur={() => set({ reviewerEffort: s.reviewerEffort.trim() })} />
+          <OptionOrCustom
+            value={s.reviewerEffort}
+            onChange={(v) => set({ reviewerEffort: v })}
+            onCustomBlur={() => set({ reviewerEffort: s.reviewerEffort.trim() })}
+            data-testid="ai-review-reviewer-effort"
+            aria-label={t('aiReview.settings.reviewerEffort')}
+            emptyLabel={t('aiReview.settings.reviewerModelPlaceholder')}
+            options={effortOptions(t)}
+          />
         </Field>
         <Field label={t('aiReview.settings.reviewerSession')} hint={t('aiReview.settings.reviewerSessionHint')}>
           <Select

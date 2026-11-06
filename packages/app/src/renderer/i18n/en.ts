@@ -31,6 +31,7 @@ import { planEn } from './plan.en'
 import { plannerEn } from './planner.en'
 import { alertsEn } from './alerts.en'
 import { settingsNavEn } from './settingsNav.en'
+import { settingsAccountsEn } from './settingsAccounts.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -431,8 +432,8 @@ export const en = {
   'history.showMore': 'Show more ({hidden} more sessions)',
   'settings.planUsageHint': "Every 5 minutes, with each account's own sign-in.",
   'settings.planUsageNote': "Off by default. It calls an undocumented Anthropic endpoint (the one Claude Code's /usage uses) with the account's stored sign-in; it can change or stop working at any time. While it is off, usage comes only from what running sessions report.",
-  'settings.folders': 'Folders (one per line)',
-  'settings.foldersHint': 'Shown first in the sidebar for new sessions.',
+  'settings.folders': 'Folders',
+  'settings.foldersHint': 'Shown first in the sidebar for new sessions. Add each project folder with the folder picker.',
   'import.title': 'Import from Workhub 1',
   'import.hint': 'Reads profiles, folders, Claude accounts, connections, automations, the Slack watcher, Health, notifications and sidebar groups. Secrets are not part of this step (use the token import below) and Workhub 1 is not changed.',
   'import.preview': 'Preview',
@@ -503,5 +504,6 @@ export const en = {
   ...planEn,
   ...plannerEn,
   ...alertsEn,
-  ...settingsNavEn
+  ...settingsNavEn,
+  ...settingsAccountsEn
 } as const

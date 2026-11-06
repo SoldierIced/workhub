@@ -73,7 +73,7 @@ export interface SettingsScreenProps {
   snap: ConfigSnapshot | null
   section: SettingsSectionId
   onSectionChange: (section: SettingsSectionId) => void
-  /** Closes Settings (the header's close button, Esc); the caller asks `unsaved` first. */
+  /** Closes Settings (Esc, and the header's close button when not in a window of its own); the caller asks `unsaved` first. */
   onClose: () => void
   /** The drafts of every form here; asked before the section changes or the window closes. */
   unsaved: UnsavedChanges
@@ -83,7 +83,7 @@ export interface SettingsScreenProps {
   spotlight?: SettingsSpotlight | null
 }
 
-/** Settings as a screen: a header with a close button, the grouped navigation with search on the left, the section on the right. */
+/** Settings as a screen: a header (with a close button only when embedded), the grouped navigation with search on the left, the section on the right. */
 export function SettingsScreen(props: SettingsScreenProps) {
   return (
     <UnsavedChangesProvider store={props.unsaved}>
@@ -322,9 +322,12 @@ function SettingsBody({ snap, section, onSectionChange, onClose, unsaved, window
     <div ref={root} className="flex h-full flex-col" data-testid="settings-screen">
       <header className={cn('flex shrink-0 items-center gap-3 border-b border-border px-6 py-3', windowChrome && 'drag-region', windowChrome === 'mac' && 'pl-20', windowChrome && windowChrome !== 'mac' && 'pr-36')}>
         <h1 className="min-w-0 flex-1 text-2xl font-semibold tracking-tight">{t('nav.settings')}</h1>
-        <button type="button" onClick={onClose} aria-label={t('common.close')} title={t('common.close')} data-testid="settings-close" className="rounded-md p-1.5 text-muted hover:bg-surface-hover hover:text-text">
-          <X className="size-5" aria-hidden />
-        </button>
+        {/* In a window of its own the OS title bar already closes it (and Esc does); the in-app ✕ is only for an embedded Settings. */}
+        {!windowChrome && (
+          <button type="button" onClick={onClose} aria-label={t('common.close')} title={t('common.close')} data-testid="settings-close" className="rounded-md p-1.5 text-muted hover:bg-surface-hover hover:text-text">
+            <X className="size-5" aria-hidden />
+          </button>
+        )}
       </header>
       <div className="flex min-h-0 flex-1">
         <SettingsNav

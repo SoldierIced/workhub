@@ -39,7 +39,7 @@ function TipBadge({ tone, tip, children, testId }: { tone: 'neutral' | 'accent' 
 }
 
 /** What the usage read says about a sign-in, as a dot with its explanation. */
-function Login({ login }: { login: LoginState }) {
+export function Login({ login }: { login: LoginState }) {
   const { t } = useI18n()
   if (login.state === 'unknown') return null
   const ok = login.state === 'ok'

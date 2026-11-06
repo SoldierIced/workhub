@@ -198,3 +198,12 @@ export function launchEnvironment(agent: AgentDefinition, account: AgentAccount 
   if (account?.configDir && agent.accountConfigEnv) env[agent.accountConfigEnv] = account.configDir
   return env
 }
+
+/**
+ * Claude model aliases offered in model pickers when the agent has not listed its own models yet.
+ * A suggestion list, not a validation: any other model id stays allowed ("Other…").
+ */
+export const CLAUDE_MODEL_SUGGESTIONS = ['opus', 'sonnet', 'haiku'] as const
+
+/** Reasoning effort levels offered in effort pickers, lowest first. Also a suggestion list: a custom value stays allowed. */
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const

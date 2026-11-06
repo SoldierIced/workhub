@@ -4,11 +4,13 @@ import {
   DEFAULT_THREAD_ARCHIVE_MINUTES,
   MIN_THREAD_ARCHIVE_MINUTES,
   MIN_WATCH_INTERVAL_MINUTES,
+  CLAUDE_MODEL_SUGGESTIONS,
   type ChatWatcherSettings
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Badge, Button, IconButton, Input, Select, Switch } from '../components/atoms'
-import { Card, CardBody, CardHeader, Field, HelpTip, SwitchRow, useToast } from '../components/molecules'
+import { Card, CardBody, CardHeader, Field, HelpTip, OptionOrCustom, SwitchRow, useToast } from '../components/molecules'
+import { idOptions } from '../lib/optionOrCustom'
 import { reloadSlack, useSlack } from '../chatStore'
 import { useI18n } from '../i18n/I18nProvider'
 import { isDirty, type SaveOutcome } from '../lib/unsavedChanges'
@@ -85,7 +87,7 @@ export function SlackSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
               <Select value={form.accountId ?? ''} onChange={(v) => set({ accountId: v || null })} options={accounts} />
             </Field>
             <Field label={t('slack.settings.model')} help={t('help.slack.model')}>
-              <Input value={form.model} onChange={(e) => set({ model: e.target.value })} />
+              <OptionOrCustom value={form.model} onChange={(model) => set({ model })} onCustomBlur={() => set({ model: form.model.trim() })} options={idOptions(CLAUDE_MODEL_SUGGESTIONS)} aria-label={t('slack.settings.model')} data-testid="slack-model" />
             </Field>
             <Field label={t('slack.settings.interval')} hint={t('slack.settings.intervalHint', { min: MIN_WATCH_INTERVAL_MINUTES })}>
               <Input type="number" min={MIN_WATCH_INTERVAL_MINUTES} value={form.intervalMinutes} onChange={(e) => set({ intervalMinutes: Math.max(MIN_WATCH_INTERVAL_MINUTES, Number(e.target.value) || MIN_WATCH_INTERVAL_MINUTES) })} />
