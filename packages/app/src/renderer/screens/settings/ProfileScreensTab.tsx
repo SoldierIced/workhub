@@ -4,6 +4,7 @@ import { Badge, Select, Switch } from '../../components/atoms'
 import { Card } from '../../components/molecules'
 import { useUnsavedForm } from '../../components/organisms/UnsavedChanges'
 import { useI18n } from '../../i18n/I18nProvider'
+import { platformShortcutText } from '../../lib/shortcuts'
 import { isDirty, type SaveOutcome } from '../../lib/unsavedChanges'
 import { AiReviewSection } from '../AiReviewSettings'
 import { FlowLimitsGroup } from '../alerts/FlowLimits'
@@ -145,7 +146,7 @@ export function ProfileScreensTab({ snap, run, profileId, openScreen, focusHealt
             {row.settings ? (
               <Disclosure
                 label={t(row.label)}
-                hint={t(row.hint)}
+                hint={platformShortcutText(t(row.hint), window.hub.platform)}
                 controls={controls(row)}
                 open={open.has(row.key)}
                 onOpenChange={(on) => setOpen((s) => (on ? new Set([...s, row.key]) : new Set([...s].filter((k) => k !== row.key))))}

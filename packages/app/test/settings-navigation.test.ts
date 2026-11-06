@@ -4,7 +4,7 @@ import { en } from '../src/renderer/i18n/en'
 import { es } from '../src/renderer/i18n/es'
 import { translate, type MessageKey } from '../src/renderer/i18n/translate'
 import { issueSection, issueTarget, LEGACY_TABS, PROFILE_SCREENS, PROFILE_TABS, SETTINGS_SECTIONS, settingsSection, settingsTarget } from '../src/renderer/screens/settings/sections'
-import { entryBreadcrumb, foldText, hitKey, searchSettings, SETTINGS_INDEX } from '../src/renderer/screens/settings/settings-index'
+import { entryBreadcrumb, foldText, hitKey, searchSettings, SETTINGS_INDEX, profileEntries } from '../src/renderer/screens/settings/settings-index'
 import { NOTIFICATIONS_INDEX } from '../src/renderer/screens/settings/notifications-index'
 import { profileSummary, SCREEN_ROWS } from '../src/renderer/screens/settings/profileSummary'
 import { accountSessionEnv, saveAccountEnv, storedAccountEnvNames } from '../src/main/profile-env'
@@ -197,5 +197,15 @@ describe('account environment in the secret store', () => {
     await saveAccountEnv('work', {}, ['ACME_TOKEN'], secrets)
     expect(await accountSessionEnv(account, secrets)).toEqual({})
     expect(await accountSessionEnv(null, secrets)).toEqual({})
+  })
+})
+
+describe('profiles in the search', () => {
+  it('finds a profile by its name and opens that profile', () => {
+    const index = [...SETTINGS_INDEX, ...profileEntries([{ id: 'p2', name: 'Second' }])]
+    const hits = searchSettings(index, 'second', { t: (key: MessageKey) => translate('en', key), groupLabel: (g: string) => g })
+    expect(hits[0]?.entry.profileId).toBe('p2')
+    expect(hits[0]?.entry.tab).toBe('folders')
+    expect(hits[0]?.label).toBe('Second')
   })
 })

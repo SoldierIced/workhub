@@ -53,3 +53,8 @@ export function matchesShortcut(e: KeyLike, shortcut: Shortcut, platform: Platfo
     e.key.toLowerCase() === shortcut.key.toLowerCase()
   )
 }
+
+/** Copy written with macOS glyphs ("the Tickets screen (⌘3)") shown with this platform's modifier. */
+export function platformShortcutText(text: string, platform: Platform): string {
+  return platform === 'mac' ? text : text.replace(/⌘(\S)/g, 'Ctrl+$1')
+}

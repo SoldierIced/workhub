@@ -24,5 +24,5 @@ export const profileAgentsEs: Record<keyof typeof profileAgentsEn, string> = {
   'newSession.agentDefault': '{label} (predeterminado)',
   'newSession.agentUsage': '{label} · {percent} %',
   'newSession.orderAgents': 'Ordenar y elegir los agentes de {profile}…',
-  'newSession.accountDefaultModel': 'El de la cuenta'
+  'newSession.accountDefaultModel': 'Por defecto de la cuenta'
 } as const

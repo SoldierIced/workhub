@@ -53,6 +53,7 @@ import {
 } from "./settings/sections";
 import {
   hitKey,
+  profileEntries,
   SETTINGS_INDEX,
   searchSettings,
   type SettingsHit,
@@ -225,8 +226,13 @@ function SettingsBody({
     entry.only !== "workhub1" || importVisible;
   const groupLabel = (group: SettingsNavGroup) => t(GROUP_LABEL[group]);
   const hits = useMemo(
-    () => searchSettings(SETTINGS_INDEX, query, { t, groupLabel, visible }),
-    [query, t, importVisible],
+    () =>
+      searchSettings([...SETTINGS_INDEX, ...profileEntries(profiles)], query, {
+        t,
+        groupLabel,
+        visible,
+      }),
+    [query, t, importVisible, profiles],
   ); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => setActiveHit(0), [query]);
 
@@ -313,7 +319,13 @@ function SettingsBody({
       );
     // A row of a profile opens the open profile (else the active one) on its tab.
     const target: SettingsTarget = entry.tab
-      ? { section: "profiles", profile: { tab: entry.tab } }
+      ? {
+          section: "profiles",
+          profile: {
+            tab: entry.tab,
+            ...(entry.profileId ? { id: entry.profileId } : {}),
+          },
+        }
       : { section: entry.section };
     navigate(target, {
       label,

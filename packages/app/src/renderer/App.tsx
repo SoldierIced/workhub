@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, pickAgent, profileDefaultFolder, refreshMembers, sessionIdentity, setGroupCollapsed, worktreeDefault, type EffectiveAgent, type GroupMember } from '@workhub/core'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, notificationTitle, orderAgents, pickAgent, profileDefaultFolder, refreshMembers, sessionIdentity, setGroupCollapsed, worktreeDefault, type EffectiveAgent, type GroupMember } from '@workhub/core'
 import type { SessionView, WorkspaceFolder } from '@shared/api'
 import { TooltipProvider } from './components/atoms'
 import { ToastProvider, useToast } from './components/molecules'
@@ -106,7 +106,8 @@ function Shell() {
   const navItems = visibleNavItems(profile?.modules)
   const reachable = useMemo(() => allNavItems(profile?.modules), [profile?.modules])
 
-  const agents = useMemo(() => (agentList && agentList.profileId === activeProfileId ? agentList.list : []), [agentList, activeProfileId])
+  // In the profile's order, so the quick picker and New session agree on which agent comes first.
+  const agents = useMemo(() => (agentList && agentList.profileId === activeProfileId ? orderAgents(profile?.preferredAgents, agentList.list) : []), [agentList, activeProfileId, profile?.preferredAgents])
   useEffect(() => {
     if (!snap) return
     // Replies can arrive out of order (A then B switched quickly): only the current request's reply applies.
