@@ -66,8 +66,8 @@ import { AdvancedSection, GeneralSection } from "./settings/WorkhubSections";
 const INTRO: Record<SettingsSectionId, MessageKey> = {
   general: "settingsV2.intro.general",
   notifications: "settingsV2.intro.notifications",
-  agents: "settingsV2.intro.agents",
-  connections: "settings.intro.connections",
+  agents: "settingsAgents.intro",
+  connections: "settingsConnections.intro",
   profiles: "settingsV2.intro.profiles",
   advanced: "settingsV2.intro.advanced",
 };

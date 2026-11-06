@@ -89,7 +89,6 @@ export function ConnectionsSection({ snap, run, initialId }: SectionProps & { in
 
   return (
     <div ref={root} className="flex flex-col gap-6" data-testid="connections-section">
-      <p className="max-w-3xl px-1 text-sm text-muted">{t('settingsConnections.intro')}</p>
       {groups.map((g) => {
         const text = GROUP_TEXT[g.id]
         const adding = editing && editing.id === null && editing.kind === g.kind ? editing : null

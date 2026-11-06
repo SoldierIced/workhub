@@ -104,7 +104,6 @@ export function NotificationsAlertsSection({ snap, run, initialId, platform, onO
 
   return (
     <div ref={root} className="flex flex-col gap-6" data-testid="settings-notifications-alerts">
-      <p className="px-1 text-sm text-muted">{t('notifAlerts.intro')}</p>
       <MasterRow options={options} editable={editable} save={save} />
 
       <SettingsGroup title={t('notifAlerts.what.title')} help={t('notifAlerts.what.help')} footnote={t('notifAlerts.what.footnote')}>
