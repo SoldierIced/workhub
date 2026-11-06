@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react'
 import { AgentIcon } from '../atoms/AgentIcon'
-import { ChevronDown, PanelLeft, PanelRight, Plus, Settings } from 'lucide-react'
+import { ChevronDown, Plus, Settings } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import type { EffectiveAgent } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
-import { MONITOR_SHORTCUT, NEW_SESSION_SHORTCUT, SETTINGS_ITEM, SIDEBAR_SHORTCUT } from '../../lib/nav'
+import { NEW_SESSION_SHORTCUT, SETTINGS_ITEM, SIDEBAR_SHORTCUT } from '../../lib/nav'
 import { usePlatform } from '../../lib/platform'
 import { shortcutLabel } from '../../lib/shortcuts'
 import { IconButton } from '../atoms/IconButton'
 import { Kbd } from '../atoms/Kbd'
+import { PanelToggleButton } from '../molecules/PanelToggleButton'
 
 export interface ToolbarProps {
   /** The screens (TopNav), on the left. */
@@ -25,9 +26,6 @@ export interface ToolbarProps {
   /** Whether the left sidebar is folded away; the button at the left shows or hides it. */
   sidebarHidden: boolean
   onToggleSidebar: () => void
-  /** Whether the session monitor is folded away; undefined hides its button (no session on screen). */
-  monitorHidden?: boolean
-  onToggleMonitor: () => void
 }
 
 /**
@@ -35,20 +33,13 @@ export interface ToolbarProps {
  * the right. It drags the window; on Windows and Linux the native
  * window controls are drawn over its right end (titleBarOverlay), so it leaves room for them.
  */
-export function Toolbar({ nav, agents, onNewSession, onChooseSession, newSessionHint, onOpenSettings, sidebarHidden, onToggleSidebar, monitorHidden, onToggleMonitor }: ToolbarProps) {
+export function Toolbar({ nav, agents, onNewSession, onChooseSession, newSessionHint, onOpenSettings, sidebarHidden, onToggleSidebar }: ToolbarProps) {
   const { t } = useI18n()
   const platform = usePlatform()
   // With the sidebar folded, macOS draws its traffic lights over the bar's left end: leave them room.
   return (
     <header className={cn('drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border px-4', platform !== 'mac' && 'pr-36', platform === 'mac' && sidebarHidden && 'pl-20')}>
-      <IconButton
-        label={t(sidebarHidden ? 'layout.showSidebar' : 'layout.hideSidebar')}
-        hint={<Kbd shortcut={SIDEBAR_SHORTCUT} />}
-        icon={<PanelLeft className="size-4" />}
-        aria-pressed={!sidebarHidden}
-        data-testid="toggle-sidebar"
-        onClick={onToggleSidebar}
-      />
+      <PanelToggleButton side="left" hidden={sidebarHidden} shortcut={SIDEBAR_SHORTCUT} onToggle={onToggleSidebar} testId="toggle-sidebar" />
       {nav}
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <div className="flex items-center rounded-md shadow-sm">
@@ -96,16 +87,6 @@ export function Toolbar({ nav, agents, onNewSession, onChooseSession, newSession
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
         </div>
-        {monitorHidden !== undefined && (
-          <IconButton
-            label={t(monitorHidden ? 'layout.showMonitor' : 'layout.hideMonitor')}
-            hint={<Kbd shortcut={MONITOR_SHORTCUT} />}
-            icon={<PanelRight className="size-4" />}
-            aria-pressed={!monitorHidden}
-            data-testid="toggle-monitor"
-            onClick={onToggleMonitor}
-          />
-        )}
         <IconButton label={t('nav.settings')} hint={<Kbd shortcut={SETTINGS_ITEM.shortcut} />} icon={<Settings className="size-4" />} onClick={onOpenSettings} />
       </div>
     </header>
