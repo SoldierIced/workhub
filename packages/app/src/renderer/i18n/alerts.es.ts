@@ -59,7 +59,6 @@ export const alertsEs: Record<keyof typeof alertsEn, string> = {
   'alertsSettings.flow.ok': 'ok',
   'alertsSettings.flow.overP95': 'sobre p95',
   'alertsSettings.flow.overFailures': 'sobre fallos',
-  'alertsSettings.usage.title': 'Uso del plan',
   'alertsSettings.quiet.title': 'Horas de silencio',
   'alertsSettings.quiet.help': 'Las alertas de Salud, de mapas de flujo y de métricas no se muestran en estas horas. Igual se registran, así no llegan todas juntas al terminar.',
   'alertsSettings.quiet.footnote': 'Las sesiones y los recordatorios de reuniones nunca se retienen.',

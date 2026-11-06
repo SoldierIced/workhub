@@ -35,8 +35,9 @@ where the warning starts). Past a ceiling:
 Nothing is installed in the agents: the ceiling lives only in Workhub, and it lets everything
 through while the usage is unknown.
 
-**Alerts** notify once per threshold and window, until the window resets. Set **Thresholds (%)**
-comma separated, for example `80, 95`.
+Usage alerts notify once per threshold and window, until the window resets. Their switch and
+thresholds (comma separated, for example `80, 95`) are in
+[Settings → Notifications and alerts](settings.md#notifications-and-alerts).
 
 ## Per-session limit
 

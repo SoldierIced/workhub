@@ -58,7 +58,6 @@ export const alertsEn = {
   'alertsSettings.flow.ok': 'ok',
   'alertsSettings.flow.overP95': 'over p95',
   'alertsSettings.flow.overFailures': 'over failures',
-  'alertsSettings.usage.title': 'Plan usage',
   'alertsSettings.quiet.title': 'Quiet hours',
   'alertsSettings.quiet.help': 'Health, flow-map and metric alerts are not shown during these hours. They are still recorded, so they do not all arrive when the quiet hours end.',
   'alertsSettings.quiet.footnote': 'Sessions and meeting reminders are never held back.',
