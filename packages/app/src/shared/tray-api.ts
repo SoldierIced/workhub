@@ -29,8 +29,6 @@ export interface TrayPopoverApi {
   onShown(cb: () => void): () => void
   /** Runs a tray action (checked again in the main process); most of them close the popover. */
   perform(action: TrayAction): void
-  /** The content's natural height, so the window fits it (clamped to the screen). */
-  resize(height: number): void
   hide(): void
 }
 

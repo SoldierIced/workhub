@@ -44,6 +44,10 @@ export interface Prefs {
   expandedFolders: string[]
   /** Whether the part detail drawer of the Flow maps screen is folded. */
   flowMapDrawerCollapsed: boolean
+  /** Whether the menu bar panel's folded "Usage" (more than 3 accounts) is unfolded. */
+  trayPopoverUsageExpanded: boolean
+  /** The menu bar panel's "Recent" left open (true) or closed, per context (lib/trayPopover `recentExpanded`). */
+  trayPopoverRecent: { busy?: boolean; quiet?: boolean }
 }
 
 /** Ranges of the size preferences, as Workhub 1 offered them. */
@@ -70,7 +74,9 @@ export const DEFAULT_PREFS: Prefs = {
   monitorHidden: false,
   favoriteFolders: [],
   expandedFolders: [],
-  flowMapDrawerCollapsed: false
+  flowMapDrawerCollapsed: false,
+  trayPopoverUsageExpanded: false,
+  trayPopoverRecent: {}
 }
 
 /** A size clamped into its range, rounded; the default for anything that is not a number. */
@@ -104,7 +110,9 @@ export function parsePrefs(raw: string | null): Prefs {
       monitorHidden: v.monitorHidden === true,
       favoriteFolders: pathList(v.favoriteFolders, 100),
       expandedFolders: pathList(v.expandedFolders, 200),
-      flowMapDrawerCollapsed: v.flowMapDrawerCollapsed === true
+      flowMapDrawerCollapsed: v.flowMapDrawerCollapsed === true,
+      trayPopoverUsageExpanded: v.trayPopoverUsageExpanded === true,
+      trayPopoverRecent: recentMemory(v.trayPopoverRecent)
     }
   } catch {
     return DEFAULT_PREFS
@@ -114,6 +122,12 @@ export function parsePrefs(raw: string | null): Prefs {
 /** A list of folder paths: strings only, no empty or repeated ones, each and the list kept short. */
 function pathList(raw: unknown, max: number): string[] {
   return Array.isArray(raw) ? [...new Set(raw.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, max) : []
+}
+
+function recentMemory(raw: unknown): Prefs['trayPopoverRecent'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const r = raw as Record<string, unknown>
+  return { ...(typeof r['busy'] === 'boolean' ? { busy: r['busy'] } : {}), ...(typeof r['quiet'] === 'boolean' ? { quiet: r['quiet'] } : {}) }
 }
 
 function modelMap(raw: unknown): Record<string, string> {

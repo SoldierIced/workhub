@@ -784,6 +784,8 @@ function windowChrome(): BrowserWindowConstructorOptions {
  */
 function syncTitleBarOverlay(): void {
   if (process.platform === 'darwin') return
+  // The tray popover has no overlay, but its solid background follows the light or dark look.
+  trayPopover?.syncTheme()
   for (const w of BrowserWindow.getAllWindows()) {
     if (w.isDestroyed()) continue
     try {
@@ -1211,9 +1213,6 @@ function registerIpc(): void {
     if (!action) return
     if (action.kind !== 'pause' && action.kind !== 'resume') trayPopover?.hide()
     void performTrayAction(action)
-  })
-  ipc.on('trayPopover:resize', (e, height: unknown) => {
-    if (typeof height === 'number' && trayPopover?.owns(e.sender)) trayPopover.resize(height)
   })
   ipc.on('trayPopover:hide', (e) => {
     if (trayPopover?.owns(e.sender)) trayPopover.hide()
@@ -1727,7 +1726,8 @@ function startTray(): void {
           preload: join(__dirname, '../preload/index.js'),
           load: loadPopover,
           refresh: () => void trayService?.refresh(),
-          pinned: process.env['WORKHUB_TRAY_POPOVER_PIN'] === '1'
+          pinned: process.env['WORKHUB_TRAY_POPOVER_PIN'] === '1',
+          dark: () => nativeTheme.shouldUseDarkColors
         })
       : null
   trayPopover = popover

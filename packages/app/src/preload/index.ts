@@ -321,7 +321,6 @@ const api: HubApi = {
       onView: (cb) => subscribe<[TrayPopoverView]>('trayPopover:view', cb),
       onShown: (cb) => subscribe<[]>('trayPopover:shown', cb),
       perform: (action) => ipcRenderer.send('trayPopover:perform', action),
-      resize: (height) => ipcRenderer.send('trayPopover:resize', height),
       hide: () => ipcRenderer.send('trayPopover:hide')
     }
   },
