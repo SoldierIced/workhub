@@ -98,7 +98,8 @@ export class UpdateService {
   /** Restarts into the installed update. */
   restart(): void {
     if (this.current.state !== 'ready') return
-    if (process.platform !== 'darwin') return autoUpdater.quitAndInstall()
+    // Silent: the assisted NSIS installer (oneClick: false) would otherwise open its wizard and wait.
+    if (process.platform !== 'darwin') return autoUpdater.quitAndInstall(true, true)
     app.relaunch()
     app.quit()
   }

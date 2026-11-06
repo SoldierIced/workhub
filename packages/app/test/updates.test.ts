@@ -153,7 +153,7 @@ describe('UpdateService', () => {
     expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1)
     expect(autoUpdater.autoInstallOnAppQuit).toBe(true)
     win.restart()
-    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true)
     expect(electron.app.relaunch).not.toHaveBeenCalled()
 
     setPlatform('darwin', 'arm64')
@@ -163,7 +163,7 @@ describe('UpdateService', () => {
     mac.restart()
     expect(electron.app.relaunch).toHaveBeenCalledTimes(1)
     expect(electron.app.quit).toHaveBeenCalledTimes(1)
-    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true)
   })
 })
 
