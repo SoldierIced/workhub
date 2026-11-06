@@ -56,17 +56,57 @@ move between results. Esc clears the search, and a second Esc closes Settings.
 calls except to services you configure and, if you turn it on, GitHub for update checks. There is no
 telemetry. See [SECURITY.md](../../SECURITY.md) for what is stored where.
 
-## Notifications
+## Notifications and alerts
 
-Notifications are shown by your operating system when a session you are not looking at replies, asks
-something or fails. Each one quotes the start of the reply, the question or the error. A session
-notifies once until you look at it (more turns meanwhile do not add notifications; an error or a
-question after a reply still does), and its newest notification replaces the older one. Sessions of an [automation](automations.md) notify
-only when they fail unless its **Notifications** field says otherwise. **Show notifications** is the master switch; it silences every notification
-below it. **Pause notifications** (here or in the menu bar icon) silences all of them for 1 hour or
-until tomorrow; the menu bar icon can also mute them until you resume. If the system does not let Workhub show notifications, Settings says so and offers
-**Turn on**. The app icon badge counts the sessions that need you (Dock on macOS, taskbar on Windows,
-launcher on Linux) and goes away as you look at them.
+**Settings → Notifications and alerts** is the one place that answers "does this notify me, and
+when not?".
+
+The first row holds **Notify me** (the master switch: off, Workhub shows no notification at all and
+everything stays visible in the app), **Send test** and **Pause…** (1 hour, until tomorrow, or until
+you resume; the menu bar icon has the same pause). While paused, the row says until when and offers
+**Resume**. If the system does not let Workhub show notifications, the section says so and offers
+**Turn on**.
+
+**What notifies you** is a single table with one row per source:
+
+| Column | What it holds |
+|---|---|
+| **When…** | What happens, in words: "A session finished replying", "A session is waiting for your permission or answer", "A session failed", and so on. |
+| **Notify** | The switch of that source. |
+| **Threshold** | Set for the whole app: edited in the row. Kept per profile: each profile's value, which opens that profile. "—" when the source has none. |
+
+The rows are grouped:
+
+- **Sessions**: replied (only when you are not looking at the session), waiting for you, failed.
+  A session notifies once until you look at it, and its newest notification replaces the older
+  one. Sessions of an [automation](automations.md) notify only when they fail unless its
+  **Notifications** field says otherwise.
+- **Pull requests**: one row with how many events are on ("8 of 10 on"); open it for a switch per
+  event (review requested, approved, changes requested, comments, CI failed or passing again,
+  conflicts, new commits, merged, closed).
+- **Agents**: "An account's usage crosses a threshold", with the thresholds in % (for example
+  `80, 95`), saved when the field loses focus. It notifies once per threshold and usage window.
+  This is the only place the usage thresholds are edited; ceilings stay with the accounts.
+- **Health and metrics**, listing the profiles with Health on: environments that degrade, stop
+  answering or recover; services that stop reporting, pods that go down and errors that worsen
+  (both rows share one switch); metric alerts ("from High"); flow-map limits ("per map"). Their
+  thresholds, minimum severity, business days and map limits are kept per profile, so the table
+  shows each profile's value and opens it.
+- **Work**: tickets, meetings (each profile's reminder lead time, set in its Plan), Slack and
+  automations.
+
+Channels (system notification or menu bar panel) are not a column: the app-wide sources always use
+both. Health alerts can still pick their channels per kind, with the Health screen of each profile.
+
+**When not to notify** holds the quiet hours. They hold back Health, metric and flow-map alerts;
+sessions and meeting reminders always come through. Quiet hours are kept per profile: with one
+profile they are edited right there, with several each profile's hours are listed with a link to
+the profile.
+
+**App icon and menu bar** holds the app icon badge, which counts the sessions that need you (Dock
+on macOS, taskbar on Windows, launcher on Linux) and goes away as you look at them, and, on macOS
+and Windows, what the menu bar panel shows: meetings (and how many), Plan tasks, pull requests,
+Health, usage and recent notifications, each a chip that turns on or off.
 
 ## Read aloud
 

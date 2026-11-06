@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { appOptions, parseThresholds, setCeiling, type UsageBudgetOptions } from '@workhub/core'
+import { appOptions, setCeiling, type UsageBudgetOptions } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot } from '@shared/api'
 import { Button, Input, Switch } from '../components/atoms'
 import { Card, Field, HelpTip, SwitchRow } from '../components/molecules'
@@ -83,15 +83,13 @@ function AccountBudget({ read, budget, editable, save }: { read: AccountUsage; b
   )
 }
 
-/** Settings → Usage: which agents' plan usage is read, the ceilings per account and window, and the alerts. */
+/** Settings → Usage: which agents' plan usage is read and the ceilings per account and window. The usage alerts are in Notifications and alerts. */
 export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
   const { t } = useI18n()
   const options = appOptions(snap.config)
   const budget = options.usageBudget
   const editable = !snap.loadError
   const reads = useAccountUsage()
-  const [thresholds, setThresholds] = useState(budget.thresholds.join(', '))
-  useEffect(() => setThresholds(budget.thresholds.join(', ')), [budget.thresholds])
 
   const saveBudget = (next: UsageBudgetOptions) => void run(() => window.hub.config.saveOptions({ usageBudget: next }))
   const toggle = (key: 'claudePlanUsage' | 'codexUsage' | 'kiroUsage', on: boolean) => void run(() => window.hub.config.saveOptions({ [key]: on })).then((ok) => ok && void window.hub.usage.get(true))
@@ -135,20 +133,6 @@ export function UsageSettings({ snap, run }: { snap: ConfigSnapshot; run: Run })
             disabled={!editable}
             onCommit={(n) => saveBudget({ ...budget, warnMargin: Math.min(50, Math.max(0, Math.round(n ?? 0))) })}
           />
-        </div>
-      </Group>
-
-      <Group title={t('agentUsage.settings.alerts')} help={t('help.usage.alerts')}>
-        <SwitchRow label={t('agentUsage.settings.alertsOn')} hint={t('agentUsage.settings.alertsHint')}>
-          <Switch checked={budget.alerts} disabled={!editable} onChange={(on) => saveBudget({ ...budget, alerts: on })} />
-        </SwitchRow>
-        <div className="flex items-end gap-2 py-3">
-          <Field label={t('agentUsage.settings.thresholds')} hint={t('agentUsage.settings.thresholdsHint')} className="flex-1">
-            <Input value={thresholds} disabled={!editable} onChange={(e) => setThresholds(e.target.value)} />
-          </Field>
-          <Button className="mb-5" disabled={!editable || parseThresholds(thresholds).join(',') === budget.thresholds.join(',')} onClick={() => saveBudget({ ...budget, thresholds: parseThresholds(thresholds) })}>
-            {t('agentUsage.settings.apply')}
-          </Button>
         </div>
       </Group>
     </div>

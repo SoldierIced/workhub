@@ -3,13 +3,11 @@ import { useEffect, useState } from 'react'
 import {
   ALERT_SEVERITIES,
   alertRulesOf,
-  appOptions,
   DEFAULT_HEALTH_REFRESH_MINUTES,
   HEALTH_ALERT_CHANNELS,
   HEALTH_ALERT_KINDS,
   HEALTH_ALERT_THRESHOLDS,
   healthAlertSettingsOf,
-  parseThresholds,
   type AlertSeverity,
   type HealthAlertChannel,
   type HealthAlertKind,
@@ -59,7 +57,7 @@ export function NumberCell({ value, placeholder, min, max, step, disabled, label
   )
 }
 
-/** Settings → Alerts: when something counts as an alert, per module. Whether and where it is announced app-wide is in Notifications. */
+/** Settings → Alerts: when something counts as an alert, per module. Whether and where it is announced app-wide (and the usage thresholds) is in Notifications and alerts. */
 export function AlertsSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
   const { t } = useI18n()
   const editable = !snap.loadError
@@ -85,7 +83,6 @@ export function AlertsSettings({ snap, run }: { snap: ConfigSnapshot; run: Run }
           <FlowLimitsGroup profile={profile} editable={editable} />
         </>
       )}
-      <UsageGroup snap={snap} run={run} editable={editable} />
       {profile && <QuietHoursGroup profile={profile} editable={editable} save={(quietHours) => saveProfile((p) => ({ ...p, alerts: { ...p.alerts, quietHours } }))} />}
     </div>
   )
@@ -224,37 +221,6 @@ export function MetricsGroup({ profile, editable, save }: { profile: Profile; ed
         <Button size="sm" variant="ghost" icon={<ExternalLink className="size-3.5" aria-hidden />} onClick={() => window.hub.setup.openSettings('health')}>
           {t('alertsSettings.metrics.overrides')}
         </Button>
-      </div>
-    </SettingsGroup>
-  )
-}
-
-/** Plan usage: the same switch and thresholds as Settings → Usage → Alerts (app-wide, `options.usageBudget`). */
-export function UsageGroup({ snap, run, editable }: { snap: ConfigSnapshot; run: Run; editable: boolean }) {
-  const { t } = useI18n()
-  const budget = appOptions(snap.config).usageBudget
-  const [thresholds, setThresholds] = useState(budget.thresholds.join(', '))
-  useEffect(() => setThresholds(budget.thresholds.join(', ')), [budget.thresholds])
-  const save = (next: typeof budget) => void run(() => window.hub.config.saveOptions({ usageBudget: next }))
-  const parsed = parseThresholds(thresholds)
-  return (
-    <SettingsGroup title={t('alertsSettings.usage.title')} help={t('help.usage.alerts')}>
-      <div id="alerts.usage.on" data-setting-id="alerts.usage.on">
-        <SettingRow label={t('agentUsage.settings.alertsOn')} hint={t('agentUsage.settings.alertsHint')}>
-          <div className="flex justify-end">
-            <Switch checked={budget.alerts} disabled={!editable} aria-label={t('agentUsage.settings.alertsOn')} onChange={(on) => save({ ...budget, alerts: on })} />
-          </div>
-        </SettingRow>
-      </div>
-      <div id="alerts.usage.thresholds" data-setting-id="alerts.usage.thresholds">
-        <SettingRow label={t('agentUsage.settings.thresholds')} hint={t('agentUsage.settings.thresholdsHint')}>
-          <div className="flex gap-2">
-            <Input aria-label={t('agentUsage.settings.thresholds')} value={thresholds} disabled={!editable || !budget.alerts} onChange={(e) => setThresholds(e.target.value)} />
-            <Button disabled={!editable || parsed.join(',') === budget.thresholds.join(',')} onClick={() => save({ ...budget, thresholds: parsed })}>
-              {t('agentUsage.settings.apply')}
-            </Button>
-          </div>
-        </SettingRow>
       </div>
     </SettingsGroup>
   )

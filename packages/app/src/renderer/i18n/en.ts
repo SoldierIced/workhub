@@ -32,6 +32,7 @@ import { plannerEn } from './planner.en'
 import { alertsEn } from './alerts.en'
 import { settingsNavEn } from './settingsNav.en'
 import { settingsAccountsEn } from './settingsAccounts.en'
+import { notificationsAlertsEn } from './notificationsAlerts.en'
 /**
  * English UI copy: the source of truth for message keys. Strings shared with Workhub 1 keep its
  * wording. Keys are grouped by screen; plural messages use `.one` / `.other`.
@@ -505,5 +506,6 @@ export const en = {
   ...plannerEn,
   ...alertsEn,
   ...settingsNavEn,
-  ...settingsAccountsEn
+  ...settingsAccountsEn,
+  ...notificationsAlertsEn
 } as const
