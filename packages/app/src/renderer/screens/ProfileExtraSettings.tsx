@@ -218,13 +218,19 @@ const subfolderMode = (value: boolean | undefined): 'auto' | 'on' | 'off' => (va
 /** A folder's worktree choice: unset follows the profile. */
 const folderWorktreeMode = (value: boolean | undefined): 'profile' | 'on' | 'off' => (value === undefined ? 'profile' : value ? 'on' : 'off')
 
-/** Profile fields of Workhub 1's profile settings: symbol, folder switches, link browser, "owns outside" and variables. */
-export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onChange: (profile: Profile) => void; env: EnvDraft }) {
+/** The groups `ProfileExtraFields` can show; Settings shows them on different tabs of a profile. */
+export type ProfileExtraPart = 'symbol' | 'folderFlags' | 'worktrees' | 'links' | 'env'
+const ALL_PARTS: readonly ProfileExtraPart[] = ['symbol', 'folderFlags', 'worktrees', 'links', 'env']
+
+/** Profile fields of Workhub 1's profile settings: symbol, folder switches, link browser, "owns outside" and variables (`parts`: only some of them). */
+export function ProfileExtraFields({ form, onChange, env, parts = ALL_PARTS }: { form: Profile; onChange: (profile: Profile) => void; env: EnvDraft; parts?: readonly ProfileExtraPart[] }) {
   const { t } = useI18n()
   const folders = cleanFolders(form.folders)
   const setFolder = (folder: string, patch: FolderOptions) => onChange({ ...form, folderOptions: { ...form.folderOptions, [folder]: { ...form.folderOptions?.[folder], ...patch } } })
+  const show = (part: ProfileExtraPart) => parts.includes(part)
   return (
     <>
+      {show('symbol') && (
       <FieldGroup legend={t('profileExtra.symbol')} help={t('profileExtra.symbolHelp')}>
         <div className="flex flex-wrap gap-1.5 py-2" role="radiogroup" aria-label={t('profileExtra.symbol')}>
           <button
@@ -254,6 +260,8 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
           })}
         </div>
       </FieldGroup>
+      )}
+      {show('folderFlags') && (
       <FieldGroup legend={t('profileExtra.folderFlags')} help={t('profileExtra.folderFlagsHelp')}>
         {folders.length === 0 && <p className="py-2 text-sm text-subtle">{t('profileExtra.folderFlagsEmpty')}</p>}
         {folders.map((folder) => (
@@ -292,20 +300,27 @@ export function ProfileExtraFields({ form, onChange, env }: { form: Profile; onC
           </div>
         ))}
       </FieldGroup>
+      )}
+      {show('worktrees') && (
       <FieldGroup legend={t('profileExtra.worktrees')} help={t('profileExtra.worktreesHelp')}>
         <WorktreeFields form={form} onChange={onChange} />
       </FieldGroup>
+      )}
+      {show('links') && (
       <FieldGroup legend={t('profileExtra.links')}>
         <div className="flex flex-col gap-3 py-2">
           <LinkBrowserFields form={form} onChange={onChange} />
-          <SwitchRow label={t('profileExtra.ownsOutside')} hint={t('profileExtra.ownsOutsideHint')}>
+          <SwitchRow label={t('settingsV2.profile.ownsOutside')} hint={t('profileExtra.ownsOutsideHint')}>
             <Switch checked={form.ownsOutside === true} onChange={(on) => onChange({ ...form, ownsOutside: on })} />
           </SwitchRow>
         </div>
       </FieldGroup>
+      )}
+      {show('env') && (
       <FieldGroup legend={t('profileExtra.env')} help={t('profileExtra.envHelp')}>
         <EnvFields env={env} />
       </FieldGroup>
+      )}
     </>
   )
 }

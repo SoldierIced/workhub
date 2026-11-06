@@ -1,70 +1,93 @@
 import { Check, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { Button, Input, Select, Switch } from '../components/atoms'
-import { useI18n } from '../i18n/I18nProvider'
-import { cn } from '../lib/cn'
-import { BASE_TEXT_SIZE, SIZE_RANGES, setPrefs, usePrefs, type Prefs } from '../lib/prefs'
-import { findTerminalTheme, isDarkTheme, searchTerminalThemes, TERMINAL_FONT_FAMILIES, TERMINAL_THEMES, terminalFontStack, type TerminalThemeDef } from '../lib/terminalThemes'
-import { SettingRow, SettingsGroup } from './settings/SettingsLayout'
+import { Button, Input, Select, Switch } from '../../components/atoms'
+import { useI18n } from '../../i18n/I18nProvider'
+import { cn } from '../../lib/cn'
+import { BASE_TEXT_SIZE, SIZE_RANGES, setPrefs, usePrefs, type Prefs } from '../../lib/prefs'
+import { findTerminalTheme, isDarkTheme, searchTerminalThemes, TERMINAL_FONT_FAMILIES, TERMINAL_THEMES, terminalFontStack, type TerminalThemeDef } from '../../lib/terminalThemes'
+import { SettingRow, SettingsGroup } from './SettingsLayout'
+import { Disclosure } from './shared'
 
-/** Settings → Appearance: light or dark, the terminal color scheme (optionally for the whole app), fonts and text sizes. */
-export function AppearanceSettings() {
+/**
+ * Settings → General › Language and appearance: the language, light or dark, the terminal colours
+ * (optionally for the whole app) and, behind "Adjust…", the terminal font and the text sizes.
+ */
+export function LanguageAppearanceGroup() {
   const { t } = useI18n()
   const prefs = usePrefs()
   const current = findTerminalTheme(prefs.terminalTheme)
   return (
-    <div className="flex flex-col gap-6">
-      <SettingsGroup title={t('appearance.base')} help={t('help.appearance.base')} footnote={t('settings.themeHint')}>
-        <SettingRow label={t('settings.theme')} hint={prefs.themeApp && current ? t('appearance.baseOverridden') : undefined}>
-          <Select
-            aria-label={t('settings.theme')}
-            value={prefs.theme}
-            disabled={prefs.themeApp && Boolean(current)}
-            onChange={(v) => setPrefs({ theme: v as Prefs['theme'] })}
-            options={[
-              { value: 'system', label: t('settings.system') },
-              { value: 'light', label: t('settings.light') },
-              { value: 'dark', label: t('settings.dark') }
-            ]}
-          />
-        </SettingRow>
-      </SettingsGroup>
-
-      <SettingsGroup title={t('appearance.themeGroup')} help={t('help.appearance.theme')} footnote={t('appearance.attribution')}>
-        <div className="flex flex-col gap-3 py-3">
+    <SettingsGroup anchor="appearance" title={t('settingsV2.general.appearanceGroup')} help={t('help.appearance.theme')}>
+      <SettingRow label={t('settings.language')} hint={t('settings.languageHint')}>
+        <Select
+          aria-label={t('settings.language')}
+          value={prefs.language}
+          onChange={(v) => setPrefs({ language: v as Prefs['language'] })}
+          options={[
+            { value: 'system', label: t('settings.system') },
+            { value: 'en', label: 'English' },
+            { value: 'es', label: 'Español' }
+          ]}
+        />
+      </SettingRow>
+      <SettingRow label={t('settingsV2.general.theme')} hint={prefs.themeApp && current ? t('appearance.baseOverridden') : t('settings.themeHint')}>
+        <Select
+          aria-label={t('settingsV2.general.theme')}
+          value={prefs.theme}
+          disabled={prefs.themeApp && Boolean(current)}
+          onChange={(v) => setPrefs({ theme: v as Prefs['theme'] })}
+          options={[
+            { value: 'system', label: t('settings.system') },
+            { value: 'light', label: t('settings.light') },
+            { value: 'dark', label: t('settings.dark') }
+          ]}
+        />
+      </SettingRow>
+      <Disclosure
+        label={t('settingsV2.general.terminalColors')}
+        hint={t('settingsV2.general.terminalColorsHint')}
+        summary={current?.name ?? t('appearance.default')}
+        action={t('settingsV2.general.change')}
+        testId="appearance-terminal-colors"
+      >
+        <div className="flex flex-col gap-3 pb-3">
           <ThemePreview theme={current} fontFamily={prefs.terminalFontFamily} fontSize={prefs.terminalFontSize} />
           <ThemePicker value={prefs.terminalTheme} onChange={(name) => setPrefs({ terminalTheme: name })} />
+          <p className="text-xs text-subtle">{t('appearance.attribution')}</p>
         </div>
-        <SettingRow label={t('appearance.themeApp')} hint={current ? t('appearance.themeAppHint') : t('appearance.themeAppNeedsTheme')}>
-          <div className="flex justify-end">
-            <Switch checked={prefs.themeApp} disabled={!current} onChange={(on) => setPrefs({ themeApp: on })} aria-label={t('appearance.themeApp')} />
-          </div>
-        </SettingRow>
-      </SettingsGroup>
-
-      <SettingsGroup title={t('appearance.terminalFont')} help={t('help.appearance.terminalFont')}>
-        <SettingRow label={t('appearance.fontFamily')}>
-          <Select
-            aria-label={t('appearance.fontFamily')}
-            value={prefs.terminalFontFamily}
-            onChange={(v) => setPrefs({ terminalFontFamily: v })}
-            options={[
-              ...TERMINAL_FONT_FAMILIES.map((f) => ({ value: f, label: f || t('appearance.fontDefault') })),
-              // A family imported from Workhub 1 that is not in the list stays selectable.
-              ...(prefs.terminalFontFamily && !(TERMINAL_FONT_FAMILIES as readonly string[]).includes(prefs.terminalFontFamily)
-                ? [{ value: prefs.terminalFontFamily, label: prefs.terminalFontFamily }]
-                : [])
-            ]}
-          />
-        </SettingRow>
-        <SizeRow label={t('appearance.fontSize')} prefKey="terminalFontSize" value={prefs.terminalFontSize} fallback={13} />
-      </SettingsGroup>
-
-      <SettingsGroup title={t('appearance.textGroup')} help={t('help.appearance.text')}>
-        <SizeRow label={t('appearance.textSize')} hint={t('appearance.textSizeHint')} prefKey="textSize" value={prefs.textSize} fallback={BASE_TEXT_SIZE} />
-        <SizeRow label={t('appearance.chatSize')} hint={t('appearance.chatSizeHint')} prefKey="chatFontSize" value={prefs.chatFontSize} fallback={BASE_TEXT_SIZE} />
-      </SettingsGroup>
-    </div>
+      </Disclosure>
+      <SettingRow label={t('settingsV2.general.themeApp')} hint={current ? t('appearance.themeAppHint') : t('appearance.themeAppNeedsTheme')}>
+        <div className="flex justify-end">
+          <Switch checked={prefs.themeApp} disabled={!current} onChange={(on) => setPrefs({ themeApp: on })} aria-label={t('settingsV2.general.themeApp')} />
+        </div>
+      </SettingRow>
+      <Disclosure
+        label={t('settingsV2.general.textSizes')}
+        summary={t('settingsV2.general.textSizesSummary', { app: prefs.textSize, chat: prefs.chatFontSize, terminal: prefs.terminalFontSize })}
+        action={t('settingsV2.general.adjust')}
+        testId="appearance-text-sizes"
+      >
+        <div className="divide-y divide-border pb-1">
+          <SizeRow label={t('appearance.textSize')} hint={t('appearance.textSizeHint')} prefKey="textSize" value={prefs.textSize} fallback={BASE_TEXT_SIZE} />
+          <SizeRow label={t('appearance.chatSize')} hint={t('appearance.chatSizeHint')} prefKey="chatFontSize" value={prefs.chatFontSize} fallback={BASE_TEXT_SIZE} />
+          <SettingRow label={t('appearance.fontFamily')} help={t('help.appearance.terminalFont')}>
+            <Select
+              aria-label={t('appearance.fontFamily')}
+              value={prefs.terminalFontFamily}
+              onChange={(v) => setPrefs({ terminalFontFamily: v })}
+              options={[
+                ...TERMINAL_FONT_FAMILIES.map((f) => ({ value: f, label: f || t('appearance.fontDefault') })),
+                // A family imported from Workhub 1 that is not in the list stays selectable.
+                ...(prefs.terminalFontFamily && !(TERMINAL_FONT_FAMILIES as readonly string[]).includes(prefs.terminalFontFamily)
+                  ? [{ value: prefs.terminalFontFamily, label: prefs.terminalFontFamily }]
+                  : [])
+              ]}
+            />
+          </SettingRow>
+          <SizeRow label={t('appearance.fontSize')} prefKey="terminalFontSize" value={prefs.terminalFontSize} fallback={13} />
+        </div>
+      </Disclosure>
+    </SettingsGroup>
   )
 }
 
@@ -186,7 +209,7 @@ function ThemePicker({ value, onChange }: { value: string; onChange: (name: stri
         ref={list}
         id="terminal-theme-list"
         role="listbox"
-        aria-label={t('appearance.themeGroup')}
+        aria-label={t('settingsV2.general.terminalColors')}
         tabIndex={0}
         onKeyDown={move}
         className="relative h-64 overflow-y-auto rounded-md border border-border bg-bg p-1"

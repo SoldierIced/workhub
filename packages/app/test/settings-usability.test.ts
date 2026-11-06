@@ -1,9 +1,12 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { AUTOMATION_EFFORTS, CLAUDE_MODEL_SUGGESTIONS, EFFORT_LEVELS, emptyConfig, NO_MODULES, type AgentAccount, type Profile, type WorkhubConfig } from '@workhub/core'
 import { accountIdFromName, isProfileDefault, makeAccountDefault, makeSignInDefault, profileDefaultAgent, signInOffered, withAccountInProfile } from '../src/renderer/lib/accountDefaults'
 import { CUSTOM_OPTION, effortOptions, idOptions, mergeOptions, modelOptions, optionOrCustomState, valueForPick } from '../src/renderer/lib/optionOrCustom'
 import { addProfileFolder, removeProfileFolder } from '../src/renderer/lib/profileFolders'
 import { en } from '../src/renderer/i18n/en'
+import { Disclosure } from '../src/renderer/screens/settings/shared'
 
 describe('option-or-custom picker', () => {
   const models = idOptions(['opus', 'sonnet', 'haiku'])
@@ -129,5 +132,26 @@ describe('default account of a profile', () => {
     expect(accountIdFromName('Claude work', [])).toBe('claude-work')
     expect(accountIdFromName('Claude work', ['claude-work', 'claude-work-2'])).toBe('claude-work-3')
     expect(accountIdFromName('  ', [])).toBe('')
+  })
+})
+
+describe('settings disclosure ("Adjust…", a screen\'s settings)', () => {
+  const render = (props: Partial<Parameters<typeof Disclosure>[0]>) =>
+    renderToStaticMarkup(createElement(Disclosure, { label: 'Text size', summary: 'App 13 px', action: 'Adjust…', children: createElement('p', null, 'inner rows'), ...props }))
+
+  it('shows its row with the summary and leaves the content out until it opens', () => {
+    const closed = render({})
+    expect(closed).toContain('Text size')
+    expect(closed).toContain('App 13 px')
+    expect(closed).toContain('aria-expanded="false"')
+    expect(closed).not.toContain('inner rows')
+  })
+
+  it('renders the content when open, and the row keeps its extra controls', () => {
+    const open = render({ open: true, controls: createElement('span', null, 'switch') })
+    expect(open).toContain('aria-expanded="true"')
+    expect(open).toContain('inner rows')
+    expect(open).toContain('switch')
+    expect(render({ defaultOpen: true })).toContain('inner rows')
   })
 })

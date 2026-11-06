@@ -41,6 +41,8 @@ export function focusSettingRow(container: HTMLElement | null, label: string): b
   const candidates = container.querySelectorAll<HTMLElement>('h2, h3, legend, label, span, p, summary, button, [role="switch"]')
   let match: HTMLElement | null = null
   for (const el of candidates) {
+    // A tab or a closed disclosure kept mounted but hidden is not where the row shows.
+    if (el.closest('[hidden]')) continue
     // The element's own text (a label with a help button still reads as its label).
     const own = normalize([...el.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' '))
     if (own === wanted || normalize(el.textContent) === wanted) {

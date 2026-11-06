@@ -55,7 +55,7 @@ export function UpdatesSettings({
 
   return (
     <>
-      <SwitchRow label={t('updates.check')} hint={t('updates.checkHint')}>
+      <SwitchRow label={t('settingsV2.general.checkUpdates')} hint={t('updates.checkHint')}>
         <Switch checked={enabled} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ checkForUpdates: on }))} />
       </SwitchRow>
       <div className="flex items-center justify-between gap-4 py-3">

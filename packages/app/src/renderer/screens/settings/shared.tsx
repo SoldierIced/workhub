@@ -1,5 +1,5 @@
-import { Plus } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import type { ConnectionKind, OfferedModule, Profile, ValidationIssue, WorkhubConfig } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import { Button } from '../../components/atoms'
@@ -155,6 +155,71 @@ export function ModuleOffNote({ module, onOpenModules }: { module: OfferedModule
       <Button size="sm" onClick={onOpenModules}>
         {t('settings.moduleOffAction')}
       </Button>
+    </div>
+  )
+}
+
+/**
+ * A settings row that opens more settings under it: label and hint on the left; on the right a
+ * summary of what is set, any `controls` (a switch, a select) and the button that opens it. The
+ * content is mounted the first time it opens and kept while closed, so a draft in it survives.
+ */
+export function Disclosure({
+  label,
+  hint,
+  summary,
+  action,
+  controls,
+  open: controlled,
+  onOpenChange,
+  defaultOpen = false,
+  testId,
+  children
+}: {
+  label: ReactNode
+  hint?: ReactNode
+  summary?: ReactNode
+  /** The button's text ("Adjust…"); a chevron alone when not given. */
+  action?: string
+  controls?: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  defaultOpen?: boolean
+  testId?: string
+  children: ReactNode
+}) {
+  const [own, setOwn] = useState(defaultOpen)
+  const open = controlled ?? own
+  const [mounted, setMounted] = useState(open)
+  useEffect(() => {
+    if (open) setMounted(true)
+  }, [open])
+  const id = useId()
+  const toggle = () => {
+    setOwn(!open)
+    onOpenChange?.(!open)
+  }
+  const Chevron = open ? ChevronDown : ChevronRight
+  return (
+    <div data-testid={testId}>
+      <div className="flex items-center justify-between gap-6 py-3" data-settings-row>
+        <div className="min-w-0">
+          <span className="block text-base">{label}</span>
+          {hint && <p className="text-xs text-subtle">{hint}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {summary && <span className="max-w-64 truncate text-sm text-muted">{summary}</span>}
+          {controls}
+          <Button size="sm" variant="ghost" aria-expanded={open} aria-controls={id} aria-label={action ? undefined : typeof label === 'string' ? label : undefined} onClick={toggle} icon={<Chevron className="size-3.5" aria-hidden />} data-testid={testId ? `${testId}-toggle` : undefined}>
+            {action}
+          </Button>
+        </div>
+      </div>
+      {mounted && (
+        <div id={id} hidden={!open}>
+          {children}
+        </div>
+      )}
     </div>
   )
 }
