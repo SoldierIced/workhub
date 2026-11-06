@@ -1139,7 +1139,8 @@ function registerIpc(): void {
     summarize: (request) => listenSummarizer.summarize(request),
     config: () => configuration.current(),
     session: (id) => sessions.list().find((v) => v.id === id) ?? null,
-    home: homedir()
+    home: homedir(),
+    log: (m) => diagnostics.log.warn(m)
   })
   registerAiReviewIpc(ipc, aiReview)
   registerAgentReviewIpc(ipc, agentReview, reviewLoopWindows((hash, title) => createAuxWindow(hash, title, REVIEW_LOOP_WINDOW_SIZE)))
