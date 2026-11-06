@@ -20,6 +20,8 @@ import { errorText } from '../../lib/errorText'
 import { permissionModeLabel } from '../../lib/sessionHeader'
 import { currentConfig } from '../../configStore'
 import { groupChoiceOf, groupOptionsOf, NEW_GROUP } from '../../lib/sessionGroups'
+import { newSessionAgentOptions, ORDER_AGENTS_OPTION, profileAgentsTarget } from '../../lib/profileAgents'
+import { useAccountUsage } from '../../lib/usage'
 
 export interface NewSessionDialogProps {
   open: boolean
@@ -87,6 +89,9 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
   const ownerLoading = ownerAgentsLoading(sessionProfileId, profileId, ownerAgents, ownerFailed)
   const agents = otherProfile ? ownerAgents : activeAgents
   const preferredAgents = otherProfile ? owner?.preferredAgents : activePreferred
+  // The profile whose agents are listed: its order sorts them and the last item opens it in Settings.
+  const listedProfile = profiles.find((p) => p.id === (otherProfile ? sessionProfileId : profileId))
+  const reads = useAccountUsage()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   // Agent id -> installed; an agent missing from the answer is treated as installed.
@@ -162,7 +167,9 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
           if (key !== agentKeyRef.current) return
           setOptions(o)
           const prefs = readPrefs()
-          setModel(initialStartChoice('model', o, prefs.models[key], chosen.account))
+          // The account's own model is what an empty pick starts with: "Account default" says so.
+          const initialModel = initialStartChoice('model', o, prefs.models[key], chosen.account)
+          setModel(initialModel && initialModel === chosen.account?.defaultModel ? '' : initialModel)
           setModeId(initialStartChoice('mode', o, prefs.modes[key], chosen.account, currentConfig()?.config.options?.agentDefaultModes?.[chosen.agent.id]))
         },
         () => setOptions(null)
@@ -257,8 +264,15 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         >
           <Select
             value={agentKey}
-            onChange={setAgentKey}
-            options={agents.map((a) => ({ value: a.key, icon: <AgentIcon agentId={a.agent.id} adapter={a.agent.adapter} />, label: installed[a.agent.id] === false ? `${a.label} (${t('newSession.notInstalled')})` : a.label }))}
+            onChange={(v) => (v === ORDER_AGENTS_OPTION ? listedProfile && window.hub.setup.openSettings(profileAgentsTarget(listedProfile.id)) : setAgentKey(v))}
+            options={newSessionAgentOptions({
+              agents,
+              preferredAgents,
+              reads,
+              labelOf: (a) => (installed[a.agent.id] === false ? `${a.label} (${t('newSession.notInstalled')})` : a.label),
+              ...(listedProfile ? { profile: listedProfile } : {}),
+              t
+            }).map(({ agent, ...o }) => (agent ? { ...o, icon: <AgentIcon agentId={agent.agent.id} adapter={agent.agent.adapter} /> } : o))}
             placeholder={t('session.noAgents')}
           />
         </Field>
@@ -283,7 +297,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
                   aria-label={t('newSession.model')}
                   value={model}
                   onChange={setModel}
-                  options={[{ value: '', label: optionDefault(t('session.modelDefault'), options?.defaultModelId) }, ...(options?.models ?? []).map((m) => ({ value: m.id, label: m.name }))]}
+                  options={[{ value: '', label: chosen?.account?.defaultModel ? `${t('newSession.accountDefaultModel')} (${chosen.account.defaultModel})` : optionDefault(t('session.modelDefault'), options?.defaultModelId) }, ...(options?.models ?? []).map((m) => ({ value: m.id, label: m.name }))]}
                 />
               </Field>
             )}
