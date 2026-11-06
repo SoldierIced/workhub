@@ -9,7 +9,9 @@ import type { MessageKey } from '../../i18n/translate'
 import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
 import { sessionModePicker } from '../../lib/agent-pickers'
-import { readPrefs, setPrefs } from '../../lib/prefs'
+import { readPrefs, setPrefs, usePrefs } from '../../lib/prefs'
+import { MONITOR_SHORTCUT } from '../../lib/nav'
+import { PanelToggleButton } from '../../components/molecules/PanelToggleButton'
 import { abbreviateFolder, activityElapsed, activityOf, foldDensity, headerDensity, isClockActivity, type Activity, type HeaderDensity } from '../../lib/sessionHeader'
 import { useNow } from '../../lib/usage'
 import { useAsyncAction } from '../../lib/useAsyncAction'
@@ -181,6 +183,7 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
   const { t } = useI18n()
   const v = data.view
   const stop = useAsyncAction(() => window.hub.sessions.stop(v.id))
+  const monitorHidden = usePrefs().monitorHidden
   const [ref, width] = useWidth<HTMLElement>()
   const identityRef = useRef<HTMLDivElement>(null)
   // Levels folded past the width's density because the row still overflowed at this width.
@@ -270,6 +273,8 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
           </Button>
         )}
         {hasOverflow && <OverflowMenu>{overflow}</OverflowMenu>}
+        {/* The side panel (monitor, or the AI review) of every session, folded with ⇧⌘M. */}
+        <PanelToggleButton side="right" size="sm" hidden={monitorHidden} shortcut={MONITOR_SHORTCUT} onToggle={() => setPrefs({ monitorHidden: !readPrefs().monitorHidden })} testId="toggle-monitor" />
       </div>
     </header>
   )

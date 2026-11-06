@@ -102,7 +102,7 @@ export const SessionPane = memo(function SessionPane({ data, visible, theme }: {
             </div>
           )}
         </div>
-        {/* Folded away with the toolbar's monitor button (⇧⌘M), as Workhub 1's Inspector. */}
+        {/* Folded away with the session header's monitor button (⇧⌘M), as Workhub 1's Inspector. */}
         {monitorHidden ? null : v.screens.includes('monitor') ? <MonitorPanel data={data} visible={visible} /> : <AiReviewAside view={v} />}
       </div>
     </>

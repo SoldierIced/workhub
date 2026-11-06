@@ -3,10 +3,10 @@
 The monitor is the panel next to a session. It answers "what is this agent doing and what is it
 costing" without reading the conversation. It reads the agent's own transcript every few seconds,
 so it works the same whether you are in App or Terminal view. Drag its edge (**Resize the
-monitor**) to change its width. The panel button at the right of the top bar (**Hide the
-monitor**, ⇧⌘M; Ctrl+Shift+M on Windows and Linux) folds it away and brings it back; the choice is
-kept. The button at the left of the top bar (**Hide the sidebar**, ⇧⌘S) does the same for the
-sidebar.
+monitor**) to change its width. The panel button at the right end of the session's header
+(**Hide the monitor**, ⇧⌘M; Ctrl+Shift+M on Windows and Linux) folds it away and brings it back;
+the choice is kept. The button at the left of the top bar (**Hide the sidebar**, ⇧⌘S) does the
+same for the sidebar. Each button's icon shows whether its panel is open or folded.
 
 Each agent fills what it has. A field the agent does not report is hidden or shown as **not
 reported by the agent**; a missing or unreadable transcript never breaks the session.
