@@ -89,6 +89,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     ['settings.secret', 'settings.secretHint', 'help.connection.secret'],
     ['settings.settingsLines', undefined, 'help.connection.settings']
   ]),
+  ...rows('connections', 'settings.pullRequests', [['settings.protectedBranches', 'settings.protectedBranchesHint']]),
 
   // Profiles: the list
   ...rows('profiles', undefined, [['settingsV2.profiles.new', 'settingsV2.intro.profiles'], ['settingsV2.profiles.duplicateHint']]),

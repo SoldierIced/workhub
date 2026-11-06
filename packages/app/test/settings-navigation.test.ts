@@ -130,13 +130,13 @@ describe('searchSettings', () => {
     const hits = searchSettings(SETTINGS_INDEX, 'NOTIFICACION', options('es'))
     expect(hits.length).toBeGreaterThan(0)
     expect(hits[0]?.entry.section).toBe('notifications')
-    expect(searchSettings(SETTINGS_INDEX, 'respondio', options('es')).map((h) => h.entry.label)).toContain('settings.notifyReplied')
+    expect(searchSettings(SETTINGS_INDEX, 'respondio', options('es')).map((h) => h.entry.label)).toContain('notifAlerts.row.replied')
   })
 
   it('needs every word, puts label matches first and builds the breadcrumb', () => {
     const hits = searchSettings(SETTINGS_INDEX, 'protected branches', options('en'))
     expect(hits[0]?.entry.label).toBe('settings.protectedBranches')
-    expect(hits[0]?.breadcrumb).toEqual(['app', en['settingsV2.nav.notifications'], en['settings.pullRequests']])
+    expect(hits[0]?.breadcrumb).toEqual(['app', en['settingsV2.nav.connections'], en['settings.pullRequests']])
     expect(searchSettings(SETTINGS_INDEX, 'zzzz nothing', options('en'))).toEqual([])
     expect(searchSettings(SETTINGS_INDEX, '   ', options('en'))).toEqual([])
   })
