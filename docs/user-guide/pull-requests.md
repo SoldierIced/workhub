@@ -7,9 +7,9 @@ login: it stores no token for them. GitLab is covered by fixture tests only so f
 ## Set up
 
 1. Install `gh` (or `glab`) and sign in: run `gh auth login` in a terminal.
-2. In **Settings → Connections**, add a connection of kind **Code host** (GitHub or GitLab) and pick
-   it in your profile. Extra options go in the connection's settings, one `key=value` per line; for
-   example `scope=org:acme` narrows the GitHub search to an organization.
+2. In **Settings → Connections**, under **Code**, use **Connect GitHub** (or **Connect GitLab**) and
+   pick the connection in your profile. Extra options go in **Edit as text**, one `key=value` per
+   line; for example `scope=org:acme` narrows the GitHub search to an organization.
 3. Refresh. If `gh` is missing or signed out, the screen says so and shows the command to run.
 
 The profile's folders are used as a fallback for finding repositories.

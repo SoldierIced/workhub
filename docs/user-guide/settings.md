@@ -23,9 +23,8 @@ settings; the **Fix** buttons at the top open that section on the item to fix.
 | | **Appearance** | Light, dark or system; the **Terminal color scheme**; terminal font and size; **App text size** and **Conversation text size** (kept on this computer). |
 | | **Notifications** | **Show notifications** (the master switch), **Send a test**, the system permission; sessions (Replied, Needs an answer, Error); Slack, Automations, Tickets, Health, Flow maps, meetings and metric alerts; **Pause notifications**; pull request notifications and **Protected branches**; the menu bar icon and the app icon badge; **Menu bar panel** (which blocks the panel shows, macOS and Windows). |
 | | **Alerts** | Thresholds and rules for the alerts Workhub raises. |
-| | **Agents and accounts** | The accounts first, one card per sign-in with a **Default** badge, **Make default** and **Add account**; then every agent Workhub can run, and the agent order and account failover of the profile being edited. See [Profiles](profiles.md#accounts). |
-| | **Usage and budgets** | Usage reading, budgets and alerts. See [Usage and budgets](usage.md). |
-| | **Connections** | Code host, chat, Health and calendar connections: kind, provider, endpoint, secret and extra `key=value` options. Each one says which profiles use it. |
+| | **Agents** | One card per agent installed on this computer, with its own sign-in and its accounts, **Add account** and each account's form; the usage reading switch under each agent. See [Agents](#agents). |
+| | **Connections** | The services Workhub reads, grouped by kind (Code, Tickets, Calendars, Slack, Health), each with the profiles and screens that use it. See [Connections](#connections). |
 | Profile | **Profile and folders** | Name, colour, folders, folder options, worktrees, links, environment variables and the Slack archive time. See [Profiles](profiles.md). |
 | | **Modules and screens** | Which optional screens the profile has (Health, Flow maps, Plan, Slack, Automations; Tickets and Pull requests are always on), the connection each one reads with an **Edit** link, and the profile's connections, accounts and agents. |
 | | **Tickets** | Jira and Linear. See [Tickets](tickets.md). |
@@ -79,6 +78,60 @@ move between results. Esc clears the search, and a second Esc closes Settings.
 `secrets.json` (tokens, encrypted with the operating system keychain). Workhub makes no network
 calls except to services you configure and, if you turn it on, GitHub for update checks. There is no
 telemetry. See [SECURITY.md](../../SECURITY.md) for what is stored where.
+
+## Agents
+
+**Settings → Agents** lists the agents installed on this computer and the accounts they sign in
+with. Which of them a profile offers, in which order, and the account failover are set in each
+profile (see [Profiles](profiles.md#accounts)).
+
+Each agent has a card: its name, whether it is installed, and **Add account** (Kiro keeps one login
+per computer, so it offers **Add variant**: the same login with other variables, command, model or
+mode). The rows of the card are:
+
+- **Sign-in of this computer · no extra account**: the agent's own login, used by profiles that
+  offer the agent without an account. **Edit** shows its state, plan and usage, the default mode of
+  its sessions and its usage ceilings.
+- One row per account: its initial, name, plan (when the usage reading knows it), sign-in folder and
+  where it is offered, for example *offered in Acme web (1st), Side project (2nd)* (its place in
+  each profile's agent order). On the right, the most spent window with its ceiling
+  (*5 h: 82 % · cap 90*). **Edit** opens the account's form in place.
+
+The account form has **Name** (how it appears in New session: *Claude · Work*), **Sign-in folder**
+(**Choose…**; an empty folder is a new login, Workhub runs the agent with `CLAUDE_CONFIG_DIR` or
+`CODEX_HOME` pointing at it), the sign-in state, and **Offer in profile**: one switch per profile,
+saved with the account. A new account is added at the end of each checked profile's agent list and
+is offered there as soon as it is saved; which account goes first is decided in the profile. **More
+options** holds **Model and permission mode when starting**, **Stop sending automatic work past
+the…** (the 5 h and weekly ceilings of the account, see [Usage and budgets](usage.md#budgets-ceilings)),
+and **Environment variables and command** (values go to the secret store). **Delete** removes the
+account.
+
+A profile that offers a Claude account no longer offers Claude's bare login. When a new account
+would take the bare login away from a profile, the form says so and offers **Create “Personal”
+pointing at ~/.claude**, which makes the computer's login an account of its own.
+
+Under the Claude, Codex and Kiro cards, a switch turns their usage reading on (**Show plan usage**,
+**Show credits left**). Off, no usage bars or login state are shown for that agent.
+
+**Not installed · How to install them** lists the agents Workhub did not find, with how to install
+each. They appear in the list once Workhub finds them in the `PATH`; **Search again** looks again.
+
+## Connections
+
+**Settings → Connections** holds the services Workhub reads. Each is set up once here; each profile
+picks which one its screens use. Every connection says who uses it, for example *Used by Acme web ·
+Pull requests*. **Edit** opens its form in place, with the fields its service needs; **Edit as text**
+shows every option as `key=value` lines for anything the fields do not cover. Secrets go to the
+secret store.
+
+| Group | Add | Fields |
+|---|---|---|
+| **Code** | **Connect GitHub**, **Connect GitLab** | Name, host (empty: the public service), optional token (without one, Workhub reads through the `gh` / `glab` login). **Branches never deleted** (the branches **Close PR** never deletes) is shown once for the whole app. |
+| **Tickets** | **Connect Jira**, **Connect Linear** | Name, Jira site and account email, API token or key, project keys and statuses to hide; **Test**. |
+| **Calendars** | **Add calendar (ICS)** | Name, your address in the calendar and its private address; **Test**. How often a profile reads its calendars is set in its Plan. |
+| **Slack** | | **Watch Slack channels**: the watcher (account and model, interval, hours, channels) and the **Tracking hook** that follows threads from sessions, for the whole app. See [Slack](slack.md). |
+| **Health (Elasticsearch)** | **Connect** | URL, authentication (API key or user and password), TLS (system, pinned fingerprint or insecure); **Test**. **Read at most every** (how often any profile may read Elasticsearch) is shown once. |
 
 ## Notifications and alerts
 
