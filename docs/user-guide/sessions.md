@@ -11,9 +11,13 @@ declares what it supports, and the screen shows only the controls that agent has
   the profile's agent order.
 - **Choose agent and folder…** (the menu next to the button) opens the **New session** dialog:
   **Agent**, **Folder** (**Choose a folder**), **Model**, **Agent** (the persona, for agents like
-  Kiro and OpenCode) and **Mode** (permission or approval mode). The lists come from what the agent
-  reports, so a new agent shows its models and modes after its first session (**List again**
-  refreshes them). **Use a worktree** and **Branch** start the session in its own git worktree;
+  Kiro and OpenCode) and **Mode** (permission or approval mode). **Agent** lists the profile's
+  agents in its order, the first one marked **(default)** and the other accounts with their usage
+  when it is known; its last item, **Order and pick agents of {profile}…**, opens the profile's
+  **Agents** tab in Settings (see [Profile › Agents](settings.md#profile--agents)). When the
+  account picked has a default model, **Model** starts on **Account default**. The lists come
+  from what the agent reports, so a new agent shows its models and modes after its first session
+  (**List again** refreshes them). **Use a worktree** and **Branch** start the session in its own git worktree;
   see [Worktree per session](profiles.md#worktree-per-session). **Group** lists the sidebar's
   session groups (a sub-group by its path, such as "Work / Backend"); it starts on **No group**.
   **New group…** shows a field for the name of a new group (a group with that name, if there is

@@ -41,6 +41,30 @@ The **Profile** group starts on the active profile. Its picker edits any other p
 one, without changing the app's active profile; the sections of a module that is off for that
 profile say so and link to **Modules and screens**.
 
+## Profile › Agents
+
+A profile's **Agents** tab (**Profiles**, open a profile, **Agents**) is one list, **Agents this
+profile offers, in order**: a row for every account (such as "Claude Code · Personal", with its
+config folder and its usage when Workhub has read it) and for every agent that runs with its own
+sign-in. Agents and accounts the profile does not offer are listed too, greyed, after the offered
+ones ("not offered in this profile").
+
+- The **Offer** switch at the end of a row adds the account or agent to the profile, or takes it
+  out. Once a profile offers a Claude account, Claude's own sign-in is no longer a row: the
+  profile's Claude sessions always use one of its accounts.
+- Drag a row by its ⋮⋮ handle, or use ↑ and ↓, to change the order. The first offered row has the
+  **Default** badge: **New session**, opening a session from a pull request or a ticket, and the
+  [review before PR](review-before-pr.md) when you picked no reviewer start with it.
+- **Account switch** → **If a Claude account reaches its limit**: **Ask me**, **Automatic** or
+  **Never**. The session continues with the next Claude account of the list, with the same
+  context. With a single Claude account offered there is nothing to switch to, and the choice is
+  off.
+
+The order belongs to the profile. With two Claude accounts, **Personal** and **Work**, an "Acme
+side project" profile can list Personal first and an "Acme web" profile Work first: each profile's
+new sessions start on its own first account, and when that one reaches its limit the session moves
+to the other.
+
 ## Search
 
 Type in the box at the top of the navigation, or press ⌘/Ctrl+F while Settings is open. Every
