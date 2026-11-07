@@ -4,6 +4,19 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.22](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.21...v2.0.0-alpha.22) (2026-11-07)
+
+
+### Features
+
+* **flow-maps:** alert when a share of calls is slower than a duration ([#66](https://github.com/SoldierIced/workhub/issues/66)) ([cf51389](https://github.com/SoldierIced/workhub/commit/cf51389146c24d5e4076069cb2e24f4d3d749fd1))
+
+
+### Bug Fixes
+
+* **updates:** check the newest published release that has installers, never a draft or a tag still building ([8261be2](https://github.com/SoldierIced/workhub/commit/8261be273022d744e77f839f38c6d6c217805e7d))
+* **updates:** restart into the update silently on Windows instead of opening the installer wizard ([b4fbf08](https://github.com/SoldierIced/workhub/commit/b4fbf08d7c76b7a88531722877e49c92dd0630a5))
+
 ## [2.0.0-alpha.21](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.20...v2.0.0-alpha.21) (2026-11-06)
 
 
