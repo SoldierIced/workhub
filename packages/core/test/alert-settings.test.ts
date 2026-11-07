@@ -4,7 +4,10 @@ import {
   CONFIG_VERSION,
   configSchema,
   DEFAULT_FLOW_MIN_CALLS,
+  flowAlertsOf,
+  flowLatencyBucket,
   flowThresholds,
+  hasFlowAlerts,
   healthAlerts,
   healthAlertSettingsOf,
   HEALTH_ALERT_KINDS,
@@ -90,6 +93,42 @@ describe('quiet hours', () => {
     const q = { startHour: 22, endHour: 7 }
     expect(['health', 'flowMaps', 'metricAlert'].every((k) => quietNow(k as never, q, at(23)))).toBe(true)
     expect(['replied', 'needsAnswer', 'meeting', 'tickets', 'usage'].some((k) => quietNow(k as never, q, at(23)))).toBe(false)
+  })
+})
+
+describe('flow map slow-call share', () => {
+  // 60 calls around 1 s, 40 around 9 s.
+  const latency: [number, number][] = [[flowLatencyBucket(1_000_000), 60], [flowLatencyBucket(9_000_000), 40]]
+  const timing = { count: 100, p50Ms: 1000, p95Ms: 9000, errorRate: 0, failed: 0, latency, hourly: [] }
+
+  it('breaks when more than the share of calls is slower than the duration', () => {
+    expect(breaches(timing, { slowMs: 5000, slowShare: 0.3 })).toEqual([{ kind: 'flowSlowShare', value: expect.closeTo(0.4, 5), threshold: 0.3, overMs: 5000 }])
+    expect(breaches(timing, { slowMs: 5000, slowShare: 0.5 })).toEqual([])
+  })
+
+  it('breaks on a single slow call when the share is unset, and never without a histogram', () => {
+    expect(breaches(timing, { slowMs: 30_000 })).toEqual([])
+    expect(breaches(timing, { slowMs: 5000 }).map((b) => b.threshold)).toEqual([0])
+    const { latency: _none, ...bare } = timing
+    expect(breaches(bare, { slowMs: 5000 })).toEqual([])
+  })
+
+  it('is a map limit a part inherits field by field, and counts as alerts', () => {
+    const parsed = parseFlowMap({
+      version: 1,
+      id: 'm',
+      name: 'M',
+      lanes: [{ id: 'l', label: 'L' }],
+      nodes: [{ id: 'a', lane: 'l', label: 'A', measure: { type: 'apm.transaction', service: 's', transaction: 't' } }],
+      alerts: { slowMs: 5000, slowShare: 0.3, parts: { a: { slowMs: 3000 } } }
+    })
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(hasFlowAlerts(parsed.map)).toBe(true)
+    expect(flowThresholds(parsed.map, { key: 'a' })).toMatchObject({ slowMs: 3000, slowShare: 0.3 })
+    const reading = { at: 0, windowHours: 1, nodes: { a: timing }, edges: {}, stages: {}, errors: {} }
+    expect(flowAlertsOf(parsed.map, reading, { id: 'e', name: 'E' })).toMatchObject([{ kind: 'flowSlowShare', overMs: 3000, threshold: 0.3 }])
+    expect(parseFlowMap({ ...parsed.map, alerts: { slowShare: 1.5, parts: {} } }).ok).toBe(false)
   })
 })
 

@@ -46,7 +46,9 @@ hop of an existing flow, or asks to fix a map that Workhub lists as invalid.
    - `entry`: the transaction that starts the flow, so the screen can list its executions
      (traces). Leave it out when the leftmost measured node is the entry;
    - `alerts` when the user wants to be told: `{ "p95Ms": <about twice the entry's p95 over a
-     day>, "errorRate": 0.05 }`, with `parts` for a stricter or looser part. Workhub checks the
+     day>, "errorRate": 0.05 }`, with `parts` for a stricter or looser part. For "alert when more
+     than 40% of the calls take over 5 s", add `"slowMs": 5000, "slowShare": 0.4` (without
+     `slowShare`, a single call over `slowMs` alerts). Workhub checks the
      last hour every five minutes and notifies once an hour per part. A part with fewer than
      `minCalls` calls in the hour (default 20) never counts as over a limit; `"notify": false`
      keeps the limits on screen without notifying. The user can also edit them in

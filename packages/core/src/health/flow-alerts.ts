@@ -4,9 +4,13 @@
  * `flowTimingFromHistory`) and announces the parts above them, each at most once an hour; the
  * Alerts tab shows the same check for the window on screen.
  */
+import { histogramShareOverMs } from './flow-history'
 import { DEFAULT_FLOW_MIN_CALLS, flowMeasures, flowPartLabel, type FlowMap, type FlowMapReading, type FlowPartRef, type FlowThreshold, type FlowTiming } from './flow-map'
 
-export type FlowAlertKind = 'flowSlow' | 'flowErrors'
+export type FlowAlertKind = 'flowSlow' | 'flowErrors' | 'flowSlowShare'
+
+/** Every kind, in the order a part's breaches are listed. */
+export const FLOW_ALERT_KINDS: readonly FlowAlertKind[] = ['flowSlow', 'flowSlowShare', 'flowErrors']
 
 export interface FlowAlert {
   mapId: string
@@ -16,9 +20,11 @@ export interface FlowAlert {
   kind: FlowAlertKind
   part: FlowPartRef
   label: string
-  /** The p95 in milliseconds (`flowSlow`) or the failure share (`flowErrors`) seen. */
+  /** The p95 in milliseconds (`flowSlow`), the failure share (`flowErrors`) or the share of calls slower than `overMs` (`flowSlowShare`) seen. */
   value: number
   threshold: number
+  /** `flowSlowShare` only: the duration, in milliseconds, a call counts as slow above. */
+  overMs?: number
   windowHours: number
 }
 
@@ -26,7 +32,8 @@ export interface FlowAlert {
 export function hasFlowAlerts(map: Pick<FlowMap, 'alerts'>): boolean {
   const a = map.alerts
   if (!a) return false
-  return a.p95Ms !== undefined || a.errorRate !== undefined || Object.values(a.parts).some((p) => p.p95Ms !== undefined || p.errorRate !== undefined)
+  const limited = (p: FlowThreshold) => p.p95Ms !== undefined || p.errorRate !== undefined || p.slowMs !== undefined
+  return limited(a) || Object.values(a.parts).some(limited)
 }
 
 /** The limits of one part, and the calls the window needs before they apply (`DEFAULT_FLOW_MIN_CALLS` when unset). */
@@ -35,14 +42,38 @@ export type FlowLimits = FlowThreshold & { minCalls?: number }
 /** The limits one part must stay under: its own entry over the map's defaults, field by field. */
 export function flowThresholds(map: Pick<FlowMap, 'alerts'>, part: Pick<FlowPartRef, 'key'>): FlowLimits {
   const own = map.alerts?.parts[part.key]
-  return { p95Ms: own?.p95Ms ?? map.alerts?.p95Ms, errorRate: own?.errorRate ?? map.alerts?.errorRate, minCalls: map.alerts?.minCalls }
+  return {
+    p95Ms: own?.p95Ms ?? map.alerts?.p95Ms,
+    errorRate: own?.errorRate ?? map.alerts?.errorRate,
+    slowMs: own?.slowMs ?? map.alerts?.slowMs,
+    slowShare: own?.slowShare ?? map.alerts?.slowShare,
+    minCalls: map.alerts?.minCalls
+  }
 }
 
-/** The thresholds one timing breaks, in a fixed order (slow first); none under the minimum calls. */
-export function breaches(timing: FlowTiming, limits: FlowLimits): { kind: FlowAlertKind; value: number; threshold: number }[] {
-  const out: { kind: FlowAlertKind; value: number; threshold: number }[] = []
+/** One limit a timing is over. */
+export interface FlowBreach {
+  kind: FlowAlertKind
+  value: number
+  threshold: number
+  overMs?: number
+}
+
+/** The share of a timing's calls slower than `ms`; undefined when the timing carries no histogram. */
+export function slowShareOf(timing: Pick<FlowTiming, 'latency'>, ms: number): number | undefined {
+  return timing.latency ? histogramShareOverMs(timing.latency, ms) : undefined
+}
+
+/** The thresholds one timing breaks, in a fixed order (p95, slow share, failures); none under the minimum calls. */
+export function breaches(timing: FlowTiming, limits: FlowLimits): FlowBreach[] {
+  const out: FlowBreach[] = []
   if (timing.count === 0 || timing.count < (limits.minCalls ?? DEFAULT_FLOW_MIN_CALLS)) return out
   if (limits.p95Ms !== undefined && timing.p95Ms > limits.p95Ms) out.push({ kind: 'flowSlow', value: timing.p95Ms, threshold: limits.p95Ms })
+  if (limits.slowMs !== undefined) {
+    const share = slowShareOf(timing, limits.slowMs)
+    const threshold = limits.slowShare ?? 0
+    if (share !== undefined && share > threshold) out.push({ kind: 'flowSlowShare', value: share, threshold, overMs: limits.slowMs })
+  }
   if (limits.errorRate !== undefined && timing.errorRate !== undefined && timing.errorRate > limits.errorRate && (timing.failed ?? 1) > 0) out.push({ kind: 'flowErrors', value: timing.errorRate, threshold: limits.errorRate })
   return out
 }
@@ -60,7 +91,7 @@ export function flowAlertsOf(map: FlowMap, reading: FlowMapReading, env: { id: s
     const timing = reading[m.of][m.key]
     if (!timing) continue
     for (const b of breaches(timing, flowThresholds(map, m))) {
-      alerts.push({ mapId: map.id, mapName: map.name, environmentId: env.id, environmentName: env.name, kind: b.kind, part: { of: m.of, key: m.key }, label: flowPartLabel(map, m), value: b.value, threshold: b.threshold, windowHours: reading.windowHours })
+      alerts.push({ mapId: map.id, mapName: map.name, environmentId: env.id, environmentName: env.name, kind: b.kind, part: { of: m.of, key: m.key }, label: flowPartLabel(map, m), value: b.value, threshold: b.threshold, ...(b.overMs !== undefined ? { overMs: b.overMs } : {}), windowHours: reading.windowHours })
     }
   }
   return alerts

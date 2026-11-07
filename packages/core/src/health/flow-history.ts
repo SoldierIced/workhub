@@ -124,6 +124,26 @@ export function histogramPercentileMs(latency: readonly [number, number][], perc
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
+/**
+ * The share (0–1) of a histogram's calls slower than `ms`, interpolated inside the bucket `ms`
+ * falls in (like `histogramPercentileMs`); 0 when empty.
+ */
+export function histogramShareOverMs(latency: readonly [number, number][], ms: number): number {
+  const total = latency.reduce((s, [, n]) => s + Math.max(0, n), 0)
+  if (total === 0) return 0
+  const bounds = FLOW_LATENCY_BOUNDS_US
+  const us = ms * 1000
+  let over = 0
+  for (const [bucket, n] of latency) {
+    if (n <= 0) continue
+    const lo = bucket === 0 ? 0 : bounds[Math.min(bucket, bounds.length) - 1]!
+    const hi = bucket < bounds.length ? bounds[bucket]! : Infinity
+    if (lo >= us) over += n
+    else if (hi > us) over += hi === Infinity ? n : n * ((hi - us) / (hi - lo))
+  }
+  return Math.min(1, over / total)
+}
+
 /** The hours added up: calls, failures, histogram and results. */
 export function sumFlowHours(hours: readonly FlowHour[]): Omit<FlowHour, 'at'> {
   const latency = new Map<number, number>()
@@ -178,6 +198,7 @@ export function flowTimingFromHistory(hours: readonly FlowHour[], measure: FlowM
     errorRate: sum.failed / Math.max(sum.count, 1),
     failed: sum.failed,
     perMinute: round2(sum.count / Math.max(minutes, 1)),
+    latency: sum.latency,
     hourly,
     previous: baseline(hours.filter((h) => h.at >= before && h.at < from)),
     weekly: baseline(hours.filter((h) => h.at >= flowHistoryStart(now) && h.at <= current))

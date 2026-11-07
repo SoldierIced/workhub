@@ -4,7 +4,7 @@ import { flowThresholds, formatMs, type FlowMap, type FlowMapReading, type Profi
 import { Badge, Button, Input, Select, Switch } from '../../components/atoms'
 import { useI18n } from '../../i18n/I18nProvider'
 import { SettingsGroup } from '../settings/SettingsLayout'
-import { DEFAULT_FLOW_MIN_CALLS, draftMap, flowLimitsToForm, formToFlowAlerts, mapNow, measuredParts, nowTone, saveFlowLimits, timingOf, type FlowLimitsForm, type NowTone } from './alertsForm'
+import { DEFAULT_FLOW_MIN_CALLS, draftMap, flowLimitsToForm, formToFlowAlerts, mapNow, measuredParts, nowTone, saveFlowLimits, slowShareNow, timingOf, type FlowLimitsForm, type NowTone } from './alertsForm'
 
 /** One map of the folder with what the table needs: the map, the environment that measures it and the last stored hour. */
 export interface FlowLimitsEntry {
@@ -14,6 +14,10 @@ export interface FlowLimitsEntry {
 }
 
 const rate = (r: number | undefined) => (r === undefined ? '—' : `${(r * 100).toFixed(1)} %`)
+/** A share (0–1) as the percentage the inputs take, without float noise. */
+const asPct = (r: number | undefined) => (r === undefined ? '' : String(Math.round(r * 10_000) / 100))
+
+const OVER_LABEL = { flowSlow: 'alertsSettings.flow.overP95', flowErrors: 'alertsSettings.flow.overFailures', flowSlowShare: 'alertsSettings.flow.overSlowShare' } as const
 
 /** The tone tag of the "Now" column. */
 export function NowTag({ tone }: { tone: NowTone }) {
@@ -24,7 +28,7 @@ export function NowTag({ tone }: { tone: NowTone }) {
     <span className="inline-flex gap-1">
       {tone.over.map((k) => (
         <Badge key={k} tone="danger">
-          {t(k === 'flowSlow' ? 'alertsSettings.flow.overP95' : 'alertsSettings.flow.overFailures')}
+          {t(OVER_LABEL[k])}
         </Badge>
       ))}
     </span>
@@ -32,7 +36,8 @@ export function NowTag({ tone }: { tone: NowTone }) {
 }
 
 /**
- * The limits table of one map: the default row (p95, failure share, notify), the minimum calls and
+ * The limits table of one map: the default row (p95, failure share, share of calls slower than a
+ * duration, notify), the minimum calls and
  * one row per part with its own limits (blank inherits). "Now" is the last stored hour against the
  * limits as typed.
  */
@@ -84,6 +89,8 @@ export function FlowMapLimitsTable({
             <th className="py-1 font-medium">{t('alertsSettings.flow.part')}</th>
             <th className="py-1 font-medium">{t('alertsSettings.flow.p95')}</th>
             <th className="py-1 font-medium">{t('alertsSettings.flow.failures')}</th>
+            <th className="py-1 font-medium" title={t('alertsSettings.flow.slowHelp')}>{t('alertsSettings.flow.slowMs')}</th>
+            <th className="py-1 font-medium" title={t('alertsSettings.flow.slowHelp')}>{t('alertsSettings.flow.slowPct')}</th>
             <th className="py-1 font-medium">{t('alertsSettings.col.notify')}</th>
             <th className="py-1 font-medium">{t('alertsSettings.flow.now')}</th>
             <th className="py-1" />
@@ -99,12 +106,19 @@ export function FlowMapLimitsTable({
               <Input type="number" min={0} max={100} step={0.5} className={input} aria-label={t('alertsSettings.flow.failuresFor', { part: t('alertsSettings.flow.default') })} value={form.errorPct} disabled={!editable} onChange={(e) => onChange({ ...form, errorPct: e.target.value })} />
             </td>
             <td className={cell}>
+              <Input type="number" min={1} className={input} aria-label={t('alertsSettings.flow.slowMsFor', { part: t('alertsSettings.flow.default') })} value={form.slowMs} disabled={!editable} onChange={(e) => onChange({ ...form, slowMs: e.target.value })} />
+            </td>
+            <td className={cell}>
+              <Input type="number" min={0} max={100} step={1} className={input} placeholder={form.slowMs.trim() ? '0' : ''} aria-label={t('alertsSettings.flow.slowPctFor', { part: t('alertsSettings.flow.default') })} value={form.slowPct} disabled={!editable} onChange={(e) => onChange({ ...form, slowPct: e.target.value })} />
+            </td>
+            <td className={cell}>
               <Switch checked={form.notify} disabled={!editable} aria-label={t('alertsSettings.flow.notifyFor', { map: map.name })} onChange={(on) => onChange({ ...form, notify: on })} />
             </td>
             <td className={cell}>
               <span className="inline-flex items-center gap-2 text-xs tabular-nums">
                 <span>{now.p95Ms === undefined ? '—' : formatMs(now.p95Ms)}</span>
                 <span className="text-subtle">{rate(now.errorRate)}</span>
+                {now.slowShare !== undefined && <span className="text-subtle" title={t('alertsSettings.flow.slowNow')}>{t('alertsSettings.flow.slowShareNow', { share: rate(now.slowShare) })}</span>}
                 <NowTag tone={now.tone} />
               </span>
             </td>
@@ -115,6 +129,8 @@ export function FlowMapLimitsTable({
             const label = part?.label ?? row.key
             const timing = part ? timingOf(reading, part) : undefined
             const inherited = draft.alerts
+            const ownSlow = part ? flowThresholds(draft, part).slowMs : undefined
+            const share = slowShareNow(timing, ownSlow)
             return (
               <tr key={row.key} className="border-t border-border" data-part={row.key}>
                 <td className={`${cell} pl-3`}>{label}</td>
@@ -124,11 +140,18 @@ export function FlowMapLimitsTable({
                 <td className={cell}>
                   <Input type="number" min={0} max={100} step={0.5} className={input} placeholder={inherited?.errorRate !== undefined ? String(Math.round(inherited.errorRate * 10_000) / 100) : ''} aria-label={t('alertsSettings.flow.failuresFor', { part: label })} value={row.errorPct} disabled={!editable} onChange={(e) => setPart(row.key, { errorPct: e.target.value })} />
                 </td>
+                <td className={cell}>
+                  <Input type="number" min={1} className={input} placeholder={inherited?.slowMs !== undefined ? String(inherited.slowMs) : ''} aria-label={t('alertsSettings.flow.slowMsFor', { part: label })} value={row.slowMs} disabled={!editable} onChange={(e) => setPart(row.key, { slowMs: e.target.value })} />
+                </td>
+                <td className={cell}>
+                  <Input type="number" min={0} max={100} step={1} className={input} placeholder={asPct(inherited?.slowShare)} aria-label={t('alertsSettings.flow.slowPctFor', { part: label })} value={row.slowPct} disabled={!editable} onChange={(e) => setPart(row.key, { slowPct: e.target.value })} />
+                </td>
                 <td />
                 <td className={cell}>
                   <span className="inline-flex items-center gap-2 text-xs tabular-nums">
                     <span>{timing && timing.count > 0 ? formatMs(timing.p95Ms) : '—'}</span>
                     <span className="text-subtle">{timing && timing.count > 0 ? rate(timing.errorRate) : ''}</span>
+                    {share !== undefined && <span className="text-subtle" title={t('alertsSettings.flow.slowNow')}>{t('alertsSettings.flow.slowShareNow', { share: rate(share) })}</span>}
                     <NowTag tone={part ? nowTone(timing, flowThresholds(draft, part)) : { kind: 'none' }} />
                   </span>
                 </td>
@@ -158,7 +181,7 @@ export function FlowMapLimitsTable({
               icon={<Plus className="size-3.5" aria-hidden />}
               disabled={!editable || !adding}
               onClick={() => {
-                onChange({ ...form, parts: [...form.parts, { key: adding, p95Ms: '', errorPct: '' }] })
+                onChange({ ...form, parts: [...form.parts, { key: adding, p95Ms: '', errorPct: '', slowMs: '', slowPct: '' }] })
                 setAdding('')
               }}
             >

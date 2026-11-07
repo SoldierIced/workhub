@@ -1,7 +1,7 @@
 import { AppWindow, ChevronLeft, ChevronRight, Copy, ListOrdered, Maximize2, MoreHorizontal, Pause, Play, RotateCcw, Sparkles, Waypoints, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { breaches, flowAlertsOf, flowCoverage, flowMeasures, flowPartLabel, flowParts, flowThresholds, formatMs, hasFlowAlerts, layoutFlowMap, rankFlowDeviations, rankFlowParts, type FlowBaseline, type FlowCoverage, type FlowMap, type FlowMapReading, type FlowNodeKind, type FlowPartDeviation, type FlowPartRef, type FlowTiming, type FlowTrace, type FlowTraceSort } from '@workhub/core'
+import { breaches, flowAlertsOf, flowCoverage, flowMeasures, flowPartLabel, flowParts, flowThresholds, formatMs, hasFlowAlerts, layoutFlowMap, rankFlowDeviations, rankFlowParts, slowShareOf, type FlowBaseline, type FlowLimits, type FlowCoverage, type FlowMap, type FlowMapReading, type FlowNodeKind, type FlowPartDeviation, type FlowPartRef, type FlowTiming, type FlowTrace, type FlowTraceSort } from '@workhub/core'
 import type { FlowMapResult, FlowTraceLogsResult, FlowTraceResult, HealthEnvironmentView } from '@shared/health-api'
 import { Badge, Button, IconButton, Spinner } from '../../components/atoms'
 import { Tabs, useToast } from '../../components/molecules'
@@ -332,7 +332,7 @@ export function FlowMapView({ env, profileId, mapId, file, onAsk, onOpenSettings
                 ]
               : []),
             { value: 'coverage', label: gaps > 0 ? t('flowMaps.tab.coverageCount', { count: gaps }) : t('flowMaps.tab.coverage'), content: <CoverageTab coverage={coverage} onPick={setPicked} /> },
-            { value: 'alerts', label: breached > 0 ? t('flowMaps.tab.alertsCount', { count: breached }) : t('flowMaps.tab.alerts'), content: <AlertsTab map={map} reading={reading} onPick={setPicked} /> },
+            { value: 'alerts', label: breached > 0 ? t('flowMaps.tab.alertsCount', { count: breached }) : t('flowMaps.tab.alerts'), content: <AlertsTab map={map} reading={reading} onPick={setPicked} onAdjust={onOpenSettings ? () => onOpenSettings('flowMaps') : undefined} /> },
             { value: 'legend', label: t('flowMaps.tab.legend'), content: <Legend /> }
           ]}
           contentClassName="pt-3"
@@ -597,7 +597,7 @@ export function PartDrawer({ map, reading, ranks, coverage, trace, picked, colla
                 {t('flowMaps.drawer.limits')}
                 {onAdjust && <button type="button" className={cn(LINK, 'font-normal text-accent')} onClick={onAdjust}>{t('flowMaps.drawer.adjust')}</button>}
               </p>
-              {limits.p95Ms === undefined && limits.errorRate === undefined ? (
+              {limits.p95Ms === undefined && limits.errorRate === undefined && limits.slowMs === undefined ? (
                 <p className="text-subtle">{t('flowMaps.drawer.noLimits')}</p>
               ) : (
                 <ul className="flex flex-col gap-0.5">
@@ -605,6 +605,12 @@ export function PartDrawer({ map, reading, ranks, coverage, trace, picked, colla
                     <li className="flex items-center gap-2">
                       {t('flowMaps.drawer.limitP95', { value: formatMs(limits.p95Ms) })}
                       {hits.some((h) => h.kind === 'flowSlow') && <Badge tone="danger">{t('flowMaps.drawer.exceeded')}</Badge>}
+                    </li>
+                  )}
+                  {limits.slowMs !== undefined && (
+                    <li className="flex items-center gap-2">
+                      {slowLimitText(t, limits)}
+                      {hits.some((h) => h.kind === 'flowSlowShare') && <Badge tone="danger">{t('flowMaps.drawer.exceeded')}</Badge>}
                     </li>
                   )}
                   {limits.errorRate !== undefined && (
@@ -725,15 +731,30 @@ const ALERT_EXAMPLE = `"alerts": {
   "parts": { "orders": { "p95Ms": 1500 } }
 }`
 
+/** "> 40 % of calls over 5.0 s" (or "any call over 5.0 s" when the share is unset), for the drawer. */
+function slowLimitText(t: ReturnType<typeof useI18n>['t'], limits: FlowLimits): string {
+  const over = formatMs(limits.slowMs ?? 0)
+  return limits.slowShare ? t('flowMaps.drawer.limitSlowShare', { share: `${Math.round(limits.slowShare * 1000) / 10} %`, over }) : t('flowMaps.drawer.limitSlowAny', { over })
+}
+
+/** "40 % > 5.0 s" (or "> 5.0 s"), for the Alerts table. */
+function slowLimitShort(limits: FlowLimits): string {
+  const over = formatMs(limits.slowMs ?? 0)
+  return limits.slowShare ? `${Math.round(limits.slowShare * 1000) / 10} % > ${over}` : `> ${over}`
+}
+
 /** Every measured part with its limits (the map's, or its own), its numbers in the window and whether it is above one. */
-export function AlertsTab({ map, reading, onPick }: { map: FlowMap; reading?: FlowMapReading; onPick: (p: FlowPartRef) => void }) {
+export function AlertsTab({ map, reading, onPick, onAdjust }: { map: FlowMap; reading?: FlowMapReading; onPick: (p: FlowPartRef) => void; onAdjust?: () => void }) {
   const { t, formatNumber } = useI18n()
   const rows = flowMeasures(map).map((m) => {
     const timing = reading?.[m.of][m.key]
     const limits = flowThresholds(map, m)
     const hits = timing ? breaches(timing, limits) : []
-    return { of: m.of, key: m.key, label: flowPartLabel(map, m), timing: timing && timing.count > 0 ? timing : undefined, limits, hits }
+    const live = timing && timing.count > 0 ? timing : undefined
+    const slowShare = live && limits.slowMs !== undefined ? slowShareOf(live, limits.slowMs) : undefined
+    return { of: m.of, key: m.key, label: flowPartLabel(map, m), timing: live, limits, hits, slowShare }
   })
+  const anySlow = rows.some((r) => r.limits.slowMs !== undefined)
   rows.sort((a, b) => b.hits.length - a.hits.length)
   const pct = (r: number) => `${(r * 100).toFixed(1)} %`
   const dash = '–'
@@ -742,12 +763,26 @@ export function AlertsTab({ map, reading, onPick }: { map: FlowMap; reading?: Fl
       {!hasFlowAlerts(map) && (
         <div className="flex flex-col gap-1.5 text-xs text-muted">
           <p>{t('flowMaps.alerts.noneConfigured')}</p>
+          {onAdjust && (
+            <Button size="sm" variant="secondary" className="self-start" onClick={onAdjust}>
+              {t('flowMaps.alerts.setLimits')}
+            </Button>
+          )}
+          <p>{t('flowMaps.alerts.orInFile')}</p>
           <pre className="overflow-x-auto rounded-md border border-border bg-surface-raised p-2 text-[11px] text-text">{ALERT_EXAMPLE}</pre>
         </div>
       )}
       <p className="text-xs text-subtle">
         {t('flowMaps.alerts.notify')}
         {reading ? ` ${t('flowMaps.alerts.window', { hours: reading.windowHours })}` : ''}
+        {hasFlowAlerts(map) && onAdjust && (
+          <>
+            {' '}
+            <button type="button" className={cn(LINK, 'text-accent')} onClick={onAdjust}>
+              {t('flowMaps.alerts.editLimits')}
+            </button>
+          </>
+        )}
       </p>
       {rows.length === 0 ? (
         <p className="text-sm text-muted">{t('flowMaps.noMeasures')}</p>
@@ -758,8 +793,10 @@ export function AlertsTab({ map, reading, onPick }: { map: FlowMap; reading?: Fl
               <th className="py-1 pr-2 font-medium">{t('flowMaps.part')}</th>
               <th className="whitespace-nowrap py-1 pl-2 text-right font-medium">{t('flowMaps.alerts.p95Limit')}</th>
               <th className="whitespace-nowrap py-1 pl-2 text-right font-medium">{t('flowMaps.alerts.errorLimit')}</th>
+              {anySlow && <th className="whitespace-nowrap py-1 pl-2 text-right font-medium">{t('flowMaps.alerts.slowLimit')}</th>}
               <th className="whitespace-nowrap py-1 pl-2 text-right font-medium">{t('flowMaps.alerts.p95Now')}</th>
               <th className="whitespace-nowrap py-1 pl-2 text-right font-medium">{t('flowMaps.alerts.errorNow')}</th>
+              {anySlow && <th className="whitespace-nowrap py-1 pl-2 text-right font-medium">{t('flowMaps.alerts.slowNow')}</th>}
               <th className="whitespace-nowrap py-1 pl-2 text-right font-medium">{t('flowMaps.alerts.status')}</th>
             </tr>
           </thead>
@@ -767,14 +804,17 @@ export function AlertsTab({ map, reading, onPick }: { map: FlowMap; reading?: Fl
             {rows.map((r) => {
               const slow = r.hits.some((h) => h.kind === 'flowSlow')
               const failing = r.hits.some((h) => h.kind === 'flowErrors')
-              const limited = r.limits.p95Ms !== undefined || r.limits.errorRate !== undefined
+              const slowShare = r.hits.some((h) => h.kind === 'flowSlowShare')
+              const limited = r.limits.p95Ms !== undefined || r.limits.errorRate !== undefined || r.limits.slowMs !== undefined
               return (
                 <tr key={`${r.of}:${r.key}`} className="cursor-pointer border-t border-border hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none" {...pressable(() => onPick({ of: r.of, key: r.key }))}>
                   <td className="py-1 pr-2">{r.label}</td>
                   <td className="whitespace-nowrap py-1 pl-2 text-right tabular-nums">{r.limits.p95Ms !== undefined ? formatMs(r.limits.p95Ms) : dash}</td>
                   <td className="whitespace-nowrap py-1 pl-2 text-right tabular-nums">{r.limits.errorRate !== undefined ? pct(r.limits.errorRate) : dash}</td>
+                  {anySlow && <td className="whitespace-nowrap py-1 pl-2 text-right tabular-nums">{r.limits.slowMs !== undefined ? slowLimitShort(r.limits) : dash}</td>}
                   <td className={cn('whitespace-nowrap py-1 pl-2 text-right tabular-nums', slow && 'font-semibold text-danger')}>{r.timing ? formatMs(r.timing.p95Ms) : dash}</td>
                   <td className={cn('whitespace-nowrap py-1 pl-2 text-right tabular-nums', failing && 'font-semibold text-danger')} title={r.timing?.failed !== undefined ? formatNumber(r.timing.failed) : undefined}>{r.timing?.errorRate !== undefined ? pct(r.timing.errorRate) : dash}</td>
+                  {anySlow && <td className={cn('whitespace-nowrap py-1 pl-2 text-right tabular-nums', slowShare && 'font-semibold text-danger')}>{r.slowShare !== undefined ? pct(r.slowShare) : dash}</td>}
                   <td className="whitespace-nowrap py-1 pl-2 text-right">
                     {!r.timing ? (
                       <span className="text-subtle">{t('flowMaps.alerts.noData')}</span>

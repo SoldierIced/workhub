@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { appOptions, DEFAULT_HEALTH_THRESHOLDS, parseFlowMap, quietNow, type FlowMap, type FlowMapReading, type Profile } from '@workhub/core'
+import { appOptions, DEFAULT_HEALTH_THRESHOLDS, flowLatencyBucket, parseFlowMap, quietNow, type FlowMap, type FlowMapReading, type Profile } from '@workhub/core'
 
 vi.mock('electron', () => ({ Menu: {}, nativeImage: {}, Tray: class {} }))
 
@@ -225,7 +225,7 @@ describe('Settings → Alerts renderer', () => {
 
   it('saving a limit calls flowMaps.setAlerts with the alerts shape', async () => {
     const setAlerts = vi.fn(async () => ({ ok: true as const, file: 'f', id: 'checkout' }))
-    const form = { ...flowLimitsToForm(undefined), p95Ms: '1500', errorPct: '2.5', minCalls: '10', parts: [{ key: 'bff', p95Ms: '', errorPct: '1' }, { key: 'orders', p95Ms: '', errorPct: '' }] }
+    const form = { ...flowLimitsToForm(undefined), p95Ms: '1500', errorPct: '2.5', minCalls: '10', parts: [{ key: 'bff', p95Ms: '', errorPct: '1', slowMs: '', slowPct: '' }, { key: 'orders', p95Ms: '', errorPct: '', slowMs: '', slowPct: '' }] }
     await saveFlowLimits({ setAlerts }, 'work', 'checkout', form)
     expect(setAlerts).toHaveBeenCalledWith('work', 'checkout', { p95Ms: 1500, errorRate: 0.025, minCalls: 10, parts: { bff: { errorRate: 0.01 } } })
     // Nothing set removes the field; a bad number writes nothing.
@@ -234,5 +234,28 @@ describe('Settings → Alerts renderer', () => {
     expect(await saveFlowLimits({ setAlerts }, 'work', 'checkout', { ...form, errorPct: '140' })).toEqual({ ok: false, field: 'errorPct' })
     expect(setAlerts).toHaveBeenCalledTimes(2)
     expect(formToFlowAlerts({ ...flowLimitsToForm(undefined), notify: false })).toEqual({ ok: true, alerts: { notify: false, parts: {} } })
+  })
+
+  it('writes the slow-call limit: a duration and the share of calls over it, per map and per part', async () => {
+    const setAlerts = vi.fn(async () => ({ ok: true as const, file: 'f', id: 'checkout' }))
+    const form = { ...flowLimitsToForm(undefined), slowMs: '5000', slowPct: '40', parts: [{ key: 'bff', p95Ms: '', errorPct: '', slowMs: '8000', slowPct: '' }] }
+    await saveFlowLimits({ setAlerts }, 'work', 'checkout', form)
+    expect(setAlerts).toHaveBeenCalledWith('work', 'checkout', { slowMs: 5000, slowShare: 0.4, parts: { bff: { slowMs: 8000 } } })
+    expect(flowLimitsToForm({ slowMs: 5000, slowShare: 0.4, parts: { bff: { slowShare: 0.1 } } })).toMatchObject({ slowMs: '5000', slowPct: '40', parts: [{ key: 'bff', slowMs: '', slowPct: '10' }] })
+    expect(formToFlowAlerts({ ...form, slowMs: '0' })).toEqual({ ok: false, field: 'slowMs' })
+    expect(formToFlowAlerts({ ...form, slowPct: '101' })).toEqual({ ok: false, field: 'slowPct' })
+  })
+
+  it('shows the share of slow calls now and flags a part with too many', () => {
+    const map = { ...exampleMap(), alerts: { slowMs: 1000, slowShare: 0.4, parts: {} } } as FlowMap
+    const hourly = [{ at: 0, count: 100, p50Ms: 100, p95Ms: 300 }]
+    // Half the calls well under 1 s, half well over it.
+    const latency: [number, number][] = [[flowLatencyBucket(100_000), 50], [flowLatencyBucket(3_000_000), 50]]
+    const reading: FlowMapReading = { at: 1, windowHours: 1, nodes: { bff: { count: 100, p50Ms: 400, p95Ms: 2400, errorRate: 0, failed: 0, latency, hourly } }, edges: {}, stages: {}, errors: {} }
+    expect(mapNow(map, reading)).toMatchObject({ slowShare: 0.5, tone: { kind: 'over', over: ['flowSlowShare'] } })
+    const html = renderToStaticMarkup(createElement(FlowMapLimitsTable, { entry: { map, environmentName: 'Staging', reading }, form: flowLimitsToForm(map.alerts), editable: true, dirty: false, onChange: () => {}, onSave: () => {} }))
+    expect(html).toContain('Slow above (ms)')
+    expect(html).toContain('50.0 % slow')
+    expect(html).toContain('too many slow')
   })
 })
