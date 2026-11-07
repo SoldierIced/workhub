@@ -9,6 +9,7 @@ import {
   flowLatencyBucket,
   flowTimingFromHistory,
   histogramPercentileMs,
+  histogramShareOverMs,
   hourStart,
   mergeFlowHistory,
   sumFlowHours,
@@ -62,6 +63,30 @@ describe('histogramPercentileMs', () => {
 
   it('caps calls slower than the last bound at that bound', () => {
     expect(histogramPercentileMs([[FLOW_LATENCY_BOUNDS_US.length, 3]], 50)).toBeCloseTo(FLOW_LATENCY_BOUNDS_US.at(-1)! / 1000, 1)
+  })
+})
+
+describe('histogramShareOverMs', () => {
+  it('is 0 for an empty histogram and counts whole buckets above the duration', () => {
+    expect(histogramShareOverMs([], 5000)).toBe(0)
+    const latency: [number, number][] = [[flowLatencyBucket(1_000_000), 60], [flowLatencyBucket(9_000_000), 40]]
+    expect(histogramShareOverMs(latency, 5000)).toBeCloseTo(0.4, 5)
+    expect(histogramShareOverMs(latency, 100)).toBeCloseTo(1, 5)
+    expect(histogramShareOverMs(latency, 60_000)).toBe(0)
+  })
+
+  it('interpolates inside the bucket the duration falls in, and counts the overflow bucket as slower', () => {
+    const b = flowLatencyBucket(5_000_000)
+    const lo = FLOW_LATENCY_BOUNDS_US[b - 1]!
+    const hi = FLOW_LATENCY_BOUNDS_US[b]!
+    const mid = (lo + hi) / 2 / 1000
+    expect(histogramShareOverMs([[b, 10]], mid)).toBeCloseTo(0.5, 5)
+    expect(histogramShareOverMs([[FLOW_LATENCY_BOUNDS_US.length, 3], [0, 3]], 700_000)).toBeCloseTo(0.5, 5)
+  })
+
+  it('agrees with the percentiles of the same histogram', () => {
+    const latency: [number, number][] = [[flowLatencyBucket(200_000), 30], [flowLatencyBucket(800_000), 30], [flowLatencyBucket(4_000_000), 40]]
+    expect(histogramShareOverMs(latency, histogramPercentileMs(latency, 60))).toBeCloseTo(0.4, 2)
   })
 })
 

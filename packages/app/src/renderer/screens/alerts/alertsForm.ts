@@ -5,10 +5,12 @@
 import {
   breaches,
   DEFAULT_FLOW_MIN_CALLS,
+  FLOW_ALERT_KINDS,
   flowMeasures,
   flowPartLabel,
   flowThresholds,
   HEALTH_ALERT_CHANNELS,
+  slowShareOf,
   type FlowAlertKind,
   type FlowLimits,
   type FlowMap,
@@ -30,12 +32,18 @@ export interface PartLimitForm {
   key: string
   p95Ms: string
   errorPct: string
+  /** Calls slower than this many milliseconds count as slow. */
+  slowMs: string
+  /** The share of slow calls, in percent, that breaks the limit (blank: a single one). */
+  slowPct: string
 }
 
 /** What the inputs of one map hold: numbers as typed, the failure share in percent. */
 export interface FlowLimitsForm {
   p95Ms: string
   errorPct: string
+  slowMs: string
+  slowPct: string
   minCalls: string
   notify: boolean
   parts: PartLimitForm[]
@@ -49,13 +57,15 @@ export function flowLimitsToForm(alerts: FlowMapAlerts | undefined): FlowLimitsF
   return {
     p95Ms: text(alerts?.p95Ms),
     errorPct: percent(alerts?.errorRate),
+    slowMs: text(alerts?.slowMs),
+    slowPct: percent(alerts?.slowShare),
     minCalls: text(alerts?.minCalls),
     notify: alerts?.notify !== false,
-    parts: Object.entries(alerts?.parts ?? {}).map(([key, p]) => ({ key, p95Ms: text(p.p95Ms), errorPct: percent(p.errorRate) }))
+    parts: Object.entries(alerts?.parts ?? {}).map(([key, p]) => ({ key, p95Ms: text(p.p95Ms), errorPct: percent(p.errorRate), slowMs: text(p.slowMs), slowPct: percent(p.slowShare) }))
   }
 }
 
-export type FlowLimitsField = 'p95Ms' | 'errorPct' | 'minCalls'
+export type FlowLimitsField = 'p95Ms' | 'errorPct' | 'slowMs' | 'slowPct' | 'minCalls'
 export type FlowLimitsParse = { ok: true; alerts: FlowMapAlerts | null } | { ok: false; field: FlowLimitsField; part?: string }
 
 function parseNumber(raw: string, check: (n: number) => boolean): number | undefined | null {
@@ -78,6 +88,10 @@ export function formToFlowAlerts(form: FlowLimitsForm): FlowLimitsParse {
   if (p95 === null) return { ok: false, field: 'p95Ms' }
   const pct = parseNumber(form.errorPct, pctOk)
   if (pct === null) return { ok: false, field: 'errorPct' }
+  const slowMs = parseNumber(form.slowMs, p95Ok)
+  if (slowMs === null) return { ok: false, field: 'slowMs' }
+  const slowPct = parseNumber(form.slowPct, pctOk)
+  if (slowPct === null) return { ok: false, field: 'slowPct' }
   const minCalls = parseNumber(form.minCalls, (n) => Number.isInteger(n) && n >= 0 && n <= 1_000_000)
   if (minCalls === null) return { ok: false, field: 'minCalls' }
   const parts: FlowMapAlerts['parts'] = {}
@@ -87,17 +101,28 @@ export function formToFlowAlerts(form: FlowLimitsForm): FlowLimitsParse {
     if (ownP95 === null) return { ok: false, field: 'p95Ms', part: part.key }
     const ownPct = parseNumber(part.errorPct, pctOk)
     if (ownPct === null) return { ok: false, field: 'errorPct', part: part.key }
-    if (ownP95 === undefined && ownPct === undefined) continue
-    parts[part.key] = { ...(ownP95 !== undefined ? { p95Ms: ownP95 } : {}), ...(ownPct !== undefined ? { errorRate: toRate(ownPct) } : {}) }
+    const ownSlowMs = parseNumber(part.slowMs, p95Ok)
+    if (ownSlowMs === null) return { ok: false, field: 'slowMs', part: part.key }
+    const ownSlowPct = parseNumber(part.slowPct, pctOk)
+    if (ownSlowPct === null) return { ok: false, field: 'slowPct', part: part.key }
+    if (ownP95 === undefined && ownPct === undefined && ownSlowMs === undefined && ownSlowPct === undefined) continue
+    parts[part.key] = {
+      ...(ownP95 !== undefined ? { p95Ms: ownP95 } : {}),
+      ...(ownPct !== undefined ? { errorRate: toRate(ownPct) } : {}),
+      ...(ownSlowMs !== undefined ? { slowMs: ownSlowMs } : {}),
+      ...(ownSlowPct !== undefined ? { slowShare: toRate(ownSlowPct) } : {})
+    }
   }
   const alerts: FlowMapAlerts = {
     ...(p95 !== undefined ? { p95Ms: p95 } : {}),
     ...(pct !== undefined ? { errorRate: toRate(pct) } : {}),
+    ...(slowMs !== undefined ? { slowMs } : {}),
+    ...(slowPct !== undefined ? { slowShare: toRate(slowPct) } : {}),
     ...(minCalls !== undefined ? { minCalls } : {}),
     ...(form.notify ? {} : { notify: false }),
     parts
   }
-  const empty = p95 === undefined && pct === undefined && minCalls === undefined && form.notify && Object.keys(parts).length === 0
+  const empty = p95 === undefined && pct === undefined && slowMs === undefined && slowPct === undefined && minCalls === undefined && form.notify && Object.keys(parts).length === 0
   return { ok: true, alerts: empty ? null : alerts }
 }
 
@@ -134,10 +159,16 @@ export function timingOf(reading: FlowMapReading | undefined, part: FlowPartRef)
   return reading?.[part.of][part.key]
 }
 
-/** The map's default row: its slowest measured part, its worst failure share, and every limit any part is over. */
-export function mapNow(map: FlowMap, reading: FlowMapReading | undefined): { p95Ms?: number; errorRate?: number; tone: NowTone } {
+/** The share of a timing's calls slower than `ms`, when the limit is set and the timing has a histogram. */
+export function slowShareNow(timing: FlowTiming | undefined, ms: number | undefined): number | undefined {
+  return timing && timing.count > 0 && ms !== undefined ? slowShareOf(timing, ms) : undefined
+}
+
+/** The map's default row: its slowest measured part, its worst failure share, its worst share of slow calls (against the map's `slowMs`), and every limit any part is over. */
+export function mapNow(map: FlowMap, reading: FlowMapReading | undefined): { p95Ms?: number; errorRate?: number; slowShare?: number; tone: NowTone } {
   let p95: number | undefined
   let rate: number | undefined
+  let slow: number | undefined
   let seen = false
   const over = new Set<FlowAlertKind>()
   for (const part of measuredParts(map)) {
@@ -146,11 +177,13 @@ export function mapNow(map: FlowMap, reading: FlowMapReading | undefined): { p95
     seen = true
     p95 = Math.max(p95 ?? 0, timing.p95Ms)
     if (timing.errorRate !== undefined) rate = Math.max(rate ?? 0, timing.errorRate)
+    const share = slowShareNow(timing, map.alerts?.slowMs)
+    if (share !== undefined) slow = Math.max(slow ?? 0, share)
     const tone = nowTone(timing, flowThresholds(map, part))
     if (tone.kind === 'over') tone.over.forEach((k) => over.add(k))
   }
-  const tone: NowTone = !seen ? { kind: 'none' } : over.size ? { kind: 'over', over: (['flowSlow', 'flowErrors'] as const).filter((k) => over.has(k)) } : { kind: 'ok' }
-  return { ...(p95 !== undefined ? { p95Ms: p95 } : {}), ...(rate !== undefined ? { errorRate: rate } : {}), tone }
+  const tone: NowTone = !seen ? { kind: 'none' } : over.size ? { kind: 'over', over: FLOW_ALERT_KINDS.filter((k) => over.has(k)) } : { kind: 'ok' }
+  return { ...(p95 !== undefined ? { p95Ms: p95 } : {}), ...(rate !== undefined ? { errorRate: rate } : {}), ...(slow !== undefined ? { slowShare: slow } : {}), tone }
 }
 
 export { DEFAULT_FLOW_MIN_CALLS }

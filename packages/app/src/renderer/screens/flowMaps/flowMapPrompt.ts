@@ -46,7 +46,7 @@ export function flowMapPrompt(t: T, input: FlowMapPromptInput): string {
     const codes = entryPart ? reading[entryPart.of][entryPart.key]?.codes : undefined
     if (entryPart && codes?.length) lines.push('', t('flowMapPrompt.codes', { label: flowPartLabel(map, entryPart), list: codes.map((c) => `${c.code} ${c.count.toLocaleString(locale)}`).join(', ') }))
     const alerts = flowAlertsOf(map, reading, { id: '', name: environment })
-    if (alerts.length) lines.push('', t('flowMapPrompt.alerts', { list: alerts.map((a) => (a.kind === 'flowSlow' ? t('flowMapPrompt.alertSlow', { label: a.label, value: formatMs(a.value), limit: formatMs(a.threshold) }) : t('flowMapPrompt.alertErrors', { label: a.label, value: rate(a.value), limit: rate(a.threshold) }))).join('; ') }))
+    if (alerts.length) lines.push('', t('flowMapPrompt.alerts', { list: alerts.map((a) => (a.kind === 'flowSlow' ? t('flowMapPrompt.alertSlow', { label: a.label, value: formatMs(a.value), limit: formatMs(a.threshold) }) : a.kind === 'flowSlowShare' ? t('flowMapPrompt.alertSlowShare', { label: a.label, value: rate(a.value), over: formatMs(a.overMs ?? 0), limit: rate(a.threshold) }) : t('flowMapPrompt.alertErrors', { label: a.label, value: rate(a.value), limit: rate(a.threshold) }))).join('; ') }))
     const c = flowCoverage(map, reading)
     if (c.unmeasured.length) lines.push('', t('flowMapPrompt.unmeasured', { list: c.unmeasured.map((p) => p.label).join(', ') }))
     if (c.noData.length) lines.push('', t('flowMapPrompt.noData', { list: c.noData.map((p) => p.label).join(', ') }))

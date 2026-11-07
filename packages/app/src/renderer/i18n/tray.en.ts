@@ -103,6 +103,8 @@ export const trayEn = {
   'notify.flow.slowBody': 'p95 {value} over the last hour, limit {limit}',
   'notify.flow.errors': '«{part}» is failing in {map} · {environment}',
   'notify.flow.errorsBody': '{value} of calls failed over the last hour, limit {limit}',
+  'notify.flow.slowShare': '«{part}» is slow in {map} · {environment}',
+  'notify.flow.slowShareBody': '{value} of calls took over {over} in the last hour, limit {limit}',
   'notify.metricAlert.jump': '{metric} jumped for {subject}',
   'notify.metricAlert.rateDrop': '{metric} moved for {subject}',
   'notify.metricAlert.sustainedTrend': '{metric} keeps getting worse for {subject}',

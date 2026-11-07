@@ -103,8 +103,18 @@ The map picked opens next to the rail with:
   with the service and the level. Ask Claude passes them along.
 - **Coverage.** The parts without a measure, the measured ones APM returned nothing for (a name
   that differs from what APM records, or a part nothing called), and failed reads.
-- **Alerts.** Every measured part with its limits (`alerts` in the file), its current p95 and
-  failure share, and whether it is above a limit. While the module is on, Workhub reads every
+- **Alerts.** Every measured part with its limits (`alerts` in the file), its current p95,
+  failure share and share of slow calls, and whether it is above a limit. **Set alert limits**
+  (or **Edit limits**) opens the limits editor in Settings.
+
+  Three kinds of limit, for the whole map or per part:
+
+  | Limit | Breaks when | Example |
+  |---|---|---|
+  | p95 | the part's p95 is above it | p95 over 3 s |
+  | Failures | the share of failed calls is above it | more than 5% fail |
+  | Slow calls | more than a share of the calls take longer than a duration; with no share, a single slow call is enough | more than 40% take over 5 s |
+ While the module is on, Workhub reads every
   map that has limits every five minutes over the last hour and notifies the parts above them,
   once an hour per part (Settings → Notifications → Flow maps turns these off; a map's own
   **Notify** switch in Settings → Alerts turns off only that map). A part with fewer calls in the
@@ -120,10 +130,12 @@ to turn Health on. Without the Flow maps module the screen only says how to turn
 
 **Settings → Alerts → Flow maps · limits** lists every valid map of the folder under its `group`,
 with the environment that measures it. Per map: a row for every part (p95 in ms, failure share in
-%, and the map's **Notify** switch), one row per part with limits of its own (pick a measured part
-and **Add part limit**; a blank field inherits the map's value), and **Minimum calls**. **Now**
-shows the last stored hour (no cluster read) against the limits as typed: *ok*, *over p95* or
-*over failures*. **Save limits** writes the `alerts` field into the map's file: the map is
+%, **Slow above (ms)** and **Slow calls (%)**, and the map's **Notify** switch), one row per part
+with limits of its own (pick a measured part and **Add part limit**; a blank field inherits the
+map's value), and **Minimum calls**. **Now** shows the last stored hour (no cluster read) against
+the limits as typed: *ok*, *over p95*, *over failures* or *too many slow*, with the share of slow
+calls. The share of slow calls is read from the latency histogram, so it is within one bucket
+(about 10%) of the exact figure. **Save limits** writes the `alerts` field into the map's file: the map is
 validated first, and every other byte of the file stays as it was.
 
 ### Local history
@@ -167,7 +179,7 @@ See `docs/examples/flow-maps/checkout.json` for a complete, synthetic example.
 | `edges` | `{ from, to, label?, kind?, emphasis?, entry?, measure? }`. Kinds: `sync` (a call that waits), `async` (a message, dashed), `wait` (time in a queue, red). `entry: "top"` enters the target from above instead of from the side, for a hop that would otherwise cross a node. |
 | `stages` | Optional checkpoints drawn as chips in `stagesLane` (a saga's steps): `{ id, label, measure? }`. |
 | `entry` | Optional: the `apm.transaction` measure that starts the flow, used to list its executions. When unset, the leftmost node with a transaction measure is the entry. |
-| `alerts` | Optional limits: `{ "p95Ms": 3000, "errorRate": 0.05, "minCalls": 20, "parts": { "orders": { "p95Ms": 1500 } } }`. `p95Ms` is the p95 in milliseconds, `errorRate` the failure share (0–1); `parts` overrides them per part, keyed by node id, stage id or edge id (`from->to` when the edge has none). A part's own value wins, field by field. `minCalls` (default 20): a part with fewer calls in the window breaks no limit. `notify: false` keeps the limits on screen without notifying. |
+| `alerts` | Optional limits: `{ "p95Ms": 3000, "errorRate": 0.05, "slowMs": 5000, "slowShare": 0.4, "minCalls": 20, "parts": { "orders": { "p95Ms": 1500 } } }`. `p95Ms` is the p95 in milliseconds, `errorRate` the failure share (0–1); `slowMs` and `slowShare` break when more than `slowShare` (0–1, default 0: any call) of the calls take longer than `slowMs` milliseconds; `parts` overrides them per part, keyed by node id, stage id or edge id (`from->to` when the edge has none). A part's own value wins, field by field. `minCalls` (default 20): a part with fewer calls in the window breaks no limit. `notify: false` keeps the limits on screen without notifying. |
 
 A `measure` says how a number is read from APM:
 

@@ -330,6 +330,11 @@ describe('flow alert words', () => {
     expect(flowAlertWords(alert, trayText('en').t)).toEqual({ title: '«Orders» is failing in Checkout · Prod', body: '7.3% of calls failed over the last hour, limit 5.0%' })
     expect(flowAlertWords(alert, trayText('es').t).title).toBe('«Orders» está fallando en Checkout · Prod')
   })
+  it('words a part with too many slow calls: the share, the duration and the limit', () => {
+    const alert = { ...base, kind: 'flowSlowShare' as const, value: 0.42, threshold: 0.4, overMs: 5000 }
+    expect(flowAlertWords(alert, trayText('en').t)).toEqual({ title: '«Orders» is slow in Checkout · Prod', body: '42.0% of calls took over 5.0 s in the last hour, limit 40.0%' })
+    expect(flowAlertWords(alert, trayText('es').t).body).toBe('42.0% de las llamadas tardaron más de 5.0 s en la última hora, límite 40.0%')
+  })
 })
 
 describe('flow alert watcher', () => {

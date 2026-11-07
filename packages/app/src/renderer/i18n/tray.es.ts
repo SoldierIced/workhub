@@ -101,6 +101,8 @@ export const trayEs: Record<keyof typeof trayEn, string> = {
   'notify.flow.slowBody': 'p95 de {value} en la última hora, límite {limit}',
   'notify.flow.errors': '«{part}» está fallando en {map} · {environment}',
   'notify.flow.errorsBody': '{value} de las llamadas fallaron en la última hora, límite {limit}',
+  'notify.flow.slowShare': '«{part}» está lento en {map} · {environment}',
+  'notify.flow.slowShareBody': '{value} de las llamadas tardaron más de {over} en la última hora, límite {limit}',
   'notify.metricAlert.jump': '{metric} saltó en {subject}',
   'notify.metricAlert.rateDrop': '{metric} cambió en {subject}',
   'notify.metricAlert.sustainedTrend': '{metric} sigue empeorando en {subject}',

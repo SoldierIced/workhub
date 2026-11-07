@@ -46,10 +46,10 @@ const formatRate = (rate: number): string => `${(rate * 100).toFixed(1)}%`
 /** The title and body of a flow-map alert (a part above its p95 or failure limit), in the tray's language. */
 export function flowAlertWords(alert: FlowAlert, t: TrayText['t']): { title: string; body: string } {
   const format = alert.kind === 'flowSlow' ? formatMs : formatRate
-  const base = alert.kind === 'flowSlow' ? 'notify.flow.slow' : 'notify.flow.errors'
+  const base = alert.kind === 'flowSlow' ? 'notify.flow.slow' : alert.kind === 'flowSlowShare' ? 'notify.flow.slowShare' : 'notify.flow.errors'
   return {
     title: t(base, { part: alert.label, map: alert.mapName, environment: alert.environmentName }),
-    body: t(`${base}Body`, { value: format(alert.value), limit: format(alert.threshold) })
+    body: t(`${base}Body`, { value: format(alert.value), limit: format(alert.threshold), over: formatMs(alert.overMs ?? 0) })
   }
 }
 

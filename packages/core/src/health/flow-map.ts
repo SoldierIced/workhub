@@ -58,8 +58,17 @@ const edge = z.object({
 
 const stage = z.object({ id, label: z.string().min(1).max(30), measure: measure.optional() })
 
-/** Limits a part must stay under: p95 in milliseconds, failure share between 0 and 1. */
-const flowThreshold = z.object({ p95Ms: z.number().positive().optional(), errorRate: z.number().min(0).max(1).optional() })
+/**
+ * Limits a part must stay under: p95 in milliseconds, failure share between 0 and 1, and the share
+ * of calls slower than `slowMs` (`slowShare`, 0–1; 0 when unset: a single call slower than
+ * `slowMs` breaks it).
+ */
+const flowThreshold = z.object({
+  p95Ms: z.number().positive().optional(),
+  errorRate: z.number().min(0).max(1).optional(),
+  slowMs: z.number().positive().optional(),
+  slowShare: z.number().min(0).max(1).optional()
+})
 
 export const flowMapSchema = z.object({
   version: z.literal(FLOW_MAP_VERSION),
@@ -87,7 +96,8 @@ export const flowMapSchema = z.object({
   /**
    * When to notify about the flow (checked over a 1 h window, that is the last whole hour plus the
    * part of the hour in course already gone; see `flowAlertsOf` and `flowTimingFromHistory`):
-   * a p95 above `p95Ms` or a failure share above `errorRate`, for every measured part or per part
+   * a p95 above `p95Ms`, a failure share above `errorRate`, or more than `slowShare` of the calls
+   * slower than `slowMs`, for every measured part or per part
    * (keyed like the Parts tab: node id, stage id, edge id or `from->to`). A part's entry wins.
    * A part with fewer than `minCalls` calls in the window (default `DEFAULT_FLOW_MIN_CALLS`) never
    * breaks a limit; `notify: false` keeps the limits on screen without notifying.
@@ -327,6 +337,11 @@ export interface FlowTiming {
   codes?: FlowCodeCount[]
   previous?: FlowBaseline
   weekly?: FlowBaseline
+  /**
+   * The window's latency histogram (`[bucket, count]` pairs over `FLOW_LATENCY_BOUNDS_US`), when it
+   * was read from the local history; the share of slow calls is read from it.
+   */
+  latency?: [number, number][]
   /** The window hour by hour, oldest first; hours without data have count 0. */
   hourly: FlowHourPoint[]
 }
