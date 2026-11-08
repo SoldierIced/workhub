@@ -1,0 +1,28 @@
+{
+  "name": "@workhub/relay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workhub Remote relay: a stateless WebSocket rendezvous between a desktop and its paired devices, Web Push for offline devices, and the web client's static files. Sees envelopes only; every body is end-to-end encrypted.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/relay.cjs --external:bufferutil --external:utf-8-validate --log-level=warning"
+  },
+  "dependencies": {
+    "@workhub/protocol": "0.0.0",
+    "web-push": "4.0.0",
+    "ws": "8.22.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/web-push": "3.6.4",
+    "@types/ws": "8.18.2",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  }
+}

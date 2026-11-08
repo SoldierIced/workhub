@@ -6,13 +6,15 @@ Workhub 2 is an Electron app that runs and supervises coding agents. The repo is
 
 ## Layout and layering
 
-npm workspace with three packages. Dependencies point inward only.
+npm workspace with five packages. Dependencies point inward only.
 
 | Package | Role | May import |
 |---|---|---|
 | `packages/core` | Domain models, ports, use cases, config schema. Pure TypeScript, only `zod` at runtime. No Node or Electron APIs. | nothing in the repo |
+| `packages/protocol` | Workhub Remote wire protocol: identities, pairing, the end-to-end encrypted channel, message schemas. Pure TypeScript for Node and the browser (`zod`, `@noble/*`). | nothing in the repo |
+| `packages/relay` | The relay server (Node, `ws`, Web Push): rendezvous between a desktop and its paired devices, serves the web client. Stateless apart from push subscriptions. | `protocol` |
 | `packages/adapters` | Port implementations on Node and Electron (agents, code hosts, trackers, calendars, storage). | `core` |
-| `packages/app` | Electron main process, preload bridge, React renderer. | `core`, `adapters` |
+| `packages/app` | Electron main process, preload bridge, React renderer, and the web client for paired devices. | `core`, `adapters`, `protocol` |
 
 Workspace packages ship TypeScript source and the app bundles them; there is no build step for
 `core` or `adapters`. More in [docs/architecture.md](docs/architecture.md).

@@ -282,6 +282,8 @@ push to `main` and every pull request. Signing and notarization are a later step
 ```
 packages/
   core/       Domain models, ports, use cases, config schema. Pure TypeScript, depends only on zod.
+  protocol/   Workhub Remote wire protocol: identities, pairing, end-to-end encryption, message schemas
+  relay/      Workhub Remote relay server (WebSocket rooms, Web Push, serves the web client); ships as a container
   adapters/   Port implementations on Node/Electron:
                 config-json, secrets-electron, pr-events-json   storage (JSON files, safeStorage)
                 agent-claude-native   Claude through the Agent SDK bridge (MCP, hooks, permissions, usage)
