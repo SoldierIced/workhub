@@ -3,6 +3,7 @@ import { inboxSettings, plannerSettings, type CriticalityLevel, type Profile } f
 import type { ConfigSnapshot } from '../shared/api'
 import type { PlanView } from '../shared/plan-api'
 import type { PlannerView } from '../shared/planner-api'
+import { safeHref } from '../renderer/components/molecules/Markdown'
 import { useClient, useRemoteData } from './app-context'
 
 /** The profile's inbox and milestones (`planner:get`), cached offline and reloaded when the desktop says they changed. */
@@ -32,5 +33,6 @@ export function useCriticalities(profile: Profile | undefined): CriticalityLevel
 
 /** Opens a link in the phone's browser (never through the desktop). */
 export function openLink(url: string): void {
-  window.open(url, '_blank', 'noopener')
+  const href = safeHref(url)
+  if (href) window.open(href, '_blank', 'noopener')
 }

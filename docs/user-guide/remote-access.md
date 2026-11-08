@@ -22,9 +22,14 @@ phone (web app, later a native app)  ⇄  relay (your server, or one you trust) 
   secret that expires in five minutes. The phone answers through the relay with a request proving it
   saw the QR; you confirm the device name and fingerprint on the desktop and choose what it may do.
 - **Capabilities.** A device gets only what you tick: sessions (view, chat, answer permissions,
-  close, open a new one in a profile folder), pull requests, automations, health and alerts. It
-  can never pick a folder outside the profile's, open windows or dialogs on the desktop, read or
-  change settings, or see secrets. You can revoke a device at any time.
+  close, open a new one in a profile folder), pull requests, automations (run, stop, turn on or
+  off; a phone cannot create or edit one), health and alerts, Plan. Sessions and automations mean
+  the agents run code on this computer, so grant them to phones you hold; automations start
+  unticked. A device can never pick a folder outside the profile's, switch an agent to a mode that
+  skips permission prompts, open windows or dialogs on the desktop, read or change settings, or see
+  secrets. It gets a trimmed view of the configuration (profile names and agents, no connections or
+  environment). You can revoke a device at any time; a phone that unpairs tells the desktop, which
+  drops it too.
 - **Reconnecting.** Both ends reconnect on their own after a restart or a lost connection, with the
   identity they already have. The phone keeps the last state it saw so it still shows your
   sessions, pull requests and alerts without network.
@@ -34,8 +39,9 @@ phone (web app, later a native app)  ⇄  relay (your server, or one you trust) 
 
 ## Turning it on (Settings → Remote access)
 
-1. **Relay address.** Type the relay you run or trust, as `https://relay.example.com`. The phone
-   opens the same address, so the relay also serves the phone's app.
+1. **Relay address.** New installs come with the public relay the project runs; type another, as
+   `https://relay.example.com`, to use one you host or trust. The phone opens the same address, so
+   the relay also serves the phone's app.
 2. **Allow remote access.** Workhub makes this computer's identity the first time (its seed lives
    in the secret store, next to your tokens), connects to the relay and shows its fingerprint. The
    switch stays on across restarts; the connection comes back on its own after the relay or the
@@ -124,20 +130,40 @@ Put a reverse proxy with TLS in front (nginx, Caddy, Traefik) and forward WebSoc
 | `DATA_DIR` | Where push subscriptions persist (`/data` in the image). |
 | `WEB_CLIENT_DIR` | Folder with the built web client to serve on `/`; unset serves none. |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Enable Web Push. `node relay.cjs --vapid` prints a key pair; the subject is a `mailto:` or URL push services may contact. |
-| `TRUST_PROXY` | `1` (default) reads the client address from `X-Forwarded-For`; `0` without a proxy. |
+| `TRUST_PROXY` | `1` behind a reverse proxy: the client address comes from `X-Real-IP`, or the last entry of `X-Forwarded-For` (the one the proxy appended). Off by default. |
+| `PUSH_ENDPOINT_HOSTS` | Extra push-service hosts, comma separated. The browsers' own services are built in; any other endpoint is refused, so the relay cannot be pointed at arbitrary addresses. |
+| `RELAY_VERSION` | Reported by `/healthz` (the image sets it to the commit). |
 
 `GET /healthz` answers `{"ok":true,...}`. The relay logs who authenticated and when a push failed,
 never bodies.
 
 ### Limits and what the relay sees
 
-- Every connection authenticates in its first message with a signature over a fresh timestamp and
-  is closed after ten seconds without one. Frames above 520 KB are refused; a connection that
-  floods is told to slow down and closed if it keeps going; a room admits a desktop and up to 24
-  devices.
+- Every connection authenticates in its first message with a signature over a nonce the relay sent
+  and a fresh timestamp, so a captured login cannot be replayed; a connection is closed after ten
+  seconds without one. Frames above 520 KB are refused; a connection that floods is told to slow
+  down and closed if it keeps going; a peer that stops reading is dropped instead of buffered for;
+  a room admits a desktop and up to 24 devices, an identity holds a few connections and an address
+  a few dozen.
+- Pushed notifications are signed by the desktop: the phone shows one only when it comes from a
+  computer it paired with, and only while it is recent.
 - The relay sees fingerprints, which room (desktop) a device talks to, message sizes and timing,
   the IP addresses, and push endpoints. It never sees message contents, session names, folders,
   prompts or notifications: those are ciphertext between the desktop and the device.
+
+### What the relay can and cannot do
+
+- It cannot read your traffic: messages are end-to-end encrypted between the computer and the
+  phone, and the relay only forwards ciphertext.
+- It does serve the phone app's code. A malicious relay operator could ship modified code that
+  reads the keys stored on the phone, so only pair with a relay you trust. Self-hosting is the
+  safest choice. When you confirm a pairing, check the relay host the phone shows.
+- Revoking a phone from the computer (Settings → Remote access) is the authoritative way to cut its
+  access. Forgetting the computer on the phone also tells the computer to drop it, when the two are
+  connected at that moment.
+- Set `TRUST_PROXY=1` only when the relay runs behind a reverse proxy that sets `X-Forwarded-For`.
+  The relay uses the rightmost address in that header; without such a proxy, use `TRUST_PROXY=0`,
+  or clients could spoof their address.
 
 ### From source
 

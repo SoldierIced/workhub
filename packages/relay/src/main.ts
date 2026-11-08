@@ -4,7 +4,9 @@
 //   WEB_CLIENT_DIR     built web client to serve (optional)
 //   DATA_DIR           where push subscriptions persist (default ./data)
 //   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT   enable Web Push (all three, or none)
-//   TRUST_PROXY        "0" when not behind a reverse proxy
+//   PUSH_ENDPOINT_HOSTS  extra push-service hosts, comma separated (browsers' are built in)
+//   TRUST_PROXY        "1" behind a reverse proxy that sets X-Real-IP / X-Forwarded-For (default off)
+//   RELAY_VERSION      reported by /healthz
 import { join } from 'node:path'
 import { createRelayServer } from './server'
 import { FilePushStore } from './push-store'
@@ -27,11 +29,12 @@ const log = {
   warn: (line: string) => console.warn(`${new Date().toISOString()} warn ${line}`)
 }
 
+const pushStore = new FilePushStore(join(dataDir, 'push-subscriptions.json'))
 const server = createRelayServer({
-  push: vapid ? new WebPushProvider(vapid) : undefined,
-  pushStore: new FilePushStore(join(dataDir, 'push-subscriptions.json')),
+  push: vapid ? new WebPushProvider(vapid, { extraHosts: (env['PUSH_ENDPOINT_HOSTS'] ?? '').split(',') }) : undefined,
+  pushStore,
   webClientDir: env['WEB_CLIENT_DIR'] || undefined,
-  trustProxy: env['TRUST_PROXY'] !== '0',
+  trustProxy: env['TRUST_PROXY'] === '1',
   version: env['RELAY_VERSION'] ?? 'dev',
   log
 })
@@ -42,6 +45,11 @@ server.http.listen(port, host, () => {
 
 const stop = () => {
   log.info('shutting down')
+  try {
+    pushStore.flush()
+  } catch (err) {
+    log.warn(`push store write failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
   void server.close().then(() => process.exit(0))
   setTimeout(() => process.exit(0), 3000).unref()
 }

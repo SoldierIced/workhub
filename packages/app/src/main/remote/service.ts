@@ -11,6 +11,7 @@ import {
   generateSeed,
   identityFromSeed,
   makeAuth,
+  signPushPayload,
   makePairingOffer,
   openBox,
   pairingLink,
@@ -56,6 +57,10 @@ export interface RemoteState {
 
 export const EMPTY_REMOTE_STATE: RemoteState = { enabled: false, relayUrl: '', desktopName: '', devices: [] }
 
+/** The relay named in scripts/brand.mjs, set at build time (`define`): what a new install uses until Settings names another. */
+declare const __WORKHUB_DEFAULT_RELAY__: string | undefined
+export const DEFAULT_RELAY_URL = typeof __WORKHUB_DEFAULT_RELAY__ === 'string' ? __WORKHUB_DEFAULT_RELAY__ : ''
+
 /** The browser-style WebSocket surface the service uses (Node's global WebSocket, or a fake). */
 export interface WebSocketLike {
   send(text: string): void
@@ -94,6 +99,15 @@ const KIND_CAPABILITY: Partial<Record<NotificationKind, RemoteCapability>> = {
   flowMaps: 'health',
   metricAlert: 'health'
 }
+
+/** Between a device's handshake and its first message that opens: the live link, if any, stays until then. */
+interface PendingLink {
+  channel: SecureChannel
+  at: number
+}
+
+/** A device's lastSeenAt is saved at most this often: a relay replaying presence must not make the desktop write all day. */
+const TOUCH_SAVE_MS = 60_000
 
 interface Link {
   channel: SecureChannel
@@ -140,13 +154,15 @@ export class RemoteService {
   private cancelReconnect: (() => void) | null = null
   private readonly online = new Set<string>()
   private readonly links = new Map<string, Link>()
+  private readonly pendingLinks = new Map<string, PendingLink>()
   private pairing: { offer: PairingOffer; link: string; cancel: () => void } | null = null
   private request: { deviceId: string; name: string; platform: RemoteDevicePlatform; public: PublicIdentity } | null = null
   private readonly now: () => number
   private readonly schedule: (fn: () => void, ms: number) => () => void
 
   constructor(private readonly deps: RemoteServiceDeps) {
-    this.state = deps.store.load(EMPTY_REMOTE_STATE)
+    const loaded = deps.store.load(EMPTY_REMOTE_STATE)
+    this.state = loaded.relayUrl ? loaded : { ...loaded, relayUrl: DEFAULT_RELAY_URL }
     this.now = deps.now ?? Date.now
     this.schedule =
       deps.schedule ??
@@ -279,7 +295,8 @@ export class RemoteService {
     if (!me || !this.state.enabled || !this.socket) return
     const capability = KIND_CAPABILITY[notification.kind]
     if (!capability) return
-    const payload: PushPayload = {
+    // Signed: the relay knows every device's keys and could seal a box of its own, but not sign as us.
+    const payload: PushPayload = signPushPayload(me, {
       v: 1,
       kind: notification.kind,
       title: notification.title,
@@ -288,7 +305,7 @@ export class RemoteService {
       desktop: me.id,
       ...(notification.tag ? { tag: notification.tag } : {}),
       ...(notification.sessionId ? { route: `#session/${encodeURIComponent(notification.sessionId)}` } : {})
-    }
+    })
     for (const device of this.state.devices) {
       if (!device.capabilities.includes(capability)) continue
       const link = this.links.get(device.id)
@@ -327,7 +344,8 @@ export class RemoteService {
       return
     }
     this.socket = socket
-    socket.onopen = () => socket.send(JSON.stringify(makeAuth(me, this.now())))
+    // Nothing goes out on open: the relay speaks first, with the nonce our auth signs.
+    socket.onopen = () => {}
     socket.onmessage = (ev: { data: unknown }) => this.receive(socket, typeof ev.data === 'string' ? ev.data : String(ev.data))
     socket.onerror = () => {
       // `close` follows and schedules the retry; the error itself carries no message in browsers or Node.
@@ -382,6 +400,9 @@ export class RemoteService {
     const message = parseRelayMessage(parsed)
     if (!message) return
     switch (message.t) {
+      case 'challenge':
+        if (this.identity) this.send(makeAuth(this.identity, message.nonce, this.now()))
+        return
       case 'welcome':
         this.attempt = 0
         this.connection = 'online'
@@ -439,14 +460,20 @@ export class RemoteService {
       }
       const parsed = pairRequestSchema.parse(request)
       if (verdict.deviceId !== message.from || fingerprintOf(parsed.device) !== message.from) return
+      // The first device to answer an offer keeps it: a second one means the QR or link leaked.
+      if (this.request && this.request.deviceId !== message.from) {
+        this.deps.log.warn(`remote: a second device (${message.from}) answered the pairing offer while ${this.request.deviceId} waits; ignored`)
+        return
+      }
       this.request = { deviceId: message.from, name: parsed.name, platform: parsed.platform, public: parsed.device }
       this.changed()
       return
     }
     if (!device) return
     if (body.k === 'hs') {
-      // The device initiates; answer with our ephemeral key and keep the channel.
-      this.dropLink(device.id)
+      // The device initiates; answer with our ephemeral key and keep the channel aside until the
+      // device's first message opens with it. A live link stays meanwhile: a relay replaying an
+      // old hello gets a hello back and nothing else, instead of cutting the real device off.
       const pending = startHandshake(me, device.public, 'responder')
       let channel: SecureChannel
       try {
@@ -454,18 +481,17 @@ export class RemoteService {
       } catch {
         return
       }
-      const detach = this.deps.hub.attach({
-        id: device.id,
-        capabilities: new Set(device.capabilities),
-        emit: (channel, args) => {
-          const link = this.links.get(device.id)
-          if (link?.ready) this.sendChannel(device.id, link, { t: 'event', channel, args })
-        }
-      })
-      // The link is in place before our hello goes out: the device's `ready` may come straight back.
-      this.links.set(device.id, { channel, ready: false, detach })
+      this.pendingLinks.set(device.id, { channel, at: this.now() })
       this.sendTo(device.id, { k: 'hs', e: pending.hello.e })
-      this.touch(device.id)
+      return
+    }
+    const pending = this.pendingLinks.get(device.id)
+    const fresh = pending ? pending.channel.open(body.c) : null
+    if (pending && fresh !== null) {
+      this.pendingLinks.delete(device.id)
+      const link = this.promote(device, pending.channel)
+      const channelMessage = parseChannelMessage(fresh)
+      if (channelMessage) void this.handle(device, link, channelMessage)
       return
     }
     const link = this.links.get(device.id)
@@ -479,6 +505,23 @@ export class RemoteService {
     const channelMessage = parseChannelMessage(opened)
     if (!channelMessage) return
     void this.handle(device, link, channelMessage)
+  }
+
+  /** The device proved it holds the new channel: it replaces whatever link it had. */
+  private promote(device: RemoteDeviceRecord, channel: SecureChannel): Link {
+    this.dropLink(device.id)
+    const detach = this.deps.hub.attach({
+      id: device.id,
+      capabilities: new Set(device.capabilities),
+      emit: (channel, args) => {
+        const link = this.links.get(device.id)
+        if (link?.ready) this.sendChannel(device.id, link, { t: 'event', channel, args })
+      }
+    })
+    const link: Link = { channel, ready: false, detach }
+    this.links.set(device.id, link)
+    this.touch(device.id)
+    return link
   }
 
   private async handle(device: RemoteDeviceRecord, link: Link, message: ChannelMessage): Promise<void> {
@@ -508,6 +551,10 @@ export class RemoteService {
         return
       case 'bye':
         this.dropLink(device.id)
+        return
+      case 'unpair':
+        // The device forgot us: it is no longer trusted here either.
+        this.revoke(device.id)
         return
       case 'result':
       case 'event':
@@ -561,6 +608,7 @@ export class RemoteService {
   }
 
   private dropLink(deviceId: string): void {
+    this.pendingLinks.delete(deviceId)
     const link = this.links.get(deviceId)
     if (!link) return
     this.links.delete(deviceId)
@@ -571,7 +619,9 @@ export class RemoteService {
   private touch(deviceId: string): void {
     const device = this.state.devices.find((d) => d.id === deviceId)
     if (!device) return
-    device.lastSeenAt = this.now()
+    const now = this.now()
+    if (device.lastSeenAt && now - device.lastSeenAt < TOUCH_SAVE_MS) return
+    device.lastSeenAt = now
     this.deps.store.save(this.state)
   }
 

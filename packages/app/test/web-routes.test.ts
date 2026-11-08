@@ -33,4 +33,11 @@ describe('web routes', () => {
     expect(routeFromNotification(undefined)).toEqual({ screen: 'home' })
     expect(routeFromNotification('#nowhere')).toEqual({ screen: 'home' })
   })
+
+  it('goes home on a malformed percent-encoding instead of throwing', () => {
+    expect(parseRoute('#session/%E0')).toEqual({ screen: 'home' })
+    expect(parseRoute('#item/%')).toEqual({ screen: 'home' })
+    expect(parseRoute('#milestone/%E0%A4%A')).toEqual({ screen: 'home' })
+    expect(parseRoute('#session/a%20b')).toEqual({ screen: 'session', id: 'a b' })
+  })
 })

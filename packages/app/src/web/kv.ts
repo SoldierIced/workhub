@@ -4,6 +4,8 @@ const DB = 'workhub-remote'
 const STORE = 'kv'
 
 export const SEED_KEY = 'seed'
+/** The paired desktops' public identities by fingerprint: what a pushed notification's signature is checked against. */
+export const DESKTOPS_KEY = 'desktops'
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

@@ -6,6 +6,17 @@ import { navigate, useClient, useClientStatus, useRoute } from '../app-context'
 import { DEVICE_NAME_KEY } from '../device'
 import { BigButton, Header, Screen } from '../ui'
 
+/** The hostname of the offer's relay, or null when the offer carries none or it is not a URL. */
+function relayHost(offer: object): string | null {
+  const relay = (offer as { relay?: unknown }).relay
+  if (typeof relay !== 'string') return null
+  try {
+    return new URL(relay).hostname || null
+  } catch {
+    return null
+  }
+}
+
 /**
  * The first screen, and the one a pairing link opens: shows this phone's fingerprint, then the
  * desktop's offer to confirm, then waits for the desktop to accept.
@@ -27,7 +38,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
     const now = status.desktop?.id ?? null
     if (now !== before.current) {
       before.current = undefined
-      location.hash = '#'
+      history.replaceState(null, '', '#')
       location.reload()
     } else before.current = undefined
   }, [status.state, status.desktop?.id])
@@ -80,6 +91,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
   }
 
   if (status.offer) {
+    const host = relayHost(status.offer)
     return (
       <Screen>
         <div className="safe-top flex flex-1 flex-col gap-5 px-6 pt-10">
@@ -91,6 +103,13 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
           <div className="rounded-xl border border-border bg-surface p-4">
             <div className="text-xs font-semibold tracking-wide text-muted uppercase">{t('web.pair.desktopFingerprint')}</div>
             <div className="fp mt-1 text-md">{status.offer.desktopFingerprint}</div>
+            {host && (
+              <>
+                <div className="mt-3 text-xs font-semibold tracking-wide text-muted uppercase">{t('web.pair.relay')}</div>
+                <div className="mt-1 break-all font-mono text-md">{host}</div>
+                <div className="mt-1 text-xs text-subtle">{t('web.pair.relayHint')}</div>
+              </>
+            )}
             <div className="mt-3 text-xs font-semibold tracking-wide text-muted uppercase">{t('web.pair.thisPhone')}</div>
             <div className="fp mt-1 text-md">{status.fingerprint}</div>
           </div>

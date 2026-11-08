@@ -3,6 +3,7 @@ import type { MetricAlert } from '@workhub/core'
 import type { MetricAlertsView } from '../../shared/metric-alerts-api'
 import { Spinner } from '../../renderer/components/atoms'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
+import { safeHref } from '../../renderer/components/molecules/Markdown'
 import { cn } from '../../renderer/lib/cn'
 import { useConfig, useProfileId, useRemoteData } from '../app-context'
 import { Body, Empty, Header, Screen } from '../ui'
@@ -36,10 +37,11 @@ function AlertRow({ alert }: { alert: MetricAlert }) {
       </div>
     </>
   )
+  const href = safeHref(alert.link)
   return (
     <li>
-      {alert.link ? (
-        <a href={alert.link} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 px-4 py-3 active:bg-surface-hover">
+      {href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 px-4 py-3 active:bg-surface-hover">
           <div className="min-w-0 flex-1">{body}</div>
           <ExternalLink className="mt-1 size-4 shrink-0 text-subtle" aria-hidden />
         </a>

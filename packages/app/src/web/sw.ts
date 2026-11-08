@@ -2,8 +2,8 @@
 // The service worker: opens pushed notifications (sealed to this device's key by the desktop) and
 // shows them; a tap opens the app on the session the notification is about. Nothing is cached
 // here: the app is small and the relay serves it with its own cache headers.
-import { decodeJson, fromBase64Url, identityFromSeed, openBox, parsePushPayload } from '@workhub/protocol'
-import { kvGet, SEED_KEY } from './kv'
+import { decodeJson, fromBase64Url, identityFromSeed, isPublicIdentity, openBox, parsePushPayload, verifyPushPayload } from '@workhub/protocol'
+import { DESKTOPS_KEY, kvGet, SEED_KEY } from './kv'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -35,13 +35,29 @@ async function showPushed(text: string): Promise<void> {
     return
   }
   if (!payload) return
+  // Only a desktop this phone paired with may notify it: the relay holds the phone's public key
+  // and could seal a box of its own, but it cannot sign as the desktop.
+  if (!(await signedByPairedDesktop(payload))) return
   await self.registration.showNotification(payload.title, {
     body: payload.body,
     icon: '/icons/icon-256.png',
     badge: '/icons/icon-256.png',
     ...(payload.tag ? { tag: payload.tag } : {}),
-    data: { route: `${payload.desktop ? `#d/${payload.desktop}/` : '#'}${(payload.route ?? '#').replace(/^#\/?/, '')}`, ts: payload.ts }
+    data: { route: `#d/${payload.desktop}/${(payload.route ?? '#').replace(/^#\/?/, '')}`, ts: payload.ts }
   })
+}
+
+async function signedByPairedDesktop(payload: NonNullable<ReturnType<typeof parsePushPayload>>): Promise<boolean> {
+  const raw = await kvGet(DESKTOPS_KEY)
+  if (!raw) return false
+  let desktops: Record<string, unknown>
+  try {
+    desktops = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return false
+  }
+  const pub = desktops[payload.desktop]
+  return isPublicIdentity(pub) && verifyPushPayload(payload, pub, Date.now())
 }
 
 self.addEventListener('notificationclick', (event) => {

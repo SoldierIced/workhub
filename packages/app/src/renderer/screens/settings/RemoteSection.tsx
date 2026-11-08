@@ -91,7 +91,8 @@ export function RemoteSection() {
   const [relayDraft, setRelayDraft] = useState<string | null>(null)
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [grant, setGrant] = useState<RemoteCapability[]>([...REMOTE_CAPABILITIES])
+  // Automations run agents unattended: a new device gets them only when asked for.
+  const [grant, setGrant] = useState<RemoteCapability[]>(() => REMOTE_CAPABILITIES.filter((c) => c !== 'automations'))
   const [revoking, setRevoking] = useState<RemoteDeviceView | null>(null)
   const qr = useQr(status?.pairing?.link ?? null)
   const [now, setNow] = useState(() => Date.now())

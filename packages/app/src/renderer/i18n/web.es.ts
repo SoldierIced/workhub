@@ -25,6 +25,8 @@ export const webEs: Record<keyof typeof webEn, string> = {
   'web.pair.fingerprintHint': 'La computadora muestra esta misma huella cuando aceptás.',
   'web.pair.offerTitle': '¿Vincular con {desktop}?',
   'web.pair.offerHint': 'Comparala con la huella de Ajustes → Acceso remoto en la computadora antes de confirmar.',
+  'web.pair.relay': 'Relay',
+  'web.pair.relayHint': "Si no es el relay que esperabas, cancelá: el link puede apuntar al servidor de otra persona.",
   'web.pair.desktopFingerprint': 'Computadora',
   'web.pair.deviceName': 'Nombre de este celular',
   'web.pair.confirm': 'Vincular',

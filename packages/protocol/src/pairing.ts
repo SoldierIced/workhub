@@ -6,20 +6,26 @@
 import { hmac } from '@noble/hashes/hmac.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { z } from 'zod'
-import { concatBytes, decodeJson, encodeJson, equalBytes, fromBase64Url, randomBytes, toBase64Url, utf8ToBytes } from './bytes'
+import { decodeJson, encodeJson, equalBytes, fromBase64Url, randomBytes, toBase64Url } from './bytes'
 import { fingerprintOf, sign, verify, isPublicIdentity, type Identity, type PublicIdentity } from './identity'
 
 const publicIdentitySchema = z.custom<PublicIdentity>(isPublicIdentity, 'a public identity')
 
+const base64url = z.string().regex(/^[A-Za-z0-9_-]*$/)
+
 export const pairingOfferSchema = z.object({
   v: z.literal(1),
-  /** The relay's WebSocket URL. */
-  relay: z.string().url(),
+  /** The relay's WebSocket URL (wss, or ws on a local host). */
+  relay: z
+    .string()
+    .max(512)
+    .url()
+    .refine((u) => /^wss:\/\//.test(u) || /^ws:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(u), 'a wss:// relay'),
   desktop: publicIdentitySchema,
   /** What the desktop calls itself ("Ana's MacBook"). */
   name: z.string().min(1).max(80),
   /** base64url of 32 random bytes; proves the device saw this QR. */
-  secret: z.string().min(40).max(48),
+  secret: base64url.length(43),
   /** Unix ms after which the offer is void. */
   exp: z.number().int().positive()
 })
@@ -33,8 +39,8 @@ export const pairRequestSchema = z.object({
   device: publicIdentitySchema,
   name: z.string().min(1).max(80),
   platform: z.enum(['ios', 'android', 'web', 'other']),
-  /** base64url HMAC-SHA256(secret, "workhub-remote/pair" ‖ deviceId ‖ desktopId). */
-  proof: z.string()
+  /** base64url HMAC-SHA256(secret, "workhub-remote/pair" ‖ deviceId ‖ desktopId ‖ name ‖ platform). */
+  proof: base64url.length(43)
 })
 export type PairRequest = z.infer<typeof pairRequestSchema>
 
@@ -43,8 +49,8 @@ export const pairAcceptSchema = z.object({
   desktop: publicIdentitySchema,
   name: z.string().min(1).max(80),
   capabilities: z.array(remoteCapabilitySchema),
-  /** base64url Ed25519 signature by the desktop over "workhub-remote/accept" ‖ deviceId ‖ desktopId ‖ capabilities. */
-  sig: z.string()
+  /** base64url Ed25519 signature by the desktop over "workhub-remote/accept" ‖ deviceId ‖ desktopId ‖ capabilities ‖ name. */
+  sig: base64url.length(86)
 })
 export type PairAccept = z.infer<typeof pairAcceptSchema>
 
@@ -80,12 +86,13 @@ export function offerFromLink(link: string): PairingOffer | null {
   return match ? decodePairingOffer(match[1]!) : null
 }
 
-function proofBytes(offer: PairingOffer, device: PublicIdentity): Uint8Array {
-  return hmac(sha256, fromBase64Url(offer.secret), concatBytes(utf8ToBytes('workhub-remote/pair'), utf8ToBytes(fingerprintOf(device)), utf8ToBytes(fingerprintOf(offer.desktop))))
+function proofBytes(offer: PairingOffer, device: PublicIdentity, name: string, platform: string): Uint8Array {
+  // Every field the person sees is under the HMAC: a relay cannot rename the device on the way.
+  return hmac(sha256, fromBase64Url(offer.secret), encodeJson(['workhub-remote/pair', fingerprintOf(device), fingerprintOf(offer.desktop), name, platform]))
 }
 
 export function answerPairingOffer(me: Identity, offer: PairingOffer, name: string, platform: PairRequest['platform']): PairRequest {
-  return { v: 1, device: me.public, name, platform, proof: toBase64Url(proofBytes(offer, me.public)) }
+  return { v: 1, device: me.public, name, platform, proof: toBase64Url(proofBytes(offer, me.public, name, platform)) }
 }
 
 export type PairRequestVerdict = { ok: true; deviceId: string } | { ok: false; reason: 'expired' | 'proof' | 'malformed' }
@@ -101,17 +108,17 @@ export function verifyPairRequest(offer: PairingOffer, request: unknown, now = D
   } catch {
     return { ok: false, reason: 'proof' }
   }
-  const expected = proofBytes(offer, parsed.data.device)
+  const expected = proofBytes(offer, parsed.data.device, parsed.data.name, parsed.data.platform)
   if (proof.length !== expected.length || !equalBytes(proof, expected)) return { ok: false, reason: 'proof' }
   return { ok: true, deviceId: fingerprintOf(parsed.data.device) }
 }
 
-function acceptBytes(device: PublicIdentity, desktop: PublicIdentity, capabilities: RemoteCapability[]): Uint8Array {
-  return encodeJson(['workhub-remote/accept', fingerprintOf(device), fingerprintOf(desktop), [...capabilities].sort()])
+function acceptBytes(device: PublicIdentity, desktop: PublicIdentity, capabilities: RemoteCapability[], name: string): Uint8Array {
+  return encodeJson(['workhub-remote/accept', fingerprintOf(device), fingerprintOf(desktop), [...capabilities].sort(), name])
 }
 
 export function acceptPairing(me: Identity, device: PublicIdentity, name: string, capabilities: RemoteCapability[]): PairAccept {
-  return { v: 1, desktop: me.public, name, capabilities, sig: toBase64Url(sign(me, acceptBytes(device, me.public, capabilities))) }
+  return { v: 1, desktop: me.public, name, capabilities, sig: toBase64Url(sign(me, acceptBytes(device, me.public, capabilities, name))) }
 }
 
 /** Whether an accept came from the desktop the offer named, for this device. */
@@ -120,7 +127,7 @@ export function verifyPairAccept(offer: PairingOffer, me: Identity, accept: unkn
   if (!parsed.success) return null
   if (fingerprintOf(parsed.data.desktop) !== fingerprintOf(offer.desktop)) return null
   try {
-    if (!verify(parsed.data.desktop, acceptBytes(me.public, parsed.data.desktop, parsed.data.capabilities), fromBase64Url(parsed.data.sig))) return null
+    if (!verify(parsed.data.desktop, acceptBytes(me.public, parsed.data.desktop, parsed.data.capabilities, parsed.data.name), fromBase64Url(parsed.data.sig))) return null
   } catch {
     return null
   }

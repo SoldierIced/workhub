@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { IpcRegistrar } from '../src/main/ipc-guard'
 import { recordIpc, RemoteHub, RemoteRefused, type RemoteDevice } from '../src/main/remote'
-import { REMOTE_INVOKES, REMOTE_MESSAGES } from '../src/main/remote/allowlist'
+import { REMOTE_EVENTS, REMOTE_INVOKES, REMOTE_MESSAGES } from '../src/main/remote/allowlist'
+import { isRemoteForbiddenMode, REMOTE_COSTLY_RATE, REMOTE_GENERIC_ERROR, REMOTE_MAX_IN_FLIGHT, REMOTE_RATE } from '../src/main/remote/dispatcher'
 import type { RemoteCapability } from '../src/shared/remote-api'
 
 function fakeIpc() {
@@ -18,11 +19,18 @@ function device(id: string, caps: RemoteCapability[]): RemoteDevice & { events: 
   return { id, capabilities: new Set(caps), emit: (channel, args) => void events.push([channel, args]), events }
 }
 
-function setup(caps: RemoteCapability[] = ['sessions', 'pullRequests', 'automations', 'health']) {
+function setup(caps: RemoteCapability[] = ['sessions', 'pullRequests', 'automations', 'health', 'plan'], clock?: () => number) {
   const { ipc: inner, registered } = fakeIpc()
   const { ipc, handlers } = recordIpc(inner)
   const calls: [string, unknown[]][] = []
-  ipc.handle('sessions:list', () => [{ id: 's1' }])
+  ipc.handle('sessions:list', () => [{ id: 's1' }, { id: 'reviewer', readOnly: true }])
+  ipc.handle('sessions:setAgentMode', (_e, id, modeId) => ({ id, modeId }))
+  ipc.handle('sessions:setModel', (_e, id, model) => ({ id, model }))
+  ipc.handle('automations:save', () => true)
+  ipc.handle('automations:runNow', () => true)
+  ipc.handle('health:get', () => {
+    throw new Error('ENOENT: no such file /home/someone/private/thing')
+  })
   ipc.handle('sessions:start', (_e, input) => ({ started: input }))
   ipc.handle('sessions:reopen', (_e, identity, input) => ({ identity, started: input }))
   ipc.handle('sessions:prompt', (e, id, text, _images, token) => {
@@ -33,9 +41,10 @@ function setup(caps: RemoteCapability[] = ['sessions', 'pullRequests', 'automati
   ipc.handle('hub:pickFolder', () => '/anywhere')
   ipc.handle('codeHost:lists', (_e, profileId) => ({ profileId }))
   ipc.on('sessions:permission', (_e, ...args) => void calls.push(['sessions:permission', args]))
+  ipc.on('sessions:mcp', (_e, ...args) => void calls.push(['sessions:mcp', args]))
   ipc.on('sessions:ready', () => void calls.push(['sessions:ready', []]))
   const log = { warn: vi.fn() }
-  const hub = new RemoteHub({ handlers, profileFolders: async (profileId) => (profileId === 'work' ? ['/work/api', '/work/web'] : []), log })
+  const hub = new RemoteHub({ handlers, profileFolders: async (profileId) => (profileId === 'work' ? ['/work/api', '/work/web'] : []), log, now: clock })
   const phone = device('phone', caps)
   const detach = hub.attach(phone)
   return { hub, phone, detach, calls, registered, log }
@@ -50,9 +59,23 @@ describe('recordIpc', () => {
 })
 
 describe('RemoteHub', () => {
+  it('lets a device drive MCP servers with the four actions only (an unknown one would disable a server)', () => {
+    const { hub, calls } = setup()
+    hub.message('phone', 'sessions:mcp', ['s1', 'refresh'])
+    hub.message('phone', 'sessions:mcp', ['s1', 'reconnect', 'docs'])
+    expect(calls).toEqual([
+      ['sessions:mcp', ['s1', 'refresh']],
+      ['sessions:mcp', ['s1', 'reconnect', 'docs']]
+    ])
+    expect(() => hub.message('phone', 'sessions:mcp', ['s1', 'nuke', 'docs'])).toThrow(/MCP action/)
+    expect(() => hub.message('phone', 'sessions:mcp', ['s1', 'enable', '--flag'])).toThrow(/server name/)
+    expect(() => hub.message('phone', 'sessions:permission', ['s1', { id: 'r1' }, 'allow'])).toThrow(/request id/)
+    expect(calls).toHaveLength(2)
+  })
+
   it('routes allowed invokes to the registered handler', async () => {
     const { hub } = setup()
-    await expect(hub.invoke('phone', 'sessions:list', [])).resolves.toEqual([{ id: 's1' }])
+    await expect(hub.invoke('phone', 'sessions:list', [])).resolves.toEqual([{ id: 's1' }, { id: 'reviewer', readOnly: true }])
     await expect(hub.invoke('phone', 'codeHost:lists', ['work'])).resolves.toEqual({ profileId: 'work' })
   })
 
@@ -117,6 +140,147 @@ describe('RemoteHub', () => {
     expect(snapshot.issues).toEqual([])
   })
 
+  it('never starts a session, nor switches one, to a mode that skips permissions', async () => {
+    const { hub } = setup()
+    const base = { profileId: 'work', agentKey: 'claude', cwd: '/work/api' }
+    for (const modeId of ['bypassPermissions', 'BYPASSPERMISSIONS', 'auto', 'yolo', 'full-access', 'full-auto']) {
+      await expect(hub.invoke('phone', 'sessions:start', [{ ...base, modeId }])).rejects.toThrow(/not available remotely/)
+      await expect(hub.invoke('phone', 'sessions:reopen', ['id-1', { ...base, modeId }])).rejects.toThrow(/not available remotely/)
+      await expect(hub.invoke('phone', 'sessions:setAgentMode', ['s1', modeId])).rejects.toThrow(/not available remotely/)
+    }
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, modeId: 'plan' }])).resolves.toMatchObject({ started: { modeId: 'plan' } })
+    await expect(hub.invoke('phone', 'sessions:setAgentMode', ['s1', 'acceptEdits'])).resolves.toEqual({ id: 's1', modeId: 'acceptEdits' })
+    expect(isRemoteForbiddenMode('default')).toBe(false)
+  })
+
+  it('keeps the mode of a read-only session', async () => {
+    const { hub } = setup()
+    await expect(hub.invoke('phone', 'sessions:setAgentMode', ['reviewer', 'default'])).rejects.toThrow(/read-only/)
+    await expect(hub.invoke('phone', 'sessions:setAgentMode', ['s1', ''])).rejects.toThrow(/mode id is required/)
+  })
+
+  it('refuses argv-like strings that could become options', async () => {
+    const { hub } = setup()
+    const base = { profileId: 'work', agentKey: 'claude', cwd: '/work/api' }
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, model: '--dangerously-skip-permissions' }])).rejects.toThrow(/model is not valid/)
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, effort: 'high value' }])).rejects.toThrow(/effort is not valid/)
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, resumeAgentSessionId: '-x' }])).rejects.toThrow(/session id is not valid/)
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, worktree: { branch: '--force' } }])).rejects.toThrow(/branch is not valid/)
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, model: 'a'.repeat(129) }])).rejects.toThrow(/model is not valid/)
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, model: 42 }])).rejects.toThrow(/must be text/)
+    await expect(hub.invoke('phone', 'sessions:reopen', ['-id', base])).rejects.toThrow(/identity is not valid/)
+    await expect(hub.invoke('phone', 'sessions:setModel', ['s1', '--model=x'])).rejects.toThrow(/model is not valid/)
+    await expect(hub.invoke('phone', 'sessions:setModel', ['s1', null])).resolves.toEqual({ id: 's1', model: null })
+    await expect(hub.invoke('phone', 'sessions:setModel', ['s1', 'vendor/model-1.5:latest'])).resolves.toEqual({ id: 's1', model: 'vendor/model-1.5:latest' })
+    const ok = { ...base, model: 'model-x', effort: 'high', resumeAgentSessionId: 'abc-123', worktree: { branch: 'feat/thing' } }
+    await expect(hub.invoke('phone', 'sessions:start', [ok])).resolves.toEqual({ started: ok })
+    await expect(hub.invoke('phone', 'sessions:start', [{ ...base, worktree: { branch: '' } }])).resolves.toMatchObject({ started: { worktree: { branch: '' } } })
+  })
+
+  it('refuses automations:save even when a handler exists', async () => {
+    const { hub } = setup()
+    await expect(hub.invoke('phone', 'automations:save', [{ id: 'a' }])).rejects.toThrow(/not available remotely/)
+    await expect(hub.invoke('phone', 'automations:runNow', ['a'])).resolves.toBe(true)
+  })
+
+  it('sends a generic message for handler errors and logs the real one', async () => {
+    const { hub, log } = setup()
+    const err = await hub.invoke('phone', 'health:get', []).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(RemoteRefused)
+    expect((err as Error).message).toBe(REMOTE_GENERIC_ERROR)
+    expect((err as Error).message).not.toContain('/home')
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('ENOENT'))
+  })
+
+  it('limits how often a device calls, and recovers over time', async () => {
+    let now = 0
+    const { hub } = setup(undefined, () => now)
+    for (let i = 0; i < REMOTE_RATE.calls; i++) await hub.invoke('phone', 'sessions:list', [])
+    await expect(hub.invoke('phone', 'sessions:list', [])).rejects.toThrow(/too many calls/)
+    expect(() => hub.message('phone', 'sessions:permission', ['s1', 'r1', 'allow'])).toThrow(/too many calls/)
+    now += REMOTE_RATE.windowMs
+    await expect(hub.invoke('phone', 'sessions:list', [])).resolves.toBeTruthy()
+  })
+
+  it('gives agent runs a tighter budget of their own', async () => {
+    let now = 0
+    const { hub } = setup(undefined, () => now)
+    for (let i = 0; i < REMOTE_COSTLY_RATE.calls; i++) await hub.invoke('phone', 'automations:runNow', ['a'])
+    await expect(hub.invoke('phone', 'automations:runNow', ['a'])).rejects.toThrow(/too many new agent runs/)
+    await expect(hub.invoke('phone', 'sessions:start', [{ profileId: 'work', agentKey: 'claude', cwd: '/work/api' }])).rejects.toThrow(/too many new agent runs/)
+    await expect(hub.invoke('phone', 'sessions:list', [])).resolves.toBeTruthy()
+    now += REMOTE_COSTLY_RATE.windowMs
+    await expect(hub.invoke('phone', 'automations:runNow', ['a'])).resolves.toBe(true)
+  })
+
+  it('caps the calls a device has waiting at once', async () => {
+    const { ipc: inner } = fakeIpc()
+    const { ipc, handlers } = recordIpc(inner)
+    const pending: (() => void)[] = []
+    ipc.handle('sessions:list', () => new Promise<void>((resolve) => void pending.push(resolve)))
+    const hub = new RemoteHub({ handlers, profileFolders: async () => [] })
+    hub.attach(device('phone', ['sessions']))
+    const waiting = Array.from({ length: REMOTE_MAX_IN_FLIGHT }, () => hub.invoke('phone', 'sessions:list', []))
+    await Promise.resolve()
+    await expect(hub.invoke('phone', 'sessions:list', [])).rejects.toThrow(/at once/)
+    pending.forEach((resolve) => resolve())
+    await Promise.all(waiting)
+    const next = hub.invoke('phone', 'sessions:list', [])
+    await Promise.resolve()
+    pending.at(-1)!()
+    await expect(next).resolves.toBeUndefined()
+  })
+
+  it('sends a device only the config fields it shows', async () => {
+    const { ipc: inner } = fakeIpc()
+    const { ipc, handlers } = recordIpc(inner)
+    const criticalities = [{ id: 'high', label: 'High' }]
+    ipc.handle('config:get', () => ({
+      config: {
+        version: 1,
+        connections: [{ id: 'c1', kind: 'tracker', settings: { baseUrl: 'https://tracker.example.com' } }],
+        agents: [{ id: 'custom', env: { TOKEN: 'secret' } }],
+        accounts: [{ id: 'acc', configDir: '/private/acc' }],
+        automations: [{ id: 'nightly', prompt: 'do things', folder: '/private/repo' }],
+        profiles: [{ id: 'work', name: 'Work', color: '#fff', connections: { tracker: 'c1' }, accountIds: ['acc'], modules: { plan: true }, folders: ['/private/repo'], envNames: ['TOKEN'], planner: { inbox: { criticalities, project: 'SECRET' } } }],
+        activeProfileId: 'work'
+      },
+      issues: [{ path: 'x', message: '/private/config.json' }],
+      agents: [{ id: 'custom' }],
+      providers: [{ kind: 'tracker' }],
+      connectionsWithSecret: ['c1'],
+      dataDir: '/private/data',
+      loadError: 'could not read /private/config.json'
+    }))
+    ipc.handle('config:effectiveAgents', () => [
+      { key: 'claude:acc', label: 'Claude', agent: { id: 'claude', name: 'Claude', adapter: 'acp', command: '/private/bin/claude', args: ['--x'], env: { TOKEN: 'secret' }, capabilities: {}, modeSemantics: 'permission', modelArgs: ['--model', '{model}'] }, account: { id: 'acc', agentId: 'claude', name: 'Personal', configDir: '/private/acc', env: { K: 'v' } } }
+    ])
+    const hub = new RemoteHub({ handlers, profileFolders: async () => [] })
+    hub.attach(device('phone', []))
+    const snapshot = await hub.invoke('phone', 'config:get', [])
+    expect(snapshot).toEqual({
+      config: {
+        version: 1,
+        connections: [],
+        agents: [],
+        accounts: [],
+        profiles: [{ id: 'work', name: 'Work', color: '#fff', connections: {}, accountIds: [], modules: { plan: true }, planner: { inbox: { criticalities } } }],
+        activeProfileId: 'work'
+      },
+      issues: [],
+      agents: [],
+      providers: [],
+      connectionsWithSecret: [],
+      dataDir: '',
+      loadError: 'the desktop could not load its config'
+    })
+    const agents = await hub.invoke('phone', 'config:effectiveAgents', ['work'])
+    expect(agents).toEqual([
+      { key: 'claude:acc', label: 'Claude', agent: { id: 'claude', name: 'Claude', adapter: 'acp', command: '', args: [], capabilities: {}, modeSemantics: 'permission' }, account: { id: 'acc', agentId: 'claude', name: 'Personal' } }
+    ])
+    expect(JSON.stringify([snapshot, agents])).not.toMatch(/private|secret|SECRET/)
+  })
+
   it('delivers allowed one-way messages and refuses the rest', () => {
     const { hub, calls } = setup()
     hub.message('phone', 'sessions:permission', ['s1', 'r1', 'allow'])
@@ -169,5 +333,15 @@ describe('allowlist', () => {
     const exposed = [...Object.keys(REMOTE_INVOKES), ...Object.keys(REMOTE_MESSAGES)]
     const forbidden = /^(windows|tray|trayPopover|settings|setup|files|localReview|profileEnv|accountEnv|updates|diag|notifications|systemNotifications):|pickFolder|openExternal|openWindow|reveal|:test$|sessions:ready|sessions:write|sessions:resize|config:(save|delete|set|apply|import)/
     expect(exposed.filter((c) => forbidden.test(c))).toEqual([])
+  })
+
+  it('never lets a device define or delete an automation', () => {
+    expect(REMOTE_INVOKES['automations:save']).toBeUndefined()
+    expect(REMOTE_INVOKES['automations:remove']).toBeUndefined()
+    expect(REMOTE_INVOKES['automations:runNow']).toBe('automations')
+  })
+
+  it('lists only events main taps', () => {
+    expect(REMOTE_EVENTS['remote:notification']).toBeUndefined()
   })
 })

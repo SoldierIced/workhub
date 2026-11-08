@@ -9,6 +9,7 @@ const bundled = ['@workhub/core', '@workhub/adapters', '@workhub/protocol', '@no
 
 interface Brand {
   repo: { owner: string; name: string }
+  relay: string
 }
 
 export default defineConfig(async () => {
@@ -17,7 +18,7 @@ export default defineConfig(async () => {
   return {
     main: {
       build: { externalizeDeps: { exclude: bundled } },
-      define: { __WORKHUB_RELEASE_REPO__: JSON.stringify(`${BRAND.repo.owner}/${BRAND.repo.name}`) }
+      define: { __WORKHUB_RELEASE_REPO__: JSON.stringify(`${BRAND.repo.owner}/${BRAND.repo.name}`), __WORKHUB_DEFAULT_RELAY__: JSON.stringify(BRAND.relay) }
     },
     preload: {},
     renderer: {

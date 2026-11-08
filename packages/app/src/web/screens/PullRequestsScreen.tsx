@@ -3,6 +3,7 @@ import type { PullRequestItem } from '@workhub/core'
 import type { CodeHostLists } from '../../shared/codehost-api'
 import { Spinner } from '../../renderer/components/atoms'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
+import { safeHref } from '../../renderer/components/molecules/Markdown'
 import { cn } from '../../renderer/lib/cn'
 import { useConfig, useProfileId, useRemoteData } from '../app-context'
 import { Body, Empty, Header, Screen, SectionTitle } from '../ui'
@@ -18,27 +19,37 @@ const STATUS_TONE: Record<string, string> = {
   draft: 'bg-surface-hover text-muted'
 }
 
+const ROW = 'flex items-start gap-3 px-4 py-3 active:bg-surface-hover'
+
 function PrRow({ item }: { item: PullRequestItem }) {
   const { t } = useI18n()
   const { pr, status } = item
+  const href = safeHref(pr.url)
+  const content = (
+    <div className="min-w-0 flex-1">
+      <div className="truncate text-md font-medium">{pr.title}</div>
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
+        <span className="font-mono">
+          {pr.repo}#{pr.number}
+        </span>
+        <span>{pr.author}</span>
+        <span className={cn('rounded-full px-2 py-px text-2xs font-semibold', STATUS_TONE[status] ?? 'bg-surface-hover text-muted')}>{pr.isDraft ? t('web.prs.draft') : status}</span>
+        <span className="font-mono text-2xs">
+          <span className="text-success">+{pr.additions}</span> <span className="text-danger">−{pr.deletions}</span>
+        </span>
+      </div>
+    </div>
+  )
   return (
     <li>
-      <a href={pr.url} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3 px-4 py-3 active:bg-surface-hover">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-md font-medium">{pr.title}</div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-            <span className="font-mono">
-              {pr.repo}#{pr.number}
-            </span>
-            <span>{pr.author}</span>
-            <span className={cn('rounded-full px-2 py-px text-2xs font-semibold', STATUS_TONE[status] ?? 'bg-surface-hover text-muted')}>{pr.isDraft ? t('web.prs.draft') : status}</span>
-            <span className="font-mono text-2xs">
-              <span className="text-success">+{pr.additions}</span> <span className="text-danger">−{pr.deletions}</span>
-            </span>
-          </div>
-        </div>
-        <ExternalLink className="mt-1 size-4 shrink-0 text-subtle" aria-hidden />
-      </a>
+      {href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer" className={ROW}>
+          {content}
+          <ExternalLink className="mt-1 size-4 shrink-0 text-subtle" aria-hidden />
+        </a>
+      ) : (
+        <div className={ROW}>{content}</div>
+      )}
     </li>
   )
 }

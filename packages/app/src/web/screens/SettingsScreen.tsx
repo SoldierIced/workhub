@@ -198,7 +198,8 @@ export function SettingsScreen() {
                 onNo={() => setUnpairing(false)}
                 onYes={() => {
                   setUnpairing(false)
-                  void unsubscribeFromPush().catch(() => {})
+                  // Other paired desktops still push to this phone: only the last unpairing turns push off.
+                  if (status.desktops.length <= 1) void unsubscribeFromPush().catch(() => {})
                   client.unpair()
                   navigate({ screen: 'home' }, true)
                 }}

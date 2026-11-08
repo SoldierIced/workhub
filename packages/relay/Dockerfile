@@ -14,7 +14,8 @@ COPY packages/relay packages/relay
 RUN npm run build -w @workhub/relay
 
 FROM node:22-alpine
-ENV NODE_ENV=production PORT=8787 DATA_DIR=/data
+ARG RELAY_VERSION=dev
+ENV NODE_ENV=production PORT=8787 DATA_DIR=/data RELAY_VERSION=$RELAY_VERSION
 RUN addgroup -S relay && adduser -S relay -G relay && mkdir -p /data /web && chown relay:relay /data
 WORKDIR /app
 COPY --from=build /src/packages/relay/dist/relay.cjs ./relay.cjs

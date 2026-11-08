@@ -28,6 +28,12 @@ describe('pairing', () => {
     expect(offerFromLink('https://remote.example.com/')).toBeNull()
     expect(decodePairingOffer('AAAA')).toBeNull()
     expect(decodePairingOffer('not base64url!')).toBeNull()
+    // The relay must be wss (ws only on a local host) and the secret exactly 32 bytes.
+    expect(decodePairingOffer(encodePairingOffer({ ...offer, relay: 'https://relay.example.com/ws' }))).toBeNull()
+    expect(decodePairingOffer(encodePairingOffer({ ...offer, relay: 'ws://relay.example.com/ws' }))).toBeNull()
+    expect(decodePairingOffer(encodePairingOffer({ ...offer, relay: 'ws://localhost:8787/ws' }))).not.toBeNull()
+    expect(decodePairingOffer(encodePairingOffer({ ...offer, secret: 'A'.repeat(42) }))).toBeNull()
+    expect(decodePairingOffer(encodePairingOffer({ ...offer, secret: 'A'.repeat(43) }))).not.toBeNull()
   })
 
   it('accepts a request made with the secret from the QR, before the offer expires', () => {
@@ -42,7 +48,11 @@ describe('pairing', () => {
     expect(verifyPairRequest(offer, forOther, NOW)).toEqual({ ok: false, reason: 'proof' })
     const request = answerPairingOffer(phone, offer, 'phone', 'ios')
     expect(verifyPairRequest(offer, { ...request, device: generateIdentity().public }, NOW)).toEqual({ ok: false, reason: 'proof' })
-    expect(verifyPairRequest(offer, { ...request, proof: '!!' }, NOW)).toEqual({ ok: false, reason: 'proof' })
+    expect(verifyPairRequest(offer, { ...request, proof: 'A'.repeat(43) }, NOW)).toEqual({ ok: false, reason: 'proof' })
+    // The name and platform the person sees are under the proof: nobody renames the device on the way.
+    expect(verifyPairRequest(offer, { ...request, name: 'Ana’s other phone' }, NOW)).toEqual({ ok: false, reason: 'proof' })
+    expect(verifyPairRequest(offer, { ...request, platform: 'android' }, NOW)).toEqual({ ok: false, reason: 'proof' })
+    expect(verifyPairRequest(offer, { ...request, proof: '!!' }, NOW)).toEqual({ ok: false, reason: 'malformed' })
     expect(verifyPairRequest(offer, { v: 1 }, NOW)).toEqual({ ok: false, reason: 'malformed' })
     expect(verifyPairRequest(offer, null, NOW)).toEqual({ ok: false, reason: 'malformed' })
   })
@@ -54,7 +64,9 @@ describe('pairing', () => {
     expect(verifyPairAccept(offer, generateIdentity(), accept)).toBeNull()
     const impostor = generateIdentity()
     expect(verifyPairAccept(offer, phone, acceptPairing(impostor, phone.public, 'x', ['sessions']))).toBeNull()
+    expect(verifyPairAccept(offer, phone, { ...accept, sig: 'A'.repeat(86) })).toBeNull()
     expect(verifyPairAccept(offer, phone, { ...accept, sig: 'AAAA' })).toBeNull()
+    expect(verifyPairAccept(offer, phone, { ...accept, name: 'Someone else’s MacBook' })).toBeNull()
     expect(verifyPairAccept(offer, phone, 'junk')).toBeNull()
   })
 })

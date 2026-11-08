@@ -21,11 +21,16 @@ class FakeSocket {
   ) {
     queueMicrotask(() => {
       this.peer = core.connect({ send: (text) => this.onmessage?.({ data: text }), close: (code, reason) => this.drop(code, reason) }, address)
+      // The client answers the relay's challenge while connect() is still running: delivered now that the peer exists.
+      for (const text of this.early.splice(0)) if (this.peer) this.core.receive(this.peer, text)
       this.onopen?.({})
     })
   }
+  private readonly early: string[] = []
   send(text: string) {
-    if (this.peer && !this.closed) this.core.receive(this.peer, text)
+    if (this.closed) return
+    if (!this.peer) this.early.push(text)
+    else this.core.receive(this.peer, text)
   }
   close(code = 1000, reason = '') {
     this.drop(code, reason)
@@ -41,6 +46,9 @@ class FakeSocket {
 
 class MemStorage implements ClientStorage {
   readonly map = new Map<string, string>()
+  keys() {
+    return [...this.map.keys()]
+  }
   get(key: string) {
     return this.map.get(key) ?? null
   }
@@ -197,7 +205,7 @@ describe('RemoteClient', () => {
     const { d, p } = await paired()
     const notes: unknown[] = []
     p.client.transport.subscribe('remote:notification', (n) => notes.push(n))
-    p.client.setPushSubscription({ endpoint: 'https://push.example.com/abc', keys: { p256dh: 'p', auth: 'a' } })
+    p.client.setPushSubscription({ endpoint: 'https://push.example.com/abc', keys: { p256dh: 'B'.repeat(87), auth: 'C'.repeat(22) } })
     await settle()
     d.service.notify({ kind: 'replied', title: 'Fix tests', body: 'Done', at: NOW, sessionId: 's1' })
     await settle()
@@ -270,9 +278,27 @@ describe('RemoteClient', () => {
     await settle()
     expect(p.sockets).toHaveLength(1)
 
-    const { p: other } = await paired()
+    const { d: desk, p: other } = await paired(['sessions', 'pullRequests'])
+    await other.hub.sessions.list()
+    await other.hub.codeHost.lists('p1')
+    expect([...other.storage.map.keys()].filter((k) => k.startsWith('workhub-remote-cache:'))).toHaveLength(2)
+    expect(desk.service.status().devices).toHaveLength(1)
     other.client.unpair()
+    await settle()
     expect(other.client.status()).toMatchObject({ state: 'unpaired', desktop: null })
+    // Every cached answer went, the keyed ones too; and the desktop dropped the phone as well.
+    expect([...other.storage.map.keys()].filter((k) => k.startsWith('workhub-remote-cache:'))).toEqual([])
+    expect(desk.service.status().devices).toEqual([])
+  })
+
+  it('tells the person which relay a pairing link points at', async () => {
+    const d = desktop()
+    await d.service.start()
+    await settle()
+    const link = (await d.service.startPairing()).pairing!.link
+    const p = phone(d.core)
+    expect(p.client.openPairingLink(link)).toBe(true)
+    expect(p.client.status().offer).toMatchObject({ desktopName: 'Ana’s MacBook', relay: 'wss://relay.example.com/ws' })
   })
 
   it('pairs with a second desktop, switches between them with separate caches, and keeps the other when one revokes', async () => {

@@ -1196,11 +1196,12 @@ function registerIpc(): void {
   registerMetricAlertsIpc(ipc, metricAlerts)
   registerRemoteIpc(ipc, remoteService)
   // A paired device reads a file the agent made, only inside the session's folder (see remote/allowlist.ts).
+  // Containment is checked again on the real paths, symlinks resolved, and secret-like names are refused (remote/files.ts).
   ipc.handle('remote:file', (_e, id: unknown, path: unknown) => {
     if (typeof id !== 'string' || typeof path !== 'string') throw new Error('a session and a path are required')
-    const target = sessions.fileInSession(id, path)
-    if (!target) throw new Error('the file is not in the session folder')
-    return readRemoteFile(target)
+    const view = sessions.list().find((v) => v.id === id)
+    if (!view) throw new Error('the session is not open')
+    return readRemoteFile(view.cwd, path)
   })
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   // The chat's Listen button: a long agent message is summarized (one small Haiku query) before it is read aloud.
