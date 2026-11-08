@@ -6,6 +6,7 @@
   "license": "MIT",
   "workspaces": [
     "packages/core",
+    "packages/protocol",
     "packages/adapters",
     "packages/app"
   ],
