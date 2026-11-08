@@ -5,16 +5,18 @@ original scope and decisions are in [PLAN.md](../PLAN.md).
 
 ## Packages
 
-An npm workspace with three packages. Dependencies point inward.
+An npm workspace with five packages. Dependencies point inward.
 
 | Package | Role | May depend on |
 |---|---|---|
 | `packages/core` | Domain models, ports (interfaces), use cases, the config schema. Pure TypeScript; its only runtime dependency is `zod`. No Electron or Node APIs. | nothing in the repo |
+| `packages/protocol` | The Workhub Remote wire protocol: device identities, pairing, the end-to-end encrypted channel and its message schemas. Pure TypeScript that runs in Node and the browser (`zod`, `@noble/curves`, `@noble/ciphers`, `@noble/hashes`). | nothing in the repo |
+| `packages/relay` | The relay a desktop and its paired devices meet through: WebSocket rooms, presence, Web Push for devices that are offline, and the web client's files. It forwards bodies it cannot read. Bundled with esbuild into one file and shipped as a container image (`packages/relay/Dockerfile`). | `protocol` |
 | `packages/adapters` | Implementations of the ports on Node and Electron: agents, code hosts, trackers, chat, health, calendars, storage, transcript readers. | `core` |
-| `packages/app` | The Electron shell: main process, preload bridge and the React renderer (Tailwind and Radix, English and Spanish). | `core`, `adapters` |
+| `packages/app` | The Electron shell: main process, preload bridge and the React renderer (Tailwind and Radix, English and Spanish), plus the web client the same renderer builds for paired devices. | `core`, `adapters`, `protocol` |
 
 Workspace packages ship TypeScript source and the app bundles them with electron-vite, so there is
-no separate build step for `core` or `adapters`. `scripts/` holds build, release, icon and install
+no separate build step for `core`, `protocol` or `adapters`; only `relay` bundles itself for its image. `scripts/` holds build, release, icon and install
 scripts; `spike/` is a historical spike and is not part of the workspaces.
 
 ```mermaid

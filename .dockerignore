@@ -1,0 +1,8 @@
+node_modules
+**/node_modules
+**/out
+**/dist
+**/.dev-data
+**/.demo-data
+spike
+.git
