@@ -4,6 +4,31 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.23](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.22...v2.0.0-alpha.23) (2026-11-08)
+
+
+### Features
+
+* per-profile pull request filters and automations scope ([#67](https://github.com/SoldierIced/workhub/issues/67)) ([a662006](https://github.com/SoldierIced/workhub/commit/a662006ce7d56d19dc2246829caa00a29c5537d3))
+* **protocol:** identities, pairing and the end-to-end encrypted channel ([7dec04d](https://github.com/SoldierIced/workhub/commit/7dec04d9985534f9c957d38052a463c0d984003c))
+* **protocol:** identities, pairing and the end-to-end encrypted channel for remote access ([5319304](https://github.com/SoldierIced/workhub/commit/5319304bcee4866f56a9871bddde34afda09f693))
+* **relay:** WebSocket relay with presence, rate limits, Web Push and a container image ([167bc59](https://github.com/SoldierIced/workhub/commit/167bc59fba8007c86b122cc3b59a7eb5567295f0))
+* **relay:** WebSocket relay with presence, rate limits, Web Push and a container image ([ea6724b](https://github.com/SoldierIced/workhub/commit/ea6724b35e4ad4aa99fd123577849ebc34523efb))
+* **remote:** build window.hub over a transport and route paired devices to the same handlers ([68c9dfc](https://github.com/SoldierIced/workhub/commit/68c9dfcaf20656600ea1a1fd5fbb26b4581f15d6))
+* **remote:** desktop side: Settings → Remote access, pairing, device links and notifications ([40c313c](https://github.com/SoldierIced/workhub/commit/40c313c1ec9ce490869f098414d46a88a8f86b3e))
+* **remote:** hub transport seam and remote dispatcher ([c354a39](https://github.com/SoldierIced/workhub/commit/c354a39c8168b2701e1efce8e61fe2459747f2c0))
+* **remote:** pair the phone with several computers and switch between them ([d05cfdf](https://github.com/SoldierIced/workhub/commit/d05cfdf51ab925957c39961eed7b810f9880d5da))
+* **remote:** phone web app served by the relay, with push notifications ([ce3d0a2](https://github.com/SoldierIced/workhub/commit/ce3d0a29849c7b7e287d5605cdbab1aed75924bd))
+* **remote:** phone web app served by the relay, with push notifications ([08246c2](https://github.com/SoldierIced/workhub/commit/08246c2722588070d8c947bfe23930bd967cf7a3))
+* **remote:** Plan on the phone, phone settings and a paste field for pairing ([c5e226d](https://github.com/SoldierIced/workhub/commit/c5e226dfd3442b7f2807f85694f74a6e73a44cbf))
+* **remote:** Settings → Remote access: relay connection, QR pairing, paired devices and notifications ([a6e6882](https://github.com/SoldierIced/workhub/commit/a6e68825560ac9db84ccb47974a105ecc39154c5))
+
+
+### Bug Fixes
+
+* **remote:** harden the relay, the protocol and the remote dispatcher ([4cf35f3](https://github.com/SoldierIced/workhub/commit/4cf35f317ced0b8aa9fa841ebe2d1825d3f31397))
+* **remote:** harden the relay, the protocol and the remote dispatcher ([b3a0dc1](https://github.com/SoldierIced/workhub/commit/b3a0dc17f5a5d7996dc22a3e57e9f786538ad3c0))
+
 ## [2.0.0-alpha.22](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.21...v2.0.0-alpha.22) (2026-11-07)
 
 
