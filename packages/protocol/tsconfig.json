@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No @types/node and no DOM beyond what WebCrypto needs: the same code runs in Node and in a browser.
+    "types": [],
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src", "test"]
+}

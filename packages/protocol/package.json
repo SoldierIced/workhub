@@ -1,0 +1,19 @@
+{
+  "name": "@workhub/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workhub Remote wire protocol: device identities, pairing, the end-to-end encrypted channel and its messages. Pure TypeScript: runs in Node and in the browser.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "zod": "4.6.7"
+  }
+}
