@@ -451,6 +451,7 @@ const profile = z.object({
   linkChromeProfile: z.string().trim().regex(CHROME_PROFILE_DIR).optional(),
   ownsOutside: z.boolean().optional(),
   envNames: z.array(z.string().regex(ENV_NAME)).optional(),
+  pullRequests: z.object({ owners: z.array(z.string().trim().min(1).max(200)).max(50).optional(), excludeRepos: z.array(z.string().trim().min(1).max(200)).max(200).optional() }).optional(),
   health: healthSettings.optional(),
   slackArchiveMinutes: z.number().int().min(1).optional(),
   aiReview: aiReview.optional(),

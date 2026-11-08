@@ -15,11 +15,17 @@ import { PlanSettings } from '../PlanSettings'
 import { SlackArchiveField, SlackSettings } from '../SlackSettings'
 import { TrackerSettings } from '../TrackerSettings'
 import { SCREEN_ROWS, type ScreenRow } from './profileSummary'
+import { PullRequestsFilterFields } from './PullRequestsFilter'
 import type { ProfileScreen } from './sections'
 import { Disclosure, saveProfilePatch, type SectionProps } from './shared'
 
-type Picks = Pick<Profile, 'modules' | 'connections' | 'slackArchiveMinutes'>
-const picksOf = (p: Profile): Picks => ({ modules: { ...p.modules }, connections: { ...p.connections }, ...(p.slackArchiveMinutes !== undefined ? { slackArchiveMinutes: p.slackArchiveMinutes } : {}) })
+type Picks = Pick<Profile, 'modules' | 'connections' | 'slackArchiveMinutes' | 'pullRequests'>
+const picksOf = (p: Profile): Picks => ({
+  modules: { ...p.modules },
+  connections: { ...p.connections },
+  ...(p.slackArchiveMinutes !== undefined ? { slackArchiveMinutes: p.slackArchiveMinutes } : {}),
+  ...(p.pullRequests ? { pullRequests: p.pullRequests } : {})
+})
 
 export interface ProfileScreensTabProps extends SectionProps {
   profileId: string
@@ -52,6 +58,8 @@ export function ProfileScreensTab({ snap, run, profileId, openScreen, focusHealt
       const out: Profile = { ...p, modules: form.modules, connections: form.connections }
       if (form.slackArchiveMinutes !== undefined) out.slackArchiveMinutes = form.slackArchiveMinutes
       else delete out.slackArchiveMinutes
+      if (form.pullRequests) out.pullRequests = form.pullRequests
+      else delete out.pullRequests
       return out
     }
     if (!(await saveProfilePatch(run, profile.id, next))) return { ok: false }
@@ -68,6 +76,17 @@ export function ProfileScreensTab({ snap, run, profileId, openScreen, focusHealt
 
   const settingsOf = (key: ProfileScreen): ReactNode => {
     switch (key) {
+      case 'pullRequests':
+        return (
+          <PullRequestsFilterFields
+            value={form.pullRequests}
+            editable={editable}
+            onChange={(pullRequests) => {
+              const { pullRequests: _old, ...rest } = form
+              setForm(pullRequests ? { ...rest, pullRequests } : rest)
+            }}
+          />
+        )
       case 'tickets':
         return <TrackerSettings snap={snap} run={run} initialId={trackerId} profileId={profile.id} />
       case 'slack':

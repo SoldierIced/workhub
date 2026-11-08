@@ -176,5 +176,14 @@ export const prEn = {
   'pr.narrow.shown': '{shown} of {total}',
   'pr.narrow.clear': 'Clear',
   'pr.narrow.selected': '{title}: {count}',
-  'pr.narrow.bar': 'Narrow the list'
+  'pr.narrow.bar': 'Narrow the list',
+  'prFilter.intro': 'Which pull requests this profile shows. Another profile can use the same login with other owners.',
+  'prFilter.owners': 'Organizations or users',
+  'prFilter.ownersHint': 'One per line. Only their repositories are read. Empty: the connection\'s scope, else the repositories of the profile\'s folders, else everything your login sees.',
+  'prFilter.exclude': 'Hidden repositories',
+  'prFilter.excludeHint': 'One per line, as owner/repo. Use * for any name: owner/legacy-* or owner/*.',
+  'prFilter.invalid': 'Ignored (not valid): {list}',
+  'automations.showAll': 'All profiles',
+  'automations.showAllHint': 'Off: only the automations of the profile open now (and those without a profile).',
+  'automations.hiddenCount': '{count} more in other profiles'
 } as const

@@ -185,6 +185,15 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   ]),
   ...profileRows(
     "screens",
+    undefined,
+    [
+      ["prFilter.owners", "prFilter.ownersHint"],
+      ["prFilter.exclude", "prFilter.excludeHint"],
+    ],
+    "pullRequests",
+  ),
+  ...profileRows(
+    "screens",
     "trackers.list",
     [
       ["trackers.provider", undefined, "help.trackers.list"],

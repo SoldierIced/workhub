@@ -12,7 +12,19 @@ login: it stores no token for them. GitLab is covered by fixture tests only so f
    line; for example `scope=org:acme` narrows the GitHub search to an organization.
 3. Refresh. If `gh` is missing or signed out, the screen says so and shows the command to run.
 
-The profile's folders are used as a fallback for finding repositories.
+## Which pull requests a profile shows
+
+Each profile picks its own pull requests in **Settings → Profiles → (profile) → Screens → Pull
+requests**, so one login can show only the work organization in one profile and only your own
+repositories in another:
+
+| Field | What it does |
+|---|---|
+| **Organizations or users** | One per line (`acme`, `ana`; a GitLab group such as `acme/team`). Only their repositories are read. |
+| **Hidden repositories** | One per line, as `owner/repo`; `*` stands for any name (`acme/legacy-*`, `acme/*`). Never shown, even when an owner above includes them. |
+
+With no owners, the search falls back to the connection's `scope`, then to the repositories of the
+profile's folders, then to everything your login sees. Hidden repositories apply in every case.
 
 ## The list
 
