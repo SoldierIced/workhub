@@ -23,7 +23,14 @@ const TYPES: Record<string, string> = {
 
 /** The file under `root` a request path names, or null when it escapes the root or does not exist. */
 export function resolveStatic(root: string, urlPath: string): { path: string; type: string; immutable: boolean } | null {
-  const decoded = decodeURIComponent(urlPath.split('?')[0] ?? '/')
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(urlPath.split('?')[0] ?? '/')
+  } catch {
+    // A malformed escape (`/%E0`): not a file of ours.
+    return null
+  }
+  if (decoded.includes('\0')) return null
   const rootAbs = resolve(root)
   const wanted = normalize(join(rootAbs, decoded))
   if (wanted !== rootAbs && !wanted.startsWith(rootAbs + sep)) return null
@@ -45,8 +52,6 @@ export function serveStatic(root: string, req: IncomingMessage, res: ServerRespo
   const found = resolveStatic(root, req.url ?? '/')
   if (!found) return false
   res.setHeader('Content-Type', found.type)
-  res.setHeader('X-Content-Type-Options', 'nosniff')
-  res.setHeader('Referrer-Policy', 'no-referrer')
   res.setHeader('Cache-Control', found.immutable ? 'public, max-age=31536000, immutable' : 'no-cache')
   if (req.method === 'HEAD') {
     res.end()

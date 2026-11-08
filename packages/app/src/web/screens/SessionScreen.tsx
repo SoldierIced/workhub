@@ -14,6 +14,8 @@ import { basename, Body, Header, InlineConfirm, Screen } from '../ui'
 import { sessionTitle } from './HomeScreen'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i
+/** What is shown inline; anything else (SVG included: it can carry scripts) only downloads. */
+const INLINE_IMAGE = /^image\/(png|jpeg|gif|webp)$/
 
 function pathOf(view: ToolView | undefined): string | null {
   if (!view) return null
@@ -41,9 +43,10 @@ function FileChip({ sessionId, path }: { sessionId: string; path: string }) {
     }
   }
   const dataUrl = file ? `data:${file.mime};base64,${file.data}` : null
+  const inline = file !== null && INLINE_IMAGE.test(file.mime)
   return (
     <div className="mt-1.5 overflow-hidden rounded-lg border border-border bg-bg">
-      {dataUrl && isImage && <img src={dataUrl} alt={file!.name} className="max-h-72 w-full object-contain" />}
+      {dataUrl && inline && <img src={dataUrl} alt={file!.name} className="max-h-72 w-full object-contain" />}
       <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
         {isImage ? <ImageIcon className="size-3.5 shrink-0 text-info" aria-hidden /> : <FileText className="size-3.5 shrink-0 text-info" aria-hidden />}
         <span className="min-w-0 flex-1 truncate font-mono text-muted">{basename(path)}</span>

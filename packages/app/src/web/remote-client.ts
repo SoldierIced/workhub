@@ -38,6 +38,8 @@ export interface ClientStorage {
   get(key: string): string | null
   set(key: string, value: string): void
   remove(key: string): void
+  /** Every key, when the store can list them (localStorage can): what clearing a desktop's cache needs. */
+  keys?(): string[]
 }
 
 export interface WebSocketLike {
@@ -87,8 +89,8 @@ export interface ClientStatus {
   desktops: PairedDesktop[]
   /** This device's fingerprint, as people compare it. */
   fingerprint: string
-  /** An offer waiting for the person's confirmation. */
-  offer: { desktopName: string; desktopFingerprint: string } | null
+  /** An offer waiting for the person's confirmation; `relay` is the host the link points at. */
+  offer: { desktopName: string; desktopFingerprint: string; relay: string } | null
   error?: string
   vapidPublicKey?: string
 }
@@ -107,6 +109,8 @@ export interface RemoteClientDeps {
 
 const STATE_KEY = 'workhub-remote'
 const CACHE_PREFIX = 'workhub-remote-cache:'
+/** Twice the largest body the protocol allows, as UTF-16 code units. */
+const MAX_RELAY_FRAME_CHARS = 2 * 1024 * 1024
 
 /** Calls whose last answer the phone keeps, so it has something to show without network. */
 export const CACHED_CHANNELS: ReadonlySet<string> = new Set(['sessions:list', 'config:get', 'config:effectiveAgents', 'hub:profileFolders', 'agents:availability', 'codeHost:lists', 'metricAlerts:list', 'automations:get', 'health:get', 'plan:get', 'planner:get'])
@@ -129,7 +133,8 @@ export class RemoteClient {
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; cancel: () => void }>()
   private readonly listeners = new Map<string, Set<(...args: any[]) => void>>()
   private readonly statusListeners = new Set<(status: ClientStatus) => void>()
-  private readonly cacheKey: Uint8Array
+  /** One cache key per desktop, derived from the seed; entries of one desktop never open as another's. */
+  private readonly cacheKeys = new Map<string, Uint8Array>()
   private pushSubscription: unknown | null = null
   /** The page is in the background: no socket, so the desktop pushes notifications instead. */
   private suspended = false
@@ -146,7 +151,6 @@ export class RemoteClient {
       })
     this.persisted = this.loadPersisted()
     this.identity = identityFromSeed(fromBase64Url(this.persisted.seed))
-    this.cacheKey = deriveKey(this.identity.seed, undefined, 'workhub-remote/cache/v1')
     this.state = this.desktop ? 'connecting' : 'unpaired'
     this.transport = {
       invoke: (channel, ...args) => this.invoke(channel, args),
@@ -214,7 +218,7 @@ export class RemoteClient {
       desktop: this.desktop ?? null,
       desktops: this.desktops(),
       fingerprint: displayFingerprint(this.identity.id),
-      offer: offer ? { desktopName: offer.name, desktopFingerprint: displayFingerprint(fingerprintOf(offer.desktop)) } : null,
+      offer: offer ? { desktopName: offer.name, desktopFingerprint: displayFingerprint(fingerprintOf(offer.desktop)), relay: offer.relay } : null,
       ...(this.error ? { error: this.error } : {}),
       ...(this.vapidPublicKey ? { vapidPublicKey: this.vapidPublicKey } : {})
     }
@@ -274,6 +278,15 @@ export class RemoteClient {
    */
   unpair(id = this.persisted.active): void {
     if (!id || !this.persisted.desktops[id]) return
+    // Tell the desktop while the channel is up, so it drops this phone too; forgetting alone would
+    // leave it trusted there. The channel is let go first: the desktop's `bye` must not count as a revoke.
+    const desktop = this.desktop
+    const channel = this.channel
+    if (id === this.persisted.active && this.ready && channel && desktop) {
+      this.channel = null
+      this.ready = false
+      this.sendRelay({ t: 'to', room: desktop.id, to: desktop.id, body: { k: 'enc', c: channel.seal({ t: 'unpair' }) } })
+    }
     this.forget(id, 'unpaired')
   }
 
@@ -310,7 +323,7 @@ export class RemoteClient {
     const raw = this.deps.storage.get(cacheKeyOf(desktop.id, channel, args))
     if (!raw) return null
     try {
-      const plain = decrypt(this.cacheKey, fromBase64Url(raw))
+      const plain = decrypt(this.cacheKeyFor(desktop.id), fromBase64Url(raw))
       return plain ? (decodeJson(plain) as T) : null
     } catch {
       return null
@@ -335,7 +348,8 @@ export class RemoteClient {
       return
     }
     this.socket = socket
-    socket.onopen = () => socket.send(JSON.stringify(makeAuth(this.identity, this.now())))
+    // The relay speaks first, with the nonce our auth signs.
+    socket.onopen = () => {}
     socket.onmessage = (ev: { data: unknown }) => this.receive(socket, typeof ev.data === 'string' ? ev.data : String(ev.data), offer)
     socket.onerror = () => {}
     socket.onclose = (ev: { code: number; reason: string }) => {
@@ -379,6 +393,8 @@ export class RemoteClient {
 
   private receive(socket: WebSocketLike, text: string, offer?: PairingOffer): void {
     if (this.socket !== socket) return
+    // A relay frame is never this large; a hostile relay must not make the phone parse one.
+    if (text.length > MAX_RELAY_FRAME_CHARS) return
     let parsed: unknown
     try {
       parsed = JSON.parse(text)
@@ -387,6 +403,10 @@ export class RemoteClient {
     }
     const message = parseRelayMessage(parsed)
     if (!message) return
+    if (message.t === 'challenge') {
+      this.sendRelay(makeAuth(this.identity, message.nonce, this.now()))
+      return
+    }
     const desktopId = offer ? fingerprintOf(offer.desktop) : this.desktop?.id
     if (!desktopId) return
     switch (message.t) {
@@ -649,17 +669,27 @@ export class RemoteClient {
     const desktop = this.desktop
     if (!desktop) return
     try {
-      this.deps.storage.set(cacheKeyOf(desktop.id, channel, args), toBase64Url(encrypt(this.cacheKey, encodeJson(value ?? null))))
+      this.deps.storage.set(cacheKeyOf(desktop.id, channel, args), toBase64Url(encrypt(this.cacheKeyFor(desktop.id), encodeJson(value ?? null))))
     } catch {
       // Storage full or unavailable: the live answer still returned.
     }
   }
 
-  private clearCache(desktopId: string): void {
-    for (const channel of CACHED_CHANNELS) {
-      // Only argument-free keys can be enumerated here; keyed ones stay unreadable once the desktop is gone.
-      this.deps.storage.remove(cacheKeyOf(desktopId, channel, []))
+  private cacheKeyFor(desktopId: string): Uint8Array {
+    let key = this.cacheKeys.get(desktopId)
+    if (!key) {
+      key = deriveKey(this.identity.seed, undefined, `workhub-remote/cache/v2/${desktopId}`)
+      this.cacheKeys.set(desktopId, key)
     }
+    return key
+  }
+
+  /** Every cached answer of a desktop, whatever its arguments. */
+  private clearCache(desktopId: string): void {
+    const prefix = `${CACHE_PREFIX}${desktopId}:`
+    const keys = this.deps.storage.keys?.() ?? [...CACHED_CHANNELS].map((channel) => cacheKeyOf(desktopId, channel, []))
+    for (const key of keys) if (key.startsWith(prefix)) this.deps.storage.remove(key)
+    this.cacheKeys.delete(desktopId)
   }
 
   private changed(): void {

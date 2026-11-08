@@ -48,6 +48,11 @@ describe('bytes', () => {
       expect(fromBase64Url(text)).toEqual(bytes)
     }
     expect(() => fromBase64Url('a+b/')).toThrow(/base64url/)
+    // Canonical only: a 4n+1 length, or leftover bits that are not zero, never came from toBase64Url.
+    expect(() => fromBase64Url('AAAAA')).toThrow(/base64url/)
+    expect(() => fromBase64Url('AB')).toThrow(/base64url/)
+    expect(fromBase64Url('AQ')).toEqual(Uint8Array.from([1]))
+    expect(fromBase64Url('AAE')).toEqual(Uint8Array.from([0, 1]))
   })
 
   it('compares bytes', () => {

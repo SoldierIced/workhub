@@ -1,5 +1,5 @@
 export { RelayCore, MemoryPushStore, DEFAULT_LIMITS, type Peer, type PushProvider, type PushStore, type PushRecord, type RelayLimits, type Socket } from './core'
-export { createRelayServer, type RelayServer, type RelayServerOptions } from './server'
+export { addressOf, createRelayServer, type RelayServer, type RelayServerOptions } from './server'
 export { FilePushStore } from './push-store'
-export { WebPushProvider, generateVapidKeys } from './push'
+export { WebPushProvider, generateVapidKeys, pushEndpointAllowed, DEFAULT_PUSH_HOSTS } from './push'
 export { resolveStatic, serveStatic } from './static'

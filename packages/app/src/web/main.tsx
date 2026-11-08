@@ -6,7 +6,7 @@ import { buildHub } from '../shared/hub-client'
 import { startStore } from '../renderer/store'
 import { App } from './App'
 import type { WebApp } from './app-context'
-import { currentPushSubscription, defaultDeviceName, detectPlatform, kvSet, registerServiceWorker, SEED_KEY } from './browser'
+import { currentPushSubscription, defaultDeviceName, detectPlatform, DESKTOPS_KEY, kvSet, registerServiceWorker, SEED_KEY } from './browser'
 import { DEVICE_NAME_KEY } from './device'
 import { RemoteClient } from './remote-client'
 import { splitDesktop } from './routes'
@@ -24,7 +24,12 @@ dark.addEventListener('change', paint)
 const platform = detectPlatform()
 const defaultName = defaultDeviceName(platform)
 const client = new RemoteClient({
-  storage: { get: (k) => localStorage.getItem(k), set: (k, v) => localStorage.setItem(k, v), remove: (k) => localStorage.removeItem(k) },
+  storage: {
+    get: (k) => localStorage.getItem(k),
+    set: (k, v) => localStorage.setItem(k, v),
+    remove: (k) => localStorage.removeItem(k),
+    keys: () => Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter((k): k is string => k !== null)
+  },
   connect: (url) => new WebSocket(url),
   deviceName: () => localStorage.getItem(DEVICE_NAME_KEY) ?? defaultName,
   platform: () => platform,
@@ -36,8 +41,12 @@ const hub = buildHub(client.transport, platform === 'ios' ? 'mac' : 'linux')
 hub.openExternal = (url) => void window.open(url, '_blank', 'noopener')
 window.hub = hub
 
-// The service worker opens pushed notifications with this identity.
+// The service worker opens pushed notifications with this identity, and shows only those the
+// paired desktops signed: it reads both from IndexedDB, which it shares with the page.
 void kvSet(SEED_KEY, toBase64Url(client.identity.seed)).catch(() => {})
+const mirrorDesktops = () => void kvSet(DESKTOPS_KEY, JSON.stringify(Object.fromEntries(client.desktops().map((d) => [d.id, d.public])))).catch(() => {})
+mirrorDesktops()
+client.onStatus(mirrorDesktops)
 void registerServiceWorker().then(() => currentPushSubscription().then((sub) => sub && client.setPushSubscription(sub)))
 
 // A hidden page drops its socket so the desktop pushes notifications instead; back in front, it reconnects.

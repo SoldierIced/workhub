@@ -3,7 +3,8 @@
 // (from pairing); each connection adds ephemeral keys, so a recorded connection cannot be read
 // later even with a stolen identity. The device always initiates; the desktop responds.
 import { x25519 } from '@noble/curves/ed25519.js'
-import { concatBytes, decodeJson, encodeJson, fromBase64Url, toBase64Url } from './bytes'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { concatBytes, decodeJson, encodeJson, fromBase64Url, toBase64Url, utf8ToBytes } from './bytes'
 import { decrypt, deriveKey, encrypt } from './crypto'
 import { publicKeyBytes, type Identity, type PublicIdentity } from './identity'
 
@@ -90,7 +91,12 @@ export function startHandshake(me: Identity, peer: PublicIdentity, role: Role): 
       const initiatorE = role === 'initiator' ? ePublic : peerEphemeral
       const responderE = role === 'initiator' ? peerEphemeral : ePublic
       const ikm = concatBytes(ee, se, es)
-      const salt = concatBytes(initiatorE, responderE)
+      // The transcript: protocol name, both static keys and both ephemerals, so the keys are
+      // bound to who is talking and to this version, not only to the DH results.
+      const myStatic = publicKeyBytes(me.public.dh)
+      const initiatorS = role === 'initiator' ? myStatic : peerStatic
+      const responderS = role === 'initiator' ? peerStatic : myStatic
+      const salt = sha256(concatBytes(utf8ToBytes(INFO), initiatorS, responderS, initiatorE, responderE))
       const toResponder = deriveKey(ikm, salt, `${INFO}/i2r`)
       const toInitiator = deriveKey(ikm, salt, `${INFO}/r2i`)
       return role === 'initiator' ? new SecureChannel(toResponder, toInitiator, role) : new SecureChannel(toInitiator, toResponder, role)

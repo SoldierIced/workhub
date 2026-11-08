@@ -9,7 +9,9 @@ import {
   offerFromLink,
   openBox,
   parseChannelMessage,
+  parsePushPayload,
   parseRelayMessage,
+  verifyPushPayload,
   sealBox,
   startHandshake,
   verifyPairAccept,
@@ -36,11 +38,16 @@ class FakeSocket implements WebSocketLike {
   constructor(private readonly core: RelayCore) {
     queueMicrotask(() => {
       this.peer = core.connect({ send: (text) => this.onmessage?.({ data: text }), close: (code, reason) => this.dropped(code, reason) }, '10.0.0.1')
+      // The client answers the relay's challenge while connect() is still running: delivered now that the peer exists.
+      for (const text of this.early.splice(0)) if (this.peer) this.core.receive(this.peer, text)
       this.onopen?.({})
     })
   }
+  private readonly early: string[] = []
   send(text: string) {
-    if (this.peer && !this.closed) this.core.receive(this.peer, text)
+    if (this.closed) return
+    if (!this.peer) this.early.push(text)
+    else this.core.receive(this.peer, text)
   }
   close(code = 1000, reason = '') {
     if (this.closed) return
@@ -76,7 +83,9 @@ class ScriptedDevice {
   ) {
     this.identity = identity
     this.peer = core.connect({ send: (text) => this.receive(text), close: () => {} }, '10.0.0.2')!
-    this.send(makeAuth(identity, NOW))
+    const challenge = this.inbox.find((m) => m.t === 'challenge')
+    if (challenge?.t !== 'challenge') throw new Error('the relay sent no challenge')
+    this.send(makeAuth(identity, challenge.nonce, NOW))
     this.send({ t: 'join', room: desktopId })
   }
 
@@ -149,6 +158,7 @@ class ScriptedDevice {
 }
 
 function harness(initial: Partial<RemoteState> = {}) {
+  const log = { info: vi.fn(), warn: vi.fn() }
   const pushed: [string, string][] = []
   const push: PushProvider = { publicKey: 'VAPID', send: async (sub, payload) => void pushed.push([sub.endpoint, payload]) }
   const pushStore = new MemoryPushStore()
@@ -173,7 +183,7 @@ function harness(initial: Partial<RemoteState> = {}) {
     },
     defaultName: () => 'desk',
     onChanged: (status) => void changes.push(status),
-    log: { info: vi.fn(), warn: vi.fn() },
+    log,
     now: () => NOW,
     schedule: (fn, ms) => {
       const t = { fn, ms, cancelled: false }
@@ -186,7 +196,7 @@ function harness(initial: Partial<RemoteState> = {}) {
     const due = timers.splice(0)
     for (const t of due) if (!t.cancelled) t.fn()
   }
-  return { core, service, sockets, saved, secrets, changes, timers, fire, settle, hub, pushed, pushStore }
+  return { core, service, sockets, saved, secrets, changes, timers, fire, settle, hub, pushed, pushStore, log }
 }
 
 describe('relay URLs', () => {
@@ -264,6 +274,75 @@ describe('RemoteService', () => {
     expect(() => h.service.acceptPairing(phone.identity.id, ['sessions'])).toThrow(/no device/)
   })
 
+  it('keeps the first device that answers an offer; a second one is ignored and logged', async () => {
+    const h = harness({ enabled: true })
+    await h.service.start()
+    await h.settle()
+    const me = h.service.status().desktopId!
+    const offer = offerFromLink((await h.service.startPairing()).pairing!.link)!
+    const first = new ScriptedDevice(h.core, me)
+    const second = new ScriptedDevice(h.core, me)
+    first.pair(offer, 'Ana’s phone')
+    second.pair(offer, 'Ana’s phone')
+    expect(h.service.status().request).toMatchObject({ deviceId: first.identity.id })
+    expect(h.log.warn).toHaveBeenCalledWith(expect.stringContaining('a second device'))
+    expect(() => h.service.acceptPairing(second.identity.id, ['sessions'])).toThrow(/no device/)
+  })
+
+  it('keeps a live link when a stale hello is replayed; the new channel takes over only once it opens a message', async () => {
+    const h = harness({ enabled: true })
+    await h.service.start()
+    await h.settle()
+    const me = h.service.status().desktopId!
+    const offer = offerFromLink((await h.service.startPairing()).pairing!.link)!
+    const phone = new ScriptedDevice(h.core, me)
+    phone.pair(offer)
+    h.service.acceptPairing(phone.identity.id, ['sessions'])
+    phone.handshake(offer.desktop)
+    const firstHello = phone.inbox.filter((m) => m.t === 'from' && m.body.k === 'hs').length
+    phone.sendChannel({ t: 'ready' })
+    await phone.next()
+    expect(h.service.status().devices[0]!.online).toBe(true)
+    const live = phone.channel!
+
+    // A relay replays an old hello as if it came from the phone: the desktop answers, but the link stands.
+    const stale = startHandshake(generateIdentity(), offer.desktop, 'initiator').hello.e
+    h.core.receive(phone.peer, JSON.stringify({ t: 'to', room: me, to: me, body: { k: 'hs', e: stale } }))
+    expect(phone.inbox.filter((m) => m.t === 'from' && m.body.k === 'hs').length).toBe(firstHello + 1)
+    expect(h.service.status().devices[0]!.online).toBe(true)
+    phone.channel = live
+    const answer = await phone.invoke('sessions:list')
+    expect(answer).toMatchObject({ t: 'result', ok: true })
+
+    // A real reconnect: the new channel replaces the old one once `ready` opens with it.
+    phone.handshake(offer.desktop)
+    phone.sendChannel({ t: 'ready' })
+    await phone.next()
+    expect(h.service.status().devices[0]!.online).toBe(true)
+    expect((await phone.invoke('sessions:list')).t).toBe('result')
+  })
+
+  it('drops a device that says unpair over the channel', async () => {
+    const h = harness({ enabled: true })
+    await h.service.start()
+    await h.settle()
+    const me = h.service.status().desktopId!
+    const offer = offerFromLink((await h.service.startPairing()).pairing!.link)!
+    const phone = new ScriptedDevice(h.core, me)
+    phone.pair(offer)
+    h.service.acceptPairing(phone.identity.id, ['sessions'])
+    phone.handshake(offer.desktop)
+    phone.sendChannel({ t: 'ready' })
+    await phone.next()
+    expect(h.service.status().devices).toHaveLength(1)
+    phone.sendChannel({ t: 'unpair' })
+    expect(h.service.status().devices).toEqual([])
+    // Trying again without pairing gets nowhere.
+    phone.handshake(offer.desktop)
+    expect(phone.channel).not.toBeNull()
+    expect(h.service.status().devices).toEqual([])
+  })
+
   it('answers a paired device’s handshake and routes its calls through the hub with its capabilities', async () => {
     const h = harness({ enabled: true })
     await h.service.start()
@@ -322,13 +401,17 @@ describe('RemoteService', () => {
     const phone = new ScriptedDevice(h.core, me)
     phone.pair(offer)
     h.service.acceptPairing(phone.identity.id, ['sessions'])
-    h.pushStore.set(phone.identity.id, { sub: { endpoint: 'https://push.example.com/p', keys: { p256dh: 'p', auth: 'a' } }, rooms: [me], updatedAt: NOW })
+    h.pushStore.set(phone.identity.id, { sub: { endpoint: 'https://push.example.com/p', keys: { p256dh: 'B'.repeat(87), auth: 'C'.repeat(22) } }, rooms: [me], updatedAt: NOW })
 
     // Offline: a sealed box goes out by push; only the phone opens it.
     h.service.notify({ kind: 'needsAnswer', title: 'Claude asks', body: 'Run npm test?', at: NOW, sessionId: 's1', tag: 's1' })
     await vi.waitFor(() => expect(h.pushed).toHaveLength(1))
     const { box } = JSON.parse(h.pushed[0]![1]) as { box: { e: string; c: string } }
-    expect(decodeJson(openBox(phone.identity, box)!)).toEqual({ v: 1, kind: 'needsAnswer', title: 'Claude asks', body: 'Run npm test?', ts: NOW, tag: 's1', route: '#session/s1', desktop: me })
+    const payload = parsePushPayload(decodeJson(openBox(phone.identity, box)!))!
+    expect(payload).toMatchObject({ v: 1, kind: 'needsAnswer', title: 'Claude asks', body: 'Run npm test?', ts: NOW, tag: 's1', route: '#session/s1', desktop: me })
+    // Signed by the desktop: a relay with the phone's public key could seal a box, not sign one.
+    expect(verifyPushPayload(payload, offer.desktop, NOW)).toBe(true)
+    expect(verifyPushPayload({ ...payload, title: 'Tap to approve' }, offer.desktop, NOW)).toBe(false)
     expect(openBox(generateIdentity(), box)).toBeNull()
     // A kind outside the device's capabilities is not sent at all.
     h.service.notify({ kind: 'prEvent', title: 'PR merged', body: '', at: NOW })

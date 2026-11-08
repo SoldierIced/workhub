@@ -30,19 +30,25 @@ export function toBase64Url(bytes: Uint8Array): string {
   return out
 }
 
+/**
+ * Canonical base64url only: a length of 4n+1 cannot encode bytes, and the bits left over in the
+ * last character must be zero, so two different strings never decode to the same key.
+ */
 export function fromBase64Url(text: string): Uint8Array {
   if (!/^[A-Za-z0-9_-]*$/.test(text)) throw new Error('not base64url')
+  if (text.length % 4 === 1) throw new Error('not base64url')
   const out: number[] = []
   let buffer = 0
   let bits = 0
   for (const ch of text) {
-    buffer = (buffer << 6) | B64.indexOf(ch)
+    buffer = ((buffer << 6) | B64.indexOf(ch)) & 0xffff
     bits += 6
     if (bits >= 8) {
       bits -= 8
       out.push((buffer >> bits) & 255)
     }
   }
+  if (bits > 0 && (buffer & ((1 << bits) - 1)) !== 0) throw new Error('not base64url')
   return Uint8Array.from(out)
 }
 

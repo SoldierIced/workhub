@@ -23,6 +23,8 @@ export const webEn = {
   'web.pair.fingerprintHint': 'The computer shows this same fingerprint when you accept.',
   'web.pair.offerTitle': 'Pair with {desktop}?',
   'web.pair.offerHint': 'Compare the fingerprint with Settings → Remote access on the computer before confirming.',
+  'web.pair.relay': 'Relay',
+  'web.pair.relayHint': "If this is not the relay you expected, cancel: the link may point at someone else's server.",
   'web.pair.desktopFingerprint': 'Computer',
   'web.pair.deviceName': 'Name of this phone',
   'web.pair.confirm': 'Pair',

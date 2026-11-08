@@ -4,9 +4,10 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
 import { generateIdentity, makeAuth, type RelayMessage } from '@workhub/protocol'
-import { createRelayServer, type RelayServer } from '../src/server'
+import { addressOf, createRelayServer, type RelayServer } from '../src/server'
 import { resolveStatic } from '../src/static'
 import { FilePushStore } from '../src/push-store'
+import { pushEndpointAllowed } from '../src/push'
 
 let server: RelayServer
 let base: string
@@ -54,6 +55,16 @@ describe('relay server', () => {
     const asset = await fetch(`http://${base}/assets/app-abc123.js`)
     expect(asset.headers.get('cache-control')).toContain('immutable')
     expect((await fetch(`http://${base}/missing.png`)).status).toBe(404)
+    expect(index.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    expect(index.headers.get('x-frame-options')).toBe('DENY')
+    expect(index.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(health).not.toHaveProperty('uptimeSeconds')
+  })
+
+  it('survives a malformed escape in the path', async () => {
+    expect((await fetch(`http://${base}/%E0%A4%A`)).status).toBe(404)
+    expect((await fetch(`http://${base}/%`)).status).toBe(404)
+    expect((await fetch(`http://${base}/healthz`)).status).toBe(200)
   })
 
   it('relays between two authenticated sockets', async () => {
@@ -61,9 +72,12 @@ describe('relay server', () => {
     const phone = generateIdentity()
     const a = await connect()
     const b = await connect()
-    a.ws.send(JSON.stringify(makeAuth(desktop)))
+    const challengeA = await a.next()
+    const challengeB = await b.next()
+    if (challengeA.t !== 'challenge' || challengeB.t !== 'challenge') throw new Error('no challenge')
+    a.ws.send(JSON.stringify(makeAuth(desktop, challengeA.nonce)))
     expect(await a.next()).toMatchObject({ t: 'welcome', id: desktop.id })
-    b.ws.send(JSON.stringify(makeAuth(phone)))
+    b.ws.send(JSON.stringify(makeAuth(phone, challengeB.nonce)))
     expect(await b.next()).toMatchObject({ t: 'welcome', id: phone.id })
     a.ws.send(JSON.stringify({ t: 'join', room: desktop.id }))
     expect(await a.next()).toMatchObject({ t: 'joined' })
@@ -83,6 +97,30 @@ describe('relay server', () => {
   })
 })
 
+describe('addressOf', () => {
+  const req = (headers: Record<string, string>) => ({ headers, socket: { remoteAddress: '203.0.113.9' } }) as unknown as Parameters<typeof addressOf>[0]
+  it('ignores forwarded headers unless a proxy is trusted, then takes the proxy-set address', () => {
+    expect(addressOf(req({ 'x-forwarded-for': '1.1.1.1' }), false)).toBe('203.0.113.9')
+    // The client wrote 1.1.1.1; the proxy appended the real address last.
+    expect(addressOf(req({ 'x-forwarded-for': '1.1.1.1, 198.51.100.7' }), true)).toBe('198.51.100.7')
+    expect(addressOf(req({ 'x-real-ip': '198.51.100.8', 'x-forwarded-for': '1.1.1.1' }), true)).toBe('198.51.100.8')
+    expect(addressOf(req({}), true)).toBe('203.0.113.9')
+  })
+})
+
+describe('pushEndpointAllowed', () => {
+  it('admits the browsers’ push services over https only', () => {
+    expect(pushEndpointAllowed('https://fcm.googleapis.com/fcm/send/abc')).toBe(true)
+    expect(pushEndpointAllowed('https://updates.push.services.mozilla.com/wpush/v2/abc')).toBe(true)
+    expect(pushEndpointAllowed('https://web.push.apple.com/abc')).toBe(true)
+    expect(pushEndpointAllowed('https://wns2-par02p.notify.windows.com/w/?token=x')).toBe(true)
+    expect(pushEndpointAllowed('https://10.0.0.5/internal')).toBe(false)
+    expect(pushEndpointAllowed('http://fcm.googleapis.com/fcm/send/abc')).toBe(false)
+    expect(pushEndpointAllowed('https://fcm.googleapis.com.evil.example/x')).toBe(false)
+    expect(pushEndpointAllowed('https://push.example.com/x', ['push.example.com'])).toBe(true)
+  })
+})
+
 describe('resolveStatic', () => {
   it('never leaves the root', () => {
     expect(resolveStatic(webDir, '/../index.html')).toBeNull()
@@ -98,11 +136,15 @@ describe('FilePushStore', () => {
     const path = join(dir, 'nested', 'push.json')
     const a = new FilePushStore(path)
     a.set('d1', { sub: { endpoint: 'https://push.example.com/x', keys: { p256dh: 'p', auth: 'a' } }, rooms: ['r1'], updatedAt: 1 })
+    // Writes are gathered; nothing is on disk until the delay passes or flush() is called.
+    expect(() => readFileSync(path, 'utf8')).toThrow()
+    a.flush()
     expect(JSON.parse(readFileSync(path, 'utf8'))).toHaveProperty('d1')
     const b = new FilePushStore(path)
     expect(b.get('d1')?.rooms).toEqual(['r1'])
     expect(b.size()).toBe(1)
     b.delete('d1')
+    b.flush()
     expect(new FilePushStore(path).size()).toBe(0)
   })
 })

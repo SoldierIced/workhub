@@ -17,6 +17,15 @@ export type Route =
   /** A pairing link (`#pair=<offer>`): the screen reads the offer from the hash itself. */
   | { screen: 'pair' }
 
+/** Decodes one hash segment; null when its percent-encoding is malformed (`%E0`). */
+function decodeId(raw: string): string | null {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return null
+  }
+}
+
 const isPlanTab = (s: string): s is PlanTab => (PLAN_TABS as readonly string[]).includes(s)
 
 /**
@@ -40,11 +49,20 @@ export function parseRoute(hash: string): Route {
   if (plan) return { screen: 'plan', tab: isPlanTab(plan[1]!) ? plan[1]! : 'tasks' }
   if (h === 'item/new') return { screen: 'newItem' }
   const item = /^item\/([^/?#]+)/.exec(h)
-  if (item) return { screen: 'planItem', id: decodeURIComponent(item[1]!) }
+  if (item) {
+    const id = decodeId(item[1]!)
+    return id === null ? { screen: 'home' } : { screen: 'planItem', id }
+  }
   const milestone = /^milestone\/([^/?#]+)/.exec(h)
-  if (milestone) return { screen: 'milestone', id: decodeURIComponent(milestone[1]!) }
+  if (milestone) {
+    const id = decodeId(milestone[1]!)
+    return id === null ? { screen: 'home' } : { screen: 'milestone', id }
+  }
   const session = /^session\/([^/?#]+)/.exec(h)
-  if (session) return { screen: 'session', id: decodeURIComponent(session[1]!) }
+  if (session) {
+    const id = decodeId(session[1]!)
+    return id === null ? { screen: 'home' } : { screen: 'session', id }
+  }
   return { screen: 'home' }
 }
 

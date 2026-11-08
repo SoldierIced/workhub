@@ -16,7 +16,9 @@ export const BRAND = {
   /** Lowercase, no spaces: the Linux executable and the file names of the artifacts. */
   slug: 'workhub2',
   copyright: 'Copyright (c) Workhub contributors',
-  repo: { owner: 'SoldierIced', name: 'workhub' }
+  repo: { owner: 'SoldierIced', name: 'workhub' },
+  /** The relay new installs use for Workhub Remote (Settings → Remote access can name another). */
+  relay: 'https://workhub.sistemasfa.com'
 }
 
 // `node scripts/brand.mjs productName` prints one field, for the shell scripts. Node resolves the

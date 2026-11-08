@@ -30,7 +30,7 @@ export function pushSupported(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 }
 
-export { kvGet, kvSet, SEED_KEY } from './kv'
+export { kvGet, kvSet, DESKTOPS_KEY, SEED_KEY } from './kv'
 
 // ---- Web Push
 

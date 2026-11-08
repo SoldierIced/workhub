@@ -4,7 +4,9 @@ import type { RemoteCapability } from '../../shared/remote-api'
  * What a paired device may call, by capability. Everything not listed is refused: window and
  * tray plumbing, folder pickers, anything that opens something on the desktop, settings and
  * secrets, connection tests (they carry credentials), and every `hub` call that names a local path
- * the device chose. A new session's folder must be one the profile lists (see dispatcher.ts).
+ * the device chose. A new session's folder must be one the profile lists, and its mode never one
+ * that skips permissions (see dispatcher.ts). `remote:file` reads only inside the session's folder
+ * (see files.ts).
  */
 export const REMOTE_INVOKES: Readonly<Record<string, RemoteCapability | 'any'>> = {
   'config:get': 'any',
@@ -37,9 +39,9 @@ export const REMOTE_INVOKES: Readonly<Record<string, RemoteCapability | 'any'>> 
   'codeHost:comment': 'pullRequests',
   'codeHost:reply': 'pullRequests',
   'codeHost:close': 'pullRequests',
+  // Not save/remove: an automation names its folder and permission mode, and runNow would then run
+  // whatever a device defined. A device runs the automations the desktop already has.
   'automations:get': 'automations',
-  'automations:save': 'automations',
-  'automations:remove': 'automations',
   'automations:setEnabled': 'automations',
   'automations:runNow': 'automations',
   'automations:stop': 'automations',
@@ -89,8 +91,7 @@ export const REMOTE_EVENTS: Readonly<Record<string, RemoteCapability | 'any'>> =
   'automations:turnEnded': 'automations',
   'metricAlerts:changed': 'health',
   'plan:changed': 'plan',
-  'planner:changed': 'plan',
-  'remote:notification': 'any'
+  'planner:changed': 'plan'
 }
 
 export function remoteAllows(table: Readonly<Record<string, RemoteCapability | 'any'>>, channel: string, granted: ReadonlySet<RemoteCapability>): boolean {
