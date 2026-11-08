@@ -73,11 +73,23 @@ never breaks the session.
 - Every window has `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true`. The
   renderer has no Node. The only bridge is the preload script, which exposes one object,
   `window.hub`, with `contextBridge.exposeInMainWorld`. Its shape is typed in
-  `packages/app/src/shared`, shared by main, preload and renderer.
-- Main registers IPC handlers through two wrappers. `guardIpc` checks that each message comes from
+  `packages/app/src/shared`, shared by main, preload and renderer. The object itself is built by
+  `shared/hub-client.ts` over a `HubTransport` (invoke, send, subscribe): the preload passes
+  Electron IPC; the web client for a paired phone passes a WebSocket to the desktop. Channel names
+  live in that one file.
+- Main registers IPC handlers through three wrappers. `guardIpc` checks that each message comes from
   the app's own renderer (the built `index.html`, or the dev server origin in a dev run); anything
   else is rejected. `timeIpc` times each handler and logs slow or failing ones, never their
-  arguments.
+  arguments. `recordIpc` (`main/remote/`) keeps every handler by channel so a paired device can
+  reach the same code without Electron IPC.
+- Remote access (`main/remote/dispatcher.ts`): a paired device calls `hub` methods and gets main's
+  events over a transport of its own. The `RemoteHub` only routes channels in its allowlist
+  (`main/remote/allowlist.ts`), each tied to a capability the user granted the device (sessions,
+  pull requests, automations, health). Nothing that opens a dialog or a window on the desktop,
+  reads or writes a path the device names, touches settings or secrets, or tests a connection is
+  listed. A new session may only start in a folder the profile lists. Handlers that answer their
+  sender (`sessions:promptStarted`) see the device as a sender of its own, with an id no window
+  can have. The config snapshot reaches a device without the data folder path.
 - Windows stay on the app's renderer: navigations and redirects away from it are refused (web links
   go to the default browser through the link service instead), `window.open` is denied and
   `<webview>` never attaches. This keeps a window that rendered untrusted Markdown (a pull request,
