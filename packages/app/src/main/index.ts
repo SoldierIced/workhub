@@ -106,6 +106,7 @@ import { ContinuityService, type ContinuityDeps } from './continuity'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
 import { timeIpc } from './ipc-timing'
+import { recordIpc, RemoteHub } from './remote'
 import { rendererReporter, startDiagnostics } from './diagnostics'
 import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
@@ -197,10 +198,24 @@ function revealLogs(): void {
   shell.showItemInFolder(diagnostics.logPath)
 }
 
-// Every write tells every window (`config:changed`): a change in the Settings window shows in the main window.
-const configStore = broadcastingConfigStore(new JsonConfigStore(join(dataDir, 'config.json')), () =>
+/** Every window's handlers, reachable by a paired device too (Settings → Remote access); filled by registerIpc. */
+const recordedIpc = recordIpc(timeIpc(guardIpc(ipcMain, (url) => isTrustedRendererUrl(url, rendererOrigin)), diagnostics))
+const remoteHub = new RemoteHub({
+  handlers: recordedIpc.handlers,
+  profileFolders: async (profileId) => {
+    const config = await configuration.current()
+    const profile = profileId ? config.profiles.find((p) => p.id === profileId) : undefined
+    return profile ? (await profileWorkspaces(profile, homedir())).map((f) => f.path) : []
+  },
+  log: diagnostics.log
+})
+/** Tells every window, and every paired device, that the config changed. */
+const configChanged = () => {
   BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
-)
+  remoteHub.tap('config:changed', [])
+}
+// Every write tells every window (`config:changed`): a change in the Settings window shows in the main window.
+const configStore = broadcastingConfigStore(new JsonConfigStore(join(dataDir, 'config.json')), configChanged)
 const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
 const configuration = new ConfigurationService(configStore, secrets)
 // WORKHUB_DEMO_SCENARIO=team-lead (`npm run demo`): the milestones, inbox and metric alerts of the scenario are written before
@@ -236,6 +251,7 @@ const send = (channel: string, ...args: unknown[]) => {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   if (SHARED_CHANNELS.has(channel)) sessionWindows.broadcastShared(channel, args)
   settingsWindow.send(channel, args)
+  remoteHub.tap(channel, args)
 }
 // Sessions in windows of their own ("Open in New Window"); the session's runtime stays here, shared.
 const sessionWindows = new SessionWindows({
@@ -432,7 +448,7 @@ const sessions = new SessionManager({
     openSessions.changed()
   },
   emitReplay: (id, messages) => send('session:replay', id, messages),
-  emitConfigChanged: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+  emitConfigChanged: configChanged
 })
 // The sessions open at the last quit, reopened once the main window listens (Settings → General).
 const openSessions = new OpenSessions({
@@ -691,7 +707,7 @@ const placeInSidebar: ContinuityDeps['placeBeside'] = async (member, anchorKey) 
   const next = placeBeside(groups, member, anchorKey)
   if (next === groups) return
   const r = await configuration.saveSessionGroups(next)
-  if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+  if (r.ok) configChanged()
 }
 const continuity = new ContinuityService({
   config: () => configuration.current(),
@@ -835,7 +851,7 @@ function openSetupWindow(page: SetupPage): void {
 function registerIpc(): void {
   // Every handler answers only the app's own renderer (see ipc-guard.ts).
   // Every handler is timed too: a slow one or one that fails is logged by its channel (see ipc-timing.ts).
-  const ipc = timeIpc(guardIpc(ipcMain, (url) => isTrustedRendererUrl(url, rendererOrigin)), diagnostics)
+  const ipc = recordedIpc.ipc
   const report = rendererReporter(diagnostics.log)
   ipc.on('diag:report', (e, r: unknown) => report(e.sender === win?.webContents ? 'main' : 'aux', r))
   ipc.on('diag:revealLogs', revealLogs)
@@ -870,7 +886,7 @@ function registerIpc(): void {
     guarded(async (p) => {
       const r = await configuration.saveProfile(p)
       // A profile saved in the welcome window shows up in the main window too.
-      if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+      if (r.ok) configChanged()
       return r
     })
   )
@@ -1024,7 +1040,7 @@ function registerIpc(): void {
   ipc.on('settings:close', (e) => settingsWindow.close(e.sender.id))
   ipc.handle('setup:completeWelcome', async () => {
     if (!loadError) await configuration.saveOptions({ welcomeDone: true })
-    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+    configChanged()
     setupWindows.get('welcome')?.close()
   })
   ipc.handle('profileEnv:stored', async (_e, profileId: string) => {
@@ -1076,7 +1092,7 @@ function registerIpc(): void {
       saveGroups: (g) => configuration.saveSessionGroups(g),
       replaceIdentity: (oldKey, newKey) => configuration.replaceSessionIdentity(oldKey, newKey),
       current: (id) => sessions.list().find((v) => v.id === id),
-      changed: () => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+      changed: configChanged
     })
   )
   ipc.handle('sessions:reopen', (_e, identity: string, input: StartSessionInput) => {
@@ -1520,7 +1536,7 @@ async function performTrayAction(action: TrayAction): Promise<void> {
       if (loadError) return
       const until = action.kind === 'pause' ? pauseUntil(action.preset, new Date()) : 0
       const r = await configuration.saveOptions({ notificationsPausedUntil: until })
-      if (r.ok) BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('config:changed'))
+      if (r.ok) configChanged()
       return scheduleTray()
     }
     case 'checkForUpdates':
