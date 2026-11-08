@@ -353,6 +353,29 @@ export function withReplay(s: SessionData, messages: HistoryMessage[], next: () 
   return withDerived({ ...s, items: [...replayItems(messages, next), { id: next(), kind: 'replayStart', count: messages.length }] })
 }
 
+/**
+ * A chat opened on a paired device, which only received the live events since it connected: the
+ * last page of the stored conversation replaces them, then a divider (so a reply still streaming
+ * starts its own message). Open requests stay: the stored conversation does not hold them.
+ */
+export function withBacklog(s: SessionData, messages: HistoryMessage[], next: () => number): SessionData {
+  const open = s.items.filter((i) => i.kind === 'permission' && i.answer === undefined)
+  return withDerived({ ...s, items: [...replayItems(messages, next), { id: next(), kind: 'replayStart', count: messages.length }, ...open] })
+}
+
+/** An earlier page of the stored conversation, above what the chat shows (a paired device scrolling up). */
+export function withEarlier(s: SessionData, messages: HistoryMessage[], next: () => number): SessionData {
+  return { ...s, items: [...replayItems(messages, next), ...s.items] }
+}
+
+export function loadBacklog(id: string, messages: HistoryMessage[]): void {
+  patch(id, (s) => withBacklog(s, messages, () => ++seq))
+}
+
+export function loadEarlier(id: string, messages: HistoryMessage[]): void {
+  patch(id, (s) => withEarlier(s, messages, () => ++seq))
+}
+
 function onReplay(id: string, messages: HistoryMessage[]): void {
   patch(id, (s) => withReplay(s, messages, () => ++seq))
 }

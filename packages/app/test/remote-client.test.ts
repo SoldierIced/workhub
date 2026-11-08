@@ -88,6 +88,7 @@ function desktop(initial: Partial<RemoteState> = {}, shared?: RelayCore) {
   const views = [{ id: 's1', name: 'Fix tests', cwd: '/work/api' }]
   ipc.handle('sessions:list', () => views)
   ipc.handle('codeHost:lists', () => ({ mine: [], toReview: [] }))
+  ipc.handle('remote:history', (_e: unknown, id: string, before?: number) => ({ messages: [{ kind: 'agent', text: `${id} before ${before ?? 'end'}` }], start: before === undefined ? 5 : before - 1, total: 6 }))
   const permissions: unknown[][] = []
   ipc.on('sessions:permission', (_e: unknown, ...args: unknown[]) => void permissions.push(args))
   const hub = new RemoteHub({ handlers, profileFolders: async () => ['/work/api'] })
@@ -242,6 +243,23 @@ describe('RemoteClient', () => {
     await settle(6)
     expect(p.client.status().state).toBe('online')
     expect(p.sockets).toHaveLength(2)
+  })
+
+  it('keeps only the last page of a chat for offline use, and forgets it once the chat closes', async () => {
+    const { d, p } = await paired()
+    const history = (...args: unknown[]) => p.client.transport.invoke('remote:history', ...args)
+    await expect(history('s1')).resolves.toMatchObject({ start: 5, messages: [{ text: 's1 before end' }] })
+    await expect(history('s1', 5)).resolves.toMatchObject({ start: 4 })
+    p.sockets.at(-1)!.drop(1006, '')
+    await settle()
+    await expect(history('s1')).resolves.toMatchObject({ start: 5 })
+    await expect(history('s1', 5)).rejects.toThrow('offline')
+
+    p.timers.fire()
+    await settle(6)
+    d.views.splice(0)
+    await p.hub.sessions.list()
+    expect([...p.storage.map.keys()].some((k) => k.includes('remote:history'))).toBe(false)
   })
 
   it('reconnects a phone that was paired before, from what it stored', async () => {

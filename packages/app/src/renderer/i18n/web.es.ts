@@ -79,6 +79,8 @@ export const webEs: Record<keyof typeof webEn, string> = {
   'web.session.send': 'Enviar',
   'web.session.stop': 'Detener',
   'web.session.earlier': 'Mensajes anteriores',
+  'web.session.loadEarlier': 'Cargar mensajes anteriores',
+  'web.session.loadingEarlier': 'Cargando mensajes anteriores…',
   'web.session.turnEnded': 'Turno terminado',
   'web.session.stopped': 'Detenido: {reason}',
   'web.session.exited': 'El proceso del agente terminó',

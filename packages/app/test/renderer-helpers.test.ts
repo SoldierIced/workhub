@@ -6,7 +6,7 @@ import { recentFolders, usageGroups, type SessionSummary } from '../src/renderer
 import { imageInputFromDataUrl } from '../src/renderer/lib/images'
 import { historyAccounts, historyAgents } from '../src/renderer/screens/HistoryScreen'
 import { formatDuration } from '../src/renderer/screens/sessions/MonitorPanel'
-import { applyEvent, replayItems, withReplay, type SessionData } from '../src/renderer/store'
+import { applyEvent, replayItems, withBacklog, withEarlier, withReplay, type SessionData } from '../src/renderer/store'
 
 const summary = (cwd: string, startedAt: number, extra: Partial<SessionSummary['view']> = {}, planUsage?: SessionSummary['monitor']['planUsage']): SessionSummary => ({
   view: { id: cwd + startedAt, state: 'ready', cwd, startedAt, ...extra },
@@ -150,6 +150,29 @@ describe('chat store', () => {
     )
     expect(s.items.map((i) => i.kind)).toEqual(['agent', 'user', 'replayStart'])
     expect(s.items.at(-1)).toMatchObject({ kind: 'replayStart', count: 2 })
+  })
+})
+
+describe('a chat opened on a paired device', () => {
+  const empty = (): SessionData => ({ view: { id: 's' } as SessionData['view'], items: [], monitor: {} })
+  let n = 0
+  const next = () => ++n
+
+  it('shows the last stored page instead of the live events it caught, keeping open requests', () => {
+    let s = applyEvent(empty(), { sessionId: 's', type: 'message', role: 'agent', text: 'caught live' }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'permission', requestId: 'r1', title: 'Run tests?', options: [] }, next)
+    s = withBacklog(s, [{ kind: 'user', text: 'q' }, { kind: 'agent', text: 'caught live' }], next)
+    expect(s.items.map((i) => i.kind)).toEqual(['user', 'agent', 'replayStart', 'permission'])
+    expect(s.awaiting).toBe(true)
+    // A reply still streaming starts its own message after the divider.
+    s = applyEvent(s, { sessionId: 's', type: 'message', role: 'agent', text: 'more' }, next)
+    expect(s.items.at(-1)).toMatchObject({ kind: 'agent', text: 'more' })
+  })
+
+  it('puts an earlier page above what the chat shows', () => {
+    let s = withBacklog(empty(), [{ kind: 'agent', text: 'late' }], next)
+    s = withEarlier(s, [{ kind: 'user', text: 'early' }], next)
+    expect(s.items.map((i) => (i.kind === 'user' || i.kind === 'agent' ? i.text : i.kind))).toEqual(['early', 'late', 'replayStart'])
   })
 })
 

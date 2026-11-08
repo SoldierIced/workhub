@@ -824,6 +824,14 @@ export class SessionManager {
     }
   }
 
+  /** The stored conversation of an open session: empty when it has none yet or it cannot be read. */
+  async history(id: string): Promise<HistoryMessage[]> {
+    const s = this.sessions.get(id)
+    const source = s ? this.deps.history[s.agent.accountsOf ?? s.agent.id] : undefined
+    if (!s || !source || !s.view.agentSessionId) return []
+    return this.readHistory(source, s.view.agentSessionId, s)
+  }
+
   private async readHistory(source: SessionHistorySource, agentSessionId: string, s: ManagedSession): Promise<HistoryMessage[]> {
     try {
       return await source.messages(agentSessionId, s.view.cwd, s.account?.configDir)
