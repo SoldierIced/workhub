@@ -53,6 +53,48 @@ the live connection when the device is online, by push when it is not. The push 
 the device's key, so the relay and the push service carry ciphertext. Quiet hours and the
 per-kind switches apply before anything leaves the desktop.
 
+## On the phone
+
+The phone opens the relay's address in its browser: the relay serves the phone app from `/`.
+
+1. **Pair.** Scan the QR code (or open its link). From the app installed on the home screen,
+   which has no address bar, use *Copy link* on the desktop and paste it into the pairing field
+   instead: a tapped link or a scanned QR opens the browser, not the installed app. The app shows
+   the computer's name and fingerprint and this phone's fingerprint; give the phone a name and
+   tap *Pair*. Back on the
+   desktop, compare the fingerprints, tick what the phone may do and *Accept*. The phone connects
+   at once and never asks again, even after the desktop, the relay or the phone restart.
+2. **Notifications.** Asked once after pairing. *Allow* subscribes the browser to Web Push; the
+   desktop's notifications then reach the phone with the body sealed to its key, whether or not
+   the app is open. On iPhone add the app to the Home Screen first (Share → Add to Home Screen):
+   Safari only delivers web notifications to installed apps. Settings on the phone turns them on
+   or off later.
+3. **Sessions.** The list of sessions open on the desktop, the ones waiting for an answer first.
+   A session shows the chat as the desktop does: replies, tool calls, permission prompts (with the
+   same options) and questions, and files the agent wrote (images preview inline, anything else
+   downloads; files above 8 MB stay on the desktop). The prompt box sends a message or stops the
+   turn. *New* opens a session in one of the profile's folders, with the agent and an optional
+   first message; the session appears on the desktop too.
+4. **Pull requests and alerts.** The same lists the desktop shows for the profile you pick; a tap
+   opens the pull request or the alert's link in the phone's browser.
+5. **Plan.** With the *Plan* capability: today's and tomorrow's meetings (join the call, prepare or
+   open the brief), the inbox waiting for a decision (approve, keep or discard; agents' milestone
+   proposals too), the tasks you took on (done with a tap, or open one to edit it or add a note),
+   and the milestones with their progress against time, pieces and notes. *+* adds a pending item.
+   The calendars' addresses and the Plan settings stay on the desktop.
+6. **Several computers.** One phone can pair with more than one desktop (home and work, say):
+   Settings → *Pair another computer*. The phone talks to one at a time; a selector at the top of
+   Sessions and the list in Settings switch between them, and a notification from another
+   computer switches to it when tapped. Each desktop keeps its own cached state and its own
+   capabilities. Revoking the phone on one desktop leaves the others paired.
+7. **Phone settings.** Language, theme and text size are the phone's own; the profile the lists
+   open with is remembered per phone.
+8. **Without network.** The phone keeps the last answer to each list, encrypted with its own key,
+   and shows it with a banner while the desktop is unreachable. When the app goes to the
+   background it closes its connection so notifications arrive as push; back in front it reconnects.
+9. **Unpair.** Settings → *Unpair this phone* forgets the current desktop and its cached state. Revoking the
+   device on the desktop does the same from the other side.
+
 ## Self-hosting the relay
 
 The relay is one small Node service. It keeps no messages and no accounts; the only thing it
@@ -102,5 +144,10 @@ never bodies.
 ```sh
 npm ci
 npm run build -w @workhub/relay         # packages/relay/dist/relay.cjs, one file
-PORT=8787 node packages/relay/dist/relay.cjs
+npm run build:web -w @workhub/app       # the phone app, into packages/relay/web-client/
+PORT=8787 WEB_CLIENT_DIR=packages/relay/web-client node packages/relay/dist/relay.cjs
 ```
+
+The container image copies `packages/relay/web-client/` into `/web`, so run `build:web` before
+`docker build`. `npm run dev:web -w @workhub/app` serves the phone app on port 5180 against any relay
+(the pairing link names the relay); the service worker is only built by `build:web`.

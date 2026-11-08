@@ -1,0 +1,28 @@
+/* Phone-only adjustments on top of the renderer's styles.css: bigger text, safe areas, no desktop chrome. */
+html {
+  --wh-text-scale: 1.15;
+  --wh-chat-font-size: 15px;
+}
+body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* Fingerprints and paths: monospace groups that may wrap at any point. */
+.fp {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+/* Native-looking momentum scrolling in the lists and the chat. */
+.scroll-y {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}

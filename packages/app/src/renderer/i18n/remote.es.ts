@@ -47,6 +47,8 @@ export const remoteEs: Record<keyof typeof remoteEn, string> = {
   'remote.capability.automationsHint': 'Ver, correr, detener y editar automatizaciones',
   'remote.capability.health': 'Health y alertas',
   'remote.capability.healthHint': 'Health, flow maps, alertas de métricas y sus límites',
+  'remote.capability.plan': 'Plan',
+  'remote.capability.planHint': 'Reuniones de hoy, inbox, tareas e hitos; nunca las direcciones de los calendarios',
   'remote.platform.ios': 'iPhone',
   'remote.platform.android': 'Android',
   'remote.platform.web': 'Navegador',

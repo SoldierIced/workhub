@@ -12,13 +12,15 @@ const CAPABILITY_LABEL: Record<RemoteCapability, MessageKey> = {
   sessions: 'remote.capability.sessions',
   pullRequests: 'remote.capability.pullRequests',
   automations: 'remote.capability.automations',
-  health: 'remote.capability.health'
+  health: 'remote.capability.health',
+  plan: 'remote.capability.plan'
 }
 const CAPABILITY_HINT: Record<RemoteCapability, MessageKey> = {
   sessions: 'remote.capability.sessionsHint',
   pullRequests: 'remote.capability.pullRequestsHint',
   automations: 'remote.capability.automationsHint',
-  health: 'remote.capability.healthHint'
+  health: 'remote.capability.healthHint',
+  plan: 'remote.capability.planHint'
 }
 const PLATFORM_LABEL: Record<RemoteDeviceView['platform'], MessageKey> = {
   ios: 'remote.platform.ios',

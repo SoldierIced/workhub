@@ -45,6 +45,8 @@ export const remoteEn = {
   'remote.capability.automationsHint': 'See, run, stop and edit automations',
   'remote.capability.health': 'Health and alerts',
   'remote.capability.healthHint': 'Health, flow maps, metric alerts and their limits',
+  'remote.capability.plan': 'Plan',
+  'remote.capability.planHint': 'Today\'s meetings, the inbox, tasks and milestones; never the calendars\' addresses',
   'remote.platform.ios': 'iPhone',
   'remote.platform.android': 'Android',
   'remote.platform.web': 'Browser',

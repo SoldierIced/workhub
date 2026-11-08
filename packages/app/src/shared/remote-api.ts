@@ -2,9 +2,9 @@
 // and what Settings → Remote access shows and does.
 
 /** A group of `hub` calls and events a paired device can be granted. */
-export type RemoteCapability = 'sessions' | 'pullRequests' | 'automations' | 'health'
+export type RemoteCapability = 'sessions' | 'pullRequests' | 'automations' | 'health' | 'plan'
 
-export const REMOTE_CAPABILITIES: readonly RemoteCapability[] = ['sessions', 'pullRequests', 'automations', 'health']
+export const REMOTE_CAPABILITIES: readonly RemoteCapability[] = ['sessions', 'pullRequests', 'automations', 'health', 'plan']
 
 export function isRemoteCapability(value: unknown): value is RemoteCapability {
   return typeof value === 'string' && (REMOTE_CAPABILITIES as readonly string[]).includes(value)

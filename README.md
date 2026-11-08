@@ -193,6 +193,7 @@ npm run dev          # the app in development mode ("Workhub 2 Dev")
 npm run typecheck    # tsc on every package
 npm test             # Vitest: core, adapters and app
 npm run build        # electron-vite build of the app (packages/app/out)
+npm run build:web -w @workhub/app   # the phone app for Workhub Remote, into packages/relay/web-client
 ```
 
 To run the built app: `cd packages/app && npx electron .`. See [CONTRIBUTING.md](CONTRIBUTING.md).

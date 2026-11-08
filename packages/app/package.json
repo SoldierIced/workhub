@@ -13,7 +13,9 @@
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
     "build": "electron-vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:web": "node scripts/build-web.mjs",
+    "dev:web": "vite -c vite.web.config.ts"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.97.0",

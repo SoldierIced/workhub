@@ -25,7 +25,7 @@ export const pairingOfferSchema = z.object({
 })
 export type PairingOffer = z.infer<typeof pairingOfferSchema>
 
-export const remoteCapabilitySchema = z.enum(['sessions', 'pullRequests', 'automations', 'health'])
+export const remoteCapabilitySchema = z.enum(['sessions', 'pullRequests', 'automations', 'health', 'plan'])
 export type RemoteCapability = z.infer<typeof remoteCapabilitySchema>
 
 export const pairRequestSchema = z.object({

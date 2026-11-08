@@ -328,7 +328,7 @@ describe('RemoteService', () => {
     h.service.notify({ kind: 'needsAnswer', title: 'Claude asks', body: 'Run npm test?', at: NOW, sessionId: 's1', tag: 's1' })
     await vi.waitFor(() => expect(h.pushed).toHaveLength(1))
     const { box } = JSON.parse(h.pushed[0]![1]) as { box: { e: string; c: string } }
-    expect(decodeJson(openBox(phone.identity, box)!)).toEqual({ v: 1, kind: 'needsAnswer', title: 'Claude asks', body: 'Run npm test?', ts: NOW, tag: 's1', route: '#session/s1' })
+    expect(decodeJson(openBox(phone.identity, box)!)).toEqual({ v: 1, kind: 'needsAnswer', title: 'Claude asks', body: 'Run npm test?', ts: NOW, tag: 's1', route: '#session/s1', desktop: me })
     expect(openBox(generateIdentity(), box)).toBeNull()
     // A kind outside the device's capabilities is not sent at all.
     h.service.notify({ kind: 'prEvent', title: 'PR merged', body: '', at: NOW })
