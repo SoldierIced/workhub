@@ -57,8 +57,11 @@ per-kind switches apply before anything leaves the desktop.
 
 The phone opens the relay's address in its browser: the relay serves the phone app from `/`.
 
-1. **Pair.** Scan the QR code (or open its link). The app shows the computer's name and
-   fingerprint and this phone's fingerprint; give the phone a name and tap *Pair*. Back on the
+1. **Pair.** Scan the QR code (or open its link). From the app installed on the home screen,
+   which has no address bar, use *Copy link* on the desktop and paste it into the pairing field
+   instead: a tapped link or a scanned QR opens the browser, not the installed app. The app shows
+   the computer's name and fingerprint and this phone's fingerprint; give the phone a name and
+   tap *Pair*. Back on the
    desktop, compare the fingerprints, tick what the phone may do and *Accept*. The phone connects
    at once and never asks again, even after the desktop, the relay or the phone restart.
 2. **Notifications.** Asked once after pairing. *Allow* subscribes the browser to Web Push; the
@@ -74,10 +77,17 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    first message; the session appears on the desktop too.
 4. **Pull requests and alerts.** The same lists the desktop shows for the profile you pick; a tap
    opens the pull request or the alert's link in the phone's browser.
-5. **Without network.** The phone keeps the last answer to each list, encrypted with its own key,
+5. **Plan.** With the *Plan* capability: today's and tomorrow's meetings (join the call, prepare or
+   open the brief), the inbox waiting for a decision (approve, keep or discard; agents' milestone
+   proposals too), the tasks you took on (done with a tap, or open one to edit it or add a note),
+   and the milestones with their progress against time, pieces and notes. *+* adds a pending item.
+   The calendars' addresses and the Plan settings stay on the desktop.
+6. **Phone settings.** Language, theme and text size are the phone's own; the profile the lists
+   open with is remembered per phone.
+7. **Without network.** The phone keeps the last answer to each list, encrypted with its own key,
    and shows it with a banner while the desktop is unreachable. When the app goes to the
    background it closes its connection so notifications arrive as push; back in front it reconnects.
-6. **Unpair.** Settings → *Unpair this phone* forgets the desktop and the cached state. Revoking the
+8. **Unpair.** Settings → *Unpair this phone* forgets the desktop and the cached state. Revoking the
    device on the desktop does the same from the other side.
 
 ## Self-hosting the relay

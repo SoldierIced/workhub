@@ -55,7 +55,19 @@ export const REMOTE_INVOKES: Readonly<Record<string, RemoteCapability | 'any'>> 
   'flowMaps:setAlerts': 'health',
   'metricAlerts:list': 'health',
   'metricAlerts:setStatus': 'health',
-  'metricAlerts:refresh': 'health'
+  'metricAlerts:refresh': 'health',
+  // Plan: the agenda, the inbox and the milestones. Calendar tests carry an address (refused); a
+  // brief starts a session on the desktop, as sessions:start does.
+  'plan:get': 'plan',
+  'plan:brief': 'plan',
+  'planner:get': 'plan',
+  'planner:act': 'plan',
+  'planner:addItem': 'plan',
+  'planner:editItem': 'plan',
+  'planner:saveMilestone': 'plan',
+  'planner:deleteMilestone': 'plan',
+  'planner:resolveProposal': 'plan',
+  'planner:refreshMilestones': 'plan'
 }
 
 /** One-way messages a device may send. `sessions:ready` is not one: it reopens the last quit's sessions. */
@@ -76,6 +88,8 @@ export const REMOTE_EVENTS: Readonly<Record<string, RemoteCapability | 'any'>> =
   'automations:prompted': 'automations',
   'automations:turnEnded': 'automations',
   'metricAlerts:changed': 'health',
+  'plan:changed': 'plan',
+  'planner:changed': 'plan',
   'remote:notification': 'any'
 }
 

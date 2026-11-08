@@ -1,4 +1,4 @@
-import { Check, Smartphone } from 'lucide-react'
+import { Check, ClipboardPaste, Smartphone } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Spinner } from '../../renderer/components/atoms'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
@@ -16,7 +16,18 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
   const status = useClientStatus()
   const [name, setName] = useState(() => localStorage.getItem(DEVICE_NAME_KEY) ?? defaultName)
   const [linkError, setLinkError] = useState<string | null>(null)
+  const [pasted, setPasted] = useState('')
   const route = useRoute()
+
+  // The app installed on the home screen has no address bar, and on iOS a tapped link or a scanned
+  // QR opens the browser instead of the installed app: the link can be pasted here.
+  const openPasted = () => {
+    const link = pasted.trim()
+    if (!link) return
+    const ok = client.openPairingLink(link)
+    setLinkError(ok ? null : client.status().error === 'expired' ? t('web.pair.expired') : t('web.pair.invalid'))
+    if (ok) setPasted('')
+  }
 
   // A pairing link in the hash (on load, or opened into the running app): read it, then clear it so a reload does not re-offer it.
   useEffect(() => {
@@ -96,6 +107,31 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
         <h1 className="text-center text-xl font-semibold">{t('web.pair.title')}</h1>
         <p className="text-center text-sm text-muted">{t('web.pair.intro')}</p>
         {(linkError || status.state === 'revoked') && <p className="rounded-lg bg-danger-soft px-3 py-2 text-center text-sm text-danger">{linkError ?? t('web.state.revoked')}</p>}
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            openPasted()
+          }}
+        >
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium text-muted">{t('web.pair.pasteLabel')}</span>
+            <input
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              placeholder="https://…/#pair=…"
+              inputMode="url"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className="h-12 rounded-xl border border-border-strong bg-surface px-4 text-md text-text"
+            />
+          </label>
+          <BigButton type="submit" disabled={!pasted.trim()}>
+            <ClipboardPaste className="size-5" aria-hidden />
+            {t('web.pair.pasteOpen')}
+          </BigButton>
+        </form>
         <div className="rounded-xl border border-border bg-surface p-4">
           <div className="text-xs font-semibold tracking-wide text-muted uppercase">{t('web.pair.thisPhone')}</div>
           <div className="fp mt-1 text-md">{status.fingerprint}</div>

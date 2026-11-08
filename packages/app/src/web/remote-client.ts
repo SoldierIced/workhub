@@ -102,7 +102,7 @@ const STATE_KEY = 'workhub-remote'
 const CACHE_PREFIX = 'workhub-remote-cache:'
 
 /** Calls whose last answer the phone keeps, so it has something to show without network. */
-export const CACHED_CHANNELS: ReadonlySet<string> = new Set(['sessions:list', 'config:get', 'config:effectiveAgents', 'hub:profileFolders', 'agents:availability', 'codeHost:lists', 'metricAlerts:list', 'automations:get', 'health:get'])
+export const CACHED_CHANNELS: ReadonlySet<string> = new Set(['sessions:list', 'config:get', 'config:effectiveAgents', 'hub:profileFolders', 'agents:availability', 'codeHost:lists', 'metricAlerts:list', 'automations:get', 'health:get', 'plan:get', 'planner:get'])
 
 export class RemoteClient {
   readonly identity: Identity

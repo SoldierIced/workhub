@@ -1,5 +1,5 @@
 // The phone's building blocks: a screen with a header, the tab bar, rows, and the connection banner.
-import { ChevronLeft, Bell, GitPullRequest, MessageSquare, Settings as SettingsIcon } from 'lucide-react'
+import { ChevronLeft, Bell, CalendarCheck, GitPullRequest, MessageSquare, Settings as SettingsIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Spinner } from '../renderer/components/atoms'
 import { useI18n } from '../renderer/i18n/I18nProvider'
@@ -44,11 +44,12 @@ export function TabBar({ capabilities }: { capabilities: readonly string[] }) {
   const all: { route: Route; label: string; icon: ReactNode; need?: string }[] = [
     { route: { screen: 'home' }, label: t('web.nav.sessions'), icon: <MessageSquare className="size-5" aria-hidden />, need: 'sessions' },
     { route: { screen: 'pullRequests' }, label: t('web.nav.pullRequests'), icon: <GitPullRequest className="size-5" aria-hidden />, need: 'pullRequests' },
+    { route: { screen: 'plan', tab: 'tasks' }, label: t('web.nav.plan'), icon: <CalendarCheck className="size-5" aria-hidden />, need: 'plan' },
     { route: { screen: 'alerts' }, label: t('web.nav.alerts'), icon: <Bell className="size-5" aria-hidden />, need: 'health' },
     { route: { screen: 'settings' }, label: t('web.nav.settings'), icon: <SettingsIcon className="size-5" aria-hidden /> }
   ]
   const tabs = all.filter((tab) => !tab.need || capabilities.includes(tab.need))
-  const active = (r: Route) => r.screen === route.screen || (r.screen === 'home' && (route.screen === 'session' || route.screen === 'new'))
+  const active = (r: Route) => r.screen === route.screen || (r.screen === 'home' && (route.screen === 'session' || route.screen === 'new')) || (r.screen === 'plan' && (route.screen === 'planItem' || route.screen === 'newItem' || route.screen === 'milestone'))
   return (
     <nav className="safe-bottom shrink-0 border-t border-border bg-sidebar" aria-label={t('web.nav.sessions')}>
       <div className="flex h-14 items-stretch">

@@ -14,6 +14,10 @@ import { PairScreen } from './screens/PairScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionScreen } from './screens/SessionScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
+import { PlanScreen } from './screens/PlanScreen'
+import { NewItemScreen, PlanItemScreen } from './screens/PlanItemScreen'
+import { MilestoneScreen } from './screens/MilestoneScreen'
+import { useAppearance } from './appearance'
 import { ConnectionBanner, TabBar } from './ui'
 
 interface Toast {
@@ -52,6 +56,7 @@ function Shell({ defaultName }: { defaultName: string }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [askNotify, setAskNotify] = useState(() => !localStorage.getItem(NOTIFY_ASKED_KEY))
   const capabilities = status.desktop?.capabilities ?? []
+  useAppearance()
 
   // Each time the desktop comes back: take its session list, dropping sessions closed meanwhile.
   useEffect(() => {
@@ -93,13 +98,25 @@ function Shell({ defaultName }: { defaultName: string }) {
     case 'alerts':
       screen = capabilities.includes('health') ? <AlertsScreen /> : <NotAllowed what={t('web.capability.health')} />
       break
+    case 'plan':
+      screen = capabilities.includes('plan') ? <PlanScreen tab={route.tab} /> : <NotAllowed what={t('web.capability.plan')} />
+      break
+    case 'planItem':
+      screen = capabilities.includes('plan') ? <PlanItemScreen id={route.id} /> : <NotAllowed what={t('web.capability.plan')} />
+      break
+    case 'newItem':
+      screen = capabilities.includes('plan') ? <NewItemScreen /> : <NotAllowed what={t('web.capability.plan')} />
+      break
+    case 'milestone':
+      screen = capabilities.includes('plan') ? <MilestoneScreen id={route.id} /> : <NotAllowed what={t('web.capability.plan')} />
+      break
     case 'settings':
       screen = <SettingsScreen />
       break
     default:
       screen = capabilities.includes('sessions') ? <HomeScreen /> : <SettingsScreen />
   }
-  const chat = route.screen === 'session' || route.screen === 'new'
+  const chat = route.screen === 'session' || route.screen === 'new' || route.screen === 'newItem'
   return (
     <div className="flex h-full flex-col">
       <Toasts toasts={toasts} dismiss={(id) => setToasts((all) => all.filter((x) => x.id !== id))} />

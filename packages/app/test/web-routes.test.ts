@@ -11,7 +11,13 @@ describe('web routes', () => {
     expect(parseRoute('#settings')).toEqual({ screen: 'settings' })
     expect(parseRoute('#session/abc%2F1')).toEqual({ screen: 'session', id: 'abc/1' })
     expect(parseRoute('#pair=eyJ2IjoxfQ')).toEqual({ screen: 'pair' })
-    for (const hash of ['#new', '#prs', '#alerts', '#settings', '#session/abc%2F1']) expect(routeHash(parseRoute(hash))).toBe(hash)
+    expect(parseRoute('#plan')).toEqual({ screen: 'plan', tab: 'tasks' })
+    expect(parseRoute('#plan/today')).toEqual({ screen: 'plan', tab: 'today' })
+    expect(parseRoute('#plan/nope')).toEqual({ screen: 'plan', tab: 'tasks' })
+    expect(parseRoute('#item/new')).toEqual({ screen: 'newItem' })
+    expect(parseRoute('#item/i%2F1')).toEqual({ screen: 'planItem', id: 'i/1' })
+    expect(parseRoute('#milestone/m1')).toEqual({ screen: 'milestone', id: 'm1' })
+    for (const hash of ['#new', '#prs', '#alerts', '#settings', '#session/abc%2F1', '#plan/inbox', '#item/new', '#item/i%2F1', '#milestone/m1']) expect(routeHash(parseRoute(hash))).toBe(hash)
   })
 
   it('opens a notification on its session, and home when the route is unknown', () => {
