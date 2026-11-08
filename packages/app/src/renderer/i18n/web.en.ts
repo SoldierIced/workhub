@@ -77,6 +77,8 @@ export const webEn = {
   'web.session.send': 'Send',
   'web.session.stop': 'Stop',
   'web.session.earlier': 'Earlier messages',
+  'web.session.loadEarlier': 'Load earlier messages',
+  'web.session.loadingEarlier': 'Loading earlier messages…',
   'web.session.turnEnded': 'Turn ended',
   'web.session.stopped': 'Stopped: {reason}',
   'web.session.exited': 'The agent process exited',

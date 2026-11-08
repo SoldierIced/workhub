@@ -113,7 +113,7 @@ const CACHE_PREFIX = 'workhub-remote-cache:'
 const MAX_RELAY_FRAME_CHARS = 2 * 1024 * 1024
 
 /** Calls whose last answer the phone keeps, so it has something to show without network. */
-export const CACHED_CHANNELS: ReadonlySet<string> = new Set(['sessions:list', 'config:get', 'config:effectiveAgents', 'hub:profileFolders', 'agents:availability', 'codeHost:lists', 'metricAlerts:list', 'automations:get', 'health:get', 'plan:get', 'planner:get'])
+export const CACHED_CHANNELS: ReadonlySet<string> = new Set(['remote:history', 'sessions:list', 'config:get', 'config:effectiveAgents', 'hub:profileFolders', 'agents:availability', 'codeHost:lists', 'metricAlerts:list', 'automations:get', 'health:get', 'plan:get', 'planner:get'])
 
 export class RemoteClient {
   readonly identity: Identity
@@ -590,7 +590,7 @@ export class RemoteClient {
 
   private invoke(channel: string, args: unknown[]): Promise<unknown> {
     if (!this.ready || !this.channel) {
-      if (CACHED_CHANNELS.has(channel)) {
+      if (isCachedCall(channel, args)) {
         const cached = this.cached(channel, args)
         if (cached !== null) return Promise.resolve(cached)
       }
@@ -603,7 +603,8 @@ export class RemoteClient {
       }, this.deps.invokeTimeoutMs ?? 30_000)
       this.pending.set(id, {
         resolve: (value) => {
-          if (CACHED_CHANNELS.has(channel)) this.remember(channel, args, value)
+          if (isCachedCall(channel, args)) this.remember(channel, args, value)
+          if (channel === 'sessions:list' && Array.isArray(value)) this.forgetClosedHistories(value)
           resolve(value)
         },
         reject,
@@ -675,6 +676,16 @@ export class RemoteClient {
     }
   }
 
+  /** The cached last page of every chat that is no longer open: nothing will show it again. */
+  private forgetClosedHistories(views: unknown[]): void {
+    const desktop = this.desktop
+    const keys = this.deps.storage.keys?.()
+    if (!desktop || !keys) return
+    const open = new Set(views.map((v) => cacheKeyOf(desktop.id, 'remote:history', [(v as { id?: unknown }).id])))
+    const prefix = `${CACHE_PREFIX}${desktop.id}:remote:history:`
+    for (const key of keys) if (key.startsWith(prefix) && !open.has(key)) this.deps.storage.remove(key)
+  }
+
   private cacheKeyFor(desktopId: string): Uint8Array {
     let key = this.cacheKeys.get(desktopId)
     if (!key) {
@@ -702,6 +713,12 @@ export class RemoteClient {
       }
     }
   }
+}
+
+/** Whether this call's answer is kept for offline use: of a chat's history, only its last page. */
+export function isCachedCall(channel: string, args: unknown[]): boolean {
+  if (!CACHED_CHANNELS.has(channel)) return false
+  return channel !== 'remote:history' || args.length === 1
 }
 
 function cacheKeyOf(desktopId: string, channel: string, args: unknown[]): string {

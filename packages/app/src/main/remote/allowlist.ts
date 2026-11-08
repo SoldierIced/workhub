@@ -30,6 +30,7 @@ export const REMOTE_INVOKES: Readonly<Record<string, RemoteCapability | 'any'>> 
   'sessions:cancel': 'sessions',
   'sessions:stop': 'sessions',
   'remote:file': 'sessions',
+  'remote:history': 'sessions',
   'history:list': 'sessions',
   'history:find': 'sessions',
   'codeHost:lists': 'pullRequests',

@@ -4,3 +4,4 @@ export { REMOTE_EVENTS, REMOTE_INVOKES, REMOTE_MESSAGES, remoteAllows } from './
 export { RemoteService, EMPTY_REMOTE_STATE, relayWebSocketUrl, relayWebClientUrl, type RemoteState, type RemoteServiceDeps, type RemoteDeviceRecord, type WebSocketLike } from './service'
 export { registerRemoteIpc } from './ipc'
 export { readRemoteFile, mimeOf, REMOTE_FILE_MAX_BYTES } from './files'
+export { pageHistory, slimMessage, HISTORY_PAGE_BYTES, HISTORY_PAGE_MAX, type HistoryPage } from './history'

@@ -198,6 +198,15 @@ describe('SettingsWindow', () => {
     settings.send('session:event', ['a'])
     expect(win.sent).toEqual([['usage:changed', [1]]])
   })
+
+  it('forwards remote-access changes, so a pairing request shows while the section is open', () => {
+    const { settings, created } = harness()
+    settings.open()
+    const win = created[0]!.win
+    const status = { enabled: true, request: { deviceId: 'd', name: 'Phone' } }
+    settings.send('remote:changed', [status])
+    expect(win.sent).toEqual([['remote:changed', status]])
+  })
 })
 
 describe('broadcastingConfigStore', () => {

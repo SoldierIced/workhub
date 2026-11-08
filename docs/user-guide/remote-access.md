@@ -78,7 +78,9 @@ The phone opens the relay's address in its browser: the relay serves the phone a
 3. **Sessions.** The list of sessions open on the desktop, the ones waiting for an answer first.
    A session shows the chat as the desktop does: replies, tool calls, permission prompts (with the
    same options) and questions, and files the agent wrote (images preview inline, anything else
-   downloads; files above 8 MB stay on the desktop). The prompt box sends a message or stops the
+   downloads; files above 8 MB stay on the desktop). Opening a session loads its latest messages;
+   scrolling up loads earlier ones a page at a time (very long tool output and pasted images stay
+   on the desktop). The prompt box sends a message or stops the
    turn. *New* opens a session in one of the profile's folders, with the agent and an optional
    first message; the session appears on the desktop too.
 4. **Pull requests and alerts.** The same lists the desktop shows for the profile you pick; a tap
@@ -95,8 +97,9 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    capabilities. Revoking the phone on one desktop leaves the others paired.
 7. **Phone settings.** Language, theme and text size are the phone's own; the profile the lists
    open with is remembered per phone.
-8. **Without network.** The phone keeps the last answer to each list, encrypted with its own key,
-   and shows it with a banner while the desktop is unreachable. When the app goes to the
+8. **Without network.** The phone keeps the last answer to each list and the latest messages of
+   each open session, encrypted with its own key, and shows them with a banner while the desktop
+   is unreachable. When the app goes to the
    background it closes its connection so notifications arrive as push; back in front it reconnects.
 9. **Unpair.** Settings → *Unpair this phone* forgets the current desktop and its cached state. Revoking the
    device on the desktop does the same from the other side.

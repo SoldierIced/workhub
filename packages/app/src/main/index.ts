@@ -106,7 +106,7 @@ import { ContinuityService, type ContinuityDeps } from './continuity'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
 import { timeIpc } from './ipc-timing'
-import { recordIpc, RemoteHub, RemoteService, registerRemoteIpc, readRemoteFile, type RemoteState } from './remote'
+import { pageHistory, recordIpc, RemoteHub, RemoteService, registerRemoteIpc, readRemoteFile, type RemoteState } from './remote'
 import { rendererReporter, startDiagnostics } from './diagnostics'
 import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
@@ -1202,6 +1202,14 @@ function registerIpc(): void {
     const view = sessions.list().find((v) => v.id === id)
     if (!view) throw new Error('the session is not open')
     return readRemoteFile(view.cwd, path)
+  })
+  // A paired device reads an open session's conversation a page at a time (see remote/history.ts):
+  // it only sees live events, so this is how it shows what was said before it connected.
+  ipc.handle('remote:history', async (_e, id: unknown, before: unknown) => {
+    if (typeof id !== 'string') throw new Error('a session is required')
+    if (before !== undefined && (typeof before !== 'number' || !Number.isInteger(before) || before < 0)) throw new Error('before must be a message index')
+    if (!sessions.list().some((v) => v.id === id)) throw new Error('the session is not open')
+    return pageHistory(await sessions.history(id), before)
   })
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   // The chat's Listen button: a long agent message is summarized (one small Haiku query) before it is read aloud.

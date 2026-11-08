@@ -6,8 +6,8 @@ import { Markdown } from '../../renderer/components/molecules/Markdown'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { cn } from '../../renderer/lib/cn'
 import { QuestionCard } from '../../renderer/screens/sessions/QuestionCard'
-import { markPermission, pushUser, useSessions, type ChatItem, type SessionData } from '../../renderer/store'
-import type { RemoteFile } from '../../shared/remote-api'
+import { loadBacklog, loadEarlier, markPermission, pushUser, useSessions, type ChatItem, type SessionData } from '../../renderer/store'
+import type { RemoteFile, RemoteHistoryPage } from '../../shared/remote-api'
 import { navigate, useClient, useClientStatus } from '../app-context'
 import { takeFirstPrompt } from '../first-prompt'
 import { basename, Body, Header, InlineConfirm, Screen } from '../ui'
@@ -166,6 +166,55 @@ export function SessionScreen({ id }: { id: string }) {
   const [closing, setClosing] = useState(false)
   const scroller = useRef<HTMLElement>(null)
   const stuck = useRef(true)
+  const touching = useRef(false)
+  const client = useClient()
+  const online = status.state === 'online'
+  const exists = Boolean(session)
+  // The index of the oldest stored message shown; null until the last page arrived.
+  const [start, setStart] = useState<number | null>(null)
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const earlierInFlight = useRef(false)
+  // The scroll height before an earlier page went in above, to keep the reader where they were.
+  const anchor = useRef<number | null>(null)
+
+  // The device only receives live events: the conversation so far comes from the desktop a page at a
+  // time, on open and whenever the link comes back (offline, the last page cached on this phone).
+  useEffect(() => {
+    if (!exists) return
+    let alive = true
+    ;(client.transport.invoke('remote:history', id) as Promise<RemoteHistoryPage | null>).then(
+      (page) => {
+        if (!alive || !page) return
+        stuck.current = true
+        loadBacklog(id, page.messages)
+        setStart(page.start)
+      },
+      () => {}
+    )
+    return () => {
+      alive = false
+    }
+  }, [client, id, exists, online])
+
+  const loadMore = async () => {
+    const el = scroller.current
+    if (!el || start === null || start <= 0 || earlierInFlight.current || !online) return
+    earlierInFlight.current = true
+    setLoadingEarlier(true)
+    try {
+      const page = (await client.transport.invoke('remote:history', id, start)) as RemoteHistoryPage
+      anchor.current = el.scrollHeight
+      loadEarlier(id, page.messages)
+      setStart(page.start)
+    } catch {
+      // Offline or refused: the button stays, to try again.
+    } finally {
+      earlierInFlight.current = false
+      setLoadingEarlier(false)
+    }
+  }
+  const onTop = useRef(loadMore)
+  onTop.current = loadMore
 
   // The first message typed on the New session screen goes out as soon as the agent is ready.
   useEffect(() => {
@@ -178,7 +227,14 @@ export function SessionScreen({ id }: { id: string }) {
   const items = session?.items ?? []
   useLayoutEffect(() => {
     const el = scroller.current
-    if (el && stuck.current) el.scrollTop = el.scrollHeight
+    if (!el || anchor.current === null) return
+    el.scrollTop += el.scrollHeight - anchor.current
+    anchor.current = null
+  }, [items[0]?.id])
+  useLayoutEffect(() => {
+    const el = scroller.current
+    // Not while a finger is on the chat: a reply streaming in would pull it back to the end.
+    if (el && stuck.current && !touching.current) el.scrollTop = el.scrollHeight
   }, [items.length, items[items.length - 1]])
 
   const send = (value: string) => {
@@ -207,7 +263,6 @@ export function SessionScreen({ id }: { id: string }) {
   }
   const v = session.view
   const busy = v.state === 'busy' || v.state === 'starting'
-  const online = status.state === 'online'
 
   return (
     <Screen>
@@ -241,7 +296,18 @@ export function SessionScreen({ id }: { id: string }) {
         </div>
       )}
       <Body className="flex flex-col gap-3 px-4 py-4">
-        <ScrollCapture target={scroller} stuck={stuck} />
+        <ScrollCapture target={scroller} stuck={stuck} touching={touching} onTop={onTop} />
+        {start !== null && start > 0 && (
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingEarlier || !online}
+            className="mx-auto flex min-h-9 items-center gap-2 rounded-full border border-border px-3 text-xs text-muted disabled:opacity-60"
+          >
+            {loadingEarlier && <Spinner className="size-3.5" />}
+            {loadingEarlier ? t('web.session.loadingEarlier') : t('web.session.loadEarlier')}
+          </button>
+        )}
         {items.map((item) => (
           <Item key={item.id} item={item} session={session} onAnswer={answer} />
         ))}
@@ -282,8 +348,24 @@ export function SessionScreen({ id }: { id: string }) {
   )
 }
 
-/** Finds the chat's scroll element and remembers whether the person is reading the end of it. */
-function ScrollCapture({ target, stuck }: { target: RefObject<HTMLElement | null>; stuck: RefObject<boolean> }) {
+/** How close to the top of the chat an earlier page starts loading. */
+const LOAD_EARLIER_PX = 300
+
+/**
+ * Finds the chat's scroll element, remembers whether the person is reading the end of it and
+ * whether a finger is on it, and asks for an earlier page near the top.
+ */
+function ScrollCapture({
+  target,
+  stuck,
+  touching,
+  onTop
+}: {
+  target: RefObject<HTMLElement | null>
+  stuck: RefObject<boolean>
+  touching: RefObject<boolean>
+  onTop: RefObject<() => Promise<void>>
+}) {
   const probe = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     const el = probe.current?.parentElement
@@ -291,9 +373,25 @@ function ScrollCapture({ target, stuck }: { target: RefObject<HTMLElement | null
     target.current = el
     const onScroll = () => {
       stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+      if (el.scrollTop < LOAD_EARLIER_PX) void onTop.current?.()
+    }
+    const onTouchStart = () => {
+      touching.current = true
+    }
+    const onTouchEnd = () => {
+      touching.current = false
+      onScroll()
     }
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [target, stuck])
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [target, stuck, touching, onTop])
   return <span ref={probe} hidden />
 }

@@ -1,6 +1,8 @@
 // Remote access (a phone or browser paired with this desktop): what a device may do, by capability,
 // and what Settings → Remote access shows and does.
 
+import type { HistoryMessage } from '@workhub/core'
+
 /** A group of `hub` calls and events a paired device can be granted. */
 export type RemoteCapability = 'sessions' | 'pullRequests' | 'automations' | 'health' | 'plan'
 
@@ -66,4 +68,11 @@ export interface RemoteFile {
   mime: string
   /** base64 of the content. */
   data: string
+}
+
+/** A page of an open session's stored conversation (`remote:history`): messages `start`.. of `total`. */
+export interface RemoteHistoryPage {
+  messages: HistoryMessage[]
+  start: number
+  total: number
 }
