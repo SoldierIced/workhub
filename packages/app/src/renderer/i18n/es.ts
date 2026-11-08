@@ -1,3 +1,4 @@
+import { webEs } from './web.es'
 import { remoteEs } from './remote.es'
 import type { en } from './en'
 import { linksEs } from './links.es'
@@ -516,5 +517,6 @@ export const es: Record<keyof typeof en, string> = {
   ...profileAgentsEs,
   ...settingsAgentsEs,
   ...settingsConnectionsEs,
-  ...remoteEs
+  ...remoteEs,
+  ...webEs
 }

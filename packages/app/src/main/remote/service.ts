@@ -256,20 +256,19 @@ export class RemoteService {
     device.capabilities = capabilities.filter(isRemoteCapability)
     this.deps.store.save(this.state)
     // A live link keeps the capabilities it was attached with: reconnecting applies the new ones.
+    // Dropped first: the device answers `bye` with a new handshake, which must find no stale link.
     const link = this.links.get(deviceId)
-    if (link) {
-      this.sendChannel(deviceId, link, { t: 'bye', reason: 'shutdown' })
-      this.dropLink(deviceId)
-    }
+    this.dropLink(deviceId)
+    if (link) this.sendChannel(deviceId, link, { t: 'bye', reason: 'shutdown' })
     return this.changed()
   }
 
   revoke(deviceId: string): RemoteStatusView {
     const link = this.links.get(deviceId)
-    if (link) this.sendChannel(deviceId, link, { t: 'bye', reason: 'revoked' })
     this.dropLink(deviceId)
     this.state = { ...this.state, devices: this.state.devices.filter((d) => d.id !== deviceId) }
     this.deps.store.save(this.state)
+    if (link) this.sendChannel(deviceId, link, { t: 'bye', reason: 'revoked' })
     this.deps.log.info(`remote: revoked ${deviceId}`)
     return this.changed()
   }
@@ -454,7 +453,6 @@ export class RemoteService {
       } catch {
         return
       }
-      this.sendTo(device.id, { k: 'hs', e: pending.hello.e })
       const detach = this.deps.hub.attach({
         id: device.id,
         capabilities: new Set(device.capabilities),
@@ -463,7 +461,9 @@ export class RemoteService {
           if (link?.ready) this.sendChannel(device.id, link, { t: 'event', channel, args })
         }
       })
+      // The link is in place before our hello goes out: the device's `ready` may come straight back.
       this.links.set(device.id, { channel, ready: false, detach })
+      this.sendTo(device.id, { k: 'hs', e: pending.hello.e })
       this.touch(device.id)
       return
     }

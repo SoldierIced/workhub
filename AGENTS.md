@@ -26,6 +26,7 @@ npm ci               # install; downloads Electron and prepares node-pty
 npm run typecheck    # tsc on every package
 npx vitest run       # all tests (npm test does the same)
 npm run build        # electron-vite build of the app
+npm run build:web -w @workhub/app   # phone app (Workhub Remote) into packages/relay/web-client
 npm run dev          # development app ("Workhub 2 Dev")
 npm run demo         # dev build with synthetic data in .demo-data/ (add -- --reset to reseed)
 ```

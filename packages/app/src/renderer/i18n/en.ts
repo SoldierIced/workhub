@@ -1,3 +1,4 @@
+import { webEn } from './web.en'
 import { remoteEn } from './remote.en'
 import { linksEn } from './links.en'
 import { aiReviewEn } from './aiReview.en'
@@ -517,5 +518,6 @@ export const en = {
   ...profileAgentsEn,
   ...settingsAgentsEn,
   ...settingsConnectionsEn,
-  ...remoteEn
+  ...remoteEn,
+  ...webEn
 } as const

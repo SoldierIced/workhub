@@ -13,7 +13,7 @@ An npm workspace with five packages. Dependencies point inward.
 | `packages/protocol` | The Workhub Remote wire protocol: device identities, pairing, the end-to-end encrypted channel and its message schemas. Pure TypeScript that runs in Node and the browser (`zod`, `@noble/curves`, `@noble/ciphers`, `@noble/hashes`). | nothing in the repo |
 | `packages/relay` | The relay a desktop and its paired devices meet through: WebSocket rooms, presence, Web Push for devices that are offline, and the web client's files. It forwards bodies it cannot read. Bundled with esbuild into one file and shipped as a container image (`packages/relay/Dockerfile`). | `protocol` |
 | `packages/adapters` | Implementations of the ports on Node and Electron: agents, code hosts, trackers, chat, health, calendars, storage, transcript readers. | `core` |
-| `packages/app` | The Electron shell: main process, preload bridge and the React renderer (Tailwind and Radix, English and Spanish), plus the web client the same renderer builds for paired devices. | `core`, `adapters`, `protocol` |
+| `packages/app` | The Electron shell: main process, preload bridge and the React renderer (Tailwind and Radix, English and Spanish), plus the phone app for paired devices (`src/web/`: its own Vite entry and service worker, reusing the renderer's store, components and i18n over `window.hub`). | `core`, `adapters`, `protocol` |
 
 Workspace packages ship TypeScript source and the app bundles them with electron-vite, so there is
 no separate build step for `core`, `protocol` or `adapters`; only `relay` bundles itself for its image. `scripts/` holds build, release, icon and install
