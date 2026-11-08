@@ -1,7 +1,7 @@
 import { app, autoUpdater as nativeUpdater, BrowserWindow, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, screen, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { delimiter, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { AcpRuntime, agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
@@ -106,7 +106,7 @@ import { ContinuityService, type ContinuityDeps } from './continuity'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
 import { timeIpc } from './ipc-timing'
-import { recordIpc, RemoteHub } from './remote'
+import { recordIpc, RemoteHub, RemoteService, registerRemoteIpc, readRemoteFile, type RemoteState } from './remote'
 import { rendererReporter, startDiagnostics } from './diagnostics'
 import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
@@ -317,12 +317,25 @@ const notifier = new Notifier({
   create: (content) => notificationPermission.observe(new Notification(content)),
   logPath: process.env['WORKHUB_NOTIFICATION_LOG'],
   onShown: scheduleTray,
+  // Paired phones get the same notification, over their channel or by push (Settings → Remote access).
+  mirror: (n) => remoteService.notify(n),
   // Quiet hours (Settings → Alerts): the profile the notification is about, else the active one.
   quiet: async (kind, profileId, now) => {
     const config = await configuration.current()
     const id = profileId ?? config.activeProfileId
     return quietNow(kind, config.profiles.find((p) => p.id === id)?.alerts?.quietHours, now)
   }
+})
+
+/** Remote access: this desktop's identity, the relay connection and the paired devices (Settings → Remote access). */
+const remoteService = new RemoteService({
+  store: new StateFile<RemoteState>(join(dataDir, 'remote.json'), 200),
+  secrets,
+  hub: remoteHub,
+  connect: (url) => new WebSocket(url),
+  defaultName: () => hostname().replace(/\.local$/, ''),
+  onChanged: (status) => send('remote:changed', status),
+  log: diagnostics.log
 })
 
 // Workhub 1's Agent SDK bridge, run with Electron's own Node. Packaged: staged into the resources
@@ -1181,6 +1194,14 @@ function registerIpc(): void {
     }
   })
   registerMetricAlertsIpc(ipc, metricAlerts)
+  registerRemoteIpc(ipc, remoteService)
+  // A paired device reads a file the agent made, only inside the session's folder (see remote/allowlist.ts).
+  ipc.handle('remote:file', (_e, id: unknown, path: unknown) => {
+    if (typeof id !== 'string' || typeof path !== 'string') throw new Error('a session and a path are required')
+    const target = sessions.fileInSession(id, path)
+    if (!target) throw new Error('the file is not in the session folder')
+    return readRemoteFile(target)
+  })
   registerChatIpc(ipc, { slack, automations, configuration, guarded })
   // The chat's Listen button: a long agent message is summarized (one small Haiku query) before it is read aloud.
   const listenSummarizer = new ListenSummarizer({ bridgeDir, cwd: dataDir })
@@ -1875,6 +1896,7 @@ void app.whenReady().then(async () => {
   const startup = diagnostics.activity.begin('startup')
   denyWebPermissions()
   registerIpc()
+  void remoteService.start()
   await refreshMenu()
   createWindow()
   // One after the other: both rewrite profiles.
@@ -1932,6 +1954,7 @@ nativeUpdater.on('before-quit-for-update', () => {
   openSessions.freeze()
 })
 app.on('before-quit', (event) => {
+  void remoteService.stop()
   allowWindowClose = true
   // Session windows closing from here on stay remembered: the next launch reopens them.
   sessionWindows.suspend()

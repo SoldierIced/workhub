@@ -18,6 +18,8 @@ export interface NotifierDeps {
   logPath?: string
   /** Called after each shown notification (the tray lists the recent ones). */
   onShown?: () => void
+  /** Gets every notification that was shown, to repeat it elsewhere (a paired phone). */
+  mirror?: (notification: MirroredNotification) => void
   /**
    * Whether the profile's quiet hours hold this kind back now (see `quietNow`). `profileId` is the
    * one the notification is about when it says (`log.profileId`), else the active profile.
@@ -36,6 +38,18 @@ export interface ShownNotification {
   /** The session it is about (`log.sessionId`), so the popover does not list it twice. */
   sessionId?: string
   open: () => void
+}
+
+/** A shown notification as it is repeated to a paired device: words only, never the open action. */
+export interface MirroredNotification {
+  kind: NotificationKind
+  title: string
+  body: string
+  at: number
+  sessionId?: string
+  profileId?: string
+  /** The same key as `replaces`: a newer notification about the same thing takes the older one's place. */
+  tag?: string
 }
 
 /** How many shown notifications the menu bar remembers. */
@@ -79,6 +93,7 @@ export class Notifier {
       this.recentList.unshift(entry)
       this.recentList.splice(RECENT_NOTIFICATIONS)
     }
+    this.mirror(entry, body, log, replaces)
     if (!os) {
       this.deps.onShown?.()
       return true
@@ -105,6 +120,19 @@ export class Notifier {
     notification.show()
     this.deps.onShown?.()
     return true
+  }
+
+  private mirror(entry: ShownNotification, body: string, log: Record<string, unknown>, replaces?: string): void {
+    if (!this.deps.mirror) return
+    const mirrored: MirroredNotification = { kind: entry.kind, title: entry.title, body, at: entry.at }
+    if (entry.sessionId) mirrored.sessionId = entry.sessionId
+    if (typeof log['profileId'] === 'string') mirrored.profileId = log['profileId']
+    if (replaces) mirrored.tag = replaces
+    try {
+      this.deps.mirror(mirrored)
+    } catch {
+      // A paired device must never keep a notification from showing here.
+    }
   }
 
   /** Newest first. */

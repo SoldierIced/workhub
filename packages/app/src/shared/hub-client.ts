@@ -12,6 +12,7 @@ import type { ContinuityMoved, ContinuityOffer } from './continuity-api'
 import type { TrayPopoverView, TrayRoute } from './tray-api'
 import type { PullRequestWindowTab } from './codehost-api'
 import type { MenuCommand } from './windows-api'
+import type { RemoteStatusView } from './remote-api'
 
 /** What carries `hub` calls to the main process: request/response, one-way, and main's events. */
 export interface HubTransport {
@@ -343,6 +344,19 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
     },
     menu: {
       onCommand: (cb) => subscribe<[MenuCommand]>('menu:command', cb)
+    },
+    remote: {
+      status: () => invoke('remote:status'),
+      setEnabled: (enabled) => invoke('remote:setEnabled', enabled),
+      setRelayUrl: (url) => invoke('remote:setRelayUrl', url),
+      setDesktopName: (name) => invoke('remote:setDesktopName', name),
+      startPairing: () => invoke('remote:startPairing'),
+      cancelPairing: () => invoke('remote:cancelPairing'),
+      acceptPairing: (deviceId, capabilities) => invoke('remote:acceptPairing', deviceId, capabilities),
+      rejectPairing: (deviceId) => invoke('remote:rejectPairing', deviceId),
+      setCapabilities: (deviceId, capabilities) => invoke('remote:setCapabilities', deviceId, capabilities),
+      revoke: (deviceId) => invoke('remote:revoke', deviceId),
+      onChanged: (cb) => subscribe<[RemoteStatusView]>('remote:changed', cb)
     },
     diagnostics: {
       report: (report) => send('diag:report', report),

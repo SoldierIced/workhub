@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // Workspace packages ship TypeScript source and the ACP SDK is ESM-only: bundle them into the
 // CJS main output (electron-updater too, so only node-pty ships in node_modules). Native node-pty and the Claude ACP adapter (spawned as a process) stay external.
-const bundled = ['@workhub/core', '@workhub/adapters', '@agentclientprotocol/sdk', 'zod', 'electron-updater']
+const bundled = ['@workhub/core', '@workhub/adapters', '@workhub/protocol', '@noble/curves', '@noble/ciphers', '@noble/hashes', '@agentclientprotocol/sdk', 'zod', 'electron-updater']
 
 interface Brand {
   repo: { owner: string; name: string }
