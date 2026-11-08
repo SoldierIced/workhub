@@ -519,7 +519,7 @@ function Shell() {
               ) : route === 'slack' ? (
                 <SlackScreen profile={profile} sessions={sessions} onOpenSession={openSession} onOpenSettings={openSettings} />
               ) : route === 'automations' ? (
-                <AutomationsScreen profile={profile} agents={agents} onOpenSession={openSession} />
+                <AutomationsScreen profile={profile} profiles={profiles} agents={agents} onOpenSession={openSession} />
               ) : null}
             </div>
           )}

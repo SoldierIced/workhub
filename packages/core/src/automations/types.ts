@@ -235,3 +235,12 @@ export function prReviewsPreset(id: string, fields: { profileId: string | null; 
     triggers: { chatChannelIds: (reviewing.length ? reviewing : fields.channels).map((c) => c.id), prOwner: owner, intervalMinutes: null }
   })
 }
+
+/**
+ * The automations a profile's screen lists: its own and those without a profile, or every one when
+ * `showAll` is on (or no profile is open).
+ */
+export function automationsForProfile<T extends { profileId: string | null }>(automations: readonly T[], profileId: string | null | undefined, showAll: boolean): T[] {
+  if (showAll || !profileId) return [...automations]
+  return automations.filter((a) => a.profileId === null || a.profileId === profileId)
+}
