@@ -55,16 +55,17 @@ export class UpdateService {
     this.set({ state: 'checking', message: undefined, canInstall: await this.canInstall() })
     try {
       // electron-updater follows the newest tag, which exists before its installers are uploaded
-      // (and for drafts). Point it at the newest release that has them; without the API, check as before.
-      const releases = await this.fetchReleases().catch(() => null)
-      if (releases) {
-        const tag = pickReleaseTag(releases, { prerelease: autoUpdater.allowPrerelease, platform: process.platform })
-        if (!tag) {
-          this.set({ state: 'none', version: undefined, releaseUrl: undefined })
-          return this.current
-        }
-        autoUpdater.setFeedURL({ provider: 'generic', url: `${RELEASES}/download/${tag}` })
+      // (and for drafts). Point it at the newest release that has them. Without the API there is no
+      // way to tell which release is complete, so report that instead of a misleading 404.
+      const releases = await this.fetchReleases().catch((err: unknown) => {
+        throw new Error(`Could not reach GitHub to list releases (${err instanceof Error ? err.message : String(err)}). Try again later.`)
+      })
+      const tag = pickReleaseTag(releases, { prerelease: autoUpdater.allowPrerelease, platform: process.platform })
+      if (!tag) {
+        this.set({ state: 'none', version: undefined, releaseUrl: undefined })
+        return this.current
       }
+      autoUpdater.setFeedURL({ provider: 'generic', url: `${RELEASES}/download/${tag}` })
       await autoUpdater.checkForUpdates()
     } catch (err) {
       this.set({ state: 'error', message: err instanceof Error ? err.message : String(err) })

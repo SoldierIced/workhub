@@ -72,10 +72,13 @@ const found = (version = '2.0.0-alpha.2') => ({
   ]
 })
 
+/** The release list the GitHub API answers with: one published release with every manifest. */
+const published = async () => [{ tag_name: 'v2.0.0-alpha.2', draft: false, prerelease: true, assets: [{ name: 'latest-mac.yml' }, { name: 'latest.yml' }, { name: 'latest-linux.yml' }] }]
+
 function service(mac: MacUpdateDeps) {
   const changes: UpdateStatus[] = []
   const opened: string[] = []
-  const s = new UpdateService((st) => void changes.push(st), async (url) => void opened.push(url), mac)
+  const s = new UpdateService((st) => void changes.push(st), async (url) => void opened.push(url), mac, published)
   return { s, changes, opened }
 }
 
@@ -192,13 +195,16 @@ describe('picking the release to check', () => {
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
   })
 
-  it('checks as before when the GitHub API cannot be read', async () => {
+  it('reports an error instead of guessing the release when the GitHub API cannot be read', async () => {
     setPlatform('darwin')
     const service = new UpdateService(() => {}, async () => {}, undefined, async () => {
       throw new Error('offline')
     })
-    await service.check()
+    const status = await service.check()
+    expect(status.state).toBe('error')
+    expect(status.message).toContain('offline')
     expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
-    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+    // Without the list, electron-updater would follow the newest tag and 404 on a release still being built.
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
   })
 })
