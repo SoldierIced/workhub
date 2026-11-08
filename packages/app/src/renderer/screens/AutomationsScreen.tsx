@@ -1,6 +1,6 @@
 import { Bot, Pencil, Play, Plus, Square, SquareArrowOutUpRight, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { newAutomation, prReviewsPreset, type AutomationDefinition, type AutomationRun, type EffectiveAgent, type Profile } from '@workhub/core'
+import { automationsForProfile, newAutomation, prReviewsPreset, type AutomationDefinition, type AutomationRun, type EffectiveAgent, type Profile } from '@workhub/core'
 import type { AutomationStatus } from '@shared/chat-api'
 import { Badge, Button, IconButton, Spinner, Switch } from '../components/atoms'
 import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, useToast } from '../components/molecules'
@@ -8,6 +8,7 @@ import { useAutomations, useSlack } from '../chatStore'
 import { refreshConfig } from '../configStore'
 import { useI18n } from '../i18n/I18nProvider'
 import { useAsyncAction } from '../lib/useAsyncAction'
+import { readPrefs, setPrefs } from '../lib/prefs'
 import { relativeTime } from '../lib/pullRequests'
 import { formatTokens } from '../lib/home'
 import { runUsageLabel } from '../lib/runUsage'
@@ -19,12 +20,14 @@ const OUTCOME_TONE = { ok: 'success', error: 'danger', rateLimited: 'warning', t
 
 export interface AutomationsScreenProps {
   profile: Profile | undefined
+  /** Every profile, to name an automation's profile while every profile is shown. */
+  profiles?: Profile[]
   agents: EffectiveAgent[]
   onOpenSession: (viewId: string) => void
 }
 
 /** Automations (⌘5): prompts sent to a dedicated session on a Slack message or a schedule, with their run log. */
-export function AutomationsScreen({ profile, agents, onOpenSession }: AutomationsScreenProps) {
+export function AutomationsScreen({ profile, profiles = [], agents, onOpenSession }: AutomationsScreenProps) {
   const { t, locale } = useI18n()
   const toast = useToast()
   const snap = useAutomations()
@@ -32,6 +35,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
   const [editing, setEditing] = useState<AutomationDefinition | null>(null)
   const [removing, setRemoving] = useState<AutomationDefinition | null>(null)
   const [now, setNow] = useState(Date.now())
+  const [showAll, setShowAll] = useState(() => readPrefs().automationsShowAll)
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 15_000)
     return () => clearInterval(timer)
@@ -64,6 +68,12 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
     else toast(t('automations.noSession'), 'danger')
   }
   const fresh = () => crypto.randomUUID().slice(0, 8)
+  const definitions = snap.automations.map((s) => s.definition)
+  const visibleIds = new Set(automationsForProfile(definitions, profile?.id, showAll).map((d) => d.id))
+  const visible = snap.automations.filter((s) => visibleIds.has(s.definition.id))
+  const hidden = snap.automations.length - visible.length
+  const runs = showAll ? snap.runs : snap.runs.filter((r) => visibleIds.has(r.automationId) || !snap.automations.some((s) => s.definition.id === r.automationId))
+  const profileName = (id: string | null) => (id ? (profiles.find((p) => p.id === id)?.name ?? id) : null)
   const reviewsPreset = () => prReviewsPreset(fresh(), { profileId: profile?.id ?? null, agentKey: defaultAgent, folder, channels })
 
   return (
@@ -73,6 +83,17 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
           <h1 className="text-2xl font-semibold tracking-tight">{t('nav.automations')}</h1>
           <p className="mt-0.5 max-w-2xl text-base text-muted">{t('automations.subtitle')}</p>
         </div>
+        <label className="flex items-center gap-2 self-center text-sm text-muted" title={t('automations.showAllHint')}>
+          <Switch
+            aria-label={t('automations.showAll')}
+            checked={showAll}
+            onChange={(on) => {
+              setShowAll(on)
+              setPrefs({ automationsShowAll: on })
+            }}
+          />
+          {t('automations.showAll')}
+        </label>
         <Button size="sm" variant="secondary" onClick={() => setEditing(reviewsPreset())}>
           {t('automations.preset.prReviews')}
         </Button>
@@ -81,14 +102,15 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
         </Button>
       </header>
 
-      {snap.automations.length === 0 ? (
+      {visible.length === 0 && hidden === 0 ? (
         <EmptyState icon={<Bot className="size-6" aria-hidden />} title={t('automations.empty.title')} description={t('automations.empty.hint')} />
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {snap.automations.map((s) => (
+          {visible.map((s) => (
             <AutomationCard
               key={s.definition.id}
               status={s}
+              profileName={showAll ? profileName(s.definition.profileId) : null}
               now={now}
               lastRun={snap.runs.find((r) => r.automationId === s.definition.id)}
               channelName={(id) => channels.find((c) => c.id === id)?.name ?? id}
@@ -97,15 +119,20 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
               onOpen={() => void open(s.definition.id)}
             />
           ))}
+          {hidden > 0 && (
+            <button type="button" className="self-start text-left text-sm text-accent hover:underline lg:col-span-2" onClick={() => { setShowAll(true); setPrefs({ automationsShowAll: true }) }}>
+              {t('automations.hiddenCount', { count: hidden })}
+            </button>
+          )}
         </div>
       )}
 
       <Card>
-        <CardHeader title={t('automations.runs')} meta={String(snap.runs.length)} />
+        <CardHeader title={t('automations.runs')} meta={String(runs.length)} />
         <CardBody>
-          {snap.runs.length === 0 && <p className="text-sm text-subtle">{t('automations.noRuns')}</p>}
+          {runs.length === 0 && <p className="text-sm text-subtle">{t('automations.noRuns')}</p>}
           <ul className="flex flex-col gap-1 text-sm" data-testid="automation-runs">
-            {snap.runs.slice(0, 30).map((r) => (
+            {runs.slice(0, 30).map((r) => (
               <RunRow key={r.id} run={r} now={now} locale={locale} removed={!snap.automations.some((s) => s.definition.id === r.automationId)} onOpen={() => void open(r.automationId)} />
             ))}
           </ul>
@@ -118,7 +145,7 @@ export function AutomationsScreen({ profile, agents, onOpenSession }: Automation
   )
 }
 
-function AutomationCard({ status: s, now, lastRun, channelName, onEdit, onRemove, onOpen }: { status: AutomationStatus; now: number; lastRun: AutomationRun | undefined; channelName: (id: string) => string; onEdit: () => void; onRemove: () => void; onOpen: () => void }) {
+function AutomationCard({ status: s, profileName, now, lastRun, channelName, onEdit, onRemove, onOpen }: { status: AutomationStatus; profileName: string | null; now: number; lastRun: AutomationRun | undefined; channelName: (id: string) => string; onEdit: () => void; onRemove: () => void; onOpen: () => void }) {
   const { t, locale } = useI18n()
   const a = s.definition
   const toggle = useAsyncAction(async (on: boolean) => {
@@ -135,7 +162,12 @@ function AutomationCard({ status: s, now, lastRun, channelName, onEdit, onRemove
     <Card data-testid="automation-card">
       <CardHeader
         title={a.name}
-        meta={<Badge tone={HEALTH_TONE[s.health]}>{t(`automations.health.${s.health}`)}</Badge>}
+        meta={
+          <span className="inline-flex items-center gap-1.5">
+            <Badge tone={HEALTH_TONE[s.health]}>{t(`automations.health.${s.health}`)}</Badge>
+            {profileName && <Badge tone="neutral">{profileName}</Badge>}
+          </span>
+        }
         actions={<Switch checked={a.enabled} disabled={toggle.pending} onChange={toggle.run} aria-label={t('automations.field.enabled')} />}
       />
       <CardBody className="flex flex-col gap-2">

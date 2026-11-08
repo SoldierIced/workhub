@@ -6,10 +6,13 @@ import { GitLabCodeHost } from '@workhub/adapters/codehost-gitlab'
 import {
   appOptions,
   CodeHostError,
+  filterPullRequests,
+  githubScopeFromFilter,
   githubScopeFromRemotes,
   loadMyPullRequests,
   loadPullRequestView,
   loadReviewQueue,
+  normalizePullRequestFilter,
   closePullRequest,
   postComment,
   submitReview,
@@ -18,6 +21,7 @@ import {
   type Connection,
   type Profile,
   type PullRequest,
+  type PullRequestFilterSettings,
   type PullRequestItem,
   type ReviewAction,
   type WorkhubConfig
@@ -36,6 +40,7 @@ interface Resolved {
   scope: string
   cli: string
   folders: string[]
+  filter?: PullRequestFilterSettings
 }
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -108,17 +113,24 @@ export class CodeHostService {
     const made = this.hostFor(connection)
     if (!made) return null
     const configured = connection.settings['scope']?.trim() ?? ''
+    const filter = normalizePullRequestFilter(profile.pullRequests)
     return {
       host: made.host,
-      key: `${profile.id}|${connection.id}|${connection.endpoint ?? ''}|${configured}|${(profile.folders ?? []).join(',')}`,
+      key: `${profile.id}|${connection.id}|${connection.endpoint ?? ''}|${configured}|${(profile.folders ?? []).join(',')}|${JSON.stringify(filter)}`,
       scope: configured,
       cli: made.cli,
-      folders: profile.folders ?? []
+      folders: profile.folders ?? [],
+      filter
     }
   }
 
-  /** The search scope: the connection's `scope` setting, else (GitHub) the repos behind the profile's folders, else everything. */
+  /**
+   * The search scope: the profile's owners (GitHub), else the connection's `scope` setting, else
+   * (GitHub) the repos behind the profile's folders, else everything. The profile's filter is also
+   * applied to the results (`filterPullRequests`), which is all it does on GitLab.
+   */
   private async scopeOf(r: Resolved): Promise<string> {
+    if (r.host.provider === 'github' && r.filter?.owners?.length) return githubScopeFromFilter(r.filter)
     if (r.scope || r.host.provider !== 'github' || r.folders.length === 0) return r.scope
     return githubScopeFromRemotes(await this.remotesOf(r.folders))
   }
@@ -148,8 +160,8 @@ export class CodeHostService {
       cli,
       login: status.login,
       // A list that failed keeps what the last read found, like Workhub 1.
-      mine: mine.status === 'fulfilled' ? mine.value : (previous?.mine ?? []),
-      toReview: toReview.status === 'fulfilled' ? toReview.value : (previous?.toReview ?? []),
+      mine: mine.status === 'fulfilled' ? filterPullRequests(mine.value, resolved.filter) : (previous?.mine ?? []),
+      toReview: toReview.status === 'fulfilled' ? filterPullRequests(toReview.value, resolved.filter) : (previous?.toReview ?? []),
       message: failures[0],
       updatedAt: failures.length < 2 ? Date.now() : previous?.updatedAt,
       demo

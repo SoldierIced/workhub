@@ -7,6 +7,10 @@ it for repeatable chores such as a `/review-prs` skill.
 It is an optional module: turn on **Automations** for the profile in **Settings → Profiles → (profile) → Screens**. With
 the module off, the profile's automations do not run. The screen is at ⌘/Ctrl+5.
 
+The screen lists the automations of the profile open now and those without a profile. Turn on
+**All profiles** to see every profile's automations (each card then names its profile) and their
+runs; Workhub remembers the choice.
+
 ## Create one
 
 **New automation** opens the editor. **Fill from preset → PR reviews from Slack** starts from a

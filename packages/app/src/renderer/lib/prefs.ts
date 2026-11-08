@@ -44,6 +44,8 @@ export interface Prefs {
   expandedFolders: string[]
   /** Whether the part detail drawer of the Flow maps screen is folded. */
   flowMapDrawerCollapsed: boolean
+  /** Automations screen: every profile's automations, not only the open profile's. */
+  automationsShowAll: boolean
   /** Whether the menu bar panel's folded "Usage" (more than 3 accounts) is unfolded. */
   trayPopoverUsageExpanded: boolean
   /** The menu bar panel's "Recent" left open (true) or closed, per context (lib/trayPopover `recentExpanded`). */
@@ -75,6 +77,7 @@ export const DEFAULT_PREFS: Prefs = {
   favoriteFolders: [],
   expandedFolders: [],
   flowMapDrawerCollapsed: false,
+  automationsShowAll: false,
   trayPopoverUsageExpanded: false,
   trayPopoverRecent: {}
 }
@@ -111,6 +114,7 @@ export function parsePrefs(raw: string | null): Prefs {
       favoriteFolders: pathList(v.favoriteFolders, 100),
       expandedFolders: pathList(v.expandedFolders, 200),
       flowMapDrawerCollapsed: v.flowMapDrawerCollapsed === true,
+      automationsShowAll: v.automationsShowAll === true,
       trayPopoverUsageExpanded: v.trayPopoverUsageExpanded === true,
       trayPopoverRecent: recentMemory(v.trayPopoverRecent)
     }

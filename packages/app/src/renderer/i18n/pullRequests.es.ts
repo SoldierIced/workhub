@@ -178,5 +178,14 @@ export const prEs: Record<keyof typeof prEn, string> = {
   'pr.narrow.shown': '{shown} de {total}',
   'pr.narrow.clear': 'Limpiar',
   'pr.narrow.selected': '{title}: {count}',
-  'pr.narrow.bar': 'Acotar la lista'
+  'pr.narrow.bar': 'Acotar la lista',
+  'prFilter.intro': 'Qué pull requests muestra este perfil. Otro perfil puede usar la misma sesión con otros dueños.',
+  'prFilter.owners': 'Organizaciones o usuarios',
+  'prFilter.ownersHint': 'Uno por línea. Solo se leen sus repositorios. Vacío: el alcance de la conexión, si no los repositorios de las carpetas del perfil, si no todo lo que ve tu sesión.',
+  'prFilter.exclude': 'Repositorios ocultos',
+  'prFilter.excludeHint': 'Uno por línea, como dueño/repo. Usa * para cualquier nombre: dueño/legacy-* o dueño/*.',
+  'prFilter.invalid': 'Ignorados (no válidos): {list}',
+  'automations.showAll': 'Todos los perfiles',
+  'automations.showAllHint': 'Apagado: solo las automatizaciones del perfil abierto (y las que no tienen perfil).',
+  'automations.hiddenCount': '{count} más en otros perfiles'
 }

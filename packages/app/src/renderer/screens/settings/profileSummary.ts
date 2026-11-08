@@ -15,7 +15,7 @@ export interface ScreenRow {
 }
 
 export const SCREEN_ROWS: readonly ScreenRow[] = [
-  { key: 'pullRequests', label: PROFILE_SCREEN_LABEL.pullRequests, hint: 'settings.modules.pullRequestsHint', kind: 'codeHost' },
+  { key: 'pullRequests', label: PROFILE_SCREEN_LABEL.pullRequests, hint: 'settings.modules.pullRequestsHint', kind: 'codeHost', settings: true },
   { key: 'tickets', label: PROFILE_SCREEN_LABEL.tickets, hint: 'settings.modules.ticketsHint', kind: 'tracker', settings: true },
   { key: 'slack', label: PROFILE_SCREEN_LABEL.slack, hint: 'settings.modules.chatWatcherHint', module: 'chatWatcher', kind: 'chat', settings: true },
   { key: 'automations', label: PROFILE_SCREEN_LABEL.automations, hint: 'settings.modules.automationsHint', module: 'automations' },

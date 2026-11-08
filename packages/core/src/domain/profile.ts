@@ -3,6 +3,7 @@ import type { HealthSettings } from '../health/types'
 import type { ProfileAlertSettings } from '../alerts/quiet-hours'
 import type { PlannerSettings } from '../calendar/types'
 import type { WorktreeSettings } from '../worktrees/settings'
+import type { PullRequestFilterSettings } from '../codehost/filters'
 import type { ConnectionKind } from './connection'
 
 /** Optional modules (PLAN section 4): each one adds its screens only when enabled in a profile. */
@@ -65,6 +66,8 @@ export interface Profile {
   ownsOutside?: boolean
   /** Names of the environment variables added to this profile's sessions; the values live in the secret store (`profileEnvRef`). */
   envNames?: string[]
+  /** Which pull requests the Pull requests screen shows: owners to read and repositories to hide (see `filterPullRequests`). */
+  pullRequests?: PullRequestFilterSettings
   /** Health module setup: environments to watch and the refresh interval (the cluster is the profile's `health` connection). */
   health?: HealthSettings
   /** Tracked Slack threads quiet for this many minutes are shown archived (default 15; see `threadArchiveMinutes`). */
