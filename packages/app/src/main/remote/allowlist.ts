@@ -27,6 +27,7 @@ export const REMOTE_INVOKES: Readonly<Record<string, RemoteCapability | 'any'>> 
   'sessions:rename': 'sessions',
   'sessions:cancel': 'sessions',
   'sessions:stop': 'sessions',
+  'remote:file': 'sessions',
   'history:list': 'sessions',
   'history:find': 'sessions',
   'codeHost:lists': 'pullRequests',
@@ -74,7 +75,8 @@ export const REMOTE_EVENTS: Readonly<Record<string, RemoteCapability | 'any'>> =
   'automations:changed': 'automations',
   'automations:prompted': 'automations',
   'automations:turnEnded': 'automations',
-  'metricAlerts:changed': 'health'
+  'metricAlerts:changed': 'health',
+  'remote:notification': 'any'
 }
 
 export function remoteAllows(table: Readonly<Record<string, RemoteCapability | 'any'>>, channel: string, granted: ReadonlySet<RemoteCapability>): boolean {

@@ -10,8 +10,8 @@ import { profileSummary, SCREEN_ROWS } from '../src/renderer/screens/settings/pr
 import { accountSessionEnv, saveAccountEnv, storedAccountEnvNames } from '../src/main/profile-env'
 
 describe('Settings sections', () => {
-  it('has six entries in three groups', () => {
-    expect(SETTINGS_SECTIONS.map((s) => `${s.group}:${s.id}`)).toEqual(['app:general', 'app:notifications', 'app:agents', 'app:connections', 'profile:profiles', 'advanced:advanced'])
+  it('has seven entries in three groups', () => {
+    expect(SETTINGS_SECTIONS.map((s) => `${s.group}:${s.id}`)).toEqual(['app:general', 'app:notifications', 'app:agents', 'app:connections', 'app:remote', 'profile:profiles', 'advanced:advanced'])
   })
 
   it('opens the place that now holds what each old tab or section held', () => {

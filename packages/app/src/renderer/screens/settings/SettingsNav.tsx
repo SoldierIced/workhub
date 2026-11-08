@@ -1,4 +1,4 @@
-import { Bell, Bot, Languages, Plug, Search, SlidersHorizontal, Users } from 'lucide-react'
+import { Bell, Bot, Languages, Plug, Search, SlidersHorizontal, Smartphone, Users } from 'lucide-react'
 import type { KeyboardEvent, ReactNode, RefObject } from 'react'
 import { profileColor, type Profile } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -10,6 +10,7 @@ const ICON: Record<SettingsSectionId, ReactNode> = {
   notifications: <Bell className="size-4" aria-hidden />,
   agents: <Bot className="size-4" aria-hidden />,
   connections: <Plug className="size-4" aria-hidden />,
+  remote: <Smartphone className="size-4" aria-hidden />,
   profiles: <Users className="size-4" aria-hidden />,
   advanced: <SlidersHorizontal className="size-4" aria-hidden />
 }

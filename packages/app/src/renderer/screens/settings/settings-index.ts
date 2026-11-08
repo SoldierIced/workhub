@@ -67,6 +67,14 @@ const profileRows = (
 ) => rows("profiles", subgroup, list, { tab, ...(screen ? { screen } : {}) });
 
 export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
+  // Remote access
+  ...rows("remote", "remote.group.relay", [
+    ["remote.enable", "remote.enableHint"],
+    ["remote.relayUrl", "remote.relayUrlHint"],
+    ["remote.desktopName", "remote.desktopNameHint"],
+  ]),
+  ...rows("remote", "remote.group.pair", [["remote.pair.start", "remote.pair.scan"]]),
+  ...rows("remote", "remote.group.devices", [["remote.devices.revoke"]]),
   // General
   ...rows("general", "settingsV2.general.appearanceGroup", [
     ["settings.language", "settings.languageHint", "help.general.interface"],

@@ -8,9 +8,6 @@ Nothing of yours passes through a server in the clear. The desktop and the phone
 each other's keys, and encrypt every message end to end. The relay they meet through sees who talks
 to whom and how much, never what.
 
-> The desktop side (Settings → Remote access), pairing and the phone client land in the next
-> releases. This page already documents the relay so a self-hosted one is ready when they do.
-
 ## How it fits together
 
 ```
@@ -34,6 +31,27 @@ phone (web app, later a native app)  ⇄  relay (your server, or one you trust) 
 - **Notifications.** The phone can receive the same notifications the desktop shows, through Web
   Push with an encrypted body only the phone can open. On iPhone this needs the web app added to
   the home screen.
+
+## Turning it on (Settings → Remote access)
+
+1. **Relay address.** Type the relay you run or trust, as `https://relay.example.com`. The phone
+   opens the same address, so the relay also serves the phone's app.
+2. **Allow remote access.** Workhub makes this computer's identity the first time (its seed lives
+   in the secret store, next to your tokens), connects to the relay and shows its fingerprint. The
+   switch stays on across restarts; the connection comes back on its own after the relay or the
+   network drop, backing off up to half a minute between attempts.
+3. **Pair a device.** *Show QR code* puts a code on screen for five minutes. Scan it with the phone
+   (or copy the link and open it there). When the phone answers, Settings shows its name, platform
+   and fingerprint; compare the fingerprint with the one on the phone, tick what the device may do,
+   and *Accept*. The device connects within a second and from then on reconnects by itself.
+4. **Paired devices.** Each one shows whether it is connected, when it was last seen and its
+   capabilities, which you can change at any time (the device reconnects with the new set).
+   *Revoke* drops it: it has to pair again to come back.
+
+Notifications the desktop shows are repeated to the devices whose capabilities cover them: over
+the live connection when the device is online, by push when it is not. The push body is sealed to
+the device's key, so the relay and the push service carry ciphertext. Quiet hours and the
+per-kind switches apply before anything leaves the desktop.
 
 ## Self-hosting the relay
 

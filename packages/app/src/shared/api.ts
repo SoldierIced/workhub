@@ -53,6 +53,7 @@ import type { TicketsApi } from './tickets-api'
 import type { UpdatesApi } from './updates-api'
 import type { MenuApi, SettingsWindowApi, WindowsApi } from './windows-api'
 import type { FilesApi, LocalReviewApi } from './local-review-api'
+import type { RemoteApi } from './remote-api'
 
 export interface ConfigSnapshot {
   config: WorkhubConfig
@@ -483,6 +484,8 @@ export interface HubApi {
   /** The same, for an agent account's environment (ids are account ids). */
   accountEnv: ProfileEnvApi
   systemNotifications: SystemNotificationsApi
+  /** Settings → Remote access: pairing phones and what they may do. */
+  remote: RemoteApi
   diagnostics: DiagnosticsApi
 }
 

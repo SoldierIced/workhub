@@ -1,3 +1,4 @@
+import { remoteEn } from './remote.en'
 import { linksEn } from './links.en'
 import { aiReviewEn } from './aiReview.en'
 import { sessionsUxEn } from './sessionsUx.en'
@@ -515,5 +516,6 @@ export const en = {
   ...notificationsAlertsEn,
   ...profileAgentsEn,
   ...settingsAgentsEn,
-  ...settingsConnectionsEn
+  ...settingsConnectionsEn,
+  ...remoteEn
 } as const

@@ -39,6 +39,7 @@ import { ConnectionsSection } from "./settings/ConnectionsSection";
 import { focusSettingGroup, focusSettingRow } from "./settings/focusRow";
 import { NotificationsAlertsSection } from "./settings/NotificationsAlertsSection";
 import { ProfilesSection, type OpenProfile } from "./settings/ProfilesSection";
+import { RemoteSection } from "./settings/RemoteSection";
 import type { Run } from "./settings/run";
 import {
   isProfileScreen,
@@ -69,6 +70,7 @@ const INTRO: Record<SettingsSectionId, MessageKey> = {
   notifications: "settingsV2.intro.notifications",
   agents: "settingsAgents.intro",
   connections: "settingsConnections.intro",
+  remote: "settingsV2.intro.remote",
   profiles: "settingsV2.intro.profiles",
   advanced: "settingsV2.intro.advanced",
 };
@@ -434,6 +436,8 @@ function SettingsBody({
             initialId={focusId("connections", "trackers") ?? rowId}
           />
         );
+      case "remote":
+        return <RemoteSection />;
       case "profiles":
         return (
           <ProfilesSection

@@ -1,3 +1,6 @@
 export { recordIpc, type HandlerTable } from './ipc-recorder'
 export { RemoteHub, RemoteRefused, type RemoteDevice, type RemoteHubDeps } from './dispatcher'
 export { REMOTE_EVENTS, REMOTE_INVOKES, REMOTE_MESSAGES, remoteAllows } from './allowlist'
+export { RemoteService, EMPTY_REMOTE_STATE, relayWebSocketUrl, relayWebClientUrl, type RemoteState, type RemoteServiceDeps, type RemoteDeviceRecord, type WebSocketLike } from './service'
+export { registerRemoteIpc } from './ipc'
+export { readRemoteFile, mimeOf, REMOTE_FILE_MAX_BYTES } from './files'

@@ -139,6 +139,12 @@ secret store.
 | **Slack** | | **Watch Slack channels**: the watcher (account and model, interval, hours, channels) and the **Tracking hook** that follows threads from sessions, for the whole app. See [Slack](slack.md). |
 | **Health (Elasticsearch)** | **Connect** | URL, authentication (API key or user and password), TLS (system, pinned fingerprint or insecure); **Test**. **Read at most every** (how often any profile may read Elasticsearch) is shown once. |
 
+## Remote access
+
+Pair a phone with this computer and choose what it may do: the relay address, this computer's
+name and fingerprint, the QR code to pair, and the paired devices with their capabilities. See
+[Remote access](remote-access.md).
+
 ## Notifications and alerts
 
 **Settings → Notifications and alerts** is the one place that answers "does this notify me, and

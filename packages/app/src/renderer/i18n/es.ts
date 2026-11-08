@@ -1,3 +1,4 @@
+import { remoteEs } from './remote.es'
 import type { en } from './en'
 import { linksEs } from './links.es'
 import { aiReviewEs } from './aiReview.es'
@@ -514,5 +515,6 @@ export const es: Record<keyof typeof en, string> = {
   ...notificationsAlertsEs,
   ...profileAgentsEs,
   ...settingsAgentsEs,
-  ...settingsConnectionsEs
+  ...settingsConnectionsEs,
+  ...remoteEs
 }
