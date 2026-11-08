@@ -101,7 +101,9 @@ export const pushPayloadSchema = z.object({
   /** Where the client opens on tap, as a hash route of the web client. */
   route: z.string().max(200).optional(),
   /** Groups notifications that replace one another (one per session, say). */
-  tag: z.string().max(80).optional()
+  tag: z.string().max(80).optional(),
+  /** The desktop that sent it: a phone paired with several switches to it on tap. */
+  desktop: fingerprint.optional()
 })
 export type PushPayload = z.infer<typeof pushPayloadSchema>
 

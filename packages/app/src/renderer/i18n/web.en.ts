@@ -146,5 +146,9 @@ export const webEn = {
   'web.settings.textSize.large': 'Large',
   'web.settings.textSize.xl': 'Extra large',
   'web.settings.profile': 'Profile',
-  'web.settings.profileHint': 'The profile the lists open with.'
+  'web.settings.profileHint': 'The profile the lists open with.',
+  'web.desktops.title': 'Computers',
+  'web.desktops.add': 'Pair another computer',
+  'web.desktops.current': 'Current',
+  'web.desktops.use': 'Use'
 } as const

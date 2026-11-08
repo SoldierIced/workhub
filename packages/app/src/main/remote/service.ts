@@ -285,6 +285,7 @@ export class RemoteService {
       title: notification.title,
       body: notification.body,
       ts: notification.at,
+      desktop: me.id,
       ...(notification.tag ? { tag: notification.tag } : {}),
       ...(notification.sessionId ? { route: `#session/${encodeURIComponent(notification.sessionId)}` } : {})
     }

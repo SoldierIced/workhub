@@ -82,12 +82,17 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    proposals too), the tasks you took on (done with a tap, or open one to edit it or add a note),
    and the milestones with their progress against time, pieces and notes. *+* adds a pending item.
    The calendars' addresses and the Plan settings stay on the desktop.
-6. **Phone settings.** Language, theme and text size are the phone's own; the profile the lists
+6. **Several computers.** One phone can pair with more than one desktop (home and work, say):
+   Settings → *Pair another computer*. The phone talks to one at a time; a selector at the top of
+   Sessions and the list in Settings switch between them, and a notification from another
+   computer switches to it when tapped. Each desktop keeps its own cached state and its own
+   capabilities. Revoking the phone on one desktop leaves the others paired.
+7. **Phone settings.** Language, theme and text size are the phone's own; the profile the lists
    open with is remembered per phone.
-7. **Without network.** The phone keeps the last answer to each list, encrypted with its own key,
+8. **Without network.** The phone keeps the last answer to each list, encrypted with its own key,
    and shows it with a banner while the desktop is unreachable. When the app goes to the
    background it closes its connection so notifications arrive as push; back in front it reconnects.
-8. **Unpair.** Settings → *Unpair this phone* forgets the desktop and the cached state. Revoking the
+9. **Unpair.** Settings → *Unpair this phone* forgets the current desktop and its cached state. Revoking the
    device on the desktop does the same from the other side.
 
 ## Self-hosting the relay

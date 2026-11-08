@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Spinner } from '../renderer/components/atoms'
 import { useI18n } from '../renderer/i18n/I18nProvider'
 import { cn } from '../renderer/lib/cn'
-import { goBack, navigate, useClientStatus, useRoute } from './app-context'
+import { goBack, navigate, useClient, useClientStatus, useRoute } from './app-context'
 import type { Route } from './routes'
 
 export function Screen({ children, className }: { children: ReactNode; className?: string }) {
@@ -30,6 +30,30 @@ export function Header({ title, subtitle, back, right }: { title: ReactNode; sub
         {right}
       </div>
     </header>
+  )
+}
+
+/** Which paired desktop the phone talks to; switching reloads the app for the other one. */
+export function DesktopPicker({ className }: { className?: string }) {
+  const { t } = useI18n()
+  const client = useClient()
+  const status = useClientStatus()
+  if (status.desktops.length < 2 || !status.desktop) return null
+  return (
+    <select
+      value={status.desktop.id}
+      aria-label={t('web.desktops.title')}
+      onChange={(e) => {
+        if (client.switchDesktop(e.target.value)) location.reload()
+      }}
+      className={cn('h-6 max-w-full rounded-md border border-border-strong bg-surface px-1.5 text-xs text-text', className)}
+    >
+      {status.desktops.map((d) => (
+        <option key={d.id} value={d.id}>
+          {d.name}
+        </option>
+      ))}
+    </select>
   )
 }
 

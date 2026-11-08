@@ -1,10 +1,10 @@
 import { Check, ClipboardPaste, Smartphone } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Spinner } from '../../renderer/components/atoms'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { navigate, useClient, useClientStatus, useRoute } from '../app-context'
 import { DEVICE_NAME_KEY } from '../device'
-import { BigButton, Screen } from '../ui'
+import { BigButton, Header, Screen } from '../ui'
 
 /**
  * The first screen, and the one a pairing link opens: shows this phone's fingerprint, then the
@@ -18,6 +18,19 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
   const [linkError, setLinkError] = useState<string | null>(null)
   const [pasted, setPasted] = useState('')
   const route = useRoute()
+  const adding = status.desktops.length > 0
+  // The desktop the phone talked to when it confirmed an offer: a different one afterwards means the app must reload for it.
+  const before = useRef<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    if (before.current === undefined || status.state !== 'online') return
+    const now = status.desktop?.id ?? null
+    if (now !== before.current) {
+      before.current = undefined
+      location.hash = '#'
+      location.reload()
+    } else before.current = undefined
+  }, [status.state, status.desktop?.id])
 
   // The app installed on the home screen has no address bar, and on iOS a tapped link or a scanned
   // QR opens the browser instead of the installed app: the link can be pasted here.
@@ -39,6 +52,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
 
   const confirm = () => {
     localStorage.setItem(DEVICE_NAME_KEY, name.trim() || defaultName)
+    before.current = status.desktop?.id ?? null
     client.pair()
   }
 
@@ -100,11 +114,14 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
 
   return (
     <Screen>
-      <div className="safe-top flex flex-1 flex-col gap-5 px-6 pt-12">
-        <span className="flex size-16 items-center justify-center self-center rounded-2xl bg-accent-soft text-accent">
-          <Smartphone className="size-8" aria-hidden />
-        </span>
-        <h1 className="text-center text-xl font-semibold">{t('web.pair.title')}</h1>
+      {adding && <Header title={t('web.desktops.add')} back={{ screen: 'settings' }} />}
+      <div className={adding ? 'flex flex-1 flex-col gap-5 px-6 pt-6' : 'safe-top flex flex-1 flex-col gap-5 px-6 pt-12'}>
+        {!adding && (
+          <span className="flex size-16 items-center justify-center self-center rounded-2xl bg-accent-soft text-accent">
+            <Smartphone className="size-8" aria-hidden />
+          </span>
+        )}
+        {!adding && <h1 className="text-center text-xl font-semibold">{t('web.pair.title')}</h1>}
         <p className="text-center text-sm text-muted">{t('web.pair.intro')}</p>
         {(linkError || status.state === 'revoked') && <p className="rounded-lg bg-danger-soft px-3 py-2 text-center text-sm text-danger">{linkError ?? t('web.state.revoked')}</p>}
         <form
@@ -137,11 +154,13 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
           <div className="fp mt-1 text-md">{status.fingerprint}</div>
           <div className="mt-1 text-xs text-subtle">{t('web.pair.fingerprintHint')}</div>
         </div>
-        <div className="safe-bottom mt-auto pb-4">
-          <BigButton variant="secondary" onClick={() => navigate({ screen: 'settings' })}>
-            {t('web.nav.settings')}
-          </BigButton>
-        </div>
+        {!adding && (
+          <div className="safe-bottom mt-auto pb-4">
+            <BigButton variant="secondary" onClick={() => navigate({ screen: 'settings' })}>
+              {t('web.nav.settings')}
+            </BigButton>
+          </div>
+        )}
       </div>
     </Screen>
   )

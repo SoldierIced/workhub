@@ -9,6 +9,7 @@ import type { WebApp } from './app-context'
 import { currentPushSubscription, defaultDeviceName, detectPlatform, kvSet, registerServiceWorker, SEED_KEY } from './browser'
 import { DEVICE_NAME_KEY } from './device'
 import { RemoteClient } from './remote-client'
+import { splitDesktop } from './routes'
 import '../renderer/styles.css'
 import './web.css'
 
@@ -45,6 +46,13 @@ document.addEventListener('visibilitychange', () => {
   else client.start()
 })
 window.addEventListener('online', () => client.start())
+
+// Opened from a notification of another paired desktop: switch to it before anything loads.
+const opened = splitDesktop(location.hash)
+if (opened.desktop) {
+  client.switchDesktop(opened.desktop)
+  history.replaceState(null, '', opened.hash)
+}
 
 startStore()
 client.start()

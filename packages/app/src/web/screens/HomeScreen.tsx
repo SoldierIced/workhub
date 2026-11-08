@@ -5,7 +5,7 @@ import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { cn } from '../../renderer/lib/cn'
 import { awaitingAnswer, useSessions, type SessionData } from '../../renderer/store'
 import { navigate, useClientStatus } from '../app-context'
-import { basename, Body, Empty, Header, InlineConfirm, Row, Screen } from '../ui'
+import { basename, Body, DesktopPicker, Empty, Header, InlineConfirm, Row, Screen } from '../ui'
 
 const DOT: Record<SessionState, string> = {
   starting: 'bg-warning',
@@ -39,7 +39,7 @@ export function HomeScreen() {
     <Screen>
       <Header
         title={t('web.home.title')}
-        subtitle={status.state === 'online' ? t('web.state.online', { desktop }) : t('web.home.offlineCache')}
+        subtitle={status.desktops.length > 1 ? <DesktopPicker /> : status.state === 'online' ? t('web.state.online', { desktop }) : t('web.home.offlineCache')}
         right={
           <button type="button" onClick={() => navigate({ screen: 'new' })} className="flex h-9 items-center gap-1 rounded-full bg-accent pr-3.5 pl-2.5 text-sm font-semibold text-accent-fg">
             <Plus className="size-4" aria-hidden />

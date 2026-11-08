@@ -7,7 +7,7 @@ import { setPrefs, usePrefs } from '../../renderer/lib/prefs'
 import { REMOTE_CAPABILITIES } from '../../shared/remote-api'
 import { navigate, useClient, useClientStatus, useConfig, useProfileId } from '../app-context'
 import { currentPushSubscription, isStandalone, pushSupported, subscribeToPush, unsubscribeFromPush } from '../browser'
-import { Body, Header, InlineConfirm, Row, Screen, SectionTitle } from '../ui'
+import { BigButton, Body, Header, InlineConfirm, Row, Screen, SectionTitle } from '../ui'
 
 const CAPABILITY_KEY = { sessions: 'web.capability.sessions', pullRequests: 'web.capability.pullRequests', automations: 'web.capability.automations', health: 'web.capability.health', plan: 'web.capability.plan' } as const
 const SELECT = 'h-8 rounded-md border border-border-strong bg-surface px-2 text-sm text-text'
@@ -77,6 +77,30 @@ export function SettingsScreen() {
                   ))}
                 </div>
               </Row>
+            </div>
+          </>
+        )}
+
+        {desktop && (
+          <>
+            <SectionTitle>{t('web.desktops.title')}</SectionTitle>
+            <div className="mx-4 rounded-xl border border-border bg-surface">
+              {status.desktops.map((d, i) => (
+                <Row
+                  key={d.id}
+                  className={i > 0 ? 'border-t border-border' : undefined}
+                  onClick={d.id === desktop.id ? undefined : () => client.switchDesktop(d.id) && location.reload()}
+                  right={<span className={d.id === desktop.id ? 'rounded-full bg-accent-soft px-2 py-px text-xs font-medium text-accent' : 'text-xs text-accent'}>{d.id === desktop.id ? t('web.desktops.current') : t('web.desktops.use')}</span>}
+                >
+                  <div className="text-md font-medium">{d.name}</div>
+                  <div className="fp text-xs text-muted">{displayGroups(d.id)}</div>
+                </Row>
+              ))}
+            </div>
+            <div className="mx-4 mt-2">
+              <BigButton variant="secondary" onClick={() => navigate({ screen: 'pair' })}>
+                {t('web.desktops.add')}
+              </BigButton>
             </div>
           </>
         )}

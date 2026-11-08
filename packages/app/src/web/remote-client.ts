@@ -60,6 +60,10 @@ export interface PairedDesktop {
 
 interface Persisted {
   seed: string
+  /** The desktops this phone is paired with, by fingerprint; `active` is the one it talks to. */
+  desktops: Record<string, PairedDesktop>
+  active?: string
+  /** The single desktop of the first version; read once and moved into `desktops`. */
   desktop?: PairedDesktop
 }
 
@@ -77,7 +81,10 @@ export type ClientState =
 
 export interface ClientStatus {
   state: ClientState
+  /** The desktop the phone talks to now. */
   desktop: PairedDesktop | null
+  /** Every paired desktop, the active one included, in pairing order. */
+  desktops: PairedDesktop[]
   /** This device's fingerprint, as people compare it. */
   fingerprint: string
   /** An offer waiting for the person's confirmation. */
@@ -140,7 +147,7 @@ export class RemoteClient {
     this.persisted = this.loadPersisted()
     this.identity = identityFromSeed(fromBase64Url(this.persisted.seed))
     this.cacheKey = deriveKey(this.identity.seed, undefined, 'workhub-remote/cache/v1')
-    this.state = this.persisted.desktop ? 'connecting' : 'unpaired'
+    this.state = this.desktop ? 'connecting' : 'unpaired'
     this.transport = {
       invoke: (channel, ...args) => this.invoke(channel, args),
       send: (channel, ...args) => this.sendMessage({ t: 'send', channel, args }),
@@ -153,10 +160,36 @@ export class RemoteClient {
     }
   }
 
-  /** Connects to the paired desktop, if any. */
+  /** The desktop the phone talks to now. */
+  private get desktop(): PairedDesktop | undefined {
+    return this.persisted.active ? this.persisted.desktops[this.persisted.active] : undefined
+  }
+
+  /** Connects to the active desktop, if any. */
   start(): void {
     this.suspended = false
-    if (this.persisted.desktop && !this.socket) this.connect(this.persisted.desktop.relay)
+    if (this.desktop && !this.socket) this.connect(this.desktop.relay)
+  }
+
+  /** Every paired desktop, in pairing order. */
+  desktops(): PairedDesktop[] {
+    return Object.values(this.persisted.desktops)
+  }
+
+  /**
+   * Talks to another paired desktop from now on. The caller reloads the page afterwards: the
+   * renderer's store and `window.hub` were built for the previous one.
+   */
+  switchDesktop(id: string): boolean {
+    if (!this.persisted.desktops[id] || id === this.persisted.active) return false
+    this.disconnect()
+    this.persisted.active = id
+    this.savePersisted()
+    this.error = undefined
+    this.state = 'connecting'
+    this.changed()
+    if (!this.suspended) this.connect(this.desktop!.relay)
+    return true
   }
 
   /**
@@ -167,7 +200,7 @@ export class RemoteClient {
     if (this.state === 'pairing') return
     this.suspended = true
     this.disconnect()
-    if (this.persisted.desktop && this.state !== 'revoked') {
+    if (this.desktop && this.state !== 'revoked') {
       this.state = 'desktop-offline'
       this.error = undefined
       this.changed()
@@ -178,7 +211,8 @@ export class RemoteClient {
     const offer = this.pendingOffer
     return {
       state: this.state,
-      desktop: this.persisted.desktop ?? null,
+      desktop: this.desktop ?? null,
+      desktops: this.desktops(),
       fingerprint: displayFingerprint(this.identity.id),
       offer: offer ? { desktopName: offer.name, desktopFingerprint: displayFingerprint(fingerprintOf(offer.desktop)) } : null,
       ...(this.error ? { error: this.error } : {}),
@@ -193,7 +227,7 @@ export class RemoteClient {
 
   /** The capabilities the desktop granted, as of the last `ready`. */
   capabilities(): RemoteCapability[] {
-    return this.persisted.desktop?.capabilities ?? []
+    return this.desktop?.capabilities ?? []
   }
 
   // ---- pairing
@@ -228,20 +262,39 @@ export class RemoteClient {
     this.pendingOffer = null
     if (this.state === 'pairing') {
       this.disconnect()
-      this.state = this.persisted.desktop ? 'connecting' : 'unpaired'
-      if (this.persisted.desktop) this.connect(this.persisted.desktop.relay)
+      this.state = this.desktop ? 'connecting' : 'unpaired'
+      if (this.desktop) this.connect(this.desktop.relay)
     }
     this.changed()
   }
 
-  /** Forgets the desktop (and the cached state); the identity stays, so pairing again is quick. */
-  unpair(): void {
-    this.disconnect()
-    delete this.persisted.desktop
-    this.savePersisted()
-    this.clearCache()
-    this.state = 'unpaired'
-    this.changed()
+  /**
+   * Forgets a desktop (the active one by default) and its cached state; the identity stays, so
+   * pairing again is quick. Another paired desktop, if any, becomes the active one.
+   */
+  unpair(id = this.persisted.active): void {
+    if (!id || !this.persisted.desktops[id]) return
+    this.forget(id, 'unpaired')
+  }
+
+  /** Drops a desktop from the list; `state` is the state to be in when no desktop is left. */
+  private forget(id: string, state: 'unpaired' | 'revoked'): void {
+    const wasActive = id === this.persisted.active
+    delete this.persisted.desktops[id]
+    this.clearCache(id)
+    if (wasActive) {
+      this.disconnect()
+      const next = Object.keys(this.persisted.desktops)[0]
+      this.persisted.active = next
+      this.savePersisted()
+      this.error = undefined
+      this.state = next ? 'connecting' : state
+      this.changed()
+      if (next && !this.suspended) this.connect(this.desktop!.relay)
+    } else {
+      this.savePersisted()
+      this.changed()
+    }
   }
 
   /** Where the browser receives push; sent to the relay now and on every reconnect. */
@@ -252,7 +305,9 @@ export class RemoteClient {
 
   /** The last answer the desktop gave to this call, if any (what the phone shows without network). */
   cached<T>(channel: string, args: unknown[] = []): T | null {
-    const raw = this.deps.storage.get(cacheKeyOf(channel, args))
+    const desktop = this.desktop
+    if (!desktop) return null
+    const raw = this.deps.storage.get(cacheKeyOf(desktop.id, channel, args))
     if (!raw) return null
     try {
       const plain = decrypt(this.cacheKey, fromBase64Url(raw))
@@ -305,7 +360,7 @@ export class RemoteClient {
     this.cancelReconnect?.()
     this.cancelReconnect = this.schedule(() => {
       this.cancelReconnect = null
-      if (!this.socket && !this.suspended && this.persisted.desktop) this.connect(relay)
+      if (!this.socket && !this.suspended && this.desktop) this.connect(relay)
     }, delay)
   }
 
@@ -332,7 +387,7 @@ export class RemoteClient {
     }
     const message = parseRelayMessage(parsed)
     if (!message) return
-    const desktopId = offer ? fingerprintOf(offer.desktop) : this.persisted.desktop?.id
+    const desktopId = offer ? fingerprintOf(offer.desktop) : this.desktop?.id
     if (!desktopId) return
     switch (message.t) {
       case 'welcome':
@@ -388,7 +443,7 @@ export class RemoteClient {
   }
 
   private handshake(): void {
-    const desktop = this.persisted.desktop
+    const desktop = this.desktop
     if (!desktop) return
     this.dropChannel()
     this.pendingHandshake = startHandshake(this.identity, desktop.public, 'initiator')
@@ -414,7 +469,10 @@ export class RemoteClient {
         this.deps.log?.warn('remote: the desktop sent an accept that does not verify')
         return
       }
-      this.persisted.desktop = { id: fingerprintOf(verified.desktop), public: verified.desktop, name: verified.name, relay: offer.relay, capabilities: verified.capabilities }
+      // A new desktop becomes the active one; a desktop paired again keeps its place.
+      const id = fingerprintOf(verified.desktop)
+      this.persisted.desktops[id] = { id, public: verified.desktop, name: verified.name, relay: offer.relay, capabilities: verified.capabilities }
+      this.persisted.active = id
       this.savePersisted()
       this.pendingOffer = null
       this.error = undefined
@@ -460,9 +518,10 @@ export class RemoteClient {
         this.ready = true
         this.state = 'online'
         this.error = undefined
-        if (this.persisted.desktop) {
-          if (message.capabilities) this.persisted.desktop.capabilities = message.capabilities
-          if (message.desktop) this.persisted.desktop.name = message.desktop
+        const desktop = this.desktop
+        if (desktop) {
+          if (message.capabilities) desktop.capabilities = message.capabilities
+          if (message.desktop) desktop.name = message.desktop
           this.savePersisted()
         }
         this.changed()
@@ -482,12 +541,7 @@ export class RemoteClient {
         return
       case 'bye':
         if (message.reason === 'revoked') {
-          this.disconnect()
-          delete this.persisted.desktop
-          this.savePersisted()
-          this.clearCache()
-          this.state = 'revoked'
-          this.changed()
+          if (this.persisted.active) this.forget(this.persisted.active, 'revoked')
         } else {
           // The desktop re-keys (capabilities changed) or restarts: handshake again when it is back.
           this.dropChannel()
@@ -540,7 +594,7 @@ export class RemoteClient {
   }
 
   private sendMessage(message: ChannelMessage): void {
-    const desktop = this.persisted.desktop
+    const desktop = this.desktop
     if (!this.channel || !desktop) return
     this.sendRelay({ t: 'to', room: desktop.id, to: desktop.id, body: { k: 'enc', c: this.channel.seal(message) } })
   }
@@ -570,13 +624,19 @@ export class RemoteClient {
     const raw = this.deps.storage.get(STATE_KEY)
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as Persisted
-        if (typeof parsed.seed === 'string' && fromBase64Url(parsed.seed).length === 32) return parsed
+        const parsed = JSON.parse(raw) as Partial<Persisted>
+        if (typeof parsed.seed === 'string' && fromBase64Url(parsed.seed).length === 32) {
+          const desktops = parsed.desktops ?? {}
+          // The first version kept one desktop: it becomes the active entry of the list.
+          if (parsed.desktop) desktops[parsed.desktop.id] = parsed.desktop
+          const active = parsed.active && desktops[parsed.active] ? parsed.active : (parsed.desktop?.id ?? Object.keys(desktops)[0])
+          return { seed: parsed.seed, desktops, ...(active ? { active } : {}) }
+        }
       } catch {
         // Start over below.
       }
     }
-    const fresh: Persisted = { seed: toBase64Url(generateSeed()) }
+    const fresh: Persisted = { seed: toBase64Url(generateSeed()), desktops: {} }
     this.deps.storage.set(STATE_KEY, JSON.stringify(fresh))
     return fresh
   }
@@ -586,17 +646,19 @@ export class RemoteClient {
   }
 
   private remember(channel: string, args: unknown[], value: unknown): void {
+    const desktop = this.desktop
+    if (!desktop) return
     try {
-      this.deps.storage.set(cacheKeyOf(channel, args), toBase64Url(encrypt(this.cacheKey, encodeJson(value ?? null))))
+      this.deps.storage.set(cacheKeyOf(desktop.id, channel, args), toBase64Url(encrypt(this.cacheKey, encodeJson(value ?? null))))
     } catch {
       // Storage full or unavailable: the live answer still returned.
     }
   }
 
-  private clearCache(): void {
+  private clearCache(desktopId: string): void {
     for (const channel of CACHED_CHANNELS) {
-      // Only argument-free keys can be enumerated here; keyed ones expire with the seed's cache key.
-      this.deps.storage.remove(cacheKeyOf(channel, []))
+      // Only argument-free keys can be enumerated here; keyed ones stay unreadable once the desktop is gone.
+      this.deps.storage.remove(cacheKeyOf(desktopId, channel, []))
     }
   }
 
@@ -612,6 +674,6 @@ export class RemoteClient {
   }
 }
 
-function cacheKeyOf(channel: string, args: unknown[]): string {
-  return `${CACHE_PREFIX}${channel}:${JSON.stringify(args)}`
+function cacheKeyOf(desktopId: string, channel: string, args: unknown[]): string {
+  return `${CACHE_PREFIX}${desktopId}:${channel}:${JSON.stringify(args)}`
 }

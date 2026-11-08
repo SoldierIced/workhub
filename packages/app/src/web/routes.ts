@@ -19,8 +19,17 @@ export type Route =
 
 const isPlanTab = (s: string): s is PlanTab => (PLAN_TABS as readonly string[]).includes(s)
 
+/**
+ * A hash may start with `d/<desktop fingerprint>/` (a notification from one of several paired
+ * desktops): the fingerprint, and the hash without it.
+ */
+export function splitDesktop(hash: string): { desktop?: string; hash: string } {
+  const m = /^#?\/?d\/([0-9a-f]{32})\/?(.*)$/.exec(hash)
+  return m ? { desktop: m[1]!, hash: `#${m[2] ?? ''}` } : { hash }
+}
+
 export function parseRoute(hash: string): Route {
-  const h = hash.replace(/^#\/?/, '')
+  const h = splitDesktop(hash).hash.replace(/^#\/?/, '')
   if (h.startsWith('pair=')) return { screen: 'pair' }
   if (h === 'new') return { screen: 'new' }
   if (h === 'prs' || h === 'pullRequests') return { screen: 'pullRequests' }

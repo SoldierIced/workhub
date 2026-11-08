@@ -148,5 +148,9 @@ export const webEs: Record<keyof typeof webEn, string> = {
   'web.settings.textSize.large': 'Grande',
   'web.settings.textSize.xl': 'Extra grande',
   'web.settings.profile': 'Perfil',
-  'web.settings.profileHint': 'El perfil con el que abren las listas.'
+  'web.settings.profileHint': 'El perfil con el que abren las listas.',
+  'web.desktops.title': 'Computadoras',
+  'web.desktops.add': 'Vincular otra computadora',
+  'web.desktops.current': 'Actual',
+  'web.desktops.use': 'Usar'
 }

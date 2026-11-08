@@ -71,10 +71,11 @@ async function settle(rounds = 4) {
   for (let i = 0; i < rounds; i++) await new Promise((r) => setTimeout(r, 0))
 }
 
-function desktop(initial: Partial<RemoteState> = {}) {
+/** A desktop on its own relay, or on `shared` (a second desktop a phone reaches through the same relay). */
+function desktop(initial: Partial<RemoteState> = {}, shared?: RelayCore) {
   const pushed: [string, string][] = []
   const push: PushProvider = { publicKey: 'VAPID-PUBLIC', send: async (sub, payload) => void pushed.push([sub.endpoint, payload]) }
-  const core = new RelayCore({ push, pushStore: new MemoryPushStore(), now: () => NOW })
+  const core = shared ?? new RelayCore({ push, pushStore: new MemoryPushStore(), now: () => NOW })
   const { ipc, handlers } = recordIpc({ handle: () => {}, on: () => {} } as IpcRegistrar)
   const views = [{ id: 's1', name: 'Fix tests', cwd: '/work/api' }]
   ipc.handle('sessions:list', () => views)
@@ -263,7 +264,7 @@ describe('RemoteClient', () => {
     await settle()
     expect(p.client.status()).toMatchObject({ state: 'revoked', desktop: null })
     expect(p.client.cached('sessions:list')).toBeNull()
-    expect(p.storage.get('workhub-remote')).not.toContain('desktop')
+    expect(JSON.parse(p.storage.get('workhub-remote')!).desktops).toEqual({})
     // No reconnect attempts without a desktop.
     p.timers.fire()
     await settle()
@@ -272,5 +273,55 @@ describe('RemoteClient', () => {
     const { p: other } = await paired()
     other.client.unpair()
     expect(other.client.status()).toMatchObject({ state: 'unpaired', desktop: null })
+  })
+
+  it('pairs with a second desktop, switches between them with separate caches, and keeps the other when one revokes', async () => {
+    const { d: home, p } = await paired()
+    await p.hub.sessions.list()
+    const homeId = p.client.status().desktop!.id
+
+    // A second desktop, reached through the same relay in this test: pairing makes it the active one.
+    const work = desktop({ desktopName: 'Work PC' }, home.core)
+    work.views[0] = { id: 'w1', name: 'Deploy', cwd: '/work/web' }
+    await work.service.start()
+    await settle()
+    const link = (await work.service.startPairing()).pairing!.link
+    expect(p.client.openPairingLink(link)).toBe(true)
+    p.client.pair()
+    await settle()
+    work.service.acceptPairing(work.service.status().request!.deviceId, ['sessions'])
+    await settle(6)
+    const status = p.client.status()
+    expect(status.state).toBe('online')
+    expect(status.desktop?.name).toBe('Work PC')
+    expect(status.desktops.map((x) => x.name)).toEqual(['Ana’s MacBook', 'Work PC'])
+    expect(p.client.capabilities()).toEqual(['sessions'])
+    // The caches are per desktop: nothing from home shows for work until work answers.
+    expect(p.client.cached('sessions:list')).toBeNull()
+    expect(await p.hub.sessions.list()).toMatchObject([{ id: 'w1' }])
+
+    // Back to home: its cache is still there, and the connection follows.
+    expect(p.client.switchDesktop(homeId)).toBe(true)
+    expect(p.client.cached('sessions:list')).toMatchObject([{ id: 's1' }])
+    await settle(6)
+    expect(p.client.status()).toMatchObject({ state: 'online', desktop: { id: homeId } })
+
+    // Home revokes the phone: the phone moves on to work instead of ending up unpaired.
+    home.service.revoke(p.client.identity.id)
+    await settle(6)
+    expect(p.client.status()).toMatchObject({ state: 'online', desktop: { name: 'Work PC' } })
+    expect(p.client.desktops()).toHaveLength(1)
+    expect(p.client.switchDesktop('nope')).toBe(false)
+  })
+
+  it('moves the single desktop of the first version into the list', async () => {
+    const { p } = await paired()
+    const saved = JSON.parse(p.storage.get('workhub-remote')!)
+    const old = new MemStorage()
+    old.set('workhub-remote', JSON.stringify({ seed: saved.seed, desktop: saved.desktops[saved.active] }))
+    const { d } = await paired()
+    const again = phone(d.core, old)
+    expect(again.client.status()).toMatchObject({ state: 'connecting', desktop: { name: 'Ana’s MacBook' } })
+    expect(again.client.desktops()).toHaveLength(1)
   })
 })

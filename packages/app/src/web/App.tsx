@@ -27,6 +27,7 @@ interface Toast {
 
 /** Notifications that arrive over the live channel show briefly at the top; a tap opens their session. */
 function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
+  const client = useClient()
   if (toasts.length === 0) return null
   return (
     <div className="safe-top pointer-events-none fixed inset-x-0 top-0 z-50 flex flex-col items-center gap-2 px-3 pt-2">
@@ -36,7 +37,13 @@ function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) =>
           type="button"
           onClick={() => {
             dismiss(toast.id)
-            navigate(parseRoute(toast.payload.route ?? '#'))
+            const route = toast.payload.route ?? '#'
+            if (toast.payload.desktop && toast.payload.desktop !== client.status().desktop?.id && client.switchDesktop(toast.payload.desktop)) {
+              location.hash = route
+              location.reload()
+              return
+            }
+            navigate(parseRoute(route))
           }}
           className="pointer-events-auto w-full max-w-md rounded-xl border border-border bg-surface-raised px-4 py-3 text-left shadow-lg animate-slide-in"
         >
@@ -78,7 +85,8 @@ function Shell({ defaultName }: { defaultName: string }) {
     })
   }, [])
 
-  if (status.state === 'unpaired' || status.state === 'pairing' || status.state === 'revoked' || route.screen === 'pair') {
+  // An offer waiting for confirmation shows the pairing screen even on a phone that is already paired (another computer).
+  if (status.state === 'unpaired' || status.state === 'pairing' || status.state === 'revoked' || route.screen === 'pair' || status.offer) {
     if (route.screen === 'settings' && status.state !== 'pairing') return <SettingsScreen />
     return <PairScreen defaultName={defaultName} />
   }

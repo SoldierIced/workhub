@@ -40,7 +40,7 @@ async function showPushed(text: string): Promise<void> {
     icon: '/icons/icon-256.png',
     badge: '/icons/icon-256.png',
     ...(payload.tag ? { tag: payload.tag } : {}),
-    data: { route: payload.route ?? '#', ts: payload.ts }
+    data: { route: `${payload.desktop ? `#d/${payload.desktop}/` : '#'}${(payload.route ?? '#').replace(/^#\/?/, '')}`, ts: payload.ts }
   })
 }
 
