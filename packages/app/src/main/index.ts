@@ -5,7 +5,7 @@ import { homedir, hostname } from 'node:os'
 import { delimiter, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { AcpRuntime, agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
-import { CLAUDE_PERMISSION_MODES, ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory } from '@workhub/adapters/agent-claude-native'
+import { CLAUDE_PERMISSION_MODES, ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory, discoverClaudeOptions } from '@workhub/adapters/agent-claude-native'
 import { DemoChatSource, SlackAgentChatSource, SlackTrackingHook } from '@workhub/adapters/chat-slack'
 import { ListenSummarizer } from '@workhub/adapters/listen-summary'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
@@ -95,7 +95,7 @@ import { FlowAlertWatcher, HealthWatcher, TicketWatcher, ticketSummaryWords } fr
 import type { Locale } from '../renderer/i18n/translate'
 import { AutomationService } from './automations'
 import { registerChatIpc } from './chat-ipc'
-import { AgentOptionsService, runsKiroCli } from './agent-options'
+import { AgentOptionsService, listableAgentTargets, runsKiroCli } from './agent-options'
 import { agentKeyBudget, AgentUsageService, DemoUsageProvider, usageAccounts } from './agent-usage'
 import { AgentReviewService, registerAgentReviewIpc, reviewLoopWindows } from './agent-review'
 import { AiReviewService, registerAiReviewIpc, reviewBudgetGate } from './ai-review'
@@ -379,9 +379,14 @@ const claudeHistory = new ClaudeSessionHistory({ bridgeDir })
 const kiroDir = process.env['WORKHUB_KIRO_DIR'] ? resolve(process.env['WORKHUB_KIRO_DIR']) : undefined
 // Past sessions per agent id; the readers behind them are kiro, opencode and codex (PLAN D9).
 const historySources = { claude: claudeHistory, kiro: new KiroSessionHistory({ kiroDir }), opencode: new OpenCodeSessionHistory(), codex: new CodexSessionHistory() }
-// Models and modes each agent offers before a session starts (Kiro: its listing commands; others: their last session).
+// Models and modes each agent offers before a session starts (Kiro: its listing commands; Claude Code:
+// what it reports when a session starts, read without a prompt; others: their last session).
 const agentOptions = new AgentOptionsService({
-  discover: (agent) => (runsKiroCli(agent) ? discoverKiroOptions(createCliRunner(cliPath.split(delimiter)), agent.command) : null),
+  discover: (agent, account) => {
+    if (runsKiroCli(agent)) return discoverKiroOptions(createCliRunner(cliPath.split(delimiter)), agent.command)
+    if (agent.adapter === 'native') return discoverClaudeOptions({ bridgeDir, path: sessionPath }, account?.configDir).then((found) => ({ ...found, modes: [] }))
+    return null
+  },
   // Claude Code's permission modes are known before any session: Settings and the New session dialog offer them.
   fixedModes: (agent) => (agent.adapter === 'native' ? CLAUDE_PERMISSION_MODES : undefined),
   state: new StateFile(join(dataDir, 'agent-options.json'), 500)
@@ -1852,6 +1857,14 @@ void app.whenReady().then(async () => {
   // A second launch only hands over to the running app (its 'second-instance'): it must not touch
   // the socket, the config or any other file the running app owns.
   if (!firstInstance) return
+  // Agents gain models between sessions (a Claude Code update, an alias that moved, a new Kiro): read
+  // them again for every agent and account that can be listed once start-up has settled.
+  setTimeout(() => {
+    void configuration
+      .current()
+      .then((config) => agentOptions.refreshAll(listableAgentTargets(knownAgents(config), config.accounts)))
+      .catch((err: unknown) => diagnostics.log.warn(`agent options: ${err instanceof Error ? err.message : String(err)}`))
+  }, 8_000).unref()
   const controlDeps: ControlDeps = {
     openReview: (sessionId, repos) => {
       const v = sessions.list().find((s) => s.id === sessionId)
