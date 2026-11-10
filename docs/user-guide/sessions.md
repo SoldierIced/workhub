@@ -17,7 +17,10 @@ declares what it supports, and the screen shows only the controls that agent has
   **Agents** tab in Settings (see [Profile › Agents](settings.md#profile--agents)). When the
   account picked has a default model, **Model** starts on **Account default**. The lists come
   from what the agent reports, so a new agent shows its models and modes after its first session
-  (**List again** refreshes them). **Use a worktree** and **Branch** start the session in its own git worktree;
+  (**List again** refreshes them). Claude's and Kiro's models are also read again for each account
+  when Workhub starts, without sending a prompt, so a model gained since the last session (a
+  Claude Code update, the `fable` alias moving to a newer Fable) is offered without opening one.
+  Codex and OpenCode list theirs only when a session starts. **Use a worktree** and **Branch** start the session in its own git worktree;
   see [Worktree per session](profiles.md#worktree-per-session). **Group** lists the sidebar's
   session groups (a sub-group by its path, such as "Work / Backend"); it starts on **No group**.
   **New group…** shows a field for the name of a new group (a group with that name, if there is

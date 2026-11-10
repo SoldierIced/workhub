@@ -1,4 +1,4 @@
-import { accountAgent, type AgentDefinition, type AgentAccount, type ModelOption, type SessionModeOption } from '@workhub/core'
+import { accountAgent, accountAgentId, type AgentDefinition, type AgentAccount, type ModelOption, type SessionModeOption } from '@workhub/core'
 import type { AgentOptions } from '@workhub/adapters/agent-acp'
 import type { AgentOptionsView } from '../shared/api'
 
@@ -15,8 +15,11 @@ export interface StoredAgentOptions {
 export type AgentOptionsState = Record<string, StoredAgentOptions>
 
 export interface AgentOptionsDeps {
-  /** Lists what an agent offers through its own CLI (Kiro); null for agents without such a command. */
-  discover: (agent: AgentDefinition) => Promise<AgentOptions> | null
+  /**
+   * Lists what an agent offers through its own CLI (Kiro's listing commands, Claude Code's start-up
+   * report); null for agents without one. `account` is the account it is listed for, if any.
+   */
+  discover: (agent: AgentDefinition, account: AgentAccount | null) => Promise<AgentOptions> | null
   state: { load(fallback: AgentOptionsState): AgentOptionsState; save(state: AgentOptionsState): void }
   now?: () => number
   /** How long a CLI listing is reused before it is run again (default 10 min). */
@@ -94,7 +97,10 @@ export class AgentOptionsService {
     let stored = this.state[key] ?? (account ? this.state[optionsKey(agent.id, null)] : undefined)
     const maxAge = this.deps.maxAgeMs ?? 10 * 60_000
     const stale = !stored || stored.source !== 'cli' || this.now() - stored.at > maxAge
-    if (refresh || stale) stored = (await this.discover(key, accountAgent(agent, account))) ?? stored
+    // With nothing to show, wait for the listing; otherwise show the last reading and refresh it
+    // behind (a model added since then shows the next time the picker opens).
+    if (refresh || !stored) stored = (await this.discover(key, agent, account)) ?? stored
+    else if (stale) void this.discover(key, agent, account)
     const fixed = this.deps.fixedModes?.(agent) ?? []
     if (!stored) return { models: [], modes: [...fixed], source: 'none', modeSemantics: agent.modeSemantics }
     const { models, defaultModelId, defaultModeId, source, at } = stored
@@ -102,18 +108,29 @@ export class AgentOptionsService {
     return { models, modes, ...(defaultModelId ? { defaultModelId } : {}), ...(defaultModeId ? { defaultModeId } : {}), source, at, modeSemantics: agent.modeSemantics }
   }
 
+  /**
+   * Lists again what each of these agents and accounts offers, one after the other, without
+   * waiting for a picker to ask: at start, so a model the agent gained since the last session (a
+   * new Claude Code, an alias that moved) is there when the New session dialog opens.
+   */
+  async refreshAll(entries: readonly { agent: AgentDefinition; account: AgentAccount | null }[]): Promise<void> {
+    for (const { agent, account } of entries) await this.discover(optionsKey(agent.id, account?.id ?? null), agent, account)
+  }
+
   /** Runs the agent's listing commands once at a time per key; nothing found keeps the last reading. */
-  private discover(key: string, agent: AgentDefinition): Promise<StoredAgentOptions | null> {
+  private discover(key: string, agent: AgentDefinition, account: AgentAccount | null): Promise<StoredAgentOptions | null> {
     const running = this.inflight.get(key)
     if (running) return running
-    const listing = this.deps.discover(agent)
+    const listing = this.deps.discover(accountAgent(agent, account), account)
     if (!listing) return Promise.resolve(null)
     const task = listing
       .then((found): StoredAgentOptions | null => {
         if (!found.models.length && !found.modes.length) return null
+        const prev = this.state[key]
         const next: StoredAgentOptions = {
-          models: found.models,
-          modes: found.modes,
+          // A listing without modes (Claude Code's reports models only) keeps those a session reported.
+          models: found.models.length ? found.models : (prev?.models ?? []),
+          modes: found.modes.length ? found.modes : (prev?.modes ?? []),
           ...(found.defaultModelId ? { defaultModelId: found.defaultModelId } : {}),
           ...(found.defaultModeId ? { defaultModeId: found.defaultModeId } : {}),
           source: 'cli',
@@ -133,4 +150,19 @@ export class AgentOptionsService {
 /** Whether an agent runs the Kiro CLI (the built-in Kiro, an account's own build, or a user agent), so its listing commands apply. */
 export function runsKiroCli(agent: Pick<AgentDefinition, 'command'>): boolean {
   return /(^|[\\/])kiro-cli(\.exe)?$/i.test(agent.command.trim())
+}
+
+/**
+ * Every agent the app can list without starting a session (native Claude: its start-up report;
+ * Kiro: its listing commands), with each of its accounts (with none, the agent alone). The app
+ * reads them again at start: agents gain models without Workhub changing. Agents that list only
+ * when a session starts (Codex, OpenCode, Claude over ACP) are left to their next session.
+ */
+export function listableAgentTargets(agents: readonly AgentDefinition[], accounts: readonly AgentAccount[]): { agent: AgentDefinition; account: AgentAccount | null }[] {
+  return agents
+    .filter((agent) => agent.adapter === 'native' || runsKiroCli(agent))
+    .flatMap((agent): { agent: AgentDefinition; account: AgentAccount | null }[] => {
+      const own = accounts.filter((a) => a.agentId === accountAgentId(agent))
+      return own.length ? own.map((account) => ({ agent, account })) : [{ agent, account: null }]
+    })
 }

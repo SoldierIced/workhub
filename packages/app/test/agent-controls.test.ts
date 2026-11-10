@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { AcpRuntime } from '@workhub/adapters/agent-acp'
 import { emptyConfig, NO_CAPABILITIES, type AgentDefinition, type AgentRuntime, type ConfigurationService, type WorkhubConfig } from '@workhub/core'
-import { AgentOptionsService, parseAgentOptionsState, runsKiroCli, type AgentOptionsState } from '../src/main/agent-options'
+import { AgentOptionsService, listableAgentTargets, parseAgentOptionsState, runsKiroCli, type AgentOptionsState } from '../src/main/agent-options'
 import { SessionManager } from '../src/main/session-manager'
 import { initialStartChoice, sessionModelPicker, sessionModePicker } from '../src/renderer/lib/agent-pickers'
 import { parsePrefs } from '../src/renderer/lib/prefs'
@@ -154,6 +154,62 @@ describe('AgentOptionsService', () => {
     const again = new AgentOptionsService({ discover: () => null, state, now: () => 6 })
     expect((await again.get(opencode, account)).models).toEqual([{ id: 'gpt', name: 'GPT' }])
     expect(parseAgentOptionsState({ x: { at: 'no' }, y: { source: 'cli', at: 1, models: [{ id: 1 }, { id: 'a', name: 'A' }] } })).toEqual({ y: { source: 'cli', at: 1, models: [{ id: 'a', name: 'A' }], modes: [] } })
+  })
+
+  it('shows the last Claude reading at once and reads the account again behind it', async () => {
+    const claude: AgentDefinition = { ...fakeKiro, id: 'claude', adapter: 'native', command: 'claude' }
+    const personal = { id: 'personal', agentId: 'claude', name: 'Personal', configDir: '/home/me/.claude-personal' }
+    const state = memory()
+    let release: () => void = () => {}
+    const asked: (string | undefined)[] = []
+    const service = new AgentOptionsService({
+      discover: (_agent, account) => {
+        asked.push(account?.configDir)
+        return new Promise((resolve) => (release = () => resolve({ models: [{ id: 'fable', name: 'Fable 5.2' }], modes: [] })))
+      },
+      state,
+      now: () => 10
+    })
+    // What the last session reported, before Claude Code moved its `fable` alias.
+    service.record('claude', 'personal', { models: [{ id: 'fable', name: 'Fable 5.1' }], modes: [{ id: 'plan', name: 'Plan' }] })
+    expect((await service.get(claude, personal)).models).toEqual([{ id: 'fable', name: 'Fable 5.1' }])
+    expect(asked).toEqual(['/home/me/.claude-personal'])
+    release()
+    await vi.waitFor(() => expect(state.read()['claude:personal']?.source).toBe('cli'))
+    const fresh = await service.get(claude, personal)
+    expect(fresh.models).toEqual([{ id: 'fable', name: 'Fable 5.2' }])
+    // A listing without modes keeps the ones a session reported.
+    expect(fresh.modes).toEqual([{ id: 'plan', name: 'Plan' }])
+  })
+
+  it('reads every Claude account again at start, one after the other', async () => {
+    const claude: AgentDefinition = { ...fakeKiro, id: 'claude', adapter: 'native', command: 'claude' }
+    const claudeAcp: AgentDefinition = { ...fakeKiro, id: 'claude-acp', adapter: 'acp', accountsOf: 'claude', command: 'claude-acp' }
+    const accounts = [
+      { id: 'work', agentId: 'claude', name: 'Work', configDir: '/w' },
+      { id: 'home', agentId: 'claude', name: 'Home', configDir: '/h' },
+      { id: 'k', agentId: 'fakekiro', name: 'Kiro' }
+    ]
+    const realKiro: AgentDefinition = { ...fakeKiro, id: 'kiro', command: 'kiro-cli' }
+    const opencode: AgentDefinition = { ...fakeKiro, id: 'opencode', command: 'opencode' }
+    const targets = listableAgentTargets([claude, claudeAcp, realKiro, opencode], accounts).filter((t) => t.agent.id === 'claude')
+    expect(targets.map((t) => `${t.agent.id}:${t.account?.id ?? '-'}`)).toEqual(['claude:work', 'claude:home'])
+    // Kiro lists through its CLI; agents that list only in a session are left out.
+    expect(listableAgentTargets([claudeAcp, realKiro, opencode], []).map((t) => t.agent.id)).toEqual(['kiro'])
+    expect(listableAgentTargets([claude], []).map((t) => t.account)).toEqual([null])
+
+    const state = memory()
+    const order: string[] = []
+    const service = new AgentOptionsService({
+      discover: async (_agent, account) => {
+        order.push(account?.id ?? '-')
+        return { models: [{ id: `m-${account?.id}`, name: 'M' }], modes: [] }
+      },
+      state
+    })
+    await service.refreshAll(targets)
+    expect(order).toEqual(['work', 'home'])
+    expect(Object.keys(state.read()).sort()).toEqual(['claude:home', 'claude:work'])
   })
 
   it('a failing CLI keeps the last reading', async () => {
