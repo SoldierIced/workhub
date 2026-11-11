@@ -4,6 +4,22 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.24](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.23...v2.0.0-alpha.24) (2026-11-10)
+
+
+### Features
+
+* **agents:** read Claude and Kiro models again when the app starts ([cf69718](https://github.com/SoldierIced/workhub/commit/cf69718dc7488e8a4baf78dd950e73ff97396d9d))
+* **agents:** read Claude and Kiro models again when the app starts ([b3cee0a](https://github.com/SoldierIced/workhub/commit/b3cee0a546e02c05e976d612ee366453e6a6fb7e))
+
+
+### Bug Fixes
+
+* **remote:** load a chat's history on the phone and show pairing requests live ([22775b1](https://github.com/SoldierIced/workhub/commit/22775b1e62e4bc4796a02254b12f1dcac33f7254))
+* **remote:** load a chat's history on the phone and show pairing requests live ([7d5172a](https://github.com/SoldierIced/workhub/commit/7d5172a98d5281e9b3367e292af1804262f74b29))
+* **updates:** report an error instead of guessing the release when the GitHub API fails ([6776be8](https://github.com/SoldierIced/workhub/commit/6776be8a8cff39e829ed85a10cc0b5952255e3c7))
+* **updates:** report an error instead of guessing the release when the GitHub API fails ([6fd4933](https://github.com/SoldierIced/workhub/commit/6fd493364c25dd001869e50a9e693fdd734c00dc))
+
 ## [2.0.0-alpha.23](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.22...v2.0.0-alpha.23) (2026-11-08)
 
 
