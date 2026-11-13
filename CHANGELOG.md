@@ -4,6 +4,22 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.25](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.24...v2.0.0-alpha.25) (2026-11-13)
+
+
+### Features
+
+* **remote:** mirror the desktop sidebar and chat on the phone ([4e059c6](https://github.com/SoldierIced/workhub/commit/4e059c6066082797c113ca1e2903ba48c1494d89))
+* **remote:** mirror the desktop sidebar and chat on the phone ([5cb9dc5](https://github.com/SoldierIced/workhub/commit/5cb9dc5e0a02ef35f65bdcdfba6422c5189d7221))
+* **review:** show only the session's files, with a switch to the whole repo ([cfb77a0](https://github.com/SoldierIced/workhub/commit/cfb77a0700bc02248471a02cbe91d4046b91aa69))
+* **review:** show only the session's files, with a switch to the whole repo ([1162bf0](https://github.com/SoldierIced/workhub/commit/1162bf02ac577015143a1e5f946599c3fc2e2b53))
+
+
+### Bug Fixes
+
+* **relay:** keep peers connected when a frame is too large ([6446484](https://github.com/SoldierIced/workhub/commit/6446484b8e875fcc617c7a89a5631deeb3092581))
+* **review:** compare session paths with the drive letter normalized ([4caa712](https://github.com/SoldierIced/workhub/commit/4caa71255fc44ad9352a8c77aebc8bf861809ce2))
+
 ## [2.0.0-alpha.24](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.23...v2.0.0-alpha.24) (2026-11-10)
 
 
