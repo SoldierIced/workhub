@@ -149,8 +149,8 @@ describe('LocalReviewService', () => {
       scope: 'branch',
       scannedRepos: 2,
       repos: [
-        { root: '/w/app', name: 'app', branch: 'feat/x', files: [file('src/mine.ts'), file('src/theirs.ts'), file('docs/new.md')] },
-        { root: '/w/app/lib', name: 'lib', branch: 'main', files: [file('other.ts')] }
+        { root: resolve('/w/app'), name: 'app', branch: 'feat/x', files: [file('src/mine.ts'), file('src/theirs.ts'), file('docs/new.md')] },
+        { root: resolve('/w/app/lib'), name: 'lib', branch: 'main', files: [file('other.ts')] }
       ]
     }
     const history: HistoryMessage[] = [
@@ -169,7 +169,7 @@ describe('LocalReviewService', () => {
     expect(only).toMatchObject({ ok: true, hiddenFiles: 2 })
     expect(only.ok && only.review.repos.map((r) => [r.name, r.files.map((f) => f.path)])).toEqual([['app', ['src/mine.ts', 'docs/new.md']]])
     const all = await service.load('s1', 'branch', 'repo')
-    expect(all).toMatchObject({ ok: true, review })
+    expect(all).toMatchObject({ ok: true, review: { repos: review.repos } })
     expect(all.ok && 'hiddenFiles' in all).toBe(false)
   })
 

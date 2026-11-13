@@ -175,8 +175,12 @@ export interface LocalReviewDelivery {
 /** What the review shows: the files the session's agent edited, or every change in the repos. */
 export type LocalReviewFiles = 'session' | 'repo'
 
-/** A path with forward slashes and no trailing slash, so paths from git and from tool calls compare. */
-const slashed = (path: string): string => path.replace(/\\/g, '/').replace(/\/+$/, '')
+/** A path with forward slashes, an upper-case drive letter and no trailing slash, so paths from git and from tool calls compare. */
+const slashed = (path: string): string =>
+  path
+    .replace(/\\/g, '/')
+    .replace(/^([a-z]):/, (_, d: string) => `${d.toUpperCase()}:`)
+    .replace(/\/+$/, '')
 
 /**
  * Only the files whose absolute path is in `edited` (what the session's agent wrote or edited, as its

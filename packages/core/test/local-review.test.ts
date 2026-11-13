@@ -164,7 +164,7 @@ describe('onlySessionFiles', () => {
   }
 
   it('keeps the edited files, a renamed one by either name, and counts the rest', () => {
-    const { review: out, hidden } = onlySessionFiles(review, new Set(['C:\\w\\app\\a.ts', 'C:/w/app/old/b.ts']))
+    const { review: out, hidden } = onlySessionFiles(review, new Set(['C:\\w\\app\\a.ts', 'c:/w/app/old/b.ts']))
     expect(out.repos[0]!.files.map((f) => f.path)).toEqual(['a.ts', 'b.ts'])
     expect(hidden).toBe(1)
   })
