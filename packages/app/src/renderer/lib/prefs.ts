@@ -35,6 +35,8 @@ export interface Prefs {
   sidebarHidden: boolean
   /** Whether the session monitor panel is folded away (Workhub 1's Inspector toggle). */
   monitorHidden: boolean
+  /** What Review changes shows: the files the session's agent edited, or every change in the repo. */
+  reviewFiles: 'session' | 'repo'
   /** Folders starred in the sidebar (Workhub 1's Favorites), in the order they were added. */
   favoriteFolders: string[]
   /**
@@ -74,6 +76,7 @@ export const DEFAULT_PREFS: Prefs = {
   monitorCollapsed: [],
   sidebarHidden: false,
   monitorHidden: false,
+  reviewFiles: 'session',
   favoriteFolders: [],
   expandedFolders: [],
   flowMapDrawerCollapsed: false,
@@ -111,6 +114,7 @@ export function parsePrefs(raw: string | null): Prefs {
       monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
       sidebarHidden: v.sidebarHidden === true,
       monitorHidden: v.monitorHidden === true,
+      reviewFiles: v.reviewFiles === 'repo' ? 'repo' : 'session',
       favoriteFolders: pathList(v.favoriteFolders, 100),
       expandedFolders: pathList(v.expandedFolders, 200),
       flowMapDrawerCollapsed: v.flowMapDrawerCollapsed === true,

@@ -5,10 +5,10 @@
  * queued and retried every few seconds, like the PR events and the Slack wake-ups; it is dropped
  * when the session ends or stays busy past `PENDING_TTL_MS`.
  */
-import { stat } from 'node:fs/promises'
-import { extname, isAbsolute, relative, resolve } from 'node:path'
+import { realpath, stat } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { LocalChanges } from '@workhub/adapters/git-review'
-import type { LocalReviewDelivery, LocalReviewScope, PullRequestItem, ReviewComment } from '@workhub/core'
+import { onlySessionFiles, type HistoryMessage, type LocalReviewDelivery, type LocalReviewFiles, type LocalReviewScope, type PullRequestItem, type ReviewComment } from '@workhub/core'
 import type { SessionView } from '../shared/api'
 import type { LocalReviewLoad, LocalReviewSession } from '../shared/local-review-api'
 import type { IpcRegistrar } from './ipc-guard'
@@ -27,7 +27,35 @@ export interface LocalReviewDeps {
   /** The user's own open pull requests for a profile, to match a repo's branch; empty when unknown. */
   myPullRequests?(profileId: string | null): Promise<PullRequestItem[]>
   emit(sessionId: string, delivery: LocalReviewDelivery): void
+  /** The session's conversation, for the files its agent edited; without it every change shows. */
+  history?(sessionId: string): Promise<HistoryMessage[]>
   now?: () => number
+}
+
+/**
+ * The absolute paths the agent's tool calls wrote or edited, taken from `cwd` when relative. Edits it
+ * made through shell commands are not named anywhere, so they are not here.
+ */
+export function editedPaths(cwd: string, history: readonly HistoryMessage[]): Set<string> {
+  const paths = new Set<string>()
+  for (const m of history) {
+    if (m.kind !== 'tool' || !m.view) continue
+    if (m.view.kind === 'write' || m.view.kind === 'edit') paths.add(resolve(cwd, m.view.path))
+  }
+  return paths
+}
+
+/** A path with its symlinks resolved, as git names its repo roots (/tmp is /private/tmp on macOS); a deleted file through its folder. */
+async function realPath(path: string): Promise<string> {
+  try {
+    return await realpath(path)
+  } catch {
+    try {
+      return join(await realpath(dirname(path)), basename(path))
+    } catch {
+      return path
+    }
+  }
 }
 
 const isLive = (v: SessionView) => v.state === 'ready' || v.state === 'busy' || v.state === 'starting'
@@ -86,7 +114,7 @@ export class LocalReviewService {
     if (repos.length) this.asked.set(sessionId, repos)
   }
 
-  async load(sessionId: string, scope: LocalReviewScope): Promise<LocalReviewLoad> {
+  async load(sessionId: string, scope: LocalReviewScope, files: LocalReviewFiles = 'repo'): Promise<LocalReviewLoad> {
     const v = this.view(sessionId)
     if (!v) return { ok: false, reason: 'unknownSession' }
     const prs = (await this.deps.myPullRequests?.(v.profileId ?? null).catch(() => [])) ?? []
@@ -103,6 +131,12 @@ export class LocalReviewService {
         }
       })
       this.roots.set(sessionId, new Set([...(this.roots.get(sessionId) ?? []), ...review.repos.map((r) => r.root)]))
+      if (files === 'session' && this.deps.history) {
+        const edited = editedPaths(v.cwd, await this.deps.history(sessionId))
+        const real = new Set([...edited, ...(await Promise.all([...edited].map(realPath)))])
+        const only = onlySessionFiles(review, real)
+        return { ok: true, session: this.sessionInfo(v), review: only.review, hiddenFiles: only.hidden }
+      }
       return { ok: true, session: this.sessionInfo(v), review }
     } catch (err) {
       return { ok: false, reason: 'failed', detail: err instanceof Error ? err.message : String(err) }
@@ -231,7 +265,8 @@ export interface LocalReviewIpcDeps {
 
 export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewService, deps: LocalReviewIpcDeps): void {
   const scopeOf = (s: unknown): LocalReviewScope => (s === 'uncommitted' ? 'uncommitted' : 'branch')
-  ipc.handle('localReview:load', (_e, sessionId: string, scope: unknown) => service.load(String(sessionId), scopeOf(scope)))
+  const filesOf = (f: unknown): LocalReviewFiles => (f === 'session' ? 'session' : 'repo')
+  ipc.handle('localReview:load', (_e, sessionId: string, scope: unknown, files?: unknown) => service.load(String(sessionId), scopeOf(scope), filesOf(files)))
   ipc.handle('localReview:comments', (_e, sessionId: string) => service.comments(String(sessionId)))
   ipc.handle('localReview:setComments', (_e, sessionId: string, comments: unknown) => service.setComments(String(sessionId), comments))
   ipc.handle('localReview:send', (_e, sessionId: string, text: unknown) => service.send(String(sessionId), String(text ?? '')))

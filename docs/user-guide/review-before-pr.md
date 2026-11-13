@@ -130,7 +130,10 @@ its permission requests; prefer an agent with a read-only mode for reviewing.
 ## Review changes: review it yourself
 
 **Review changes** in the header opens a window with the session's local changes in every repo it
-touched. Compare **Branch vs base** (everything since the branch left its base) or **Uncommitted
+touched. **This session** shows only the files the agent edited with its file tools; **Whole repo**
+shows every change in those repos, whoever made it (other sessions, you). Edits the agent made
+through shell commands or sub-agents are only in **Whole repo**. The window remembers the choice.
+Compare **Branch vs base** (everything since the branch left its base) or **Uncommitted
 only**. Pick a file to see its diff, click a line to **Comment on line {n}**, and send all comments
 to the agent as one message (**Send {n} comments to {agent}**, or ⌘/Ctrl+Return). **Looks good**
 closes the review and tells the session so if you want. If the session is busy, the message is
