@@ -31,7 +31,8 @@ import {
   type PublicIdentity,
   type PushPayload,
   type RelayMessage,
-  type SecureChannel
+  type SecureChannel,
+  fitsFrame
 } from '@workhub/protocol'
 import type { RemoteCapability, RemoteDevicePlatform, RemoteDeviceView, RemoteStatusView } from '../../shared/remote-api'
 import { isRemoteCapability } from '../../shared/remote-api'
@@ -113,6 +114,8 @@ interface Link {
   channel: SecureChannel
   /** The device said `ready` over the channel: events and notifications flow. */
   ready: boolean
+  /** The device's page is in the background: notifications go by push even while the socket lives. */
+  away?: boolean
   detach: () => void
 }
 
@@ -309,7 +312,7 @@ export class RemoteService {
     for (const device of this.state.devices) {
       if (!device.capabilities.includes(capability)) continue
       const link = this.links.get(device.id)
-      if (link?.ready) this.sendChannel(device.id, link, { t: 'event', channel: 'remote:notification', args: [payload] })
+      if (link?.ready && !link.away) this.sendChannel(device.id, link, { t: 'event', channel: 'remote:notification', args: [payload] })
       else if (this.pushAvailable) this.send({ t: 'push', room: me.id, to: device.id, box: sealBox(device.public, encodeJson(payload)) })
     }
   }
@@ -528,14 +531,20 @@ export class RemoteService {
     switch (message.t) {
       case 'ready':
         link.ready = true
-        this.sendChannel(device.id, link, { t: 'ready', capabilities: device.capabilities, desktop: this.status().desktopName })
+        this.sendChannel(device.id, link, { t: 'ready', capabilities: device.capabilities, desktop: this.status().desktopName, features: ['away'] })
         this.touch(device.id)
         this.changed()
         return
       case 'invoke': {
         try {
           const value = await this.deps.hub.invoke(device.id, message.channel, message.args)
-          this.sendChannel(device.id, link, { t: 'result', id: message.id, ok: true, value: value === undefined ? null : value })
+          const result: ChannelMessage = { t: 'result', id: message.id, ok: true, value: value === undefined ? null : value }
+          if (!fitsFrame(result)) {
+            this.deps.log.warn(`remote: the answer to ${message.channel} is too large for the relay (${encodeJson(result).byteLength} bytes); sent an error instead`)
+            this.sendChannel(device.id, link, { t: 'result', id: message.id, ok: false, error: 'the answer is too large to send to this device' })
+            return
+          }
+          this.sendChannel(device.id, link, result)
         } catch (err) {
           const text = err instanceof RemoteRefused ? err.message : err instanceof Error ? err.message : 'failed'
           this.sendChannel(device.id, link, { t: 'result', id: message.id, ok: false, error: text.slice(0, 2000) })
@@ -548,6 +557,9 @@ export class RemoteService {
         } catch (err) {
           this.deps.log.warn(`remote: ${message.channel} from ${device.id}: ${err instanceof Error ? err.message : String(err)}`)
         }
+        return
+      case 'away':
+        link.away = message.away
         return
       case 'bye':
         this.dropLink(device.id)
@@ -595,7 +607,19 @@ export class RemoteService {
     this.send({ t: 'to', room: me.id, to: deviceId, body })
   }
 
+  /**
+   * Seals and sends one channel message. One that would not fit a relay frame is never sent: the
+   * relay closes the socket of whoever sends an oversized frame, and the phone, asking again on
+   * reconnect, would keep the desktop in a reconnect loop. An answer becomes an error instead;
+   * an event is dropped. Checked before sealing, since every seal advances the channel's counter.
+   */
   private sendChannel(deviceId: string, link: Link, message: ChannelMessage): void {
+    if (!fitsFrame(message)) {
+      const what = message.t === 'event' || message.t === 'send' || message.t === 'invoke' ? `${message.t} ${message.channel}` : message.t
+      this.deps.log.warn(`remote: ${what} for ${deviceId} is too large for the relay; not sent`)
+      if (message.t !== 'result') return
+      message = { t: 'result', id: message.id, ok: false, error: 'the answer is too large to send to this device' }
+    }
     this.sendTo(deviceId, { k: 'enc', c: link.channel.seal(message) })
   }
 

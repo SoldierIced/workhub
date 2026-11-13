@@ -29,7 +29,8 @@ import {
   type PairingOffer,
   type PublicIdentity,
   type RelayMessage,
-  type SecureChannel
+  type SecureChannel,
+  fitsFrame
 } from '@workhub/protocol'
 import type { HubTransport } from '../shared/hub-client'
 import type { RemoteCapability } from '../shared/remote-api'
@@ -111,6 +112,14 @@ const STATE_KEY = 'workhub-remote'
 const CACHE_PREFIX = 'workhub-remote-cache:'
 /** Twice the largest body the protocol allows, as UTF-16 code units. */
 const MAX_RELAY_FRAME_CHARS = 2 * 1024 * 1024
+/** How long a connection may stay in `connecting` (relay auth, handshake, `ready`) before it is dropped and retried. */
+export const CONNECT_TIMEOUT_MS = 15_000
+/** How long a hidden page keeps its socket: a glance at another app or the Control Center does not reconnect. */
+export const HIDDEN_GRACE_MS = 30_000
+/** How often an open socket is pinged. */
+export const LIVENESS_MS = 20_000
+/** How long a ping waits for any answer before the socket is treated as dead. */
+export const PONG_TIMEOUT_MS = 10_000
 
 /** Calls whose last answer the phone keeps, so it has something to show without network. */
 export const CACHED_CHANNELS: ReadonlySet<string> = new Set(['remote:history', 'sessions:list', 'config:get', 'config:effectiveAgents', 'hub:profileFolders', 'agents:availability', 'codeHost:lists', 'metricAlerts:list', 'automations:get', 'health:get', 'plan:get', 'planner:get'])
@@ -126,8 +135,15 @@ export class RemoteClient {
   private channel: SecureChannel | null = null
   private pendingHandshake: ReturnType<typeof startHandshake> | null = null
   private ready = false
+  /** The desktop understands `away`; an older one keeps sending notifications over the socket, so a hidden page drops it at once. */
+  private desktopTakesAway = false
   private attempt = 0
   private cancelReconnect: (() => void) | null = null
+  private cancelWatchdog: (() => void) | null = null
+  private cancelGrace: (() => void) | null = null
+  private cancelLiveness: (() => void) | null = null
+  /** When the relay last sent anything on the current socket. */
+  private lastHeard = 0
   private pendingOffer: PairingOffer | null = null
   private nextId = 1
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; cancel: () => void }>()
@@ -172,7 +188,17 @@ export class RemoteClient {
   /** Connects to the active desktop, if any. */
   start(): void {
     this.suspended = false
-    if (this.desktop && !this.socket) this.connect(this.desktop.relay)
+    this.cancelGrace?.()
+    this.cancelGrace = null
+    const desktop = this.desktop
+    if (!desktop || this.state === 'pairing') return
+    // The person is looking: retry now, not after the backoff a hidden or offline page built up.
+    this.attempt = 0
+    if (!this.socket) return this.connect(desktop.relay)
+    if (this.ready && this.desktopTakesAway) this.sendMessage({ t: 'away', away: false })
+    // A socket that survived a freeze may be dead without a close event (network changed, phone slept).
+    if (this.lastHeard && this.now() - this.lastHeard > LIVENESS_MS) this.dropDead('no answer from the relay')
+    else this.probe()
   }
 
   /** Every paired desktop, in pairing order. */
@@ -197,12 +223,27 @@ export class RemoteClient {
   }
 
   /**
-   * Drops the connection while the page is hidden: a phone browser freezes the page anyway, and
-   * with the socket gone the desktop sends notifications by push, which do arrive. `start()` resumes.
+   * The page is hidden. The desktop is told at once, so notifications go by push (a frozen page
+   * would not show them); the socket stays for `HIDDEN_GRACE_MS` so a quick return (the Control
+   * Center, another app for a moment) needs no reconnect, then it is dropped. `start()` resumes.
    */
   suspend(): void {
     if (this.state === 'pairing') return
     this.suspended = true
+    if (this.ready && this.socket && this.desktopTakesAway) {
+      this.sendMessage({ t: 'away', away: true })
+      this.cancelGrace?.()
+      this.cancelGrace = this.schedule(() => {
+        this.cancelGrace = null
+        if (this.suspended) this.goDormant()
+      }, HIDDEN_GRACE_MS)
+      return
+    }
+    this.goDormant()
+  }
+
+  /** No socket while hidden: the page shows what it cached until `start()`. */
+  private goDormant(): void {
     this.disconnect()
     if (this.desktop && this.state !== 'revoked') {
       this.state = 'desktop-offline'
@@ -340,6 +381,7 @@ export class RemoteClient {
       this.state = 'connecting'
       this.changed()
     }
+    this.lastHeard = 0
     let socket: WebSocketLike
     try {
       socket = this.deps.connect(relay)
@@ -348,6 +390,7 @@ export class RemoteClient {
       return
     }
     this.socket = socket
+    if (!offer) this.armWatchdog()
     // The relay speaks first, with the nonce our auth signs.
     socket.onopen = () => {}
     socket.onmessage = (ev: { data: unknown }) => this.receive(socket, typeof ev.data === 'string' ? ev.data : String(ev.data), offer)
@@ -378,14 +421,68 @@ export class RemoteClient {
     }, delay)
   }
 
-  private disconnect(): void {
+  /**
+   * Drops a connection that stopped making progress: stuck connecting, or silent past the liveness
+   * window. Without this a half-open socket keeps the phone "connecting" or "online" for minutes.
+   */
+  private dropDead(reason: string): void {
+    const relay = this.desktop?.relay
+    this.deps.log?.warn(`remote: ${reason}; reconnecting`)
+    this.disconnect(4000, reason)
+    if (this.suspended) this.goDormant()
+    else if (relay) this.failed(reason, relay)
+  }
+
+  /** Gives the current socket `CONNECT_TIMEOUT_MS` to reach `online`. */
+  private armWatchdog(): void {
+    this.cancelWatchdog?.()
+    const socket = this.socket
+    this.cancelWatchdog = this.schedule(() => {
+      this.cancelWatchdog = null
+      if (socket && this.socket === socket && this.state === 'connecting') this.dropDead('timed out connecting')
+    }, CONNECT_TIMEOUT_MS)
+  }
+
+  private clearWatchdog(): void {
+    this.cancelWatchdog?.()
+    this.cancelWatchdog = null
+  }
+
+  /** Pings the relay every `LIVENESS_MS` while the socket lives. */
+  private startLiveness(): void {
+    this.cancelLiveness?.()
+    const socket = this.socket
+    const tick = () => {
+      this.cancelLiveness = null
+      if (!socket || this.socket !== socket) return
+      this.probe()
+      this.cancelLiveness = this.schedule(tick, LIVENESS_MS)
+    }
+    this.cancelLiveness = this.schedule(tick, LIVENESS_MS)
+  }
+
+  /** Pings now; with nothing heard within `PONG_TIMEOUT_MS` the socket is dropped and dialed again. */
+  private probe(): void {
+    const socket = this.socket
+    if (!socket) return
+    const sentAt = this.now()
+    this.sendRelay({ t: 'ping' })
+    this.schedule(() => {
+      if (this.socket === socket && this.lastHeard < sentAt) this.dropDead('no answer from the relay')
+    }, PONG_TIMEOUT_MS)
+  }
+
+  private disconnect(code = 1000, reason = 'bye'): void {
     this.cancelReconnect?.()
     this.cancelReconnect = null
+    this.clearWatchdog()
+    this.cancelLiveness?.()
+    this.cancelLiveness = null
     const socket = this.socket
     this.socket = null
     this.dropChannel()
     try {
-      socket?.close(1000, 'bye')
+      socket?.close(code, reason)
     } catch {
       // Already gone.
     }
@@ -393,6 +490,7 @@ export class RemoteClient {
 
   private receive(socket: WebSocketLike, text: string, offer?: PairingOffer): void {
     if (this.socket !== socket) return
+    this.lastHeard = this.now()
     // A relay frame is never this large; a hostile relay must not make the phone parse one.
     if (text.length > MAX_RELAY_FRAME_CHARS) return
     let parsed: unknown
@@ -412,6 +510,7 @@ export class RemoteClient {
     switch (message.t) {
       case 'welcome':
         this.attempt = 0
+        this.startLiveness()
         this.vapidPublicKey = message.push?.vapidPublicKey
         this.sendRelay({ t: 'join', room: desktopId })
         if (this.pushSubscription && !offer) this.sendRelay({ t: 'push.subscribe', sub: this.pushSubscription as { endpoint: string; keys: { p256dh: string; auth: string } } })
@@ -448,6 +547,7 @@ export class RemoteClient {
   }
 
   private desktopOffline(): void {
+    this.clearWatchdog()
     this.dropChannel()
     if (this.state !== 'pairing') {
       this.state = 'desktop-offline'
@@ -469,6 +569,7 @@ export class RemoteClient {
     this.pendingHandshake = startHandshake(this.identity, desktop.public, 'initiator')
     this.state = 'connecting'
     this.changed()
+    this.armWatchdog()
     this.sendRelay({ t: 'to', room: desktop.id, to: desktop.id, body: { k: 'hs', e: this.pendingHandshake.hello.e } })
   }
 
@@ -535,7 +636,9 @@ export class RemoteClient {
   private handle(message: ChannelMessage): void {
     switch (message.t) {
       case 'ready': {
+        this.clearWatchdog()
         this.ready = true
+        this.desktopTakesAway = message.features?.includes('away') ?? false
         this.state = 'online'
         this.error = undefined
         const desktop = this.desktop
@@ -572,6 +675,7 @@ export class RemoteClient {
         return
       case 'invoke':
       case 'send':
+      case 'away':
         return
     }
   }
@@ -596,6 +700,8 @@ export class RemoteClient {
       }
       return Promise.reject(new Error(this.state === 'revoked' ? 'revoked' : 'offline'))
     }
+    // The relay closes the socket of whoever sends an oversized frame: refuse the call instead.
+    if (!fitsFrame({ t: 'invoke', id: this.nextId, channel, args })) return Promise.reject(new Error('too large to send to the desktop'))
     const id = this.nextId++
     return new Promise((resolve, reject) => {
       const cancel = this.schedule(() => {

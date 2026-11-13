@@ -1,6 +1,8 @@
 // A file a device asks for, inside a session's folder: an image the agent made, a log it wrote.
+// Outside the folder, only an image the session's own agent read or wrote (a screenshot it was shown).
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path'
+import type { HistoryMessage } from '@workhub/core'
 import type { RemoteFile } from '../../shared/remote-api'
 import { RemoteRefused } from './dispatcher'
 
@@ -68,12 +70,51 @@ export async function resolveRemoteFile(folder: string, path: string): Promise<s
   return target
 }
 
+/** Images a device may see outside the session folder; never SVG, which can carry scripts. */
+const OUTSIDE_IMAGE = /\.(png|jpe?g|gif|webp)$/i
+
+/** The absolute paths the session's tool calls read, wrote or edited, as the chat shows them. */
+export function touchedPaths(folder: string, history: readonly HistoryMessage[]): Set<string> {
+  const paths = new Set<string>()
+  for (const m of history) {
+    if (m.kind !== 'tool' || !m.view) continue
+    const view = m.view
+    if (view.kind === 'read' || view.kind === 'write' || view.kind === 'edit') paths.add(resolve(folder, view.path))
+  }
+  return paths
+}
+
 /**
- * A file inside `folder` as a device receives it (see resolveRemoteFile), or a refusal when it is
- * outside, secret-like, missing, a folder, or too large.
+ * An image outside `folder` that the session's own agent read or wrote (`touched`), resolved to its
+ * real path; a refusal for anything else, or for a path with a secret-like part.
  */
-export async function readRemoteFile(folder: string, path: string): Promise<RemoteFile> {
-  const target = await resolveRemoteFile(folder, path)
+async function resolveTouchedImage(folder: string, path: string, touched: ReadonlySet<string>): Promise<string> {
+  const absolute = resolve(folder, path)
+  if (!OUTSIDE_IMAGE.test(absolute) || !touched.has(absolute)) throw new RemoteRefused('the file is not in the session folder')
+  let target: string
+  try {
+    target = await realpath(absolute)
+  } catch {
+    throw new RemoteRefused('the file was not found')
+  }
+  if (!OUTSIDE_IMAGE.test(target) || hasSecretPart(absolute) || hasSecretPart(target)) throw new RemoteRefused('the file is not available remotely')
+  return target
+}
+
+/**
+ * A file inside `folder` as a device receives it (see resolveRemoteFile), or an image outside it the
+ * session's agent read or wrote (`touched`, asked only then); a refusal when it is anywhere else,
+ * secret-like, missing, a folder, or too large.
+ */
+export async function readRemoteFile(folder: string, path: string, touched?: () => Promise<ReadonlySet<string>>): Promise<RemoteFile> {
+  let target: string
+  try {
+    target = await resolveRemoteFile(folder, path)
+  } catch (err) {
+    const outside = err instanceof RemoteRefused && /not in the session folder/.test(err.message)
+    if (!outside || !touched || typeof path !== 'string') throw err
+    target = await resolveTouchedImage(folder, path, await touched())
+  }
   const info = await stat(target)
   if (!info.isFile()) throw new RemoteRefused('not a file')
   if (info.size > REMOTE_FILE_MAX_BYTES) throw new RemoteRefused('the file is too large to send')

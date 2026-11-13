@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { RelayCore, type Peer, type PushProvider, MemoryPushStore } from '@workhub/relay'
+import { MAX_FRAME_BYTES } from '@workhub/protocol'
 import type { IpcRegistrar } from '../src/main/ipc-guard'
 import { recordIpc, RemoteHub, RemoteService, type RemoteState } from '../src/main/remote'
 import { buildHub } from '../src/shared/hub-client'
-import { RemoteClient, type ClientStorage, type ClientStatus } from '../src/web/remote-client'
+import { CONNECT_TIMEOUT_MS, HIDDEN_GRACE_MS, LIVENESS_MS, PONG_TIMEOUT_MS, RemoteClient, type ClientStorage, type ClientStatus } from '../src/web/remote-client'
 
 const NOW = 1_800_000_000_000
 
@@ -41,6 +42,19 @@ class FakeSocket {
     this.closed = true
     if (this.peer) this.core.disconnect(this.peer)
     this.onclose?.({ code, reason })
+  }
+}
+
+/** A socket whose network died without a close event: nothing it sends arrives, nothing comes back. */
+class SilentSocket {
+  onopen: ((ev: any) => void) | null = null
+  onmessage: ((ev: any) => void) | null = null
+  onclose: ((ev: any) => void) | null = null
+  onerror: ((ev: any) => void) | null = null
+  closed = false
+  send() {}
+  close() {
+    this.closed = true
   }
 }
 
@@ -107,25 +121,32 @@ function desktop(initial: Partial<RemoteState> = {}, shared?: RelayCore) {
   return { core, service, hub, pushed, permissions, views, timers: t }
 }
 
-function phone(core: RelayCore, storage = new MemStorage()) {
+/** `clock.now` moves the phone's time; `silent` sockets are handed out first, as if the network were dead. */
+function phone(core: RelayCore, storage = new MemStorage(), clock = { now: NOW }, silent = 0) {
   const t = timers()
-  const sockets: FakeSocket[] = []
+  const sockets: (FakeSocket | SilentSocket)[] = []
   const statuses: ClientStatus[] = []
   const client = new RemoteClient({
     storage,
     connect: () => {
-      const s = new FakeSocket(core, '10.0.0.2')
+      const s = sockets.length < silent ? new SilentSocket() : new FakeSocket(core, '10.0.0.2')
       sockets.push(s)
       return s
     },
     deviceName: () => 'Ana’s phone',
     platform: () => 'ios',
-    now: () => NOW,
+    now: () => clock.now,
     schedule: t.schedule,
     log: { warn: vi.fn() }
   })
   client.onStatus((s) => statuses.push(s))
   return { client, storage, sockets, statuses, timers: t, hub: buildHub(client.transport, 'mac') }
+}
+
+/** The page was hidden long enough to let its socket go (or it was closed). */
+function hideForGood(p: ReturnType<typeof phone>) {
+  p.client.suspend()
+  for (const t of p.timers.list.filter((t) => t.ms === HIDDEN_GRACE_MS && !t.cancelled)) t.fn()
 }
 
 /** Pairs a fresh phone with the desktop and brings the channel up. */
@@ -214,15 +235,35 @@ describe('RemoteClient', () => {
     expect(notes[0]).toMatchObject({ kind: 'replied', route: '#session/s1' })
     expect(d.pushed).toHaveLength(0)
 
+    // Hidden: the socket stays for a quick return, but the desktop already pushes instead.
     p.client.suspend()
+    await settle()
+    expect(p.client.status().state).toBe('online')
+    d.service.notify({ kind: 'needsAnswer', title: 'Permission', body: 'npm test', at: NOW, sessionId: 's1' })
+    await settle()
+    expect(notes).toHaveLength(1)
+    expect(d.pushed).toHaveLength(1)
+    expect(d.pushed[0]![0]).toBe('https://push.example.com/abc')
+    expect(JSON.parse(d.pushed[0]![1])).toHaveProperty('box.c')
+
+    // Back within the grace period: no reconnect, and notifications use the socket again.
+    p.client.start()
+    await settle()
+    expect(p.sockets).toHaveLength(1)
+    d.service.notify({ kind: 'replied', title: 'Fix tests', body: 'Again', at: NOW, sessionId: 's1' })
+    await settle()
+    expect(notes).toHaveLength(2)
+    expect(d.pushed).toHaveLength(1)
+
+    // Hidden past the grace period: the socket goes.
+    p.client.suspend()
+    for (const t of p.timers.list.filter((t) => t.ms === HIDDEN_GRACE_MS && !t.cancelled)) t.fn()
     await settle()
     expect(p.client.status().state).toBe('desktop-offline')
     expect(d.service.status().devices[0]!.online).toBe(false)
     d.service.notify({ kind: 'needsAnswer', title: 'Permission', body: 'npm test', at: NOW, sessionId: 's1' })
     await settle()
-    expect(d.pushed).toHaveLength(1)
-    expect(d.pushed[0]![0]).toBe('https://push.example.com/abc')
-    expect(JSON.parse(d.pushed[0]![1])).toHaveProperty('box.c')
+    expect(d.pushed).toHaveLength(2)
 
     // Back in front: reconnects with the identity it has, no pairing.
     p.client.start()
@@ -233,7 +274,7 @@ describe('RemoteClient', () => {
   it('answers from the cache while the desktop is away and reconnects on its own', async () => {
     const { p } = await paired()
     await p.hub.sessions.list()
-    p.sockets.at(-1)!.drop(1006, '')
+    ;(p.sockets.at(-1) as FakeSocket).drop(1006, '')
     await settle()
     expect(p.client.status().state).toBe('desktop-offline')
     await expect(p.hub.sessions.list()).resolves.toEqual([{ id: 's1', name: 'Fix tests', cwd: '/work/api' }])
@@ -250,7 +291,7 @@ describe('RemoteClient', () => {
     const history = (...args: unknown[]) => p.client.transport.invoke('remote:history', ...args)
     await expect(history('s1')).resolves.toMatchObject({ start: 5, messages: [{ text: 's1 before end' }] })
     await expect(history('s1', 5)).resolves.toMatchObject({ start: 4 })
-    p.sockets.at(-1)!.drop(1006, '')
+    ;(p.sockets.at(-1) as FakeSocket).drop(1006, '')
     await settle()
     await expect(history('s1')).resolves.toMatchObject({ start: 5 })
     await expect(history('s1', 5)).rejects.toThrow('offline')
@@ -264,7 +305,7 @@ describe('RemoteClient', () => {
 
   it('reconnects a phone that was paired before, from what it stored', async () => {
     const { d, p } = await paired()
-    p.client.suspend()
+    hideForGood(p)
     await settle()
     const again = phone(d.core, p.storage)
     again.client.start()
@@ -367,5 +408,118 @@ describe('RemoteClient', () => {
     const again = phone(d.core, old)
     expect(again.client.status()).toMatchObject({ state: 'connecting', desktop: { name: 'Ana’s MacBook' } })
     expect(again.client.desktops()).toHaveLength(1)
+  })
+
+  it('drops a connection stuck before the desktop answers and connects again', async () => {
+    const { d, p } = await paired()
+    hideForGood(p)
+    // Back in front, but the first socket never hears from the relay (a dead network, no close event).
+    const again = phone(d.core, p.storage, { now: NOW }, 1)
+    again.client.start()
+    await settle(6)
+    expect(again.client.status().state).toBe('connecting')
+    const watchdog = again.timers.list.find((t) => t.ms === CONNECT_TIMEOUT_MS && !t.cancelled)!
+    watchdog.fn()
+    expect((again.sockets[0] as SilentSocket).closed).toBe(true)
+    expect(again.client.status()).toMatchObject({ state: 'desktop-offline', error: 'timed out connecting' })
+    again.timers.fire()
+    await settle(6)
+    expect(again.client.status().state).toBe('online')
+    expect(again.sockets).toHaveLength(2)
+    // Online, the watchdog of the working socket does nothing.
+    for (const t of again.timers.list.filter((t) => t.ms === CONNECT_TIMEOUT_MS && !t.cancelled)) t.fn()
+    expect(again.client.status().state).toBe('online')
+  })
+
+  it('pings the relay while online and reconnects when the socket goes silent', async () => {
+    const { d, p } = await paired()
+    hideForGood(p)
+    const clock = { now: NOW }
+    const again = phone(d.core, p.storage, clock)
+    again.client.start()
+    await settle(6)
+    expect(again.client.status().state).toBe('online')
+    const run = (ms: number) => {
+      const due = again.timers.list.filter((t) => t.ms === ms && !t.cancelled)
+      again.timers.list.splice(0, again.timers.list.length, ...again.timers.list.filter((t) => !due.includes(t)))
+      for (const t of due) t.fn()
+    }
+
+    // A live socket answers the ping before the deadline: still online.
+    clock.now += LIVENESS_MS
+    run(LIVENESS_MS)
+    await settle()
+    clock.now += PONG_TIMEOUT_MS
+    run(PONG_TIMEOUT_MS)
+    expect(again.client.status().state).toBe('online')
+
+    // The network dies without a close event: the next ping goes unanswered and the phone notices.
+    const socket = again.sockets[0] as FakeSocket
+    socket.onmessage = null
+    clock.now += LIVENESS_MS
+    run(LIVENESS_MS)
+    await settle()
+    expect(again.client.status().state).toBe('online')
+    clock.now += PONG_TIMEOUT_MS
+    run(PONG_TIMEOUT_MS)
+    expect(socket.closed).toBe(true)
+    expect(again.client.status()).toMatchObject({ state: 'desktop-offline', error: 'no answer from the relay' })
+    again.timers.fire()
+    await settle(6)
+    expect(again.client.status().state).toBe('online')
+  })
+
+  it('checks the socket when the page comes back, and retries at once instead of after the backoff', async () => {
+    const { d, p } = await paired()
+    hideForGood(p)
+    const clock = { now: NOW }
+    const again = phone(d.core, p.storage, clock)
+    again.client.start()
+    await settle(6)
+    // The phone froze the page with the socket open; it went silent meanwhile.
+    const socket = again.sockets[0] as FakeSocket
+    socket.onmessage = null
+    clock.now += LIVENESS_MS + 1
+    again.client.start()
+    expect(socket.closed).toBe(true)
+    expect(again.client.status().state).toBe('desktop-offline')
+    // Coming back again does not wait for the scheduled retry.
+    again.client.start()
+    await settle(6)
+    expect(again.client.status().state).toBe('online')
+    expect(again.sockets).toHaveLength(2)
+  })
+
+  it('drops the socket at once when hidden if the desktop does not understand away', async () => {
+    const { d, p } = await paired()
+    // A desktop from before `away` sends no features in its ready.
+    ;(p.client as unknown as { desktopTakesAway: boolean }).desktopTakesAway = false
+    p.client.suspend()
+    await settle()
+    expect(p.client.status().state).toBe('desktop-offline')
+    expect(d.service.status().devices[0]!.online).toBe(false)
+  })
+
+  it('answers an oversized result with an error instead of sending a frame the relay would close the socket over', async () => {
+    const { d, p } = await paired()
+    const frames: number[] = []
+    const receive = d.core.receive.bind(d.core)
+    d.core.receive = (peer, raw) => {
+      frames.push(typeof raw === 'string' ? raw.length : raw.byteLength)
+      receive(peer, raw)
+    }
+    d.views.push({ id: 'big', name: 'x'.repeat(600_000), cwd: '/work/api' })
+    await expect(p.hub.sessions.list()).rejects.toThrow('too large')
+    expect(Math.max(...frames)).toBeLessThan(MAX_FRAME_BYTES)
+    // The channel stays in step: the next answer opens fine.
+    d.views.pop()
+    await expect(p.hub.sessions.list()).resolves.toHaveLength(1)
+    expect(p.client.status().state).toBe('online')
+  })
+
+  it('refuses a call too large to send instead of losing the connection', async () => {
+    const { p } = await paired()
+    await expect(p.client.transport.invoke('sessions:list', 'x'.repeat(600_000))).rejects.toThrow('too large')
+    await expect(p.hub.sessions.list()).resolves.toHaveLength(1)
   })
 })

@@ -1,6 +1,6 @@
 // The phone's building blocks: a screen with a header, the tab bar, rows, and the connection banner.
 import { ChevronLeft, Bell, CalendarCheck, GitPullRequest, MessageSquare, Settings as SettingsIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Spinner } from '../renderer/components/atoms'
 import { useI18n } from '../renderer/i18n/I18nProvider'
 import { cn } from '../renderer/lib/cn'
@@ -14,7 +14,7 @@ export function Screen({ children, className }: { children: ReactNode; className
 export function Header({ title, subtitle, back, right }: { title: ReactNode; subtitle?: ReactNode; back?: boolean | Route; right?: ReactNode }) {
   const { t } = useI18n()
   return (
-    <header className="safe-top flex shrink-0 items-center gap-2 border-b border-border bg-sidebar px-2 pb-2">
+    <header className="safe-top relative flex shrink-0 items-center gap-2 border-b border-border bg-sidebar px-2 pb-2">
       <div className="flex min-h-12 w-full items-center gap-2">
         {back ? (
           <button type="button" aria-label={t('web.back')} onClick={() => (back === true ? goBack() : navigate(back))} className="flex size-10 shrink-0 items-center justify-center rounded-lg text-muted active:bg-surface-hover">
@@ -29,6 +29,7 @@ export function Header({ title, subtitle, back, right }: { title: ReactNode; sub
         </div>
         {right}
       </div>
+      <ConnectionBanner />
     </header>
   )
 }
@@ -94,12 +95,30 @@ export function TabBar({ capabilities }: { capabilities: readonly string[] }) {
   )
 }
 
-/** One line under the header when the desktop is not reachable. */
+/** How long a lost connection waits before the banner shows: coming back from the background reconnects within it. */
+export const BANNER_DELAY_MS = 1500
+
+/**
+ * One line hanging under the header while the desktop is not reachable. It floats over the
+ * content instead of pushing it down, and it lives in the header so it never lands under the
+ * phone's status bar or notch.
+ */
 export function ConnectionBanner() {
   const { t } = useI18n()
   const status = useClientStatus()
   const desktop = status.desktop?.name ?? ''
-  if (status.state === 'online' || status.state === 'unpaired' || status.state === 'pairing') return null
+  const hidden = status.state === 'online' || status.state === 'unpaired' || status.state === 'pairing'
+  const revoked = status.state === 'revoked'
+  const [due, setDue] = useState(false)
+  // Keyed on being away, not on the state: a connection flapping between connecting and offline
+  // faster than the delay must still show the banner.
+  useEffect(() => {
+    setDue(false)
+    if (hidden) return
+    const timer = setTimeout(() => setDue(true), revoked ? 0 : BANNER_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [hidden, revoked])
+  if (hidden || !due) return null
   const text =
     status.state === 'connecting'
       ? t('web.state.connecting')
@@ -109,9 +128,12 @@ export function ConnectionBanner() {
           ? t('web.state.error', { error: status.error })
           : t('web.state.desktopOffline', { desktop })
   return (
-    <div role="status" className={cn('flex shrink-0 items-center gap-2 px-4 py-1.5 text-xs', status.state === 'revoked' ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning')}>
-      {status.state === 'connecting' && <Spinner className="size-3" />}
-      <span className="min-w-0 flex-1 truncate">{text}</span>
+    // The tints are translucent: an opaque layer under them keeps the content beneath from showing through.
+    <div role="status" className="pointer-events-none absolute inset-x-0 top-full z-20 border-b border-border bg-sidebar shadow-sm">
+      <div className={cn('flex items-center gap-2 px-4 py-1.5 text-xs', status.state === 'revoked' ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning')}>
+        {status.state === 'connecting' && <Spinner className="size-3" />}
+        <span className="min-w-0 flex-1 truncate">{text}</span>
+      </div>
     </div>
   )
 }

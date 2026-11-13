@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { WebSocket } from 'ws'
-import { generateIdentity, makeAuth, type RelayMessage } from '@workhub/protocol'
+import { generateIdentity, makeAuth, MAX_FRAME_BYTES, type RelayMessage } from '@workhub/protocol'
 import { addressOf, createRelayServer, type RelayServer } from '../src/server'
 import { resolveStatic } from '../src/static'
 import { FilePushStore } from '../src/push-store'
@@ -88,6 +88,23 @@ describe('relay server', () => {
     expect(await a.next()).toEqual({ t: 'from', room: desktop.id, from: phone.id, body: { k: 'enc', c: 'hello' } })
     b.ws.close()
     expect(await a.next()).toMatchObject({ t: 'peer', id: phone.id, online: false })
+    a.ws.close()
+  })
+
+  it('keeps an authenticated socket open after an oversized frame and says it was too large', async () => {
+    const desktop = generateIdentity()
+    const a = await connect()
+    const challenge = await a.next()
+    if (challenge.t !== 'challenge') throw new Error('no challenge')
+    a.ws.send(JSON.stringify(makeAuth(desktop, challenge.nonce)))
+    expect(await a.next()).toMatchObject({ t: 'welcome' })
+    a.ws.send(JSON.stringify({ t: 'join', room: desktop.id }))
+    expect(await a.next()).toMatchObject({ t: 'joined' })
+    a.ws.send(JSON.stringify({ t: 'to', room: desktop.id, to: desktop.id, body: { k: 'enc', c: 'x'.repeat(MAX_FRAME_BYTES + 1) } }))
+    expect(await a.next()).toMatchObject({ t: 'error', code: 'too-large' })
+    // Still connected: the next frame goes through.
+    a.ws.send(JSON.stringify({ t: 'ping' }))
+    expect(await a.next()).toMatchObject({ t: 'pong' })
     a.ws.close()
   })
 
