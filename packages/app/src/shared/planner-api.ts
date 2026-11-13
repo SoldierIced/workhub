@@ -1,5 +1,5 @@
 // Types of the Plan work bridge (window.hub.planner): milestones and the inbox, shared by main, preload and renderer.
-import type { AgentMilestoneMode, InboxAction, InboxBulkPatch, InboxItem, InboxKind, InboxProposal, Milestone, MilestoneCounts, MilestoneProposal, MilestoneStatusKind, PieceView, PlanLink, TicketSummary, TrackedTicket } from '@workhub/core'
+import type { AgentMilestoneMode, InboxAction, InboxBulkPatch, InboxItem, InboxKind, InboxProposal, Milestone, MilestoneCounts, MilestoneProposal, MilestoneStatusKind, MoveMilestoneSummary, PieceView, PlanLink, TicketSummary, TrackedTicket } from '@workhub/core'
 import type { PlanItemTarget } from './plan-item-window'
 
 export interface MilestoneView {
@@ -57,6 +57,10 @@ export interface PlannerApi {
   /** Adds or replaces a milestone (by id); a tracker milestone is counted again at once. */
   saveMilestone(profileId: string, milestone: Milestone): Promise<PlannerResult>
   deleteMilestone(profileId: string, id: string): Promise<PlannerResult>
+  /** What moving a milestone to another profile would carry: items moved, items copied, tickets pinned to the first tracker. */
+  moveMilestonePreview(fromProfileId: string, id: string, toProfileId: string): Promise<MoveMilestoneSummary | null>
+  /** Moves a milestone, with its items, counts and proposals, to another profile's Plan; `id` is its id there. */
+  moveMilestone(fromProfileId: string, id: string, toProfileId: string): Promise<({ ok: true; id: string } & MoveMilestoneSummary) | { ok: false; error: string }>
   /** Applies (`accept`) or rejects an agent's milestone proposal. */
   resolveProposal(profileId: string, proposalId: string, accept: boolean): Promise<PlannerResult>
   /** Counts the tracker milestones, and reads the tickets of pieces and linked items, again now. */

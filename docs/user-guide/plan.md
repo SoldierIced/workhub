@@ -198,6 +198,13 @@ window, **Cancel** (or **Esc**) closes it without saving. The pencil on a milest
 in the edit form (or switches the window already open to it); saving goes back to its details. The
 trash asks before it deletes the milestone.
 
+**Move to profile** in a milestone's window moves it to another profile with Plan on. Its tasks (and
+the items that follow one of its tickets) go with it; a task another milestone of the first profile
+also uses is copied, and the original stays. Its counts and pending agent proposals go too. Tickets
+and queries that read from the first profile's tracker keep reading from it when the other profile
+has a different one. The dialog says what goes before you confirm, and the milestone then opens in
+its new profile.
+
 The list is ordered by status (late first), then by end date. A failed count keeps the last good
 one and says why. Milestones are stored per profile in `planner-state.json` in the data folder, not
 in the settings. A counted or pieces milestone shows 100 % only when it is done.
@@ -243,8 +250,8 @@ title, a detail, where it came from, and optionally an area, a criticality, a du
 The Inbox tab shows only the items that wait in **To review**, with their actions in the card's
 header; once you keep or send one, it moves to the **Tasks** tab:
 
-- **Create ticket** (a task or bug) creates the issue in the tracker (see the settings below) and
-  links it from the item, which moves to the **Tasks** tab (see
+- **Create ticket** (a task or bug) asks first, naming the project, then creates the issue in the
+  tracker (see the settings below) and links it from the item, which moves to the **Tasks** tab (see
   [Tasks and tickets](#tasks-and-tickets)). On a decision it is **Record**: it goes to **Decisions**.
 - **Local task** keeps it in Workhub, on the **Tasks** tab. **Done** closes a task and **Reopen**
   brings it back.
