@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  onlySessionFiles,
   absoluteFilePath,
   branchLine,
   commentAnchor,
@@ -150,5 +151,25 @@ describe('session files', () => {
       { path: '/b', kind: 'read', at: 3, edited: false },
       { path: '/a', kind: 'edited', at: 2, edited: true }
     ])
+  })
+})
+
+describe('onlySessionFiles', () => {
+  const file = (path: string, oldPath?: string) => ({ path, ...(oldPath ? { oldPath } : {}), status: 'modified' as const, binary: false, additions: 0, deletions: 0, hunks: [], hiddenLines: 0, untracked: false })
+  const review = {
+    folder: 'C:\\w\\app',
+    scope: 'uncommitted' as const,
+    scannedRepos: 1,
+    repos: [{ root: 'C:\\w\\app', name: 'app', branch: 'main', files: [file('a.ts'), file('b.ts', 'old/b.ts'), file('c.ts')] }]
+  }
+
+  it('keeps the edited files, a renamed one by either name, and counts the rest', () => {
+    const { review: out, hidden } = onlySessionFiles(review, new Set(['C:\\w\\app\\a.ts', 'c:/w/app/old/b.ts']))
+    expect(out.repos[0]!.files.map((f) => f.path)).toEqual(['a.ts', 'b.ts'])
+    expect(hidden).toBe(1)
+  })
+
+  it('drops a repo the session edited nothing in', () => {
+    expect(onlySessionFiles(review, new Set())).toEqual({ review: { ...review, repos: [] }, hidden: 3 })
   })
 })

@@ -2,11 +2,11 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { LocalReview } from '@workhub/core'
+import type { HistoryMessage, LocalReview } from '@workhub/core'
 import type { SessionView } from '../src/shared/api'
 import { readForViewer, textPayload } from '../src/main/file-viewer'
 import type { IpcRegistrar } from '../src/main/ipc-guard'
-import { insideRoot, LocalReviewService, opensAsProgram, PENDING_TTL_MS, registerLocalReviewIpc, validComment } from '../src/main/local-review'
+import { editedPaths, insideRoot, LocalReviewService, opensAsProgram, PENDING_TTL_MS, registerLocalReviewIpc, validComment } from '../src/main/local-review'
 import { folderLabel, formatBytes, parseFileHash, parseReviewHash, sessionFiles } from '../src/renderer/lib/localReview'
 import type { ChatItem } from '../src/renderer/store'
 
@@ -140,6 +140,46 @@ describe('LocalReviewService', () => {
     const { service } = make([view({ state: 'stopped' })], async () => 'delivered')
     expect(await service.load('s1', 'branch')).toMatchObject({ ok: true, session: { id: 's1', blocker: 'closed' }, review: emptyReview })
     expect(await service.load('nope', 'branch')).toEqual({ ok: false, reason: 'unknownSession' })
+  })
+
+  it('shows only the files the session edited, or the whole repo', async () => {
+    const file = (path: string) => ({ path, status: 'modified' as const, binary: false, additions: 1, deletions: 0, hunks: [], hiddenLines: 0, untracked: false })
+    const review: LocalReview = {
+      folder: '/w/app',
+      scope: 'branch',
+      scannedRepos: 2,
+      repos: [
+        { root: resolve('/w/app'), name: 'app', branch: 'feat/x', files: [file('src/mine.ts'), file('src/theirs.ts'), file('docs/new.md')] },
+        { root: resolve('/w/app/lib'), name: 'lib', branch: 'main', files: [file('other.ts')] }
+      ]
+    }
+    const history: HistoryMessage[] = [
+      { kind: 'tool', id: 't1', title: 'Edit', view: { kind: 'edit', path: 'src/mine.ts', edits: [] } },
+      { kind: 'tool', id: 't2', title: 'Write', view: { kind: 'write', path: '/w/app/docs/new.md', content: '' } },
+      { kind: 'tool', id: 't3', title: 'Read', view: { kind: 'read', path: 'src/theirs.ts' } }
+    ] as HistoryMessage[]
+    const service = new LocalReviewService({
+      sessions: { list: () => [view()] },
+      deliver: async () => 'delivered',
+      changes: { load: vi.fn(async () => review) },
+      emit: () => {},
+      history: async () => history
+    })
+    const only = await service.load('s1', 'branch', 'session')
+    expect(only).toMatchObject({ ok: true, hiddenFiles: 2 })
+    expect(only.ok && only.review.repos.map((r) => [r.name, r.files.map((f) => f.path)])).toEqual([['app', ['src/mine.ts', 'docs/new.md']]])
+    const all = await service.load('s1', 'branch', 'repo')
+    expect(all).toMatchObject({ ok: true, review: { repos: review.repos } })
+    expect(all.ok && 'hiddenFiles' in all).toBe(false)
+  })
+
+  it('names the files the agent wrote or edited, not the ones it read', () => {
+    const history = [
+      { kind: 'tool', id: 'a', title: 'Edit', view: { kind: 'edit', path: 'a.ts', edits: [] } },
+      { kind: 'tool', id: 'b', title: 'Read', view: { kind: 'read', path: 'b.ts' } },
+      { kind: 'agent', text: 'done' }
+    ] as HistoryMessage[]
+    expect([...editedPaths('/w/app', history)]).toEqual([resolve('/w/app/a.ts')])
   })
 })
 

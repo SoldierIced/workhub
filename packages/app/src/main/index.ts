@@ -696,7 +696,8 @@ const localReview = new LocalReviewService({
     const lists = await Promise.race([codeHost.lists(profileId), new Promise<null>((r) => setTimeout(() => r(null), 5_000))]).catch(() => null)
     return lists?.mine ?? []
   },
-  emit: (sessionId, delivery) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('localReview:delivery', sessionId, delivery))
+  emit: (sessionId, delivery) => BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('localReview:delivery', sessionId, delivery)),
+  history: (sessionId) => sessions.history(sessionId)
 })
 
 // Continuity across accounts and agents: Claude account failover and hand-off to another agent.

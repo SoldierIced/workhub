@@ -171,3 +171,31 @@ export interface LocalReviewDelivery {
   reason?: 'closed' | 'busy'
   at: number
 }
+
+/** What the review shows: the files the session's agent edited, or every change in the repos. */
+export type LocalReviewFiles = 'session' | 'repo'
+
+/** A path with forward slashes, an upper-case drive letter and no trailing slash, so paths from git and from tool calls compare. */
+const slashed = (path: string): string =>
+  path
+    .replace(/\\/g, '/')
+    .replace(/^([a-z]):/, (_, d: string) => `${d.toUpperCase()}:`)
+    .replace(/\/+$/, '')
+
+/**
+ * Only the files whose absolute path is in `edited` (what the session's agent wrote or edited, as its
+ * tool calls name them); repos left with none are dropped. `hidden` counts the changed files left out.
+ */
+export function onlySessionFiles(review: LocalReview, edited: ReadonlySet<string>): { review: LocalReview; hidden: number } {
+  const wanted = new Set([...edited].map(slashed))
+  let hidden = 0
+  const repos: LocalReviewRepo[] = []
+  for (const repo of review.repos) {
+    const root = slashed(repo.root)
+    const isEdited = (path: string | undefined) => path !== undefined && wanted.has(`${root}/${slashed(path)}`)
+    const files = repo.files.filter((f) => isEdited(f.path) || isEdited(f.oldPath))
+    hidden += repo.files.length - files.length
+    if (files.length) repos.push({ ...repo, files })
+  }
+  return { review: { ...review, repos }, hidden }
+}

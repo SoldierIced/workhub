@@ -293,7 +293,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       test: (body) => invoke('systemNotifications:test', body)
     },
     localReview: {
-      load: (sessionId, scope) => invoke('localReview:load', sessionId, scope),
+      load: (sessionId, scope, files) => invoke('localReview:load', sessionId, scope, files),
       comments: (sessionId) => invoke('localReview:comments', sessionId),
       setComments: (sessionId, comments) => invoke('localReview:setComments', sessionId, comments),
       send: (sessionId, text) => invoke('localReview:send', sessionId, text),

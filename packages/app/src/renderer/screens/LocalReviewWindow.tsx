@@ -11,6 +11,7 @@ import {
   upsertComment,
   type LocalReview,
   type LocalReviewFile,
+  type LocalReviewFiles,
   type LocalReviewRepo,
   type LocalReviewScope,
   type ReviewComment
@@ -23,6 +24,7 @@ import { cn } from '../lib/cn'
 import { errorText } from '../lib/errorText'
 import { fileName, newCommentId, sendOutcome } from '../lib/localReview'
 import { usePlatform } from '../lib/platform'
+import { setPrefs, usePrefs } from '../lib/prefs'
 import { matchesShortcut, shortcutLabel } from '../lib/shortcuts'
 import { LocalDiff, type Composer } from './localReview/LocalDiff'
 
@@ -45,6 +47,8 @@ function Review({ sessionId }: { sessionId: string }) {
   const platform = usePlatform()
   const sendShortcut = shortcutLabel(SEND_SHORTCUT, platform)
   const [scope, setScope] = useState<LocalReviewScope>('branch')
+  const shown = usePrefs().reviewFiles
+  const setShown = (f: LocalReviewFiles) => setPrefs({ reviewFiles: f })
   const [reloads, setReloads] = useState(0)
   const reload = () => setReloads((n) => n + 1)
   const [result, setResult] = useState<LocalReviewLoad | null>(null)
@@ -69,7 +73,7 @@ function Review({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     let alive = true
     setLoading(true)
-    void window.hub.localReview.load(sessionId, scope).then(
+    void window.hub.localReview.load(sessionId, scope, shown).then(
       (r) => {
         if (!alive) return
         setResult(r)
@@ -85,7 +89,7 @@ function Review({ sessionId }: { sessionId: string }) {
     return () => {
       alive = false
     }
-  }, [sessionId, scope, reloads])
+  }, [sessionId, scope, shown, reloads])
 
   // The session's state (closed, renamed) follows the main window's list.
   useEffect(
@@ -103,6 +107,8 @@ function Review({ sessionId }: { sessionId: string }) {
   }, [session, t])
 
   const review: LocalReview | null = result?.ok ? result.review : null
+  /** Changed files the session's agent did not edit, left out while `shown` is 'session'. */
+  const hiddenFiles = result?.ok ? (result.hiddenFiles ?? 0) : 0
   const setComments = useCallback(
     (next: ReviewComment[]) => {
       setCommentsState(next)
@@ -213,7 +219,7 @@ function Review({ sessionId }: { sessionId: string }) {
           <div className="mt-0.5 text-xs text-muted">
             {review ? (
               <>
-                {[tn('localReview.repoCount', repos.length), tn('localReview.prCount', prs), tn('localReview.fileCount', files)].join(' · ')} ·{' '}
+                {[tn('localReview.repoCount', repos.length), tn('localReview.prCount', prs), tn('localReview.fileCount', files), ...(hiddenFiles > 0 ? [tn('localReview.hiddenFiles', hiddenFiles)] : [])].join(' · ')} ·{' '}
                 <Counts additions={sum(allFiles.map((x) => x.file), 'additions')} deletions={sum(allFiles.map((x) => x.file), 'deletions')} />
               </>
             ) : (
@@ -227,6 +233,21 @@ function Review({ sessionId }: { sessionId: string }) {
           )}
         </div>
         {loading && review && <Spinner className="size-4" />}
+        <div role="radiogroup" aria-label={t('localReview.shown')} title={t('localReview.shownHint')} className="inline-flex h-8 items-center rounded-md border border-border bg-surface p-0.5">
+          {(['session', 'repo'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              role="radio"
+              aria-checked={shown === f}
+              onClick={() => setShown(f)}
+              data-testid={`review-files-${f}`}
+              className={cn('inline-flex h-7 items-center rounded px-2.5 text-sm transition-colors duration-150', shown === f ? 'bg-accent-soft font-medium text-text' : 'text-muted hover:text-text')}
+            >
+              {t(`localReview.shown.${f}`)}
+            </button>
+          ))}
+        </div>
         <div role="radiogroup" aria-label={t('localReview.scope')} title={t('localReview.scopeHint')} className="inline-flex h-8 items-center rounded-md border border-border bg-surface p-0.5">
           {(['branch', 'uncommitted'] as const).map((s) => (
             <button
@@ -277,9 +298,17 @@ function Review({ sessionId }: { sessionId: string }) {
           <EmptyState
             icon={<FolderGit2 className="size-6" aria-hidden />}
             title={t('localReview.noChanges')}
-            description={scope === 'uncommitted' ? t('localReview.noChangesUncommitted') : t('localReview.noChangesBranch')}
+            description={
+              hiddenFiles > 0
+                ? tn('localReview.noSessionFiles', hiddenFiles)
+                : scope === 'uncommitted'
+                  ? t('localReview.noChangesUncommitted')
+                  : t('localReview.noChangesBranch')
+            }
             action={
-              scope === 'uncommitted' ? (
+              hiddenFiles > 0 ? (
+                <Button onClick={() => setShown('repo')}>{t('localReview.showRepo')}</Button>
+              ) : scope === 'uncommitted' ? (
                 <Button onClick={() => setScope('branch')}>{t('localReview.compareBase')}</Button>
               ) : (
                 <RefreshButton variant="button" size="md" iconClassName="size-4" label={t('localReview.reload')} loading={loading} onRefresh={reload} />

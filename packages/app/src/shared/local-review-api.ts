@@ -1,5 +1,5 @@
 // Types of the local review and file viewer bridges (window.hub.localReview, window.hub.files), shared by main, preload and renderer.
-import type { LocalReview, LocalReviewDelivery, LocalReviewScope, ReviewComment } from '@workhub/core'
+import type { LocalReview, LocalReviewDelivery, LocalReviewFiles, LocalReviewScope, ReviewComment } from '@workhub/core'
 
 /** The session a review belongs to, as the review window shows it. */
 export interface LocalReviewSession {
@@ -11,11 +11,15 @@ export interface LocalReviewSession {
   blocker?: 'closed' | 'readOnly'
 }
 
-export type LocalReviewLoad = { ok: true; session: LocalReviewSession; review: LocalReview } | { ok: false; reason: 'unknownSession' | 'failed'; detail?: string }
+/** `hiddenFiles`: changed files left out because the session's agent did not edit them (`files: 'session'`). */
+export type LocalReviewLoad = { ok: true; session: LocalReviewSession; review: LocalReview; hiddenFiles?: number } | { ok: false; reason: 'unknownSession' | 'failed'; detail?: string }
 
 export interface LocalReviewApi {
-  /** The session's local changes in `scope` (its folder's repo and the repos inside it it touched). */
-  load(sessionId: string, scope: LocalReviewScope): Promise<LocalReviewLoad>
+  /**
+   * The session's local changes in `scope` (its folder's repo and the repos inside it it touched):
+   * only the files its agent edited (`session`), or every change in those repos (`repo`, the default).
+   */
+  load(sessionId: string, scope: LocalReviewScope, files?: LocalReviewFiles): Promise<LocalReviewLoad>
   /** The comments not sent yet (kept while the app runs). */
   comments(sessionId: string): Promise<ReviewComment[]>
   setComments(sessionId: string, comments: ReviewComment[]): Promise<void>
