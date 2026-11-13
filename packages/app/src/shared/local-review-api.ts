@@ -11,15 +11,19 @@ export interface LocalReviewSession {
   blocker?: 'closed' | 'readOnly'
 }
 
-/** `hiddenFiles`: changed files left out because the session's agent did not edit them (`files: 'session'`). */
-export type LocalReviewLoad = { ok: true; session: LocalReviewSession; review: LocalReview; hiddenFiles?: number } | { ok: false; reason: 'unknownSession' | 'failed'; detail?: string }
+/**
+ * `files`: what the review shows (it can differ from the one asked; see `load`). `hiddenFiles`: changed
+ * files left out because the session's agent did not edit them (`files: 'session'`).
+ */
+export type LocalReviewLoad = { ok: true; session: LocalReviewSession; review: LocalReview; files?: LocalReviewFiles; hiddenFiles?: number } | { ok: false; reason: 'unknownSession' | 'failed'; detail?: string }
 
 export interface LocalReviewApi {
   /**
    * The session's local changes in `scope` (its folder's repo and the repos inside it it touched):
    * only the files its agent edited (`session`), or every change in those repos (`repo`, the default).
+   * `chosen` false: `files` is only the saved default, and a review a tool asked for shows the whole repo.
    */
-  load(sessionId: string, scope: LocalReviewScope, files?: LocalReviewFiles): Promise<LocalReviewLoad>
+  load(sessionId: string, scope: LocalReviewScope, files?: LocalReviewFiles, chosen?: boolean): Promise<LocalReviewLoad>
   /** The comments not sent yet (kept while the app runs). */
   comments(sessionId: string): Promise<ReviewComment[]>
   setComments(sessionId: string, comments: ReviewComment[]): Promise<void>

@@ -62,7 +62,7 @@ export class LocalChanges {
     const asked = new Map<string, string | undefined>()
     for (const extra of input.extraRepos ?? []) {
       const top = await this.value(resolve(extra.path), ['rev-parse', '--show-toplevel'])
-      if (top) asked.set(resolve(top), extra.base?.replace(/^origin\//, ''))
+      if (top) asked.set(resolve(top), extra.base)
     }
     // Repos asked for by name replace the folder scan: only those are reviewed.
     const children = asked.size ? [] : (await childRepositories(folder)).filter((c) => c !== own)
@@ -86,13 +86,18 @@ export class LocalChanges {
     return Number.isFinite(last) && last * 1000 >= since
   }
 
-  /** The base branch to compare with: the hint (the PR's base), else `origin/HEAD`, else main/develop/master. */
+  /**
+   * What to compare with: the hint (a branch, with or without `origin/`, or any commit a tool asked
+   * for, such as the last pushed one), else `origin/HEAD`, else main/develop/master.
+   */
   async baseBranch(repo: string, hint?: string): Promise<string | null> {
     const refs = new Set(((await this.value(repo, ['for-each-ref', '--format=%(refname)', 'refs/remotes/origin', 'refs/heads'])) ?? '').split('\n'))
     const existing = (name: string) => (refs.has(`refs/remotes/origin/${name}`) ? `origin/${name}` : refs.has(`refs/heads/${name}`) ? name : null)
     if (hint) {
-      const found = existing(hint)
+      const found = existing(hint.replace(/^origin\//, ''))
       if (found) return found
+      // Not a branch: a commit, tag or other ref. `--end-of-options` keeps it from reading as an option.
+      if (!hint.startsWith('-') && (await this.value(repo, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${hint}^{commit}`]))) return hint
     }
     const head = await this.value(repo, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'])
     if (head && head !== 'origin/HEAD') return head

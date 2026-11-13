@@ -132,7 +132,10 @@ export function commentCounts(comments: readonly ReviewComment[]): Map<string, n
 export function branchLine(repo: Pick<LocalReviewRepo, 'branch' | 'base'>, detached = 'detached HEAD'): string {
   const branch = repo.branch ?? detached
   if (!repo.base) return branch
-  return `${branch} → ${repo.base.replace(/^origin\//, '')}`
+  const short = repo.base.replace(/^origin\//, '')
+  // The branch's own pushed copy keeps `origin/` (else it reads `x → x`); a commit id is shortened.
+  const base = short === branch ? repo.base : /^[0-9a-f]{40}$/i.test(repo.base) ? repo.base.slice(0, 7) : short
+  return `${branch} → ${base}`
 }
 
 /** Files whose path contains the filter (case-insensitive); all of them for an empty filter. */

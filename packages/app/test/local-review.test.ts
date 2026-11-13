@@ -168,6 +168,10 @@ describe('LocalReviewService', () => {
     const only = await service.load('s1', 'branch', 'session')
     expect(only).toMatchObject({ ok: true, hiddenFiles: 2 })
     expect(only.ok && only.review.repos.map((r) => [r.name, r.files.map((f) => f.path)])).toEqual([['app', ['src/mine.ts', 'docs/new.md']]])
+    // A review a tool asked for shows the whole repo until the switch is used.
+    service.request('s1', [{ path: '/w/app', base: 'abc1234' }])
+    expect(await service.load('s1', 'branch', 'session', false)).toMatchObject({ ok: true, files: 'repo', review: { repos: review.repos } })
+    expect(await service.load('s1', 'branch', 'session', true)).toMatchObject({ ok: true, files: 'session', hiddenFiles: 2 })
     const all = await service.load('s1', 'branch', 'repo')
     expect(all).toMatchObject({ ok: true, review: { repos: review.repos } })
     expect(all.ok && 'hiddenFiles' in all).toBe(false)

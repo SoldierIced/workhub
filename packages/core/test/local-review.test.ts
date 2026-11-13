@@ -88,6 +88,8 @@ describe('local review helpers', () => {
   it('show the branch and its base', () => {
     expect(branchLine({ branch: 'feat/qr', base: 'origin/develop' })).toBe('feat/qr → develop')
     expect(branchLine({ branch: null })).toBe('detached HEAD')
+    expect(branchLine({ branch: 'feat/qr', base: 'origin/feat/qr' })).toBe('feat/qr → origin/feat/qr')
+    expect(branchLine({ branch: 'feat/qr', base: 'a52b37e2c3b06942a0a7b853830ea0bc81a02685' })).toBe('feat/qr → a52b37e')
   })
 
   it('filter files case-insensitively', () => {
