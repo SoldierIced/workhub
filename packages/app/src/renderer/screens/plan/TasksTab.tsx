@@ -30,7 +30,7 @@ export function TasksTab({ profile, openItem }: PlanTabContext) {
   const people = plannerSettings(profile).people
   const [filters, setFilters] = useState<InboxFilters>(NO_FILTERS)
   const [selected, setSelected] = useState<string[]>([])
-  const { busy, onAction, dialog } = useInboxActions(profile.id, (id) => setSelected((s) => s.filter((x) => x !== id)))
+  const { busy, onAction, dialog } = useInboxActions(profile.id, (id) => setSelected((s) => s.filter((x) => x !== id)), inboxSettings(plannerSettings(profile)).project)
   const items = view?.inbox ?? []
   const milestones = view?.milestones ?? []
   const today = view?.today ?? ''

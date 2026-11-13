@@ -2,11 +2,11 @@ import { ExternalLink, Inbox, Plus, X } from 'lucide-react'
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { availableInboxActions, filterInbox, inboxSettings, INBOX_KINDS, plannerSettings, trackedState, type CriticalityLevel, type InboxAction, type InboxItem, type InboxKind, type Person, type TrackedTicket } from '@workhub/core'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
-import { Card, CardBody, CardHeader, ConfirmDeleteDialog, EmptyState, Field, useToast } from '../../components/molecules'
+import { Card, CardBody, CardHeader, ConfirmDeleteDialog, Dialog, EmptyState, Field, useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
 import { errorText } from '../../lib/errorText'
-import { BULK_CLEAR, BULK_KEEP, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, EMPTY_ITEM_FORM, formToProposal, inboxActionLabel, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, PIECE_STATE_LABEL, PIECE_STATE_TONE, plainPreview, selectedShown, type BulkForm, type InboxItemForm } from '../../lib/planner'
+import { BULK_CLEAR, BULK_KEEP, bulkChangeCount, createsTicket, bulkFormToPatch, EMPTY_BULK_FORM, EMPTY_ITEM_FORM, formToProposal, inboxActionLabel, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, PIECE_STATE_LABEL, PIECE_STATE_TONE, plainPreview, selectedShown, type BulkForm, type InboxItemForm } from '../../lib/planner'
 import { ItemMilestones } from './ItemMilestones'
 import { requestPlanTab, usePlanner } from '../../plannerStore'
 import type { PlanTabContext } from './planTabs'
@@ -185,13 +185,15 @@ export function BulkBar({ profileId, items, selected, onDone, areas, criticaliti
 
 /**
  * What an inbox action does from a tab: runs it, says so when a ticket was made, and confirms a
- * discard first. `rowProps` gives a row its handlers; `dialog` is the discard confirmation.
+ * discard, and the creation of a tracker issue, first. `dialog` holds those confirmations; `project`
+ * is where the issue goes (Settings → Plan → Inbox), named in the question.
  */
-export function useInboxActions(profileId: string, onActed: (id: string) => void) {
+export function useInboxActions(profileId: string, onActed: (id: string) => void, project = '') {
   const { t } = useI18n()
   const toast = useToast()
   const [busy, setBusy] = useState<string | null>(null)
   const [discarding, setDiscarding] = useState<InboxItem | null>(null)
+  const [creating, setCreating] = useState<InboxItem | null>(null)
   const act = async (item: InboxItem, action: InboxAction) => {
     setBusy(item.id)
     try {
@@ -205,8 +207,35 @@ export function useInboxActions(profileId: string, onActed: (id: string) => void
       setBusy(null)
     }
   }
-  const onAction = (item: InboxItem) => (a: InboxAction) => (a === 'discard' ? setDiscarding(item) : void act(item, a))
+  const onAction = (item: InboxItem) => (a: InboxAction) => (a === 'discard' ? setDiscarding(item) : createsTicket(item, a) ? setCreating(item) : void act(item, a))
   const dialog = (
+    <>
+    <Dialog
+      open={creating !== null}
+      onOpenChange={(open) => !open && setCreating(null)}
+      title={t('planner.inbox.confirmCreate', { title: creating?.title ?? '' })}
+      description={project ? t('planner.inbox.confirmCreateBody', { project }) : t('planner.inbox.confirmCreateBodyNoProject')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setCreating(null)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            data-testid="confirm-create-ticket"
+            onClick={() => {
+              const item = creating
+              setCreating(null)
+              if (item) void act(item, 'approve')
+            }}
+          >
+            {t('planner.inbox.action.approve')}
+          </Button>
+        </>
+      }
+    >
+      {null}
+    </Dialog>
     <ConfirmDeleteDialog
       name={discarding?.title ?? ''}
       open={discarding !== null}
@@ -218,6 +247,7 @@ export function useInboxActions(profileId: string, onActed: (id: string) => void
         if (discarding) void act(discarding, 'discard')
       }}
     />
+    </>
   )
   return { busy, onAction, dialog }
 }
@@ -233,7 +263,7 @@ export function InboxTab({ profile, openSettings, openItem }: PlanTabContext) {
   const [adding, setAdding] = useState<InboxItemForm | null>(null)
   const [duplicate, setDuplicate] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
-  const { busy, onAction, dialog } = useInboxActions(profile.id, (id) => setSelected((s) => s.filter((x) => x !== id)))
+  const { busy, onAction, dialog } = useInboxActions(profile.id, (id) => setSelected((s) => s.filter((x) => x !== id)), settings.project)
   const items = view?.inbox ?? []
   const milestones = view?.milestones ?? []
   const pending = useMemo(() => items.filter((i) => i.status === 'pending').sort((a, b) => b.createdAt - a.createdAt), [items])
