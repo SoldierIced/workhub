@@ -114,7 +114,12 @@ export class LocalReviewService {
     if (repos.length) this.asked.set(sessionId, repos)
   }
 
-  async load(sessionId: string, scope: LocalReviewScope, files: LocalReviewFiles = 'repo'): Promise<LocalReviewLoad> {
+  /**
+   * `chosen` false: the window still shows its saved default. A review a tool asked for (repos and the
+   * base to compare with) then shows the whole repo: the tool already chose what to compare, and the
+   * agent may have edited through shell commands or sub-agents, which the session filter cannot see.
+   */
+  async load(sessionId: string, scope: LocalReviewScope, asked: LocalReviewFiles = 'repo', chosen = true): Promise<LocalReviewLoad> {
     const v = this.view(sessionId)
     if (!v) return { ok: false, reason: 'unknownSession' }
     const prs = (await this.deps.myPullRequests?.(v.profileId ?? null).catch(() => [])) ?? []
@@ -131,13 +136,14 @@ export class LocalReviewService {
         }
       })
       this.roots.set(sessionId, new Set([...(this.roots.get(sessionId) ?? []), ...review.repos.map((r) => r.root)]))
+      const files: LocalReviewFiles = !chosen && this.asked.get(sessionId)?.length ? 'repo' : asked
       if (files === 'session' && this.deps.history) {
         const edited = editedPaths(v.cwd, await this.deps.history(sessionId))
         const real = new Set([...edited, ...(await Promise.all([...edited].map(realPath)))])
         const only = onlySessionFiles(review, real)
-        return { ok: true, session: this.sessionInfo(v), review: only.review, hiddenFiles: only.hidden }
+        return { ok: true, session: this.sessionInfo(v), review: only.review, files, hiddenFiles: only.hidden }
       }
-      return { ok: true, session: this.sessionInfo(v), review }
+      return { ok: true, session: this.sessionInfo(v), review, files }
     } catch (err) {
       return { ok: false, reason: 'failed', detail: err instanceof Error ? err.message : String(err) }
     }
@@ -266,7 +272,9 @@ export interface LocalReviewIpcDeps {
 export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewService, deps: LocalReviewIpcDeps): void {
   const scopeOf = (s: unknown): LocalReviewScope => (s === 'uncommitted' ? 'uncommitted' : 'branch')
   const filesOf = (f: unknown): LocalReviewFiles => (f === 'session' ? 'session' : 'repo')
-  ipc.handle('localReview:load', (_e, sessionId: string, scope: unknown, files?: unknown) => service.load(String(sessionId), scopeOf(scope), filesOf(files)))
+  ipc.handle('localReview:load', (_e, sessionId: string, scope: unknown, files?: unknown, chosen?: unknown) =>
+    service.load(String(sessionId), scopeOf(scope), filesOf(files), chosen !== false)
+  )
   ipc.handle('localReview:comments', (_e, sessionId: string) => service.comments(String(sessionId)))
   ipc.handle('localReview:setComments', (_e, sessionId: string, comments: unknown) => service.setComments(String(sessionId), comments))
   ipc.handle('localReview:send', (_e, sessionId: string, text: unknown) => service.send(String(sessionId), String(text ?? '')))

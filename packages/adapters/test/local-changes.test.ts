@@ -94,6 +94,21 @@ describe('LocalChanges on real repositories', () => {
     expect(review.repos.find((r) => r.name === 'app')).toMatchObject({ root: repo, base: 'main' })
   })
 
+  it('compares with the commit a tool asked for, not the default base', async () => {
+    const pushed = git(repo, 'rev-parse', 'HEAD')
+    const review = await changes.load({ folder: repo, scope: 'branch', extraRepos: [{ path: repo, base: pushed }] })
+    const r = review.repos[0]!
+    expect(r.base).toBe(pushed)
+    // a.txt changed in a commit before `pushed`: only what came after it shows.
+    expect(r.files.map((f) => f.path)).not.toContain('a.txt')
+    expect(r.files.map((f) => f.path)).toContain('new.txt')
+  })
+
+  it('falls back to the default base when the asked one does not exist', async () => {
+    const review = await changes.load({ folder: repo, scope: 'branch', extraRepos: [{ path: repo, base: 'origin/no-such-branch' }] })
+    expect(review.repos[0]).toMatchObject({ base: 'main' })
+  })
+
   it('reports a folder with no repository', async () => {
     const empty = join(dir, 'empty')
     mkdirSync(empty)

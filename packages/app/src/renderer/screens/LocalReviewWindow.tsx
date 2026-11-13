@@ -47,8 +47,13 @@ function Review({ sessionId }: { sessionId: string }) {
   const platform = usePlatform()
   const sendShortcut = shortcutLabel(SEND_SHORTCUT, platform)
   const [scope, setScope] = useState<LocalReviewScope>('branch')
-  const shown = usePrefs().reviewFiles
-  const setShown = (f: LocalReviewFiles) => setPrefs({ reviewFiles: f })
+  const savedShown = usePrefs().reviewFiles
+  // Until the switch is used the saved default is only a wish: main shows a review a tool asked for whole.
+  const [chosen, setChosen] = useState(false)
+  const setShown = (f: LocalReviewFiles) => {
+    setChosen(true)
+    setPrefs({ reviewFiles: f })
+  }
   const [reloads, setReloads] = useState(0)
   const reload = () => setReloads((n) => n + 1)
   const [result, setResult] = useState<LocalReviewLoad | null>(null)
@@ -73,7 +78,7 @@ function Review({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     let alive = true
     setLoading(true)
-    void window.hub.localReview.load(sessionId, scope, shown).then(
+    void window.hub.localReview.load(sessionId, scope, savedShown, chosen).then(
       (r) => {
         if (!alive) return
         setResult(r)
@@ -89,7 +94,7 @@ function Review({ sessionId }: { sessionId: string }) {
     return () => {
       alive = false
     }
-  }, [sessionId, scope, shown, reloads])
+  }, [sessionId, scope, savedShown, chosen, reloads])
 
   // The session's state (closed, renamed) follows the main window's list.
   useEffect(
@@ -109,6 +114,8 @@ function Review({ sessionId }: { sessionId: string }) {
   const review: LocalReview | null = result?.ok ? result.review : null
   /** Changed files the session's agent did not edit, left out while `shown` is 'session'. */
   const hiddenFiles = result?.ok ? (result.hiddenFiles ?? 0) : 0
+  /** What the switch shows: what main actually loaded, else the saved default. */
+  const shown: LocalReviewFiles = result?.ok && result.files ? result.files : savedShown
   const setComments = useCallback(
     (next: ReviewComment[]) => {
       setCommentsState(next)
