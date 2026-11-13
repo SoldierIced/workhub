@@ -5,7 +5,7 @@ import { getSessions, onRemoved, startupList } from '../renderer/store'
 import type { PushPayload } from '@workhub/protocol'
 import { WebAppProvider, navigate, useClient, useClientStatus, useRoute, type WebApp } from './app-context'
 import { NOTIFY_ASKED_KEY } from './device'
-import { parseRoute } from './routes'
+import { parseRoute, routeHash } from './routes'
 import { AlertsScreen } from './screens/AlertsScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { NewSessionScreen } from './screens/NewSessionScreen'
@@ -13,12 +13,13 @@ import { NotifyScreen } from './screens/NotifyScreen'
 import { PairScreen } from './screens/PairScreen'
 import { PullRequestsScreen } from './screens/PullRequestsScreen'
 import { SessionScreen } from './screens/SessionScreen'
+import { SubagentScreen } from './screens/SubagentScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { PlanScreen } from './screens/PlanScreen'
 import { NewItemScreen, PlanItemScreen } from './screens/PlanItemScreen'
 import { MilestoneScreen } from './screens/MilestoneScreen'
 import { useAppearance } from './appearance'
-import { ConnectionBanner, TabBar } from './ui'
+import { TabBar } from './ui'
 
 interface Toast {
   id: number
@@ -100,6 +101,9 @@ function Shell({ defaultName }: { defaultName: string }) {
     case 'session':
       screen = capabilities.includes('sessions') ? <SessionScreen id={route.id} /> : <NotAllowed what={t('web.capability.sessions')} />
       break
+    case 'subagent':
+      screen = capabilities.includes('sessions') ? <SubagentScreen sessionId={route.sessionId} id={route.id} /> : <NotAllowed what={t('web.capability.sessions')} />
+      break
     case 'pullRequests':
       screen = capabilities.includes('pullRequests') ? <PullRequestsScreen /> : <NotAllowed what={t('web.capability.pullRequests')} />
       break
@@ -124,12 +128,14 @@ function Shell({ defaultName }: { defaultName: string }) {
     default:
       screen = capabilities.includes('sessions') ? <HomeScreen /> : <SettingsScreen />
   }
-  const chat = route.screen === 'session' || route.screen === 'new' || route.screen === 'newItem'
+  const chat = route.screen === 'session' || route.screen === 'subagent' || route.screen === 'new' || route.screen === 'newItem'
   return (
     <div className="flex h-full flex-col">
       <Toasts toasts={toasts} dismiss={(id) => setToasts((all) => all.filter((x) => x.id !== id))} />
-      <ConnectionBanner />
-      <div className="min-h-0 flex-1">{screen}</div>
+      {/* Keyed by the route: another chat (or the same screen for another item) starts from fresh state and a fresh scroller. */}
+      <div key={route.screen === 'plan' ? 'plan' : routeHash(route)} className="min-h-0 flex-1">
+        {screen}
+      </div>
       {!chat && <TabBar capabilities={capabilities} />}
     </div>
   )

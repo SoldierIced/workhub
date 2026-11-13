@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { IpcRegistrar } from '../src/main/ipc-guard'
 import { recordIpc, RemoteHub, RemoteRefused, type RemoteDevice } from '../src/main/remote'
 import { REMOTE_EVENTS, REMOTE_INVOKES, REMOTE_MESSAGES } from '../src/main/remote/allowlist'
-import { isRemoteForbiddenMode, REMOTE_COSTLY_RATE, REMOTE_GENERIC_ERROR, REMOTE_MAX_IN_FLIGHT, REMOTE_RATE } from '../src/main/remote/dispatcher'
+import { isRemoteForbiddenMode, remoteConfigSnapshot, remoteSessionView, remoteSubagent, SUBAGENT_MAX_BYTES, REMOTE_COSTLY_RATE, REMOTE_GENERIC_ERROR, REMOTE_MAX_IN_FLIGHT, REMOTE_RATE } from '../src/main/remote/dispatcher'
 import type { RemoteCapability } from '../src/shared/remote-api'
+import type { ConfigSnapshot, SessionView } from '../src/shared/api'
+import type { ConversationEntry, SubagentConversation } from '@workhub/core'
+import { fitsFrame } from '@workhub/protocol'
 
 function fakeIpc() {
   const registered: string[] = []
@@ -240,7 +243,7 @@ describe('RemoteHub', () => {
         version: 1,
         connections: [{ id: 'c1', kind: 'tracker', settings: { baseUrl: 'https://tracker.example.com' } }],
         agents: [{ id: 'custom', env: { TOKEN: 'secret' } }],
-        accounts: [{ id: 'acc', configDir: '/private/acc' }],
+        accounts: [{ id: 'acc', agentId: 'claude', name: 'Personal', configDir: '/private/acc', env: { K: 'secret' } }],
         automations: [{ id: 'nightly', prompt: 'do things', folder: '/private/repo' }],
         profiles: [{ id: 'work', name: 'Work', color: '#fff', connections: { tracker: 'c1' }, accountIds: ['acc'], modules: { plan: true }, folders: ['/private/repo'], envNames: ['TOKEN'], planner: { inbox: { criticalities, project: 'SECRET' } } }],
         activeProfileId: 'work'
@@ -263,7 +266,7 @@ describe('RemoteHub', () => {
         version: 1,
         connections: [],
         agents: [],
-        accounts: [],
+        accounts: [{ id: 'acc', agentId: 'claude', name: 'Personal' }],
         profiles: [{ id: 'work', name: 'Work', color: '#fff', connections: {}, accountIds: [], modules: { plan: true }, planner: { inbox: { criticalities } } }],
         activeProfileId: 'work'
       },
@@ -343,5 +346,79 @@ describe('allowlist', () => {
 
   it('lists only events main taps', () => {
     expect(REMOTE_EVENTS['remote:notification']).toBeUndefined()
+  })
+})
+
+describe('what a device gets of sessions', () => {
+  const skills = Array.from({ length: 90 }, (_, i) => ({ name: `skill-${i}`, group: 'skill' as const, description: 'Trigger: '.padEnd(380, 'x'), argumentHint: '<what>' }))
+  const view = (id: string) =>
+    ({ id, cwd: '/work/acme-api', state: 'ready', commands: skills, models: [{ id: 'opus', name: 'Opus', description: 'd'.repeat(500) }] }) as unknown as SessionView
+
+  it('keeps names and a short description of commands, and drops model descriptions', () => {
+    const slim = remoteSessionView(view('s1'))
+    expect(slim.commands).toHaveLength(90)
+    expect(slim.commands![0]).toEqual({ name: 'skill-0', group: 'skill', argumentHint: '<what>', description: expect.stringMatching(/…$/) })
+    expect(slim.commands![0]!.description!.length).toBeLessThanOrEqual(120)
+    expect(slim.models).toEqual([{ id: 'opus', name: 'Opus' }])
+    expect(slim).toMatchObject({ id: 's1', cwd: '/work/acme-api', state: 'ready' })
+  })
+
+  it('fits a dozen sessions with many skills in one relay frame', () => {
+    const full = Array.from({ length: 14 }, (_, i) => view(`s${i}`))
+    expect(fitsFrame({ t: 'result', id: 1, ok: true, value: full })).toBe(false)
+    expect(fitsFrame({ t: 'result', id: 1, ok: true, value: full.map(remoteSessionView) })).toBe(true)
+  })
+
+  it('trims sessions:list answers and session:changed events', async () => {
+    const { ipc, handlers } = recordIpc({ handle: () => {}, on: () => {} } as unknown as IpcRegistrar)
+    ipc.handle('sessions:list', () => [view('s1')])
+    const hub = new RemoteHub({ handlers, profileFolders: async () => [] })
+    const events: unknown[][] = []
+    hub.attach({ id: 'd1', capabilities: new Set<RemoteCapability>(['sessions']), emit: (channel, args) => void events.push([channel, ...args]) })
+    const list = (await hub.invoke('d1', 'sessions:list', [])) as SessionView[]
+    expect(list[0]!.models).toEqual([{ id: 'opus', name: 'Opus' }])
+    hub.tap('session:changed', [view('s1')])
+    expect((events[0]![1] as SessionView).models).toEqual([{ id: 'opus', name: 'Opus' }])
+  })
+
+  it('passes the sidebar groups in the config a device sees', () => {
+    const sessionGroups = { groups: [{ id: 'g1', name: 'Acme', collapsed: false, members: [{ key: 'k1', title: 'Fix tests', agentKey: 'claude', cwd: '/work/acme-api' }] }], top: [{ kind: 'group' as const, id: 'g1' }] }
+    const snapshot = { config: { version: 3, connections: [], agents: [], accounts: [], profiles: [], sessionGroups }, issues: [], agents: [], providers: [], connectionsWithSecret: [], dataDir: '/data' } as unknown as ConfigSnapshot
+    expect(remoteConfigSnapshot(snapshot).config.sessionGroups).toEqual(sessionGroups)
+  })
+})
+
+describe('what a device gets of a sub-agent', () => {
+  const step = (i: number): ConversationEntry =>
+    i % 2
+      ? { kind: 'text', id: `t${i}`, text: 'w'.repeat(9_000) }
+      : { kind: 'tool', id: `c${i}`, name: 'Edit', title: `Edit src/file-${i}.ts`, status: 'completed', view: { kind: 'edit', path: `/work/acme-api/src/file-${i}.ts`, edits: [{ oldText: 'a'.repeat(4_000), newText: 'b'.repeat(4_000) }] } as never, result: { text: 'r'.repeat(20_000), agentId: i === 0 ? 'nested' : undefined } as never }
+  const conversation = (n: number): SubagentConversation => ({ id: 'a1', type: 'Explore', status: 'running', prompt: 'Find the flaky test', entries: Array.from({ length: n }, (_, i) => step(i)), result: 'done' })
+
+  it('drops tool output and edits, cuts long text, and keeps the path and a nested sub-agent', () => {
+    const slim = remoteSubagent(conversation(2))
+    const [tool, text] = slim.entries as [Extract<ConversationEntry, { kind: 'tool' }>, Extract<ConversationEntry, { kind: 'text' }>]
+    expect(tool.view).toEqual({ kind: 'edit', path: '/work/acme-api/src/file-0.ts' })
+    expect(tool.result).toEqual({ agentId: 'nested' })
+    expect(text.text.length).toBeLessThanOrEqual(6_000)
+    expect(slim).toMatchObject({ id: 'a1', type: 'Explore', status: 'running', prompt: 'Find the flaky test', result: 'done' })
+    expect(slim.omitted).toBeUndefined()
+  })
+
+  it('leaves the oldest steps out until it fits one relay frame, and counts them', () => {
+    const slim = remoteSubagent(conversation(400))
+    expect(Buffer.byteLength(JSON.stringify(slim))).toBeLessThanOrEqual(SUBAGENT_MAX_BYTES)
+    expect(fitsFrame({ t: 'result', id: 1, ok: true, value: slim })).toBe(true)
+    expect(slim.entries.at(-1)!.id).toBe('t399')
+    expect(slim.omitted).toBe(400 - slim.entries.length)
+  })
+
+  it('trims sessions:subagent answers', async () => {
+    const { ipc, handlers } = recordIpc({ handle: () => {}, on: () => {} } as unknown as IpcRegistrar)
+    ipc.handle('sessions:subagent', () => conversation(2))
+    const hub = new RemoteHub({ handlers, profileFolders: async () => [] })
+    hub.attach({ id: 'd1', capabilities: new Set<RemoteCapability>(['sessions']), emit: () => {} })
+    const got = (await hub.invoke('d1', 'sessions:subagent', ['s1', 'a1'])) as SubagentConversation
+    expect(JSON.stringify(got)).not.toMatch(/rrrr|aaaa/)
   })
 })

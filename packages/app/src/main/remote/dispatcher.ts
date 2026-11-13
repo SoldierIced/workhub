@@ -1,6 +1,6 @@
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { RemoteCapability } from '../../shared/remote-api'
-import { isUnattendedMode, type EffectiveAgent, type Profile, type WorkhubConfig } from '@workhub/core'
+import { isUnattendedMode, type ConversationEntry, type EffectiveAgent, type Profile, type SubagentConversation, type ToolResultView, type ToolView, type WorkhubConfig } from '@workhub/core'
 import type { ConfigSnapshot, SessionView, StartSessionInput } from '../../shared/api'
 import type { HandlerTable } from './ipc-recorder'
 import { REMOTE_EVENTS, REMOTE_INVOKES, REMOTE_MESSAGES, remoteAllows } from './allowlist'
@@ -92,6 +92,11 @@ export class RemoteRefused extends Error {
 /** Sender ids a window can never have, so prompt tokens of a device never collide with a window's. */
 const FIRST_REMOTE_SENDER_ID = 1_000_000
 
+/** True for the sender id a handler sees when a paired device, not a window, made the call. */
+export function isRemoteSender(senderId: number): boolean {
+  return senderId >= FIRST_REMOTE_SENDER_ID
+}
+
 /**
  * Routes a paired device's `hub` calls to the handlers the app registered for its own windows, and
  * fans main's events out to the devices whose capabilities cover them. The transport (the relay,
@@ -177,7 +182,7 @@ export class RemoteHub {
     for (const { device } of this.devices.values()) {
       if (!remoteAllows(REMOTE_EVENTS, channel, device.capabilities)) continue
       try {
-        device.emit(channel, args)
+        device.emit(channel, redactEvent(channel, args))
       } catch (err) {
         this.deps.log?.warn(`remote: event ${channel} to ${device.id} failed: ${err instanceof Error ? err.message : String(err)}`)
       }
@@ -280,17 +285,104 @@ export class RemoteHub {
   }
 }
 
+/** Events that carry what a device has no use for, trimmed like the matching results. */
+function redactEvent(channel: string, args: unknown[]): unknown[] {
+  if (channel === 'session:changed' && args[0] && typeof args[0] === 'object') return [remoteSessionView(args[0] as SessionView), ...args.slice(1)]
+  return args
+}
+
+/** How much of a slash command's description a device gets: enough for the menu line. */
+const COMMAND_DESCRIPTION_MAX = 120
+/** Slash commands a device gets per session; an agent with hundreds of skills would otherwise fill the frame. */
+const COMMANDS_MAX = 300
+
+/**
+ * A session as a device sees it. Every session carries its agent's slash commands and models with
+ * their descriptions: a few dozen kilobytes each with many skills installed, which across a dozen
+ * sessions no longer fit one relay frame. The device gets the names and a short description.
+ */
+export function remoteSessionView(view: SessionView): SessionView {
+  if (!view || typeof view !== 'object') return view
+  const out: SessionView = { ...view }
+  if (Array.isArray(view.commands)) {
+    out.commands = view.commands.slice(0, COMMANDS_MAX).map((c) => ({
+      name: c.name,
+      group: c.group,
+      ...(c.argumentHint ? { argumentHint: c.argumentHint.slice(0, 60) } : {}),
+      ...(c.description ? { description: c.description.length > COMMAND_DESCRIPTION_MAX ? `${c.description.slice(0, COMMAND_DESCRIPTION_MAX - 1)}…` : c.description } : {})
+    }))
+  }
+  if (Array.isArray(view.models)) out.models = view.models.map((m) => ({ id: m.id, name: m.name }))
+  return out
+}
+
+/** A sub-agent's conversation stays well under the relay's frame once sealed. */
+export const SUBAGENT_MAX_BYTES = 256 * 1024
+/** Text of one step a device gets; the full text stays on the desktop. */
+const SUBAGENT_TEXT_MAX = 6_000
+
+const bytesOf = (value: unknown): number => Buffer.byteLength(JSON.stringify(value) ?? '')
+const cutText = (text: string, max = SUBAGENT_TEXT_MAX): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
+
+/** One step as the phone shows it: no tool output or diffs, long text cut. */
+function slimEntry(e: ConversationEntry): ConversationEntry {
+  if (e.kind !== 'tool') return { ...e, text: cutText(e.text) }
+  const { result, view, ...rest } = e
+  // A Task call keeps the id of the sub-agent it started, so the phone can open it.
+  const agentId = result?.agentId
+  // Only what the phone draws: the kind, and the path of a file it can open. Not the edits or content.
+  const keep = (view.kind === 'read' || view.kind === 'write' || view.kind === 'edit' ? { kind: view.kind, path: view.path } : { kind: view.kind }) as ToolView
+  return {
+    ...rest,
+    ...(rest.detail ? { detail: cutText(rest.detail, 600) } : {}),
+    view: keep,
+    ...(agentId ? { result: { agentId } as ToolResultView } : {})
+  }
+}
+
+/**
+ * A sub-agent's conversation as a device sees it: the steps without their output, long text cut,
+ * and the oldest steps left out (counted in `omitted`) until it fits one relay frame.
+ */
+export function remoteSubagent(c: SubagentConversation): SubagentConversation {
+  if (!c || typeof c !== 'object' || !Array.isArray(c.entries)) return c
+  const out: SubagentConversation = {
+    ...c,
+    ...(c.prompt ? { prompt: cutText(c.prompt, 12_000) } : {}),
+    ...(c.result ? { result: cutText(c.result, 24_000) } : {}),
+    entries: []
+  }
+  let budget = SUBAGENT_MAX_BYTES - bytesOf(out)
+  let kept = 0
+  const entries: ConversationEntry[] = []
+  for (let i = c.entries.length - 1; i >= 0; i--) {
+    const entry = slimEntry(c.entries[i]!)
+    const size = bytesOf(entry)
+    if (size > budget) break
+    budget -= size
+    entries.push(entry)
+    kept++
+  }
+  out.entries = entries.reverse()
+  const omitted = (c.omitted ?? 0) + (c.entries.length - kept)
+  if (omitted > 0) out.omitted = omitted
+  return out
+}
+
 /** Results that carry what a device has no use for, trimmed. */
 function redactResult(channel: string, result: unknown): unknown {
   if (channel === 'config:get' && result && typeof result === 'object') return remoteConfigSnapshot(result as ConfigSnapshot)
+  if (channel === 'sessions:list' && Array.isArray(result)) return (result as SessionView[]).map(remoteSessionView)
   if (channel === 'config:effectiveAgents' && Array.isArray(result)) return (result as EffectiveAgent[]).map(remoteEffectiveAgent)
+  if (channel === 'sessions:subagent' && result && typeof result === 'object') return remoteSubagent(result as SubagentConversation)
   return result
 }
 
 /**
  * The config as a device sees it: the profiles' names, colors and Plan criticalities and the active
- * profile. Never connections, accounts, agent definitions (env, commands), automations, folders or
- * the data folder; the other keys stay, empty, so the snapshot keeps its shape.
+ * profile, the sidebar's groups and the accounts' names. Never connections, account folders or
+ * environment, agent definitions (env, commands), automations, folders or the data folder; the
+ * other keys stay, empty, so the snapshot keeps its shape.
  */
 export function remoteConfigSnapshot(snapshot: ConfigSnapshot): ConfigSnapshot {
   const config = snapshot.config ?? ({} as Partial<WorkhubConfig>)
@@ -299,9 +391,12 @@ export function remoteConfigSnapshot(snapshot: ConfigSnapshot): ConfigSnapshot {
     version: config.version as WorkhubConfig['version'],
     connections: [],
     agents: [],
-    accounts: [],
+    // Names only, so a row names and colours its account as the sidebar does; never its folder or environment.
+    accounts: Array.isArray(config.accounts) ? config.accounts.map((a) => ({ id: a.id, agentId: a.agentId, name: a.name })) : [],
     profiles,
-    ...(typeof config.activeProfileId === 'string' ? { activeProfileId: config.activeProfileId } : {})
+    ...(typeof config.activeProfileId === 'string' ? { activeProfileId: config.activeProfileId } : {}),
+    // The sidebar's groups and order, so the device lists sessions as the desktop does.
+    ...(config.sessionGroups ? { sessionGroups: config.sessionGroups } : {})
   }
   return {
     config: projected,

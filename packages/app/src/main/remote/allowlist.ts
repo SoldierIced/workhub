@@ -5,8 +5,8 @@ import type { RemoteCapability } from '../../shared/remote-api'
  * tray plumbing, folder pickers, anything that opens something on the desktop, settings and
  * secrets, connection tests (they carry credentials), and every `hub` call that names a local path
  * the device chose. A new session's folder must be one the profile lists, and its mode never one
- * that skips permissions (see dispatcher.ts). `remote:file` reads only inside the session's folder
- * (see files.ts).
+ * that skips permissions (see dispatcher.ts). `remote:file` reads inside the session's folder, and
+ * outside it only images the session's own agent read or wrote (see files.ts).
  */
 export const REMOTE_INVOKES: Readonly<Record<string, RemoteCapability | 'any'>> = {
   'config:get': 'any',

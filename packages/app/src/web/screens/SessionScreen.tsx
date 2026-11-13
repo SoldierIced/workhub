@@ -12,6 +12,8 @@ import { navigate, useClient, useClientStatus } from '../app-context'
 import { takeFirstPrompt } from '../first-prompt'
 import { basename, Body, Header, InlineConfirm, Screen } from '../ui'
 import { sessionTitle } from './HomeScreen'
+import { SubagentLink } from './SubagentScreen'
+import { subagentOfCall } from '../../renderer/lib/subagentView'
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i
 /** What is shown inline; anything else (SVG included: it can carry scripts) only downloads. */
@@ -23,7 +25,7 @@ function pathOf(view: ToolView | undefined): string | null {
 }
 
 /** A file the agent touched: an image shows inline once fetched; anything else downloads. */
-function FileChip({ sessionId, path }: { sessionId: string; path: string }) {
+export function FileChip({ sessionId, path }: { sessionId: string; path: string }) {
   const { t } = useI18n()
   const client = useClient()
   const [file, setFile] = useState<RemoteFile | null>(null)
@@ -87,6 +89,8 @@ function Item({ item, session, onAnswer }: { item: ChatItem; session: SessionDat
       const path = pathOf(item.view)
       const failed = item.status === 'failed' || item.result?.isError
       const running = item.status === 'pending' || item.status === 'in_progress'
+      // A Task call: the sub-agent it started, by the id its result names or the monitor's list.
+      const subagent = item.result?.agentId ?? subagentOfCall(session.monitor.subagents, item.toolCallId)?.id
       return (
         <div className="max-w-[94%] text-chat-xs text-muted">
           <div className="flex items-start gap-2">
@@ -97,6 +101,7 @@ function Item({ item, session, onAnswer }: { item: ChatItem; session: SessionDat
             </span>
           </div>
           {path && <FileChip sessionId={session.view.id} path={path} />}
+          {subagent && <SubagentLink sessionId={session.view.id} id={subagent} />}
         </div>
       )
     }
@@ -176,6 +181,8 @@ export function SessionScreen({ id }: { id: string }) {
   const earlierInFlight = useRef(false)
   // The scroll height before an earlier page went in above, to keep the reader where they were.
   const anchor = useRef<number | null>(null)
+  // Whether the last page arrived: earlier pages are only asked for after it, from the end of the chat.
+  const loaded = useRef(false)
 
   // The device only receives live events: the conversation so far comes from the desktop a page at a
   // time, on open and whenever the link comes back (offline, the last page cached on this phone).
@@ -185,7 +192,9 @@ export function SessionScreen({ id }: { id: string }) {
     ;(client.transport.invoke('remote:history', id) as Promise<RemoteHistoryPage | null>).then(
       (page) => {
         if (!alive || !page) return
-        stuck.current = true
+        // Back at the end only when nothing was read yet: a reload after a reconnect leaves the reader where they are.
+        if (!loaded.current) stuck.current = true
+        loaded.current = true
         loadBacklog(id, page.messages)
         setStart(page.start)
       },
@@ -198,7 +207,7 @@ export function SessionScreen({ id }: { id: string }) {
 
   const loadMore = async () => {
     const el = scroller.current
-    if (!el || start === null || start <= 0 || earlierInFlight.current || !online) return
+    if (!el || !loaded.current || start === null || start <= 0 || earlierInFlight.current || !online) return
     earlierInFlight.current = true
     setLoadingEarlier(true)
     try {
@@ -295,28 +304,30 @@ export function SessionScreen({ id }: { id: string }) {
           />
         </div>
       )}
-      <Body className="flex flex-col gap-3 px-4 py-4">
+      <Body className="px-4 py-4">
         <ScrollCapture target={scroller} stuck={stuck} touching={touching} onTop={onTop} />
-        {start !== null && start > 0 && (
-          <button
-            type="button"
-            onClick={() => void loadMore()}
-            disabled={loadingEarlier || !online}
-            className="mx-auto flex min-h-9 items-center gap-2 rounded-full border border-border px-3 text-xs text-muted disabled:opacity-60"
-          >
-            {loadingEarlier && <Spinner className="size-3.5" />}
-            {loadingEarlier ? t('web.session.loadingEarlier') : t('web.session.loadEarlier')}
-          </button>
-        )}
-        {items.map((item) => (
-          <Item key={item.id} item={item} session={session} onAnswer={answer} />
-        ))}
-        {busy && items[items.length - 1]?.kind !== 'tool' && (
-          <div className="flex items-center gap-2 text-xs text-subtle">
-            <Spinner className="size-3.5" />
-            {v.state === 'starting' ? t('web.new.starting') : t('web.session.thought')}
-          </div>
-        )}
+        <div className="flex flex-col gap-3">
+          {start !== null && start > 0 && (
+            <button
+              type="button"
+              onClick={() => void loadMore()}
+              disabled={loadingEarlier || !online}
+              className="mx-auto flex min-h-9 items-center gap-2 rounded-full border border-border px-3 text-xs text-muted disabled:opacity-60"
+            >
+              {loadingEarlier && <Spinner className="size-3.5" />}
+              {loadingEarlier ? t('web.session.loadingEarlier') : t('web.session.loadEarlier')}
+            </button>
+          )}
+          {items.map((item) => (
+            <Item key={item.id} item={item} session={session} onAnswer={answer} />
+          ))}
+          {busy && items[items.length - 1]?.kind !== 'tool' && (
+            <div className="flex items-center gap-2 text-xs text-subtle">
+              <Spinner className="size-3.5" />
+              {v.state === 'starting' ? t('web.new.starting') : t('web.session.thought')}
+            </div>
+          )}
+        </div>
       </Body>
       <form onSubmit={submit} aria-label={t('web.session.send')} className="safe-bottom flex shrink-0 items-end gap-2 border-t border-border bg-sidebar px-3 pt-2.5 pb-2.5">
         <textarea
@@ -382,11 +393,21 @@ function ScrollCapture({
       touching.current = false
       onScroll()
     }
+    // Content that grows after it is drawn (an image loading, a reply streaming, the keyboard
+    // shrinking the chat) keeps the reader at the end when they were there.
+    const keepAtEnd = () => {
+      if (stuck.current && !touching.current) el.scrollTop = el.scrollHeight
+    }
+    const resize = new ResizeObserver(keepAtEnd)
+    resize.observe(el)
+    if (el.lastElementChild) resize.observe(el.lastElementChild)
+    el.scrollTop = el.scrollHeight
     el.addEventListener('scroll', onScroll, { passive: true })
     el.addEventListener('touchstart', onTouchStart, { passive: true })
     el.addEventListener('touchend', onTouchEnd, { passive: true })
     el.addEventListener('touchcancel', onTouchEnd, { passive: true })
     return () => {
+      resize.disconnect()
       el.removeEventListener('scroll', onScroll)
       el.removeEventListener('touchstart', onTouchStart)
       el.removeEventListener('touchend', onTouchEnd)

@@ -55,6 +55,9 @@ document.addEventListener('visibilitychange', () => {
   else client.start()
 })
 window.addEventListener('online', () => client.start())
+// iOS can restore a frozen page without a visibility change; these check the socket is still alive.
+window.addEventListener('pageshow', () => client.start())
+window.addEventListener('focus', () => client.start())
 
 // Opened from a notification of another paired desktop: switch to it before anything loads.
 const opened = splitDesktop(location.hash)

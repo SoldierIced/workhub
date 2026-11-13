@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { RemoteRefused } from '../src/main/remote'
-import { readRemoteFile, resolveRemoteFile } from '../src/main/remote/files'
+import { readRemoteFile, resolveRemoteFile, touchedPaths } from '../src/main/remote/files'
+import type { HistoryMessage } from '@workhub/core'
 
 let base: string
 let folder: string
@@ -68,5 +69,39 @@ describe('remote files', () => {
   it('refuses a missing file and a folder', async () => {
     await expect(readRemoteFile(folder, 'nope.png')).rejects.toThrow(/not found/)
     await expect(readRemoteFile(folder, 'out')).rejects.toThrow(/not a file/)
+  })
+
+  describe('images outside the folder', () => {
+    const tool = (kind: 'read' | 'write' | 'edit', path: string) => ({ kind: 'tool', id: path, title: kind, view: { kind, path } }) as unknown as HistoryMessage
+    const shot = () => join(outside, 'shot.png')
+
+    beforeEach(async () => {
+      await writeFile(shot(), 'shot-bytes')
+      await mkdir(join(outside, '.cache'), { recursive: true })
+      await writeFile(join(outside, '.cache', 'hidden.png'), 'x')
+    })
+
+    it('reads an image the session read or wrote, wherever it is', async () => {
+      const touched = touchedPaths(folder, [{ kind: 'user', text: 'look' } as HistoryMessage, tool('read', shot())])
+      const file = await readRemoteFile(folder, shot(), async () => touched)
+      expect(file).toMatchObject({ name: 'shot.png', mime: 'image/png', data: Buffer.from('shot-bytes').toString('base64') })
+    })
+
+    it('refuses an outside image the session never touched, a non-image it did, and a hidden one', async () => {
+      const touched = touchedPaths(folder, [tool('read', join(outside, 'secret.txt')), tool('read', join(outside, '.cache', 'hidden.png'))])
+      await expect(readRemoteFile(folder, shot(), async () => touched)).rejects.toThrow(/not in the session folder/)
+      await expect(readRemoteFile(folder, join(outside, 'secret.txt'), async () => touched)).rejects.toThrow(/not in the session folder/)
+      await expect(readRemoteFile(folder, join(outside, '.cache', 'hidden.png'), async () => touched)).rejects.toThrow(/not available remotely/)
+    })
+
+    it('does not read the history for a file inside the folder, nor allow outside ones without it', async () => {
+      let asked = false
+      await readRemoteFile(folder, 'out/chart.png', async () => {
+        asked = true
+        return new Set()
+      })
+      expect(asked).toBe(false)
+      await expect(readRemoteFile(folder, shot())).rejects.toThrow(/not in the session folder/)
+    })
   })
 })

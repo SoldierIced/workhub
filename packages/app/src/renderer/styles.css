@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* Scan the renderer wherever the build is rooted: the phone app (rooted at src/web) reuses its components. */
+@source '.';
 
 /* Dark mode follows the data-theme attribute on <html> (set from the OS theme or the Settings override). */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

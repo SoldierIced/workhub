@@ -106,7 +106,7 @@ import { ContinuityService, type ContinuityDeps } from './continuity'
 import { HealthService } from './health-service'
 import { guardIpc, isTrustedRendererUrl } from './ipc-guard'
 import { timeIpc } from './ipc-timing'
-import { pageHistory, recordIpc, RemoteHub, RemoteService, registerRemoteIpc, readRemoteFile, type RemoteState } from './remote'
+import { isRemoteSender, pageHistory, promptFromDevice, recordIpc, RemoteHub, RemoteService, registerRemoteIpc, readRemoteFile, touchedPaths, type RemoteState } from './remote'
 import { rendererReporter, startDiagnostics } from './diagnostics'
 import { permissionAllowed } from './permissions'
 import { listAllHistory } from './history'
@@ -1120,6 +1120,19 @@ function registerIpc(): void {
   // A renderer's prompt carries a token: main says when it actually goes out (it may wait behind
   // a review or a Slack wake) and the renderer can take it back until then.
   ipc.handle('sessions:prompt', (e, id: string, text: string, images, token?: unknown) => {
+    // A paired phone shows its own bubble; the windows get it the way they get Workhub's own prompts.
+    if (isRemoteSender(e.sender.id)) {
+      return promptFromDevice(
+        {
+          prompt: (sid, t, imgs, options) => sessions.prompt(sid, t, imgs, options),
+          showPrompt: (sid, t) => send('automations:prompted', sid, t),
+          showTurnEnd: (sid, stopReason) => send('automations:turnEnded', sid, stopReason)
+        },
+        id,
+        text,
+        images
+      )
+    }
     if (typeof token !== 'number') return sessions.prompt(id, text, images)
     const onStart = () => {
       if (!e.sender.isDestroyed()) e.sender.send('sessions:promptStarted', id, token)
@@ -1200,13 +1213,14 @@ function registerIpc(): void {
   })
   registerMetricAlertsIpc(ipc, metricAlerts)
   registerRemoteIpc(ipc, remoteService)
-  // A paired device reads a file the agent made, only inside the session's folder (see remote/allowlist.ts).
-  // Containment is checked again on the real paths, symlinks resolved, and secret-like names are refused (remote/files.ts).
+  // A paired device reads a file the agent made inside the session's folder, or an image outside it that
+  // the session's own agent read or wrote (see remote/allowlist.ts). Containment is checked again on the
+  // real paths, symlinks resolved, and secret-like names are refused (remote/files.ts).
   ipc.handle('remote:file', (_e, id: unknown, path: unknown) => {
     if (typeof id !== 'string' || typeof path !== 'string') throw new Error('a session and a path are required')
     const view = sessions.list().find((v) => v.id === id)
     if (!view) throw new Error('the session is not open')
-    return readRemoteFile(view.cwd, path)
+    return readRemoteFile(view.cwd, path, async () => touchedPaths(view.cwd, await sessions.history(id)))
   })
   // A paired device reads an open session's conversation a page at a time (see remote/history.ts):
   // it only sees live events, so this is how it shows what was said before it connected.

@@ -90,6 +90,8 @@ export const webEn = {
   'web.session.file.loading': 'Fetching from the computer…',
   'web.session.file.failed': 'Could not fetch the file: {error}',
   'web.session.file.tooLarge': 'The file is too large to send to the phone.',
+  'web.session.openSubagent': 'Open sub-agent',
+  'web.subagent.title': 'Sub-agent',
   'web.session.toolFailed': 'failed',
   'web.session.more': 'More',
   'web.session.closeSession': 'Close session',

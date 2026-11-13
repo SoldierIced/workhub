@@ -32,7 +32,9 @@ phone (web app, later a native app)  ⇄  relay (your server, or one you trust) 
   drops it too.
 - **Reconnecting.** Both ends reconnect on their own after a restart or a lost connection, with the
   identity they already have. The phone keeps the last state it saw so it still shows your
-  sessions, pull requests and alerts without network.
+  sessions, pull requests and alerts without network. A connection that goes silent without
+  closing (the network changed, the phone slept) is noticed within about 30 seconds and dialed
+  again; one stuck connecting for 15 seconds is retried too.
 - **Notifications.** The phone can receive the same notifications the desktop shows, through Web
   Push with an encrypted body only the phone can open. On iPhone this needs the web app added to
   the home screen.
@@ -75,13 +77,24 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    the app is open. On iPhone add the app to the Home Screen first (Share → Add to Home Screen):
    Safari only delivers web notifications to installed apps. Settings on the phone turns them on
    or off later.
-3. **Sessions.** The list of sessions open on the desktop, the ones waiting for an answer first.
+3. **Sessions.** The sessions as the desktop's sidebar lists them: the same order, groups and
+   sub-groups (a group collapsed on the desktop starts collapsed; a tap opens or closes it on the
+   phone only), and the same rows: the agent's icon with its state dot, the profile's colour bar,
+   the account, folder and state, and a glyph for what it is up to (a spinner while it works, a
+   question mark while it waits for you). A group's header shows the most urgent state inside it.
+   Closed members of a group are listed dimmed; a tap reopens them. A session's sub-agents (those
+   at work, and those that ended in the last few minutes) are listed under its row, open while one
+   runs; a tap opens the sub-agent's conversation: what it was asked, its steps and its answer (its
+   oldest steps and tool output stay on the desktop when it is long). A Task call in the chat opens
+   its sub-agent too. Leaving a chat brings the list back where it was, and a chat always opens at
+   its latest message.
    A session shows the chat as the desktop does: replies, tool calls, permission prompts (with the
-   same options) and questions, and files the agent wrote (images preview inline, anything else
-   downloads; files above 8 MB stay on the desktop). Opening a session loads its latest messages;
+   same options) and questions, and files the agent read or wrote in the session's folder (images preview inline, anything
+   else downloads; files above 8 MB stay on the desktop). An image outside the folder opens too when
+   the session's agent read or wrote it, such as a screenshot you gave it; other files outside do not. Opening a session loads its latest messages;
    scrolling up loads earlier ones a page at a time (very long tool output and pasted images stay
    on the desktop). The prompt box sends a message or stops the
-   turn. *New* opens a session in one of the profile's folders, with the agent and an optional
+   turn; what you send shows in the desktop's chat as your message too. *New* opens a session in one of the profile's folders, with the agent and an optional
    first message; the session appears on the desktop too.
 4. **Pull requests and alerts.** The same lists the desktop shows for the profile you pick; a tap
    opens the pull request or the alert's link in the phone's browser.
@@ -98,9 +111,12 @@ The phone opens the relay's address in its browser: the relay serves the phone a
 7. **Phone settings.** Language, theme and text size are the phone's own; the profile the lists
    open with is remembered per phone.
 8. **Without network.** The phone keeps the last answer to each list and the latest messages of
-   each open session, encrypted with its own key, and shows them with a banner while the desktop
-   is unreachable. When the app goes to the
-   background it closes its connection so notifications arrive as push; back in front it reconnects.
+   each open session, encrypted with its own key, and shows them with a banner under the header
+   while the desktop is unreachable (after a second and a half, so a quick reconnect does not
+   flash it). When the app goes to the
+   background, notifications arrive as push at once; the connection itself stays for 30 seconds,
+   so a quick look at another app or the Control Center does not reconnect. After that it closes,
+   and back in front it reconnects.
 9. **Unpair.** Settings → *Unpair this phone* forgets the current desktop and its cached state. Revoking the
    device on the desktop does the same from the other side.
 
