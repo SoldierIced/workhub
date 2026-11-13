@@ -9,6 +9,7 @@ import { parsePieces, piecesOk, type MilestonePiece } from './pieces'
 
 export * from './pieces'
 export * from './membership'
+export * from './move'
 
 export type MilestoneSource = { kind: 'manual'; progress: number } | { kind: 'tracker'; connectionId?: string; query: string } | { kind: 'items'; items: MilestonePiece[] }
 

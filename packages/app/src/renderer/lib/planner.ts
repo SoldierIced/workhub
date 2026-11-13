@@ -165,6 +165,9 @@ export const INBOX_STATUS_LABEL: Record<InboxItem['status'], MessageKey> = {
 export const INBOX_SOURCE_LABEL: Record<InboxSourceType, MessageKey> = { manual: 'planner.inbox.source.manual', alert: 'planner.inbox.source.alert', agent: 'planner.inbox.source.agent', meeting: 'planner.inbox.source.meeting' }
 
 /** The label of an action on an item; approving a decision records it. */
+/** Whether an action makes an issue in the tracker: approving a task or a bug (a decision is only recorded). */
+export const createsTicket = (item: Pick<InboxItem, 'kind'>, action: InboxAction): boolean => action === 'approve' && item.kind !== 'decision'
+
 export function inboxActionLabel(action: InboxAction, kind: InboxKind): MessageKey {
   if (action === 'approve') return kind === 'decision' ? 'planner.inbox.action.record' : 'planner.inbox.action.approve'
   return `planner.inbox.action.${action}` as MessageKey

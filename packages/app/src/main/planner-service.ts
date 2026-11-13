@@ -21,6 +21,10 @@ import {
   MAX_MILESTONE_PROPOSALS,
   MAX_SEARCH_RESULTS,
   MILESTONE_LIMITS,
+  moveMilestone,
+  moveMilestonePreview,
+  type MoveMilestoneSummary,
+  type PlanTrackers,
   milestoneStatus,
   moduleScreens,
   moveInboxItem,
@@ -103,6 +107,7 @@ export const PLANNER_ERRORS = {
   noSearch: 'This tracker cannot search',
   tooMany: 'Too many milestones',
   unknownMilestone: 'The milestone does not exist',
+  sameProfile: 'The milestone is already in that profile',
   unknownProposal: 'The proposal no longer exists',
   tooLong: `The note would make the detail longer than ${INBOX_LIMITS.detail} characters`,
   noLink: 'Only a local task or bug can be linked to a ticket',
@@ -323,6 +328,39 @@ export class PlannerService {
       if (!p.milestones.some((m) => m.id === id)) return { ok: true }
       await this.setMilestones(profileId, p.milestones.filter((m) => m.id !== id))
       return { ok: true }
+    })
+  }
+
+  /** The trackers a profile reads tickets from when a piece or an item names none. */
+  private trackersOf(profile: Profile): PlanTrackers {
+    return { tracker: profile.connections.tracker, inbox: inboxSettings(plannerSettings(profile)).trackerConnectionId }
+  }
+
+  /** What moving a milestone to another profile would carry and change (see `moveMilestone` in core). */
+  async moveMilestonePreview(fromId: string, id: string, toId: string): Promise<MoveMilestoneSummary | null> {
+    const [from, to] = await Promise.all([this.profile(fromId), this.profile(toId)])
+    if (!from || !to || fromId === toId) return null
+    return moveMilestonePreview({ from: this.of(fromId), to: this.of(toId), id, fromTrackers: this.trackersOf(from), toTrackers: this.trackersOf(to) })
+  }
+
+  /**
+   * Moves a milestone to another profile's Plan with its items, counts and proposals; tickets read
+   * from the first profile's tracker keep reading from it. Its new id may differ (`id`).
+   */
+  moveMilestone(fromId: string, id: string, toId: string): Promise<({ ok: true; id: string } & MoveMilestoneSummary) | { ok: false; error: string }> {
+    return this.serial(async () => {
+      if (fromId === toId) return { ok: false, error: PLANNER_ERRORS.sameProfile }
+      const [from, to] = await Promise.all([this.profile(fromId), this.profile(toId)])
+      if (!from || !planner(from) || !to || !planner(to)) return { ok: false, error: PLANNER_ERRORS.moduleOff }
+      if (this.of(toId).milestones.length >= MILESTONE_LIMITS.items) return { ok: false, error: PLANNER_ERRORS.tooMany }
+      const r = moveMilestone({ from: this.of(fromId), to: this.of(toId), id, fromTrackers: this.trackersOf(from), toTrackers: this.trackersOf(to), newId: this.newId })
+      if (!r.ok) return { ok: false, error: PLANNER_ERRORS.unknownMilestone }
+      const milestone = this.stamp(r.milestone, 'user')
+      this.put(fromId, r.from)
+      this.put(toId, { ...r.to, milestones: r.to.milestones.map((m) => (m.id === milestone.id ? milestone : m)) })
+      if (milestone.source.kind === 'tracker') await this.count(toId, false, milestone.id)
+      if (milestone.source.kind === 'items') await this.readTickets(to, false)
+      return { ok: true, id: milestone.id, moved: r.moved, copied: r.copied, pinned: r.pinned }
     })
   }
 

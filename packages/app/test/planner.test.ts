@@ -8,7 +8,7 @@ import { DEFAULT_PLANNER_SETTINGS, TrackerError, type MetricAlert, type PlannerS
 import { controlSocketPath, startControlServer } from '../src/main/control-server'
 import { addControlInboxItems, parseBulkPatch, parseInboxEdit } from '../src/main/planner-ipc'
 import { PLANNER_ERRORS, PlannerService, type PlannerState } from '../src/main/planner-service'
-import { BULK_CLEAR, bulkChangeCount, bulkFormToPatch, EMPTY_BULK_FORM, formToInboxSettings, formToMilestone, formToProposal, inboxActionLabel, inboxSettingsToForm, linksToRows, milestoneFormProblem, milestoneId, milestonesAtRisk, milestoneToForm, pieceTaskChoices, plainPreview, rowsToLinks } from '../src/renderer/lib/planner'
+import { BULK_CLEAR, bulkChangeCount, createsTicket, bulkFormToPatch, EMPTY_BULK_FORM, formToInboxSettings, formToMilestone, formToProposal, inboxActionLabel, inboxSettingsToForm, linksToRows, milestoneFormProblem, milestoneId, milestonesAtRisk, milestoneToForm, pieceTaskChoices, plainPreview, rowsToLinks } from '../src/renderer/lib/planner'
 import { en } from '../src/renderer/i18n/en'
 import { es } from '../src/renderer/i18n/es'
 
@@ -617,5 +617,49 @@ describe('PlannerService pieces and linked tickets', () => {
     ]
     expect(pieceTaskChoices(inbox, [{ kind: 'task', itemId: 'e', weight: 5 }], '').map((i) => i.id)).toEqual(['b', 'a'])
     expect(pieceTaskChoices(inbox, [], 'SPEC').map((i) => i.id)).toEqual(['a'])
+  })
+})
+
+describe('PlannerService moving a milestone between profiles', () => {
+  const two = (homeOn = true): Profile[] => [
+    { ...profile(), connections: { tracker: 'jira-a' } },
+    { ...profile({}, homeOn), id: 'home', name: 'Home', connections: {} }
+  ]
+  const milestone = { id: 'm1', name: 'Launch', start: '2026-11-01', end: '2026-11-30', source: { kind: 'items' as const, items: [] } }
+
+  it('moves it with its task to the other profile and keeps its tickets on the first tracker', async () => {
+    const { service, changed } = setup({ profiles: two() })
+    const added = await service.addItem('work', { kind: 'task', title: 'Write the spec', detail: '' })
+    if (!added.ok) throw new Error(added.error)
+    await service.saveMilestone('work', { ...milestone, source: { kind: 'items', items: [{ kind: 'task', itemId: added.item.id, weight: 5 }, { kind: 'ticket', key: 'PAY-9', weight: 5 }] } })
+    expect(await service.moveMilestonePreview('work', 'm1', 'home')).toEqual({ moved: 1, copied: 0, pinned: 1 })
+    const r = await service.moveMilestone('work', 'm1', 'home')
+    expect(r).toEqual({ ok: true, id: 'm1', moved: 1, copied: 0, pinned: 1 })
+    const [work, home] = await Promise.all([service.view('work'), service.view('home')])
+    expect(work.milestones).toEqual([])
+    expect(work.inbox.map((i) => i.title)).not.toContain('Write the spec')
+    expect(home.milestones.map((m) => m.milestone.name)).toEqual(['Launch'])
+    expect(home.inbox.map((i) => i.title)).toContain('Write the spec')
+    const source = home.milestones[0]!.milestone.source
+    expect(source.kind === 'items' && source.items[1]).toEqual({ kind: 'ticket', key: 'PAY-9', connectionId: 'jira-a', weight: 5 })
+    expect(changed).toEqual(expect.arrayContaining(['work', 'home']))
+  })
+
+  it('refuses the same profile, a profile with Plan off and an unknown milestone', async () => {
+    const { service } = setup({ profiles: two(false) })
+    await service.saveMilestone('work', milestone)
+    expect(await service.moveMilestone('work', 'm1', 'work')).toEqual({ ok: false, error: PLANNER_ERRORS.sameProfile })
+    expect(await service.moveMilestone('work', 'm1', 'home')).toEqual({ ok: false, error: PLANNER_ERRORS.moduleOff })
+    const on = setup({ profiles: two() }).service
+    expect(await on.moveMilestone('work', 'nope', 'home')).toEqual({ ok: false, error: PLANNER_ERRORS.unknownMilestone })
+  })
+})
+
+describe('createsTicket', () => {
+  it('asks only for an approve that makes a tracker issue', () => {
+    expect(createsTicket({ kind: 'task' }, 'approve')).toBe(true)
+    expect(createsTicket({ kind: 'bug' }, 'approve')).toBe(true)
+    expect(createsTicket({ kind: 'decision' }, 'approve')).toBe(false)
+    expect(createsTicket({ kind: 'task' }, 'keep')).toBe(false)
   })
 })

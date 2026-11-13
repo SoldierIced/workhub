@@ -18,6 +18,7 @@ import { PeoplePicker } from './InboxTab'
 import { LinksEditor } from './LinksEditor'
 import { PiecesList } from './MilestonePieces'
 import { MilestoneBar, MilestoneEditor } from './MilestonesTab'
+import { MoveMilestoneButton } from './MoveMilestone'
 
 export interface PlanItemDetailProps {
   profile: Profile
@@ -501,7 +502,14 @@ function MilestoneDetail({ profile, row, view, editRequest }: { profile: Profile
         ? [[t('planner.detail.counts'), t('planner.milestone.notCounted')] as [string, ReactNode]]
         : [])
   ]
-  const editButton = !editing && <Button size="sm" variant="ghost" icon={<Pencil className="size-3.5" aria-hidden />} onClick={() => setEditing({ form: milestoneToForm(m, view.today), since: m.updatedAt })}>{t('planner.detail.edit')}</Button>
+  const editButton = !editing && (
+    <>
+      <MoveMilestoneButton profile={profile} milestoneId={m.id} name={m.name} />
+      <Button size="sm" variant="ghost" icon={<Pencil className="size-3.5" aria-hidden />} onClick={() => setEditing({ form: milestoneToForm(m, view.today), since: m.updatedAt })}>
+        {t('planner.detail.edit')}
+      </Button>
+    </>
+  )
   return (
     <div className="flex flex-col gap-4 p-4" data-testid="plan-item-detail">
       <Header title={m.name} actions={editButton} badges={<Badge tone={MILESTONE_STATUS_TONE[row.status]}>{t(MILESTONE_STATUS_LABEL[row.status])}</Badge>} />

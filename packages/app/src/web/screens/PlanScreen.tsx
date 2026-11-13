@@ -7,7 +7,7 @@ import { Badge, Spinner } from '../../renderer/components/atoms'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { cn } from '../../renderer/lib/cn'
 import { briefLabel, eventTimes, isOngoing, PLAN_STATE_COPY } from '../../renderer/lib/plan'
-import { INBOX_KIND_LABEL, inboxActionLabel, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, plainPreview } from '../../renderer/lib/planner'
+import { createsTicket, INBOX_KIND_LABEL, inboxActionLabel, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, plainPreview } from '../../renderer/lib/planner'
 import { navigate, useClientStatus, useConfig, useProfileId } from '../app-context'
 import { openLink, profileOf, useCriticalities, usePlan, usePlanner } from '../plan-data'
 import { PLAN_TABS, type PlanTab } from '../routes'
@@ -253,7 +253,8 @@ function InboxTab({ profileId, view, reload }: { profileId: string; view: Planne
   const levels = useCriticalities(profileOf(config, profileId))
   const groups = groupInbox(view.inbox, view.today, levels)
   const { busy, error, act } = useItemActions(profileId, reload)
-  const [discarding, setDiscarding] = useState<InboxItem | null>(null)
+  // Discarding an item and creating a tracker issue are asked first.
+  const [confirming, setConfirming] = useState<{ item: InboxItem; action: 'discard' | 'approve' } | null>(null)
   const empty = groups.pending.length === 0 && view.proposals.length === 0
   return (
     <div className="pb-6">
@@ -277,14 +278,18 @@ function InboxTab({ profileId, view, reload }: { profileId: string; view: Planne
             {groups.pending.map((item) => (
               <li key={item.id} className="flex flex-col">
                 <ItemRow item={item} today={view.today} right={<span />} />
-                {discarding?.id === item.id ? (
+                {confirming?.item.id === item.id ? (
                   <div className="px-4 pb-3">
-                    <InlineConfirm question={t('planner.inbox.confirmDiscard', { title: item.title })} yes={t('planner.inbox.action.discard')} danger onNo={() => setDiscarding(null)} onYes={() => (setDiscarding(null), void act(item, 'discard'))} />
+                    {confirming.action === 'discard' ? (
+                      <InlineConfirm question={t('planner.inbox.confirmDiscard', { title: item.title })} yes={t('planner.inbox.action.discard')} danger onNo={() => setConfirming(null)} onYes={() => (setConfirming(null), void act(item, 'discard'))} />
+                    ) : (
+                      <InlineConfirm question={t('planner.inbox.confirmCreate', { title: item.title })} yes={t('planner.inbox.action.approve')} onNo={() => setConfirming(null)} onYes={() => (setConfirming(null), void act(item, 'approve'))} />
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2 px-4 pb-3">
                     {itemActions(item, view.tracker.create).map((action) => (
-                      <QuickAction key={action} label={t(inboxActionLabel(action, item.kind))} busy={busy === item.id} primary={action === 'approve'} onClick={() => (action === 'discard' ? setDiscarding(item) : void act(item, action))} />
+                      <QuickAction key={action} label={t(inboxActionLabel(action, item.kind))} busy={busy === item.id} primary={action === 'approve'} onClick={() => (action === 'discard' || createsTicket(item, action) ? setConfirming({ item, action: action === 'discard' ? 'discard' : 'approve' }) : void act(item, action))} />
                     ))}
                   </div>
                 )}
