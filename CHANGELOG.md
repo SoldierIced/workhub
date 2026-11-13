@@ -4,6 +4,15 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.27](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.26...v2.0.0-alpha.27) (2026-11-13)
+
+
+### Features
+
+* **plan:** ask before creating a tracker ticket from a task ([6156b82](https://github.com/SoldierIced/workhub/commit/6156b820300a5cc0d984c77daf534fd815f45843))
+* **plan:** move a milestone to another profile ([737100c](https://github.com/SoldierIced/workhub/commit/737100c055314010cd0d606f9677daf27e20b8b2))
+* **plan:** move milestones between profiles; confirm ticket creation ([8931a1c](https://github.com/SoldierIced/workhub/commit/8931a1c80cfecaea6e290ae20cf28834bcc1842a))
+
 ## [2.0.0-alpha.26](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.25...v2.0.0-alpha.26) (2026-11-13)
 
 
