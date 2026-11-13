@@ -1,7 +1,7 @@
 // The relay's logic, free of sockets and timers so it can be tested: who is authenticated, which
 // rooms they listen in, delivering bodies to a peer in a room, presence, rate limits and push.
 // The relay never opens a body: it forwards base64url it cannot read.
-import { makeChallenge, MAX_BODY_BYTES, parseClientMessage, verifyAuth, type ClientMessage, type PublicIdentity, type RelayErrorCode, type RelayMessage } from '@workhub/protocol'
+import { makeChallenge, MAX_FRAME_BYTES, parseClientMessage, verifyAuth, type ClientMessage, type PublicIdentity, type RelayErrorCode, type RelayMessage } from '@workhub/protocol'
 
 export interface Socket {
   send(text: string): void
@@ -87,7 +87,7 @@ export const DEFAULT_LIMITS: RelayLimits = {
   maxPeersPerId: 6,
   maxPeers: 5000,
   maxRoomsPerPeer: 16,
-  maxFrameBytes: MAX_BODY_BYTES + 8 * 1024,
+  maxFrameBytes: MAX_FRAME_BYTES,
   maxBufferedBytes: 4 * 1024 * 1024,
   maxPushRecords: 20_000,
   maxPushesInFlight: 8
@@ -169,6 +169,7 @@ export class RelayCore {
     }
     const size = typeof raw === 'string' ? utf8Length(raw) : raw.byteLength
     if (size > this.limits.maxFrameBytes) {
+      this.options.log?.warn(`${peer.id ?? peer.address}: dropped a frame of ${size} bytes (limit ${this.limits.maxFrameBytes})`)
       this.error(peer, 'too-large', `a frame may have at most ${this.limits.maxFrameBytes} bytes`)
       if (!peer.id) peer.socket.close(1009, 'too large')
       return

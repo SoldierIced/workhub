@@ -7,6 +7,20 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { concatBytes, decodeJson, encodeJson, fromBase64Url, toBase64Url, utf8ToBytes } from './bytes'
 import { decrypt, deriveKey, encrypt } from './crypto'
 import { publicKeyBytes, type Identity, type PublicIdentity } from './identity'
+import { MAX_FRAME_BYTES } from './messages'
+
+/** The `to` frame around a sealed body: room, recipient and JSON punctuation, with room to spare. */
+const FRAME_OVERHEAD_BYTES = 1024
+
+/**
+ * Whether a channel message, sealed (16-byte tag, base64url) and wrapped in a `to` frame, fits a
+ * relay frame. A relay closes the socket of whoever sends a larger one, so check before sealing:
+ * every seal advances the channel's counter, and a sealed message must then be sent.
+ */
+export function fitsFrame(message: unknown): boolean {
+  const sealed = Math.ceil(((encodeJson(message).byteLength + 16) * 4) / 3)
+  return sealed + FRAME_OVERHEAD_BYTES <= MAX_FRAME_BYTES
+}
 
 export interface HandshakeHello {
   /** base64url of this end's ephemeral X25519 public key. */

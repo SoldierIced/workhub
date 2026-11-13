@@ -12,6 +12,8 @@ const base64url = z.string().regex(/^[A-Za-z0-9_-]*$/)
 
 /** The largest body the relay forwards (a sealed message; files travel in chunks below this). */
 export const MAX_BODY_BYTES = 512 * 1024
+/** The largest frame a relay accepts (UTF-8 bytes); a larger one closes the sender's socket. */
+export const MAX_FRAME_BYTES = MAX_BODY_BYTES + 8 * 1024
 /** A sealed body as base64url: a little over 4/3 of the bytes. */
 const ciphertext = base64url.min(1).max(Math.ceil((MAX_BODY_BYTES * 4) / 3) + 4)
 /** An Ed25519 signature, base64url. */
@@ -80,7 +82,14 @@ const argsSchema = z.array(z.unknown()).max(16)
 
 export const channelMessageSchema = z.discriminatedUnion('t', [
   /** First message each way once the channel is up: proves the keys and says what the end is. */
-  z.object({ t: z.literal('ready'), capabilities: z.array(remoteCapabilitySchema).optional(), client: z.string().max(80).optional(), desktop: z.string().max(80).optional() }),
+  z.object({
+    t: z.literal('ready'),
+    capabilities: z.array(remoteCapabilitySchema).optional(),
+    client: z.string().max(80).optional(),
+    desktop: z.string().max(80).optional(),
+    /** Optional messages this end understands (`away`); an end that sends none understands none. */
+    features: z.array(z.string().max(32)).max(16).optional()
+  }),
   /** hub.<ns>.<method>(...args) as `ipcRenderer.invoke(channel, ...args)`. */
   z.object({ t: z.literal('invoke'), id: z.number().int().nonnegative(), channel: z.string().max(64), args: argsSchema }),
   z.object({
@@ -97,7 +106,12 @@ export const channelMessageSchema = z.discriminatedUnion('t', [
   /** The desktop revoked this device or is going away; the device should not reconnect until paired again. */
   z.object({ t: z.literal('bye'), reason: z.enum(['revoked', 'shutdown']) }),
   /** The device forgets this desktop: the desktop drops it from its paired devices. */
-  z.object({ t: z.literal('unpair') })
+  z.object({ t: z.literal('unpair') }),
+  /**
+   * The device's page went to the background (`away: true`) or came back. While away its socket may
+   * stay open for a short while, but notifications go by push: a frozen page would not show them.
+   */
+  z.object({ t: z.literal('away'), away: z.boolean() })
 ])
 export type ChannelMessage = z.infer<typeof channelMessageSchema>
 

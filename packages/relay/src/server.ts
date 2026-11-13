@@ -54,6 +54,9 @@ function securityHeaders(res: ServerResponse): void {
   res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()')
 }
 
+/** The largest frame the socket buffers; above it the socket is closed. The core's own limit is lower. */
+export const TRANSPORT_FRAME_LIMIT_BYTES = 8 * 1024 * 1024
+
 export function createRelayServer(options: RelayServerOptions = {}): RelayServer {
   const core = new RelayCore(options)
   const authTimeoutMs = options.authTimeoutMs ?? 10_000
@@ -81,8 +84,11 @@ export function createRelayServer(options: RelayServerOptions = {}): RelayServer
     }
   })
 
-  // `ws` closes a frame above maxPayload itself (1009), before it is buffered whole.
-  const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: core.frameLimit })
+  // `ws` closes a frame above maxPayload itself (1009), before it is buffered whole. That ceiling is
+  // well above the protocol's frame limit: an oversized frame from a peer is answered by the core
+  // with a `too-large` error and dropped, and the peer stays connected. Closing it instead put a
+  // desktop that answered with one oversized frame into a reconnect loop with its phone.
+  const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: TRANSPORT_FRAME_LIMIT_BYTES })
   const alive = new WeakMap<WebSocket, boolean>()
 
   wss.on('connection', (socket, req) => {
