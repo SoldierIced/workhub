@@ -22,7 +22,6 @@ import { useNow } from '../lib/usage'
 import { useWindowLabel } from '../components/molecules/UsageWindowRow'
 import { useAccountUsage } from '../lib/usage'
 import { SettingsGroup } from './settings/SettingsLayout'
-import { AgentToolsGroup } from './settings/AgentToolsGroup'
 import type { Run } from './settings/run'
 
 const ENGINE_LABEL: Record<AgentEngine, MessageKey> = { sdk: 'agents.engine.sdk', acp: 'agents.engine.acp', terminal: 'agents.engine.terminal' }
@@ -404,7 +403,6 @@ export function AgentsOverview({
           </>
         )}
       </SettingsGroup>
-      <AgentToolsGroup snap={snap} run={run} />
     </div>
   )
 }
