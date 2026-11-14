@@ -17,12 +17,13 @@ const saved = (identity: string, over: Partial<SavedOpenSession> = {}): SavedOpe
   ...over
 })
 
-function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; groups?: SessionGroups; missing?: string[]; failing?: string[] } = {}) {
+function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?: boolean; groups?: SessionGroups; missing?: string[]; failing?: string[] } = {}) {
   let file = stored
   let flushed = 0
   const live: SessionView[] = []
   const engines = new Map<string, 'app' | 'console'>()
   const starts: StartSessionInput[] = []
+  const extras: { dormant?: boolean; title?: string }[] = []
   const modes: [string, SessionMode][] = []
   const open = new OpenSessions({
     store: {
@@ -34,10 +35,11 @@ function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; groups?: 
     },
     list: () => live,
     engineOf: (id) => engines.get(id),
-    start: async (input) => {
+    start: async (input, extra) => {
       starts.push(input)
+      extras.push({ ...(extra.dormant ? { dormant: true } : {}), ...(extra.title ? { title: extra.title } : {}) })
       if (opts.failing?.includes(input.cwd)) throw new Error('agent gone')
-      const v = view(`s${starts.length}`, { cwd: input.cwd, agentSessionId: input.resumeAgentSessionId, identity: input.resumeAgentSessionId ?? input.identity, mode: input.mode ?? 'app' })
+      const v = view(`s${starts.length}`, { cwd: input.cwd, agentSessionId: input.resumeAgentSessionId, identity: input.resumeAgentSessionId ?? input.identity, mode: input.mode ?? 'app', ...(extra.dormant ? { state: 'stopped' as const } : {}) })
       live.push(v)
       engines.set(v.id, input.mode === 'console' ? 'console' : 'app')
       return v
@@ -47,9 +49,10 @@ function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; groups?: 
     },
     folderExists: async (path) => !opts.missing?.includes(path),
     enabled: async () => opts.enabled ?? true,
+    startAtLaunch: async () => opts.atLaunch ?? true,
     groups: async () => opts.groups
   })
-  return { open, live, engines, starts, modes, file: () => file, flushed: () => flushed }
+  return { open, live, engines, starts, extras, modes, file: () => file, flushed: () => flushed }
 }
 
 describe('open sessions across launches', () => {
@@ -64,6 +67,7 @@ describe('open sessions across launches', () => {
       agentSessionId: 'agent-a',
       model: 'opus'
     })
+    expect(savedSessionOf(view('n', { agentTitle: 'Fix the login bug' }), 'app')?.title).toBe('Fix the login bug')
     // A plain terminal keeps its identity, with no agent session id.
     expect(savedSessionOf(view('t', { agentId: 'shell', accountId: null, agentSessionId: undefined, identity: 'term-1' }), 'console')).toMatchObject({ identity: 'term-1', agentKey: 'shell' })
     expect(savedSessionOf(view('r', { readOnly: true }), 'app')).toBeNull()
@@ -107,6 +111,21 @@ describe('open sessions across launches', () => {
     expect(h.modes).toEqual([['s3', 'shell']])
     // Saved again from what is open now: the missing folder and the failed start are gone.
     expect(h.file().sessions.map((s) => s.identity)).toEqual(['a', 'b', 'c', 'term'])
+  })
+
+  it('brings the sessions back stopped by default, with their titles, and saves them while stopped', async () => {
+    const h = harness({ sessions: [saved('a', { title: 'Fix the login bug' }), saved('c', { mode: 'shell' })] }, { atLaunch: false })
+    await h.open.restore()
+    expect(h.starts.map((s) => s.resumeAgentSessionId)).toEqual(['a', 'c'])
+    expect(h.extras).toEqual([{ dormant: true, title: 'Fix the login bug' }, { dormant: true }])
+    // Nothing runs, so the shell mode waits for the user to open the session.
+    expect(h.modes).toEqual([])
+    expect(h.live.every((v) => v.state === 'stopped')).toBe(true)
+    expect(h.file().sessions.map((s) => s.identity)).toEqual(['a', 'c'])
+    // Opening one starts a live copy: the session is saved once, from the live copy.
+    h.live.push(view('s9', { identity: 'a', agentSessionId: 'a', mode: 'console' }))
+    h.open.changed()
+    expect(h.file().sessions.filter((s) => s.identity === 'a')).toMatchObject([{ mode: 'console' }])
   })
 
   it('reopens nothing when the setting is off, and then follows the open sessions', async () => {

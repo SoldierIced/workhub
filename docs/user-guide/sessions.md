@@ -144,9 +144,12 @@ brings it back; its icon shows whether the panel is open.
 - **Close**: the close button on the row. A session that is working asks first (**Stop and
   close**). A session in a worktree Workhub created offers to keep or remove the worktree. The
   conversation stays in History.
-- **Reopen my sessions when Workhub starts** (**Settings → General → On open and close**): the sessions that were open
-  when Workhub quit come back in the sidebar, in their groups and windows, and resume their
-  conversations. Nothing is sent to the agents again.
+- **Keep my sessions in the sidebar** (**Settings → General → On open and close**, on by default):
+  every session in the sidebar when Workhub quit, running or stopped, comes back in its group and
+  window, **stopped**: no agent process runs and nothing is spent until you open it, which resumes
+  its conversation. Removing a session (**×**) takes it out of the sidebar for good; it stays in
+  History. **Start them when Workhub starts** (off by default) runs every one again right away
+  instead. Nothing is sent to the agents either way.
 
 ## Detached windows
 
