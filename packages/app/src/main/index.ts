@@ -145,6 +145,7 @@ import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 import { createLinkService } from './link-service'
 import { listChromeProfiles, systemLinkDeps } from './link-system'
 import { accountSessionEnv, profileSessionEnv, saveAccountEnv, saveProfileEnv, storedAccountEnvNames, storedProfileEnvNames } from './profile-env'
+import { showMainOnActivate } from './activation'
 import { AgentToolsService, registerAgentToolsIpc, WORKHUB_MCP_SCRIPT, workhubMcpLaunch } from './agent-tools'
 import { SetupInstaller } from './setup-install'
 import { registerSetupInstallIpc } from './setup-ipc'
@@ -2020,7 +2021,9 @@ void app.whenReady().then(async () => {
 })
 
 // macOS: clicking the Dock icon brings the hidden window back.
-app.on('activate', () => showMain())
+app.on('activate', (_event, hasVisibleWindows) => {
+  if (showMainOnActivate(hasVisibleWindows)) showMain()
+})
 
 let quitting = false
 /** Set once the app is quitting (or installing an update): closing the window then really closes it. */
