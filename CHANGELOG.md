@@ -4,6 +4,20 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.29](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.28...v2.0.0-alpha.29) (2026-11-14)
+
+
+### Features
+
+* **sessions:** bring sessions back stopped at launch until opened ([0ab1985](https://github.com/SoldierIced/workhub/commit/0ab1985826947768770b920e9007a6558b8c8a70))
+
+
+### Bug Fixes
+
+* **app:** keep the Settings window reachable with Cmd+Tab on macOS ([279329e](https://github.com/SoldierIced/workhub/commit/279329ebe15e4172c9369b81ff27034f821aa174))
+* settings tools, Cmd+Tab and sessions restored stopped ([18513ee](https://github.com/SoldierIced/workhub/commit/18513ee861f1566868168baa4b178cce54b119a7))
+* **settings:** show Workhub tools for agents under Agents ([47c0174](https://github.com/SoldierIced/workhub/commit/47c017433ba3542c616e4769a135efcd3b662e28))
+
 ## [2.0.0-alpha.28](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.27...v2.0.0-alpha.28) (2026-11-14)
 
 
