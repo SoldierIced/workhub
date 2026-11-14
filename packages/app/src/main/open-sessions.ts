@@ -23,6 +23,8 @@ export interface SavedOpenSession {
   /** The agent's own session id, resumed when its conversation still exists. */
   agentSessionId?: string
   model?: string
+  /** The title its agent gave it, shown while the session waits stopped (its first prompt is not loaded yet). */
+  title?: string
   /** The worktree Workhub created for the session (its `cwd` is inside it), so closing it later can still offer to remove it. */
   worktree?: SessionWorktree
 }
@@ -44,12 +46,14 @@ export interface OpenSessionsDeps {
   /** The engine a session runs (the shell shows over one of them). */
   engineOf(id: string): 'app' | 'console' | undefined
   /** Starts a stored session again (`SessionManager.start` with `restored`: it resumes only a conversation that still exists). */
-  start(input: StartSessionInput, extra: { worktree?: SessionWorktree }): Promise<SessionView>
+  start(input: StartSessionInput, extra: { worktree?: SessionWorktree; dormant?: boolean; title?: string }): Promise<SessionView>
   setMode(id: string, mode: SessionMode): Promise<void>
   /** Whether the session's folder is still there. */
   folderExists(path: string): Promise<boolean>
-  /** Settings → General → "Reopen sessions on launch". */
+  /** Settings → General → "Reopen sessions on launch": the sessions come back to the sidebar, stopped. */
   enabled(): Promise<boolean>
+  /** Settings → General: the sessions also start again at launch; unset or false, they wait stopped until opened. */
+  startAtLaunch?(): Promise<boolean>
   /** The sidebar layout, for the order sessions are reopened in. */
   groups(): Promise<SessionGroups | undefined>
   log?: (message: string, err?: unknown) => void
@@ -70,6 +74,7 @@ export function savedSessionOf(view: SessionView, engine: 'app' | 'console' | un
     engine: engine ?? (view.mode === 'console' ? 'console' : 'app'),
     ...(view.agentSessionId ? { agentSessionId: view.agentSessionId } : {}),
     ...(view.currentModelId ? { model: view.currentModelId } : {}),
+    ...(view.agentTitle ? { title: view.agentTitle } : {}),
     ...(view.worktree ? { worktree: view.worktree } : {})
   }
 }
@@ -91,6 +96,7 @@ export function readSavedSessions(raw: unknown): SavedOpenSession[] {
     const engine = r['engine'] === 'console' ? 'console' : r['engine'] === 'app' ? 'app' : mode === 'console' ? 'console' : 'app'
     const agentSessionId = str(r['agentSessionId'])
     const model = str(r['model'])
+    const title = str(r['title'])
     const w = r['worktree'] && typeof r['worktree'] === 'object' ? (r['worktree'] as Record<string, unknown>) : undefined
     const worktree = w && str(w['repoRoot']) && str(w['path']) && str(w['branch']) ? { repoRoot: str(w['repoRoot'])!, path: str(w['path'])!, branch: str(w['branch'])! } : undefined
     out.push({
@@ -102,6 +108,7 @@ export function readSavedSessions(raw: unknown): SavedOpenSession[] {
       engine,
       ...(agentSessionId ? { agentSessionId } : {}),
       ...(model ? { model } : {}),
+      ...(title ? { title } : {}),
       ...(worktree ? { worktree } : {})
     })
   }
@@ -159,11 +166,22 @@ export class OpenSessions {
     return this.restoring
   }
 
+  /** Every listed session, running or stopped, once per identity (a running copy wins over a stopped one). */
   private current(): SavedOpenSession[] {
     const out: SavedOpenSession[] = []
+    const live: boolean[] = []
     for (const v of this.deps.list()) {
       const s = savedSessionOf(v, this.deps.engineOf(v.id))
-      if (s && !out.some((o) => o.identity === s.identity)) out.push(s)
+      if (!s) continue
+      const running = v.state !== 'stopped' && v.state !== 'error'
+      const at = out.findIndex((o) => o.identity === s.identity)
+      if (at < 0) {
+        out.push(s)
+        live.push(running)
+      } else if (running && !live[at]) {
+        out[at] = s
+        live[at] = true
+      }
     }
     return out
   }
@@ -172,6 +190,8 @@ export class OpenSessions {
     const saved = readSavedSessions(this.deps.store.load({ sessions: [] }))
     if (!saved.length || !(await this.deps.enabled())) return
     const open = new Set(this.current().map((s) => s.identity))
+    // Stopped by default: each session is listed without a process until the user opens it.
+    const dormant = !(await this.deps.startAtLaunch?.())
     for (const s of restoreOrder(saved, await this.deps.groups())) {
       if (open.has(s.identity) || this.frozen) continue
       try {
@@ -183,8 +203,8 @@ export class OpenSessions {
           mode: s.engine,
           ...(s.agentSessionId ? { resumeAgentSessionId: s.agentSessionId } : { identity: s.identity }),
           ...(s.model ? { model: s.model } : {})
-        }, s.worktree ? { worktree: s.worktree } : {})
-        if (s.mode === 'shell') await this.deps.setMode(view.id, 'shell').catch((err: unknown) => this.deps.log?.('could not reopen the shell of a restored session', err))
+        }, { ...(s.worktree ? { worktree: s.worktree } : {}), ...(dormant ? { dormant: true, ...(s.title ? { title: s.title } : {}) } : {}) })
+        if (s.mode === 'shell' && !dormant) await this.deps.setMode(view.id, 'shell').catch((err: unknown) => this.deps.log?.('could not reopen the shell of a restored session', err))
       } catch (err) {
         this.deps.log?.(`could not reopen session ${s.identity}`, err)
       }

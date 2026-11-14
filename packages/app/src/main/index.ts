@@ -145,6 +145,7 @@ import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 import { createLinkService } from './link-service'
 import { listChromeProfiles, systemLinkDeps } from './link-system'
 import { accountSessionEnv, profileSessionEnv, saveAccountEnv, saveProfileEnv, storedAccountEnvNames, storedProfileEnvNames } from './profile-env'
+import { showMainOnActivate } from './activation'
 import { AgentToolsService, registerAgentToolsIpc, WORKHUB_MCP_SCRIPT, workhubMcpLaunch } from './agent-tools'
 import { SetupInstaller } from './setup-install'
 import { registerSetupInstallIpc } from './setup-ipc'
@@ -482,10 +483,19 @@ const openSessions = new OpenSessions({
   store: new StateFile<SavedOpenSessions>(join(dataDir, 'open-sessions.json'), 500),
   list: () => sessions.list(),
   engineOf: (id) => sessions.engineOf(id),
-  start: (input, extra) => sessions.start(input, { restored: true, ...extra }),
+  start: async (input, extra) => {
+    // A session waiting stopped has no prompt loaded yet: its title comes from the stored one, else from History.
+    let title = extra.title
+    if (extra.dormant && !title && input.resumeAgentSessionId) {
+      const past = await namedHistory.get(60_000).catch(() => null)
+      title = past?.entries.find((e) => e.agentSessionId === input.resumeAgentSessionId)?.title
+    }
+    return sessions.start(input, { restored: true, ...extra, ...(title ? { title } : {}) })
+  },
   setMode: (id, mode) => sessions.setMode(id, mode),
   folderExists: (path) => stat(path).then((s) => s.isDirectory(), () => false),
   enabled: async () => appOptions(await configuration.current()).reopenSessions,
+  startAtLaunch: async () => appOptions(await configuration.current()).startSessionsAtLaunch,
   groups: async () => (await configuration.current()).sessionGroups,
   log: (message, err) => diagnostics.log.error(`${message}: ${err instanceof Error ? `${err.name}: ${err.message}` : 'failed'}`)
 })
@@ -2020,7 +2030,9 @@ void app.whenReady().then(async () => {
 })
 
 // macOS: clicking the Dock icon brings the hidden window back.
-app.on('activate', () => showMain())
+app.on('activate', (_event, hasVisibleWindows) => {
+  if (showMainOnActivate(hasVisibleWindows)) showMain()
+})
 
 let quitting = false
 /** Set once the app is quitting (or installing an update): closing the window then really closes it. */

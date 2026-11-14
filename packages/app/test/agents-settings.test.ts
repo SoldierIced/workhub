@@ -281,6 +281,9 @@ describe('Settings → Agents section', () => {
     expect(html).toContain('data-account="work"')
     expect(html).toContain('offered in Acme web (1st)')
     expect(html).toContain('Sign-in of this computer')
+    // Workhub's MCP server and skills for agents, at the end of the section.
+    expect(html).toContain('Workhub tools for agents')
+    expect(html).toContain('Give sessions the Workhub MCP server')
     // No "Use as default" on any row: the default is decided in each profile.
     expect(html).not.toContain('Use as default')
     // Kiro keeps one login per computer: it adds variants, not accounts.

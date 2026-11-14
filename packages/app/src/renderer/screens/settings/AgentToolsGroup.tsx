@@ -4,6 +4,7 @@ import type { AgentToolsAccount, AgentToolsStatus, SkillState } from '@shared/ag
 import { Badge, Button, Switch } from '../../components/atoms'
 import { useToast } from '../../components/molecules'
 import { useI18n } from '../../i18n/I18nProvider'
+import { AGENTS_ROW_IDS } from './agents-index'
 import { SettingsGroup } from './SettingsLayout'
 import type { Run } from './run'
 
@@ -42,14 +43,15 @@ export function AgentToolsGroup({ snap, run }: { snap: ConfigSnapshot; run: Run 
   }
   return (
     <SettingsGroup title={t('agentTools.title')} help={t('agentTools.help')}>
-      <div className="flex items-center justify-between gap-6 py-3">
+      <div className="flex items-center justify-between gap-6 py-3" data-setting-id={AGENTS_ROW_IDS.toolsMcp} data-settings-row>
         <div className="min-w-0">
           <span className="text-base">{t('agentTools.mcp')}</span>
           <p className="text-xs text-subtle">{t('agentTools.mcpHint')}</p>
         </div>
         <Switch aria-label={t('agentTools.mcp')} checked={mcpOn} disabled={!!snap.loadError} onChange={(v) => void run(() => window.hub.config.saveOptions({ workhubMcp: v }))} />
       </div>
-      {status?.accounts.map((a) => {
+      <div className="flex flex-col divide-y divide-border" data-setting-id={AGENTS_ROW_IDS.tools} data-settings-row>
+        {status?.accounts.map((a) => {
         const skills = skillsSummary(a)
         return (
           <div key={a.id} className="flex flex-col gap-2 py-3" data-testid="agent-tools-account">
@@ -92,7 +94,8 @@ export function AgentToolsGroup({ snap, run }: { snap: ConfigSnapshot; run: Run 
             </div>
           </div>
         )
-      })}
+        })}
+      </div>
     </SettingsGroup>
   )
 }

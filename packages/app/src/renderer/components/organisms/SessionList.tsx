@@ -323,7 +323,8 @@ export function SessionList({ sessions, groups, selectedId, active, onSelect, on
       menu: (member) => latest.current.sessionMenu(member),
       open: (member) => {
         const entry = latest.current.entryOf(member.key)
-        if (entry) latest.current.onSelect(entry.data.view.id)
+        // A stopped session (brought back at launch, or stopped by the user) starts again when opened.
+        if (entry && entry.data.view.state !== 'stopped') latest.current.onSelect(entry.data.view.id)
         else latest.current.onReopen(member)
       },
       close: (key) => {

@@ -39,6 +39,7 @@ import { isDirty, type SaveOutcome } from '../../lib/unsavedChanges'
 import { useAccountUsage } from '../../lib/usage'
 import { usageCeilingLabel } from '../../lib/usage-window'
 import { SignInDetail } from '../AgentsSettings'
+import { AgentToolsGroup } from './AgentToolsGroup'
 import { EnvFields, useAccountEnvDraft } from '../ProfileExtraSettings'
 import { AGENTS_ROW_IDS } from './agents-index'
 import { ROW_HIGHLIGHT_MS } from './focusRow'
@@ -195,6 +196,7 @@ export function AccountsSection({ snap, run, initialId, profileId }: SectionProp
           </Card>
         </section>
       )}
+      <AgentToolsGroup snap={snap} run={run} />
     </div>
   )
 }

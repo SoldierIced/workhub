@@ -153,7 +153,7 @@ describe('searchSettings', () => {
 
   it('finds the renamed General rows and points a row behind "Adjust…" at that row', () => {
     expect(searchSettings(SETTINGS_INDEX, 'menu bar', options('en')).map((h) => h.entry.label)).toContain('settingsV2.general.keepInTray')
-    expect(searchSettings(SETTINGS_INDEX, 'reabrir', options('es'))[0]?.entry.label).toBe('settingsV2.general.reopenSessions')
+    expect(searchSettings(SETTINGS_INDEX, 'mantener mis sesiones', options('es'))[0]?.entry.label).toBe('settingsV2.general.reopenSessions')
     const chat = SETTINGS_INDEX.find((e) => e.label === 'appearance.chatSize')
     expect(chat?.focus).toBe('settingsV2.general.textSizes')
     expect(entryBreadcrumb({ section: 'general', label: 'settings.language' }, options('en'))).toEqual(['app', 'General'])

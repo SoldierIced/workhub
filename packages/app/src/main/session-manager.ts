@@ -98,6 +98,8 @@ interface ManagedSession {
   consoleStartedAt: number
   /** Tool calls the transcript reports for this session, with their last status. */
   toolStatus: Map<string, { status?: string; startedAt?: number }>
+  /** Brought back at launch without its process; the session that starts it replaces it in the list. */
+  dormant?: boolean
   /**
    * While a resumed chat is replayed: its live chat events and its state wait here, so the
    * renderer gets the earlier conversation first and the composer opens only after it.
@@ -222,7 +224,7 @@ export class SessionManager {
    */
   async start(
     asked: StartSessionInput,
-    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; worktree?: SessionWorktree; handOver?: boolean } = {}
+    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; worktree?: SessionWorktree; handOver?: boolean; dormant?: boolean; title?: string } = {}
   ): Promise<SessionView> {
     const running = internal.handOver ? undefined : this.liveWith(asked.resumeAgentSessionId ?? asked.identity)
     if (running) return running.view
@@ -269,7 +271,7 @@ export class SessionManager {
     runtime: AgentRuntime,
     input: StartSessionInput,
     placed: { cwd: string; worktree?: SessionWorktree },
-    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; handOver?: boolean }
+    internal: { env?: Record<string, string>; origin?: SessionOrigin; restored?: boolean; handOver?: boolean; dormant?: boolean; title?: string }
   ): Promise<SessionView> {
 
     const capabilities = runtime.capabilities(agent)
@@ -345,6 +347,21 @@ export class SessionManager {
     // Another start of the same conversation may have got here while this one awaited.
     const raced = internal.handOver ? undefined : this.liveWith(input.resumeAgentSessionId ?? input.identity)
     if (raced) return raced.view
+    // A session brought back at launch without its process: listed stopped, started when opened.
+    if (internal.dormant) {
+      view.state = 'stopped'
+      const title = internal.title ? cleanSessionName(internal.title) : null
+      if (title) view.agentTitle = title
+      session.dormant = true
+      this.sessions.set(view.id, session)
+      this.deps.emitChanged(view)
+      return view
+    }
+    // Opening a session that waited stopped replaces it, so removing the new one removes it for good.
+    for (const old of [...this.sessions.values()]) {
+      const key = input.resumeAgentSessionId ?? input.identity
+      if (old.dormant && old.view.state === 'stopped' && key && (old.view.agentSessionId === key || old.view.identity === key)) this.remove(old.view.id)
+    }
     this.sessions.set(view.id, session)
     this.deps.emitChanged(view)
 

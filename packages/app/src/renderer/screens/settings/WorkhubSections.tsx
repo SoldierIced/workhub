@@ -35,6 +35,14 @@ export function GeneralSection({ snap, run }: SectionProps) {
         <SwitchRow label={t('settingsV2.general.reopenSessions')} hint={t('settingsV2.general.reopenSessionsHint')}>
           <Switch checked={options.reopenSessions} disabled={!editable} aria-label={t('settingsV2.general.reopenSessions')} onChange={(on) => void run(() => window.hub.config.saveOptions({ reopenSessions: on }))} />
         </SwitchRow>
+        <SwitchRow label={t('settingsV2.general.startSessionsAtLaunch')} hint={t('settingsV2.general.startSessionsAtLaunchHint')}>
+          <Switch
+            checked={options.startSessionsAtLaunch}
+            disabled={!editable || !options.reopenSessions}
+            aria-label={t('settingsV2.general.startSessionsAtLaunch')}
+            onChange={(on) => void run(() => window.hub.config.saveOptions({ startSessionsAtLaunch: on }))}
+          />
+        </SwitchRow>
         <SwitchRow label={keepLabel} hint={t('settingsV2.general.keepInTrayHint')} help={t('help.general.menuBar')}>
           <Switch checked={options.keepInTray} disabled={!editable} aria-label={keepLabel} onChange={(on) => void run(() => window.hub.config.saveOptions({ keepInTray: on }))} />
         </SwitchRow>

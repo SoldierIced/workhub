@@ -109,6 +109,10 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
       "help.general.sessions",
     ],
     [
+      "settingsV2.general.startSessionsAtLaunch",
+      "settingsV2.general.startSessionsAtLaunchHint",
+    ],
+    [
       "settingsV2.general.keepInTray",
       "settingsV2.general.keepInTrayHint",
       "help.general.menuBar",

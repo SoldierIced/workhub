@@ -94,8 +94,13 @@ export interface AppOptions {
   healthRefreshFloorMinutes: number
   /** Closing the main window keeps the app running in the menu bar / notification area. */
   keepInTray: boolean
-  /** The sessions open when the app quit are reopened (resumed) at the next launch. */
+  /**
+   * The sessions in the sidebar when the app quit (running or stopped) come back at the next
+   * launch, stopped: no process runs until one is opened. Off: the sidebar starts empty.
+   */
   reopenSessions: boolean
+  /** With `reopenSessions`, the sessions that were running also start again (resume) at launch. Off by default: they wait stopped. */
+  startSessionsAtLaunch: boolean
   /** A badge on the app icon (Dock, taskbar, launcher) with the number of sessions that need a look. */
   showAppBadge: boolean
   /** What the menu bar popover shows (Settings → Notifications → Menu bar panel). */
@@ -162,7 +167,7 @@ export const DEFAULT_SPEECH_RATE = 190
 /** The cheap model a long message is summarized with before it is read aloud. */
 export const DEFAULT_LISTEN_MODEL = 'haiku'
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, trayPopover: DEFAULT_TRAY_POPOVER_OPTIONS, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, listenModel: DEFAULT_LISTEN_MODEL, welcomeDone: false, workhubMcp: true }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, startSessionsAtLaunch: false, showAppBadge: true, trayPopover: DEFAULT_TRAY_POPOVER_OPTIONS, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, listenModel: DEFAULT_LISTEN_MODEL, welcomeDone: false, workhubMcp: true }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   const options = { ...DEFAULT_OPTIONS, ...config.options }
@@ -615,6 +620,7 @@ export const configSchema = z.object({
         .catch(DEFAULT_HEALTH_FLOOR_MINUTES),
       keepInTray: z.boolean().default(true),
       reopenSessions: z.boolean().default(true),
+      startSessionsAtLaunch: z.boolean().default(false),
       showAppBadge: z.boolean().default(true),
       trayPopover: trayPopoverOptions.default(DEFAULT_TRAY_POPOVER_OPTIONS).catch(DEFAULT_TRAY_POPOVER_OPTIONS),
       notificationsEnabled: z.boolean().default(true),

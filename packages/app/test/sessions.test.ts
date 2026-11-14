@@ -270,6 +270,19 @@ describe('SessionManager', () => {
     expect(kept.native.prompts).toEqual([])
   })
 
+  it('brings a session back stopped without a process, and the start that opens it replaces it', async () => {
+    const { manager, native, removed } = setup(emptyConfig(), true)
+    const dormant = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' }, { restored: true, dormant: true, title: 'Fix the login bug' })
+    await flush()
+    expect(dormant).toMatchObject({ state: 'stopped', identity: 'abc', agentTitle: 'Fix the login bug' })
+    expect(native.started).toEqual([])
+    const opened = await manager.start({ profileId: null, agentKey: 'claude', cwd: '/tmp/demo', resumeAgentSessionId: 'abc' })
+    await flush()
+    expect(native.started[0]).toMatchObject({ resume: true, agentSessionId: 'abc' })
+    expect(removed).toEqual([dormant.id])
+    expect(manager.list().map((v) => v.id)).toEqual([opened.id])
+  })
+
   it('follows what an ACP agent says at start about taking images', async () => {
     const { manager, acp, last } = setup()
     const start = acp.start.bind(acp)

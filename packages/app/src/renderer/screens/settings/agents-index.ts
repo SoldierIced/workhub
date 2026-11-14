@@ -6,7 +6,9 @@ export const AGENTS_ROW_IDS = {
   readingClaude: 'agents.reading.claude',
   readingCodex: 'agents.reading.codex',
   readingKiro: 'agents.reading.kiro',
-  missing: 'agents.missing'
+  missing: 'agents.missing',
+  tools: 'agents.tools',
+  toolsMcp: 'agents.tools.mcp'
 } as const
 
 export interface SettingsIndexRow {
@@ -23,5 +25,7 @@ export const AGENTS_INDEX: readonly SettingsIndexRow[] = [
   { id: AGENTS_ROW_IDS.readingClaude, label: 'settingsAgents.reading.claude', hint: 'settingsAgents.reading.claudeHint', help: 'settings.planUsageNote', subgroup: 'agentUsage.settings.reading' },
   { id: AGENTS_ROW_IDS.readingCodex, label: 'settingsAgents.reading.codex', hint: 'settingsAgents.reading.codexHint', help: 'agentUsage.settings.codexNote', subgroup: 'agentUsage.settings.reading' },
   { id: AGENTS_ROW_IDS.readingKiro, label: 'settingsAgents.reading.kiro', hint: 'settingsAgents.reading.kiroHint', help: 'agentUsage.settings.kiroNote', subgroup: 'agentUsage.settings.reading' },
-  { id: AGENTS_ROW_IDS.missing, label: 'settingsAgents.missing.title', hint: 'settingsAgents.missing.hint' }
+  { id: AGENTS_ROW_IDS.missing, label: 'settingsAgents.missing.title', hint: 'settingsAgents.missing.hint' },
+  { id: AGENTS_ROW_IDS.toolsMcp, label: 'agentTools.mcp', hint: 'agentTools.mcpHint', subgroup: 'agentTools.title' },
+  { id: AGENTS_ROW_IDS.tools, label: 'agentTools.skills', hint: 'agentTools.help', subgroup: 'agentTools.title' }
 ]
