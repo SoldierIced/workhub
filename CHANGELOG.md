@@ -4,6 +4,18 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.28](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.27...v2.0.0-alpha.28) (2026-11-14)
+
+
+### Features
+
+* **agents:** give sessions Workhub's MCP server and let agents manage automations ([48adb5d](https://github.com/SoldierIced/workhub/commit/48adb5ded032847ca6069826985404ed7cd5a51f))
+* **agents:** Workhub MCP server for sessions, agent automations and history ([061a4d7](https://github.com/SoldierIced/workhub/commit/061a4d7a4f89b61063e928744050ee56a32f0fa0))
+* **automations:** agents list, add and edit automations, always saved off ([48adb5d](https://github.com/SoldierIced/workhub/commit/48adb5ded032847ca6069826985404ed7cd5a51f))
+* **history:** agents search past sessions and read their messages ([48adb5d](https://github.com/SoldierIced/workhub/commit/48adb5ded032847ca6069826985404ed7cd5a51f))
+* **settings:** install Workhub skills and MCP server from Settings → Agents ([48adb5d](https://github.com/SoldierIced/workhub/commit/48adb5ded032847ca6069826985404ed7cd5a51f))
+* **setup:** install missing Claude Code, Codex, Kiro and GitHub CLIs from the setup checklist ([48adb5d](https://github.com/SoldierIced/workhub/commit/48adb5ded032847ca6069826985404ed7cd5a51f))
+
 ## [2.0.0-alpha.27](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.26...v2.0.0-alpha.27) (2026-11-13)
 
 
