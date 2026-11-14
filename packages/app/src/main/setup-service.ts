@@ -3,6 +3,7 @@ import { statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   agentItem,
+  agentSkillsItem,
   claudeCodeItem,
   claudeSignInItem,
   githubItem,
@@ -76,6 +77,8 @@ export interface SetupServiceDeps {
   home: string
   /** The Slack watcher's last failure, null when it is not failing. */
   slackFailure: () => Promise<string | null>
+  /** Workhub's skills per Claude folder (Settings → Agents → Workhub tools); the row is left out when unset. */
+  agentSkills?: () => Promise<{ installed: number; outdated: number; total: number }>
   /** Test seam: replaces the command runner. */
   run?: typeof probe
 }
@@ -108,18 +111,18 @@ export class SetupService {
     })()
     const github = (async () => {
       const version = await run('gh', ['--version'], { env: base })
-      if (version.result === 'notFound' || version.result === 'timeout') return githubItem(version, null, null)
+      if (version.result === 'notFound' || version.result === 'timeout') return githubItem(version, null, null, process.platform)
       const user = await run('gh', ['api', 'user', '--jq', '.login'], { env: base })
-      if (user.result === 'ok' && user.output) return githubItem(version, user, null)
-      return githubItem(version, user, await run('gh', ['auth', 'token'], { env: base }))
+      if (user.result === 'ok' && user.output) return githubItem(version, user, null, process.platform)
+      return githubItem(version, user, await run('gh', ['auth', 'token'], { env: base }), process.platform)
     })()
 
     const secretRefs = new Set<string>()
     for (const c of config.connections) if (c.secretRef && (await this.deps.hasSecret(c.secretRef))) secretRefs.add(c.secretRef)
     const [claudeCode, codex, kiro, nodeItemResult, githubResult, ...loginItems] = await Promise.all([
-      run('claude', ['--version'], { env: base }).then(claudeCodeItem),
-      run('codex', ['--version'], { env: base }).then((p) => agentItem('codex', p)),
-      run('kiro-cli', ['--version'], { env: base }).then((p) => agentItem('kiro', p)),
+      run('claude', ['--version'], { env: base }).then((p) => claudeCodeItem(p, process.platform)),
+      run('codex', ['--version'], { env: base }).then((p) => agentItem('codex', p, process.platform)),
+      run('kiro-cli', ['--version'], { env: base }).then((p) => agentItem('kiro', p, process.platform)),
       node,
       github,
       ...logins
@@ -136,7 +139,8 @@ export class SetupService {
       jiraItem(config, (ref) => secretRefs.has(ref)),
       slackItem(config, await this.deps.slackFailure()),
       healthItem(config),
-      usageItem(options)
+      usageItem(options),
+      ...(this.deps.agentSkills ? [agentSkillsItem(await this.deps.agentSkills().catch(() => ({ installed: 0, outdated: 0, total: 0 })))] : [])
     ]
   }
 }

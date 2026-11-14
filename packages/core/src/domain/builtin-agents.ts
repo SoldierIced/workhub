@@ -6,7 +6,8 @@ const CLAUDE_CONSOLE: ConsoleLaunch = {
   args: [],
   resumeArgs: ['--resume', '{sessionId}'],
   newSessionArgs: ['--session-id', '{sessionId}'],
-  modelArgs: ['--model', '{model}']
+  modelArgs: ['--model', '{model}'],
+  mcpConfigArgs: ['--mcp-config', '{mcpConfig}']
 }
 
 /**

@@ -57,6 +57,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (msg.method === 'initialize') {
     send({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: {}, authMethods: [], agentInfo: { name: 'fake', title: 'Fake Agent', version: '0.0.0' } } })
   } else if (msg.method === 'session/new') {
+    // The MCP servers it was handed, for the tests to check.
+    if (msg.params.mcpServers?.length) process.stderr.write(`mcp:${JSON.stringify(msg.params.mcpServers)}\n`)
     const result =
       style === 'config'
         ? { sessionId, configOptions: configOptions() }

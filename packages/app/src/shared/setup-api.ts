@@ -1,4 +1,4 @@
-import type { SetupItem } from '@workhub/core'
+import type { InstallerId, SetupItem } from '@workhub/core'
 
 /** The windows the setup flow opens (hash routes of the renderer: `#welcome`, `#setup`, `#howitworks`). */
 export type SetupPage = 'welcome' | 'check' | 'help'
@@ -6,6 +6,8 @@ export type SetupPage = 'welcome' | 'check' | 'help'
 export interface SetupApi {
   /** Runs every check; the commands run with a timeout each. */
   run(): Promise<SetupItem[]>
+  /** Installs a missing tool with the main process's own command for that installer; resolves when it ends. */
+  install(installer: InstallerId): Promise<{ ok: boolean; output: string }>
   /** Opens (or focuses) a setup window. */
   openWindow(page: SetupPage): void
   /** Opens the Settings window on a tab (used by the fix buttons of the setup windows). */

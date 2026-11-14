@@ -13,6 +13,7 @@ import {
   type AnyMessage,
   type ClientConnection,
   type ContentBlock,
+  type McpServer,
   type RequestPermissionResponse,
   type Stream
 } from '@agentclientprotocol/sdk'
@@ -227,9 +228,10 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
         }),
         startGuard
       ])
-      // Empty mcpServers: each agent loads its own MCP configuration (P0 finding).
+      // Each agent loads its own MCP configuration (P0 finding); Workhub's server, when it is on, comes on top.
+      const mcpServers: McpServer[] = (req.mcpServers ?? []).map((s) => ({ type: 'stdio' as const, name: s.name, command: s.command, args: s.args, env: Object.entries(s.env).map(([name, value]) => ({ name, value })) }))
       const created = await Promise.race([
-        session.conn.agent.request('session/new', { cwd: req.cwd, mcpServers: [] }),
+        session.conn.agent.request('session/new', { cwd: req.cwd, mcpServers }),
         startGuard
       ])
       session.agentSessionId = created.sessionId

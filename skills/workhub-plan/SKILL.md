@@ -22,6 +22,11 @@ section of `docs/user-guide/plan.md` in the Workhub repository.
 
 ## Before calling
 
+When the `workhub` MCP tools are available (`plan_today`, `inbox_list`, `automation_save`,
+`history_search`…), use them instead of `curl`: they take the same fields and add the session
+and folder themselves. The rules below apply either way.
+
+
 The session environment has `WORKHUB_SESSION` (this session's id) and the endpoint:
 `WORKHUB_SOCKET` (a Unix socket, macOS and Linux) or `WORKHUB_URL` and `WORKHUB_TOKEN` (a loopback
 port and its token, Windows). Pass the session on every call: the answer is about the profile this

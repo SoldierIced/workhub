@@ -58,7 +58,8 @@ hop of an existing flow, or asks to fix a map that Workhub lists as invalid.
      replace them.
 
 3. **Install it.** Inside a Workhub session, post it to the control endpoint; the answer names the
-   invalid fields if any:
+   invalid fields if any. With the `workhub` MCP tools available, call `flow_map_save` with
+   `{ "map": <the map> }` instead of `curl`:
 
    ```sh
    # macOS and Linux (WORKHUB_SOCKET):

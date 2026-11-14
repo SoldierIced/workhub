@@ -136,9 +136,11 @@ bundle without quitting).
 
 ### Agent skills
 
-The `skills/workhub-plan` and `skills/workhub-flow-map` folders teach an agent to use Workhub's local
-control endpoint. Workhub does not install them: copy or symlink them into your agent's skills
-folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`). See
+Sessions reach Workhub's local control endpoint through Workhub's MCP server, which every session
+gets (Settings → Agents → Workhub tools), and through the `skills/workhub-plan`,
+`skills/workhub-flow-map` and `skills/workhub-automations` skills, which teach when and how to use
+it. **Install** in that same section copies the skills into each Claude Code folder; you can also
+copy or symlink them into `~/.claude/skills/` or a project's `.claude/skills/`. See
 [Plan](docs/user-guide/plan.md#the-workhub-plan-skill).
 
 ### Updates

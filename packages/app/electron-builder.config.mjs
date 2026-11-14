@@ -38,6 +38,8 @@ export default {
     { from: '.stage/bridge', to: 'bridge', filter: ['**/*'] },
     // The Slack tracking hook script, copied into the data folder when the user installs it.
     { from: '../adapters/src/chat-slack/hook', to: 'chat-slack', filter: ['*.mjs'] },
+    // The workhub-* agent skills, copied into Claude config folders from Settings → Agents → Workhub tools.
+    { from: '../../skills', to: 'skills', filter: ['workhub-*/SKILL.md'] },
     // Menu bar / notification area icons (scripts/make-icons.mjs), read from <resources>/tray.
     { from: 'build/tray', to: 'tray', filter: ['*.png', '*.ico'] }
   ],

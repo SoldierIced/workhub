@@ -22,6 +22,7 @@ import { settingsHelpEn } from './settingsHelp.en'
 import { trayEn } from './tray.en'
 import { trayPopoverEn } from './trayPopover.en'
 import { appBadgeEn } from './appBadge.en'
+import { agentToolsEn } from './agentTools.en'
 import { sidebarEn } from './sidebar.en'
 import { agentsEn } from './agents.en'
 import { toolViewEn } from './toolView.en'
@@ -499,6 +500,7 @@ export const en = {
   ...trayEn,
   ...trayPopoverEn,
   ...appBadgeEn,
+  ...agentToolsEn,
   ...sidebarEn,
   ...agentsEn,
   ...appearanceEn,

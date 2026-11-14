@@ -130,7 +130,41 @@ never breaks the session.
   /v1/milestones/:id`. With the profile's `agentMilestones: ask` (the default) they answer 202 with
   `pending: true` and wait as proposals on the Milestones tab; with `allow` they answer 200 with
   `applied: true`. Changes go through the same services as the UI, which push change events to open windows. Agents learn
-  them from the skills in `skills/` (`workhub-flow-map`, `workhub-plan`).
+  them from the skills in `skills/` (`workhub-flow-map`, `workhub-plan`, `workhub-automations`).
+- Automations and History for agents (`automation-control.ts`): `GET /v1/automations`, `POST
+  /v1/automations` and `PATCH /v1/automations/:id` save through the same service as the
+  Automations screen, but always leave the automation off (`enabled: true` is refused), so an agent
+  cannot start unattended runs on its own; there is no delete. `GET /v1/history` and `GET
+  /v1/history/:agent/:session` read the History listing and a transcript, capped, without tool output.
+
+### Agent tools: MCP and skills
+
+Agents learn the endpoint two ways (Settings → Agents → Workhub tools, `agent-tools.ts`):
+
+- **MCP**: `workhub-mcp.mjs`, a dependency-free stdio MCP server that ships with the bridge scripts
+  and runs through the app's binary (`ELECTRON_RUN_AS_NODE=1`). Each tool is one call to the
+  endpoint with the session and folder added, so it allows nothing the endpoint does not. The
+  session manager hands it to every session that reaches the endpoint (`StartSessionRequest.mcpServers`):
+  the native bridge passes it to the Agent SDK's `mcpServers`, the ACP runtime to `session/new`,
+  Claude's console to `--mcp-config` (not on Windows, where ConPTY breaks the JSON quoting).
+  Reviewers get none. The option `workhubMcp` (default on) turns it off.
+- **Skills**: `skills/workhub-*`, shipped in `<resources>/skills` and copied into a Claude config
+  folder's `skills/` with a `.workhub-skill` marker; only marked copies are updated or removed.
+
+Benchmark (`scripts/bench-agent-tools/run.mjs`, Claude Code 2.1 print mode, Sonnet, a synthetic
+endpoint, the same user settings in every mode, 2 runs each, all tasks done right in every mode):
+
+| Task | Way | Turns | Prompt tokens (input + cache) | Output | Cost | Time |
+|---|---|---|---|---|---|---|
+| Reply "ok" (fixed cost per turn) | skills / MCP | 1 / 1 | 32.2k / 32.3k | 4 / 4 | same | same |
+| Today's meetings | skills / MCP | 4 / 3 | 108.0k / 97.8k | 602 / 227 | −21 % | −27 % |
+| Add an automation | skills / MCP | 5 / 4 | 137.3k / 133.9k | 761 / 418 | −8 % | −29 % |
+| Read a past session | skills / MCP | 5.5 / 4 | 154.4k / 131.9k | 564 / 393 | −10 % | −20 % |
+
+The fixed cost of the MCP is about 100 tokens per turn because Claude Code defers MCP tool
+definitions (tool search). A skill costs a turn to load and then the agent writes `curl` itself;
+the MCP costs a tool-search turn and calls with checked arguments. Not measured: other agents
+(Codex, Kiro), and Claude Code with tool search off, where the definitions load up front.
 - Agents run with their own permission modes and MCP servers and can execute code on the machine.
   The effective permission mode of each session is shown in its header.
 

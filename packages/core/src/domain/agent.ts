@@ -112,6 +112,8 @@ export interface ConsoleLaunch {
   newSessionArgs?: string[]
   /** Args that pick the session's model, e.g. `--model {model}`; added only when a model is set. */
   modelArgs?: string[]
+  /** Args that add MCP servers, e.g. `--mcp-config {mcpConfig}` (a JSON string); added only when there are some. */
+  mcpConfigArgs?: string[]
 }
 
 /**
@@ -123,11 +125,13 @@ export function consoleCommand(
   launch: ConsoleLaunch,
   agentSessionId: string | undefined,
   hasHistory: boolean,
-  modelId?: string
+  modelId?: string,
+  mcpConfig?: string
 ): { command: string; args: string[] } {
   const extra = !agentSessionId ? [] : hasHistory ? (launch.resumeArgs ?? []) : (launch.newSessionArgs ?? [])
   const model = modelId && modelId !== 'default' ? (launch.modelArgs ?? []).map((a) => a.replaceAll('{model}', modelId)) : []
-  return { command: launch.command, args: [...launch.args, ...extra.map((a) => a.replaceAll('{sessionId}', agentSessionId ?? '')), ...model] }
+  const mcp = mcpConfig ? (launch.mcpConfigArgs ?? []).map((a) => a.replaceAll('{mcpConfig}', mcpConfig)) : []
+  return { command: launch.command, args: [...launch.args, ...extra.map((a) => a.replaceAll('{sessionId}', agentSessionId ?? '')), ...model, ...mcp] }
 }
 
 /**

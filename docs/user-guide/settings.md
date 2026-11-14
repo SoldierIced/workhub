@@ -123,6 +123,29 @@ Under the Claude, Codex and Kiro cards, a switch turns their usage reading on (*
 **Not installed · How to install them** lists the agents Workhub did not find, with how to install
 each. They appear in the list once Workhub finds them in the `PATH`; **Search again** looks again.
 
+### Workhub tools for agents
+
+How agents in your sessions reach Workhub (Plan, automations, history, the review of their changes,
+flow maps). Two ways, which can be on together:
+
+- **Give sessions the Workhub MCP server** (on by default): every new session except reviewers
+  gets Workhub's MCP server, `workhub`, with tools such as `plan_today`, `inbox_propose`,
+  `automation_save` and `history_search`. Claude Code (app and console view, except the console on
+  Windows) and the ACP agents (Kiro, Codex, OpenCode) get it. Nothing to install. A session that
+  is already open gets it when it starts again.
+- **Skills**, per Claude Code folder (one row per Claude account): **Install** copies the
+  `workhub-*` skills into `<folder>/skills`, **Update** replaces Workhub's older copies, **Remove**
+  deletes them. A folder with the same name that you made yourself shows as **Your own copy** and
+  is never touched.
+- **MCP outside Workhub**, per Claude Code folder: adds `workhub` to Claude Code's user settings
+  (`claude mcp add-json --scope user`), so `claude` in any terminal reaches this Workhub while it is
+  open. Not on Windows, where the endpoint's token changes at each launch.
+
+The MCP costs little: Claude Code loads the tool definitions on demand. In a benchmark on the same
+tasks (scripts/bench-agent-tools), the MCP took fewer turns, fewer tokens and less time than the
+skills; the skills add the rules of when to use each call. See
+[architecture](../architecture.md#agent-tools-mcp-and-skills) for the numbers.
+
 ## Connections
 
 **Settings → Connections** holds the services Workhub reads. Each is set up once here; each profile

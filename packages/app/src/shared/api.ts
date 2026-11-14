@@ -2,6 +2,7 @@
 import type { ChromeProfile, GroupChoice, SessionWorktree, WorktreeStatus } from '@workhub/core'
 import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type { ProfileEnvApi, SetupApi, SystemNotificationsApi } from './setup-api'
+import type { AgentToolsApi } from './agent-tools-api'
 import type {
   LocalChanges,
   AppOptions,
@@ -480,6 +481,8 @@ export interface HubApi {
   menu: MenuApi
   settings: SettingsWindowApi
   setup: SetupApi
+  /** Workhub's MCP server and skills for agents (Settings → Agents). */
+  agentTools: AgentToolsApi
   profileEnv: ProfileEnvApi
   /** The same, for an agent account's environment (ids are account ids). */
   accountEnv: ProfileEnvApi

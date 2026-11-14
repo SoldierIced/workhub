@@ -23,6 +23,7 @@ import { settingsHelpEs } from './settingsHelp.es'
 import { trayEs } from './tray.es'
 import { trayPopoverEs } from './trayPopover.es'
 import { appBadgeEs } from './appBadge.es'
+import { agentToolsEs } from './agentTools.es'
 import { sidebarEs } from './sidebar.es'
 import { agentsEs } from './agents.es'
 import { toolViewEs } from './toolView.es'
@@ -498,6 +499,7 @@ export const es: Record<keyof typeof en, string> = {
   ...trayEs,
   ...trayPopoverEs,
   ...appBadgeEs,
+  ...agentToolsEs,
   ...sidebarEs,
   ...agentsEs,
   ...appearanceEs,

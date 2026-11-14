@@ -6,11 +6,56 @@
  */
 import type { WorkhubConfig } from '../config/schema'
 
-export type SetupItemId = 'claudeCode' | 'claudeSignIn' | 'node' | 'github' | 'codex' | 'kiro' | 'profile' | 'jira' | 'slack' | 'health' | 'usage'
+export type SetupItemId = 'claudeCode' | 'claudeSignIn' | 'node' | 'github' | 'codex' | 'kiro' | 'profile' | 'jira' | 'slack' | 'health' | 'usage' | 'agentSkills'
 export type SetupStatus = 'ok' | 'warning' | 'missing'
 
 /** What fixes an item: a Settings tab, a page to read, or a command to run in a terminal. */
-export type SetupFix = { kind: 'settings'; tab: string } | { kind: 'link'; url: string; title: 'installGuide' | 'downloadNode' | 'installGh' } | { kind: 'command'; command: string }
+export type SetupFix = { kind: 'settings'; tab: string } | { kind: 'link'; url: string; title: 'installGuide' | 'downloadNode' | 'installGh' } | { kind: 'command'; command: string } | { kind: 'install'; installer: InstallerId; command: string }
+
+export type InstallerId = 'claudeCode' | 'codex' | 'kiro' | 'github'
+export type InstallPlatform = 'darwin' | 'linux' | 'win32'
+
+/**
+ * The only commands Workhub ever runs to install a tool, per platform. A platform without an entry
+ * has no official one-liner (the row keeps its link or copy fix). Sources, checked 2026-11:
+ * - Claude Code: https://code.claude.com/docs/en/setup (native installer)
+ * - Codex: https://github.com/openai/codex (install scripts)
+ * - Kiro CLI: https://kiro.dev/docs/getting-started/installation/ (macOS install script; no Linux or Windows one-liner listed)
+ * - GitHub CLI: https://github.com/cli/cli/blob/trunk/docs/install_macos.md and install_windows.md (Linux has only distro-specific repositories)
+ */
+export const INSTALLERS: Record<InstallerId, Partial<Record<InstallPlatform, string>>> = {
+  claudeCode: {
+    darwin: 'curl -fsSL https://claude.ai/install.sh | bash',
+    linux: 'curl -fsSL https://claude.ai/install.sh | bash',
+    win32: 'irm https://claude.ai/install.ps1 | iex'
+  },
+  codex: {
+    darwin: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+    linux: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+    win32: 'powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"'
+  },
+  kiro: {
+    darwin: 'curl -fsSL https://cli.kiro.dev/install | bash'
+  },
+  github: {
+    darwin: 'brew install gh',
+    win32: 'winget install --id GitHub.cli --source winget'
+  }
+}
+
+export const isInstallerId = (value: unknown): value is InstallerId => typeof value === 'string' && Object.prototype.hasOwnProperty.call(INSTALLERS, value)
+
+/** The install command for a tool on a platform, or null when there is no official one. */
+export function installCommand(installer: InstallerId, platform: string): string | null {
+  const byPlatform: Partial<Record<string, string>> = INSTALLERS[installer]
+  return byPlatform[platform] ?? null
+}
+
+/** An install fix when the tool has an official installer on this platform. */
+export function installFix(installer: InstallerId, platform: string | undefined): SetupFix | undefined {
+  const command = platform ? installCommand(installer, platform) : null
+  return command ? { kind: 'install', installer, command } : undefined
+}
 
 export interface SetupItem {
   /** `claudeSignIn:<accountKey>` for one row per Claude login. */
@@ -49,8 +94,8 @@ const item = (kind: SetupItemId, status: SetupStatus, code: string, params: Reco
 
 const firstLine = (text: string): string => text.split(/\r?\n/).find((l) => l.trim())?.trim() ?? ''
 
-export function claudeCodeItem(p: Probe): SetupItem {
-  const link: SetupFix = { kind: 'link', url: CLAUDE_CODE_SETUP_URL, title: 'installGuide' }
+export function claudeCodeItem(p: Probe, platform?: string): SetupItem {
+  const link: SetupFix = installFix('claudeCode', platform) ?? { kind: 'link', url: CLAUDE_CODE_SETUP_URL, title: 'installGuide' }
   switch (p.result) {
     case 'ok':
       return item('claudeCode', 'ok', 'version', { version: /\d+\.\d+\.\d+/.exec(p.output)?.[0] ?? firstLine(p.output) })
@@ -104,8 +149,8 @@ export function nodeItem(p: Probe): SetupItem {
  * Installed, then signed in. `version` is `gh --version`, `user` is `gh api user --jq .login`
  * (needs the network) and `token` is `gh auth token` (local), which tells a missing login from GitHub not answering.
  */
-export function githubItem(version: Probe, user: Probe | null, token: Probe | null): SetupItem {
-  if (version.result === 'notFound') return item('github', 'missing', 'ghMissing', {}, { fix: { kind: 'command', command: 'brew install gh' } })
+export function githubItem(version: Probe, user: Probe | null, token: Probe | null, platform?: string): SetupItem {
+  if (version.result === 'notFound') return item('github', 'missing', 'ghMissing', {}, { fix: installFix('github', platform) ?? { kind: 'command', command: 'brew install gh' } })
   if (version.result === 'timeout') return item('github', 'warning', 'timeout', { command: 'gh --version' })
   const login = user?.result === 'ok' ? user.output.trim() : ''
   if (login) return item('github', 'ok', 'ghSignedIn', { login })
@@ -114,10 +159,10 @@ export function githubItem(version: Probe, user: Probe | null, token: Probe | nu
 }
 
 /** Codex and Kiro are optional agents: present or not, never a problem. */
-export function agentItem(kind: 'codex' | 'kiro', p: Probe): SetupItem {
+export function agentItem(kind: 'codex' | 'kiro', p: Probe, platform?: string): SetupItem {
   if (p.result === 'ok') return item(kind, 'ok', 'version', { version: /\d+\.\d+(?:\.\d+)?/.exec(p.output)?.[0] ?? firstLine(p.output) }, { optional: true })
   if (p.result === 'timeout') return item(kind, 'warning', 'timeout', { command: kind === 'codex' ? 'codex --version' : 'kiro-cli --version' }, { optional: true })
-  return item(kind, 'missing', kind === 'codex' ? 'codexMissing' : 'kiroMissing', {}, { optional: true, fix: { kind: 'settings', tab: 'accounts' } })
+  return item(kind, 'missing', kind === 'codex' ? 'codexMissing' : 'kiroMissing', {}, { optional: true, fix: installFix(kind, platform) ?? { kind: 'settings', tab: 'accounts' } })
 }
 
 export function profileItem(config: Pick<WorkhubConfig, 'profiles'>): SetupItem {
@@ -159,6 +204,18 @@ export function healthItem(config: Pick<WorkhubConfig, 'profiles'>): SetupItem {
 }
 
 /** Where plan usage comes from: Claude's usage endpoint and Codex's, both opt-in; without them only local token counts show. */
+/**
+ * Workhub's skills in the Claude Code folders (Settings → Agents → Workhub tools): optional, since
+ * sessions get Workhub's MCP server anyway. `installed` and `total` count folders.
+ */
+export function agentSkillsItem(folders: { installed: number; outdated: number; total: number }): SetupItem {
+  const fix: SetupFix = { kind: 'settings', tab: 'accounts' }
+  if (folders.total === 0) return item('agentSkills', 'missing', 'skillsNoClaude', {}, { optional: true })
+  if (folders.outdated > 0) return item('agentSkills', 'warning', 'skillsOutdated', { count: String(folders.outdated) }, { optional: true, fix })
+  if (folders.installed === folders.total) return item('agentSkills', 'ok', 'skillsInstalled', { count: String(folders.total) }, { optional: true })
+  return item('agentSkills', 'missing', 'skillsMissing', {}, { optional: true, fix })
+}
+
 export function usageItem(options: { claudePlanUsage: boolean; codexUsage: boolean }): SetupItem {
   const on = [options.claudePlanUsage ? 'Claude' : '', options.codexUsage ? 'Codex' : ''].filter(Boolean)
   if (on.length > 0) return item('usage', 'ok', 'usageOn', { sources: on.join(', ') }, { optional: true })

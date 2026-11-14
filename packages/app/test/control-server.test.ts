@@ -103,6 +103,35 @@ describe('control endpoint', () => {
   })
 })
 
+describe('automation and history routes', () => {
+  it('routes each call to its handler with the decoded ids and refuses other methods', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-ctl-'))
+    dirs.push(dir)
+    const calls: string[] = []
+    const ok = (what: string) => async (...args: unknown[]) => (calls.push([what, ...args.filter((a) => typeof a === 'string')].join(' ')), { status: 200, body: { ok: true } })
+    const socket = controlSocketPath(dir)
+    const server = await startControlServer(socket, {
+      openReview: () => ({ ok: true }),
+      automations: { list: ok('list'), create: ok('create'), update: ok('update'), history: ok('history'), session: ok('session') }
+    })
+    try {
+      expect((await call(socket, 'GET', '/v1/automations')).status).toBe(200)
+      expect((await call(socket, 'POST', '/v1/automations', { automation: { name: 'x' } })).status).toBe(200)
+      expect((await call(socket, 'PATCH', '/v1/automations/a%201', { automation: {} })).status).toBe(200)
+      expect((await call(socket, 'GET', '/v1/history')).status).toBe(200)
+      expect((await call(socket, 'GET', '/v1/history/claude/s-1')).status).toBe(200)
+      expect(calls).toEqual(['list', 'create', 'update a 1', 'history', 'session claude s-1'])
+      expect((await call(socket, 'DELETE', '/v1/automations/a1')).status).toBe(405)
+      expect((await call(socket, 'PUT', '/v1/automations')).status).toBe(405)
+      expect((await call(socket, 'POST', '/v1/history')).status).toBe(405)
+      expect((await call(socket, 'GET', '/v1/history/claude')).status).toBe(404)
+      expect((await call(socket, 'GET', '/v1/automations/a/b')).status).toBe(404)
+    } finally {
+      server?.close()
+    }
+  })
+})
+
 describe.skipIf(process.platform === 'win32')('control socket ownership', () => {
   // Under /tmp: the user's temp folder on macOS is too long for some socket paths.
   const newDir = () => {

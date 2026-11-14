@@ -31,6 +31,18 @@
  *     -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","status":"done"}'
  *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/milestones?session=$WORKHUB_SESSION"
  *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/people?session=$WORKHUB_SESSION"
+ *
+ * And it lets an agent read, add and edit automations and read past sessions
+ * (`automation-control.ts`; the `workhub-automations` skill). What an agent adds or edits stays off
+ * until the user turns it on:
+ *
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/automations?session=$WORKHUB_SESSION"
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/automations \
+ *     -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","automation":{"name":"Triage","prompt":"/triage"}}'
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X PATCH "http://workhub/v1/automations/<id>" \
+ *     -H 'content-type: application/json' -d '{"session":"'"$WORKHUB_SESSION"'","automation":{"triggers":{"intervalMinutes":30}}}'
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/history?session=$WORKHUB_SESSION&q=deploy"
+ *   curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/history/claude/<agent-session-id>?session=$WORKHUB_SESSION"
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, statSync, unlinkSync } from 'node:fs'
@@ -38,6 +50,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
+import type { AutomationControl } from './automation-control'
 import type { PlanControl } from './plan-control'
 
 const MAX_BODY = 256 * 1024
@@ -65,6 +78,8 @@ export interface ControlDeps {
   addInboxItems?(body: unknown): Promise<{ ok: true; added: string[]; duplicates: string[] } | { ok: false; status: number; error: string }>
   /** Plan for agents: today's meetings, reading and updating the inbox, milestones, people. */
   plan?: PlanControl
+  /** Automations (list, add, edit; never turned on) and past sessions for agents. */
+  automations?: AutomationControl
   log?: (message: string) => void
 }
 
@@ -266,6 +281,41 @@ export async function handleControl(deps: ControlDeps, req: IncomingMessage, res
       }
     }
     return reply(res, await deps.plan.changeMilestone(id, method as 'POST' | 'PATCH' | 'DELETE', body, url.searchParams))
+  }
+  if (url.pathname === '/v1/automations' || url.pathname.startsWith('/v1/automations/')) {
+    if (!deps.automations) return send(res, 404, { ok: false, error: 'automations are not available' })
+    const one = /^\/v1\/automations\/([^/]{1,200})$/.exec(url.pathname)
+    if (!one && url.pathname !== '/v1/automations') return send(res, 404, { ok: false, error: 'unknown endpoint' })
+    if (!one && req.method === 'GET') return reply(res, await deps.automations.list(url.searchParams))
+    if (one ? req.method !== 'PATCH' : req.method !== 'POST') return send(res, 405, { ok: false, error: one ? 'use PATCH' : 'use GET or POST' })
+    let body: unknown
+    try {
+      body = await readJson(req)
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e instanceof Error ? e.message : 'bad body' })
+    }
+    if (!one) return reply(res, await deps.automations.create(body, url.searchParams))
+    let id: string
+    try {
+      id = decodeURIComponent(one[1]!)
+    } catch {
+      return send(res, 400, { ok: false, error: 'bad automation id' })
+    }
+    return reply(res, await deps.automations.update(id, body, url.searchParams))
+  }
+  if (url.pathname === '/v1/history' || url.pathname.startsWith('/v1/history/')) {
+    if (!deps.automations) return send(res, 404, { ok: false, error: 'the history is not available' })
+    if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'use GET' })
+    if (url.pathname === '/v1/history') return reply(res, await deps.automations.history(url.searchParams))
+    const past = /^\/v1\/history\/([^/]{1,100})\/([^/]{1,200})$/.exec(url.pathname)
+    if (!past) return send(res, 404, { ok: false, error: 'unknown endpoint' })
+    let ids: [string, string]
+    try {
+      ids = [decodeURIComponent(past[1]!), decodeURIComponent(past[2]!)]
+    } catch {
+      return send(res, 400, { ok: false, error: 'bad agent or session id' })
+    }
+    return reply(res, await deps.automations.session(ids[0], ids[1], url.searchParams))
   }
   const read = Object.hasOwn(PLAN_READS, url.pathname) ? PLAN_READS[url.pathname] : undefined
   if (read) {
