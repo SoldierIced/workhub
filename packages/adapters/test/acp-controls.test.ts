@@ -108,6 +108,16 @@ describe('AcpRuntime model and mode controls', () => {
     })
   })
 
+  it("hands the agent Workhub's MCP server at session/new, nothing when there is none", async () => {
+    await withRuntime(async (rt, events) => {
+      const mcpServers = [{ name: 'workhub', command: '/app/Workhub', args: ['/x.mjs'], env: { WORKHUB_SESSION: 's1' } }]
+      await rt.start({ sessionId: 'm1', agent: agentFor('persona'), account: null, cwd: process.cwd(), env: { FAKE_ACP_STYLE: 'kiro' }, mcpServers })
+      await vi.waitFor(() => expect(stderr(events, 'm1')).toContain(`mcp:${JSON.stringify([{ type: 'stdio', name: 'workhub', command: '/app/Workhub', args: ['/x.mjs'], env: [{ name: 'WORKHUB_SESSION', value: 's1' }] }])}`))
+      await rt.start({ sessionId: 'm2', agent: agentFor('persona'), account: null, cwd: process.cwd(), env: { FAKE_ACP_STYLE: 'kiro' } })
+      expect(stderr(events, 'm2').some((l) => l.startsWith('mcp:'))).toBe(false)
+    })
+  })
+
   it('a reviewer ignores the mode asked for and takes the read-only one', async () => {
     await withRuntime(async (rt) => {
       const started = await rt.start({ sessionId: 'r1', agent: agentFor('permission'), account: null, cwd: process.cwd(), env: {}, modeId: 'bypassPermissions', readOnly: true })

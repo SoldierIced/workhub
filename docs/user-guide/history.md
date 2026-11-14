@@ -26,4 +26,12 @@ You can also resume from a folder (**Resume session…** in the folder's menu in
 a pull request or ticket, where **Past sessions** lists earlier sessions that mention it and why they
 matched (same PR, same branch or same ticket).
 
+## Agents and the history
+
+An agent in a Workhub session can read the history through the local control endpoint
+(`skills/workhub-automations`): `GET /v1/history` lists past sessions newest first, filtered by
+words (`q`), `agent`, `automation` or `folder`; `GET /v1/history/<agent>/<session id>` returns the
+last messages of one of them, with text shortened and tool output and images left out. It cannot
+resume, rename or change a past session.
+
 Next: [Usage and budgets](usage.md).

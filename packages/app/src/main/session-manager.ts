@@ -23,6 +23,7 @@ import {
   worktreeSettings,
   worktreesLocation,
   type AgentAccount,
+  type McpServerLaunch,
   type AgentAdapterKind,
   type AgentDefinition,
   type AgentEvent,
@@ -52,11 +53,22 @@ import { cleanSessionName, type SessionNameStore } from './session-names'
 /** What runs the session right now: the agent's runtime (app) or the agent's own TUI in a PTY (console). */
 type Engine = 'app' | 'console'
 
+/**
+ * The `--mcp-config` JSON of a console (Claude Code's format), or undefined for none. Not on
+ * Windows: ConPTY joins the args into one command line, where the JSON's quotes do not survive.
+ */
+export function consoleMcpConfig(servers: readonly McpServerLaunch[], platform: NodeJS.Platform = process.platform): string | undefined {
+  if (!servers.length || platform === 'win32') return undefined
+  return JSON.stringify({ mcpServers: Object.fromEntries(servers.map((s) => [s.name, { type: 'stdio', command: s.command, args: s.args, env: s.env }])) })
+}
+
 interface ManagedSession {
   view: SessionView
   agent: AgentDefinition
   account: AgentAccount | null
   env: Record<string, string>
+  /** MCP servers Workhub hands the session (its own, when it is on); empty for a reviewer. */
+  mcp: McpServerLaunch[]
   runtime: AgentRuntime
   engine: Engine
   /** Set while the session hands over from one engine to the other. */
@@ -107,6 +119,8 @@ export interface SessionManagerDeps {
    * so an agent never reaches an endpoint through values inherited from a parent process.
    */
   sessionEnv?: (sessionId: string) => Record<string, string>
+  /** MCP servers a session gets on top of the agent's own (Workhub's), from its environment. Never for a reviewer. */
+  sessionMcp?: (env: Record<string, string>, agent: AgentDefinition) => Promise<McpServerLaunch[]>
   runtimes: Partial<Record<AgentAdapterKind, AgentRuntime>>
   /** Runs consoles and shells. */
   terminal: AgentRuntime
@@ -279,6 +293,7 @@ export class SessionManager {
       ...(input.readOnly ? NO_CONTROL_ENV : (this.deps.sessionEnv?.(id) ?? NO_CONTROL_ENV)),
       ...(internal.env ?? {})
     }
+    const mcp = input.readOnly ? [] : ((await this.deps.sessionMcp?.(env, agent)) ?? [])
     const view: SessionView = {
       id,
       identity,
@@ -314,6 +329,7 @@ export class SessionManager {
       agent,
       account,
       env,
+      mcp,
       runtime,
       engine,
       switching: false,
@@ -691,7 +707,8 @@ export class SessionManager {
       ...(opts.modeId ? { modeId: opts.modeId } : {}),
       cols: opts.cols,
       rows: opts.rows,
-      ...(s.readOnly ? { readOnly: true } : {})
+      ...(s.readOnly ? { readOnly: true } : {}),
+      ...(s.mcp.length ? { mcpServers: s.mcp } : {})
     })
     const patch: Partial<SessionView> = { agentSessionId: started.agentSessionId ?? s.view.agentSessionId, agentName: started.agentName }
     // An agent that only reports its session id now (ACP) gives the session its real identity; the
@@ -753,7 +770,7 @@ export class SessionManager {
     const launch =
       s.agent.adapter === 'terminal'
         ? { command: s.agent.command, args: s.agent.args }
-        : consoleCommand(s.agent.console!, s.view.agentSessionId, await this.hasTranscript(s), modelId)
+        : consoleCommand(s.agent.console!, s.view.agentSessionId, await this.hasTranscript(s), modelId, consoleMcpConfig(s.mcp))
     const agent: AgentDefinition = { ...s.agent, adapter: 'terminal', command: launch.command, args: launch.args }
     const channel = terminalChannel(s.view.id, 'console')
     const size = this.sizes.get(channel)

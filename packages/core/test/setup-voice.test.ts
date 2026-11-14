@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  agentSkillsItem,
   agentItem,
   appOptions,
   claudeCodeItem,
@@ -7,6 +8,9 @@ import {
   DEFAULT_OPTIONS,
   githubItem,
   healthItem,
+  INSTALLERS,
+  installCommand,
+  isInstallerId,
   jiraItem,
   migrateConfig,
   nodeItem,
@@ -24,6 +28,28 @@ import {
 
 const ok = (output: string): Probe => ({ result: 'ok', output })
 const NONE: Probe = { result: 'notFound', output: '' }
+
+describe('installers', () => {
+  it('lists official commands per platform and only for those that have one', () => {
+    expect(installCommand('claudeCode', 'darwin')).toBe('curl -fsSL https://claude.ai/install.sh | bash')
+    expect(installCommand('claudeCode', 'win32')).toContain('install.ps1')
+    expect(installCommand('github', 'linux')).toBeNull()
+    expect(installCommand('kiro', 'win32')).toBeNull()
+    expect(installCommand('codex', 'freebsd')).toBeNull()
+    expect(isInstallerId('claudeCode')).toBe(true)
+    expect(isInstallerId('rm -rf /')).toBe(false)
+    expect(isInstallerId('toString')).toBe(false)
+  })
+  it('puts the install fix on missing rows when the platform has an installer, else keeps the old fix', () => {
+    expect(claudeCodeItem(NONE, 'darwin').fix).toEqual({ kind: 'install', installer: 'claudeCode', command: INSTALLERS.claudeCode.darwin })
+    expect(claudeCodeItem(NONE, 'freebsd').fix).toMatchObject({ kind: 'link' })
+    expect(claudeCodeItem(NONE).fix).toMatchObject({ kind: 'link' })
+    expect(agentItem('codex', NONE, 'linux').fix).toMatchObject({ kind: 'install', installer: 'codex' })
+    expect(agentItem('kiro', NONE, 'linux').fix).toEqual({ kind: 'settings', tab: 'accounts' })
+    expect(githubItem(NONE, null, null, 'win32').fix).toMatchObject({ kind: 'install', installer: 'github' })
+    expect(githubItem(NONE, null, null, 'linux').fix).toEqual({ kind: 'command', command: 'brew install gh' })
+  })
+})
 
 describe('speechText', () => {
   it('drops code blocks, link addresses, bare URLs and formatting marks', () => {
@@ -143,5 +169,14 @@ describe('config 7', () => {
 
   it('names the secret of a profile variable', () => {
     expect(profileEnvRef('acme', 'TOKEN')).toBe('profile-env:acme:TOKEN')
+  })
+})
+
+describe('Workhub skills row', () => {
+  it('is optional, points at Settings → Agents, and counts the Claude folders', () => {
+    expect(agentSkillsItem({ installed: 2, outdated: 0, total: 2 })).toMatchObject({ status: 'ok', code: 'skillsInstalled', params: { count: '2' }, optional: true })
+    expect(agentSkillsItem({ installed: 0, outdated: 1, total: 2 })).toMatchObject({ status: 'warning', code: 'skillsOutdated', fix: { kind: 'settings', tab: 'accounts' } })
+    expect(agentSkillsItem({ installed: 1, outdated: 0, total: 2 })).toMatchObject({ status: 'missing', code: 'skillsMissing', optional: true })
+    expect(agentSkillsItem({ installed: 0, outdated: 0, total: 0 })).toMatchObject({ code: 'skillsNoClaude' })
   })
 })

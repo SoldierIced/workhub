@@ -167,6 +167,7 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
       ...(req.resume ? { resume: agentSessionId } : { sessionId: agentSessionId }),
       ...(req.model ? { model: req.model } : {}),
       ...(req.effort ? { effort: req.effort } : {}),
+      ...(req.mcpServers?.length ? { mcpServers: req.mcpServers } : {}),
       // A reviewer: plan mode, and the edit tools refused outright. Else the mode asked for, when Claude has it.
       ...(req.readOnly ? { permissionMode: 'plan', readOnly: true } : req.modeId && CLAUDE_MODES.has(req.modeId) ? { permissionMode: req.modeId } : {})
     })

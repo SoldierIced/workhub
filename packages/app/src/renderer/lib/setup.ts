@@ -35,6 +35,8 @@ export function fixLabel(t: T, fix: SetupFix): string {
       return t(`setup.link.${fix.title}` as MessageKey)
     case 'command':
       return t('setup.copy')
+    case 'install':
+      return t('setup.install')
   }
 }
 

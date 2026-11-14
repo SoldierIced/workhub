@@ -132,6 +132,10 @@ async function start(config) {
   if (config.permissionMode) options.permissionMode = config.permissionMode;
   // An AI reviewer reads only: the tools that change files are not offered at all.
   if (config.readOnly) options.disallowedTools = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+  // Workhub's own MCP server (stdio), added to the servers the user's settings load.
+  if (Array.isArray(config.mcpServers) && config.mcpServers.length > 0) {
+    options.mcpServers = Object.fromEntries(config.mcpServers.map((s) => [s.name, { type: "stdio", command: s.command, args: s.args, env: s.env }]));
+  }
   const settings = {};
   // In SDK sessions the claude.ai Slack connector shadows the official Slack plugin (both serve
   // mcp.slack.com), so an unauthorized connector hides a working plugin. When the account has the

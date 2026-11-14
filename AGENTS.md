@@ -54,8 +54,9 @@ npm run demo         # dev build with synthetic data in .demo-data/ (add -- --re
 - Local control endpoint: `packages/app/src/main/control-server.ts`; Plan routes in
   `packages/app/src/main/plan-control.ts`. Unix socket on macOS and Linux (`WORKHUB_SOCKET`),
   loopback HTTP with a token on Windows. Every session also gets `WORKHUB_SESSION`.
-- Agent skills that teach agents those endpoints: `skills/workhub-plan` and
-  `skills/workhub-flow-map`. Keep a skill in step with the endpoint it describes.
+- Agent skills that teach agents those endpoints: `skills/workhub-plan`,
+  `skills/workhub-flow-map` and `skills/workhub-automations` (automations and history,
+  `packages/app/src/main/automation-control.ts`). Keep a skill in step with the endpoint it describes.
 - Settings screen: `packages/app/src/renderer/screens/SettingsScreen.tsx`, shown in its own window
   (`screens/SettingsWindow.tsx`, `main/settings-window.ts`).
 - Product name, app id and release repository: `scripts/brand.mjs` only.

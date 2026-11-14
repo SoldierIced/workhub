@@ -54,4 +54,29 @@ Automations wait while their account is past a usage ceiling; see
 [Usage and budgets](usage.md). Failures notify you if **Automations** is on under **Settings →
 General → Other notifications**.
 
+## Agents and automations
+
+An agent in a Workhub session can list, add and edit automations through the local control
+endpoint (`skills/workhub-automations` teaches it how):
+
+```sh
+curl --unix-socket "$WORKHUB_SOCKET" "http://workhub/v1/automations?session=$WORKHUB_SESSION"
+curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/automations \
+  -H 'content-type: application/json' \
+  -d '{"session":"'"$WORKHUB_SESSION"'","automation":{"name":"Triage","prompt":"/triage","triggers":{"intervalMinutes":30}}}'
+curl --unix-socket "$WORKHUB_SOCKET" -X PATCH "http://workhub/v1/automations/<id>" \
+  -H 'content-type: application/json' \
+  -d '{"session":"'"$WORKHUB_SESSION"'","automation":{"window":{"endHour":18}}}'
+```
+
+- The list holds the automations of the session's profile and those without a profile, with their
+  state and the last 20 runs.
+- A new automation belongs to the session's profile; `name` is required and the other fields take
+  the defaults of **New automation**. An edit changes only the fields sent (`triggers`, `window` and
+  `limits` merge into the stored ones).
+- **An agent never turns an automation on.** What it adds starts off and what it edits is turned
+  off, so you check it on this screen and turn it on yourself. Removing one stays yours too.
+- A reviewer session can read but not change them. On Windows the endpoint is a loopback port
+  with a token (`WORKHUB_URL`, `WORKHUB_TOKEN`); the skill covers both.
+
 Next: [History](history.md).

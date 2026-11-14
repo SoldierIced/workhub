@@ -277,9 +277,17 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
     },
     setup: {
       run: () => invoke('setup:run'),
+      install: (installer) => invoke('setup:install', installer),
       openWindow: (page) => send('setup:openWindow', page),
       openSettings: (tab) => send('setup:openSettings', tab),
       completeWelcome: () => invoke('setup:completeWelcome')
+    },
+    agentTools: {
+      status: () => invoke('agentTools:status'),
+      installSkills: (accountId) => invoke('agentTools:installSkills', accountId),
+      removeSkills: (accountId) => invoke('agentTools:removeSkills', accountId),
+      installGlobalMcp: (accountId) => invoke('agentTools:installGlobalMcp', accountId),
+      removeGlobalMcp: (accountId) => invoke('agentTools:removeGlobalMcp', accountId)
     },
     profileEnv: {
       stored: (profileId) => invoke('profileEnv:stored', profileId),

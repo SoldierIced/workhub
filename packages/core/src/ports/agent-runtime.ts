@@ -35,6 +35,16 @@ export interface StartSessionRequest {
    * with edit tools denied, or an ACP permission mode such as `plan` / `read-only`.
    */
   readOnly?: boolean
+  /** MCP servers (stdio) the session gets on top of the agent's own: Workhub's, when it is on. */
+  mcpServers?: McpServerLaunch[]
+}
+
+/** A stdio MCP server handed to a session: the command, its args and the environment it adds. */
+export interface McpServerLaunch {
+  name: string
+  command: string
+  args: string[]
+  env: Record<string, string>
 }
 
 /** An image pasted into a prompt, base64 without the `data:` prefix. */

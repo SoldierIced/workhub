@@ -92,6 +92,10 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     const other = await echoStart('n-acp', { modeId: 'code-agent' })
     expect(other['permissionMode']).toBeUndefined()
     expect(other['effort']).toBeUndefined()
+    expect(other['mcpServers']).toBeUndefined()
+    await rt.stopAll()
+    const mcpServers = [{ name: 'workhub', command: '/app/Workhub', args: ['/x.mjs'], env: { WORKHUB_SESSION: 's1' } }]
+    expect((await echoStart('n-mcp', { mcpServers }))['mcpServers']).toEqual(mcpServers)
   })
 
   it('offers the Claude permission modes and switches the running session to one live', async () => {

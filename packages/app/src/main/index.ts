@@ -118,6 +118,7 @@ import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager
 import { registerLinksIpc } from './links'
 import { LocalReviewService, opensAsProgram, registerLocalReviewIpc } from './local-review'
 import { CONTROL_ENV_KEYS, controlEnv, controlSocketPath, newControlToken, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
+import { createAutomationControl } from './automation-control'
 import { createPlanControl, resolveControlProfile } from './plan-control'
 import { FLOW_HISTORY_FOLDER, FlowHistoryStore } from './flow-history'
 import { FLOW_MAPS_FOLDER, saveFlowMap } from './flow-maps'
@@ -144,7 +145,10 @@ import type { MenuCommand, SessionSnapshot } from '../shared/windows-api'
 import { createLinkService } from './link-service'
 import { listChromeProfiles, systemLinkDeps } from './link-system'
 import { accountSessionEnv, profileSessionEnv, saveAccountEnv, saveProfileEnv, storedAccountEnvNames, storedProfileEnvNames } from './profile-env'
-import { SetupService } from './setup-service'
+import { AgentToolsService, registerAgentToolsIpc, WORKHUB_MCP_SCRIPT, workhubMcpLaunch } from './agent-tools'
+import { SetupInstaller } from './setup-install'
+import { registerSetupInstallIpc } from './setup-ipc'
+import { probe, SetupService } from './setup-service'
 import { CalendarService } from './calendar-service'
 import { CalendarStateStore, CalendarWatcher } from './calendar-watcher'
 import { demoScenario, seedScenarioConfig, seedScenarioState } from './demo-scenario'
@@ -433,6 +437,11 @@ const sessions = new SessionManager({
   config: configuration,
   worktrees: new GitWorktrees(),
   sessionEnv: (sessionId) => controlEnv(sessionId, controlEndpoint),
+  // Workhub's MCP server (Settings → Agents → Workhub tools), for sessions that reach the endpoint.
+  sessionMcp: async (env) => {
+    if (!appOptions(await configuration.current()).workhubMcp) return []
+    return workhubMcpLaunch(env, { node: process.execPath, script: join(bridgeDir, WORKHUB_MCP_SCRIPT) })
+  },
   names: sessionNames,
   profileEnv: async (profileId, cwd) => {
     const config = await configuration.current()
@@ -835,11 +844,25 @@ function syncTitleBarOverlay(): void {
 const links = createLinkService(systemLinkDeps(() => configuration.current(), sessionPath))
 const openLink = (profileId: string | null, url: string): Promise<void> => links.open(url, profileId)
 
+// Workhub's skills and MCP server for agents (Settings → Agents → Workhub tools).
+const agentTools = new AgentToolsService({
+  config: () => configuration.current(),
+  home: homedir(),
+  skillsDir: app.isPackaged ? join(process.resourcesPath, 'skills') : join(repoRoot, 'skills'),
+  node: process.execPath,
+  script: join(bridgeDir, WORKHUB_MCP_SCRIPT),
+  socket: () => (controlEndpoint && 'socket' in controlEndpoint ? controlEndpoint.socket : null),
+  run: (command, args, options) => probe(command, args, options),
+  env: () => ({ ...process.env, PATH: [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter) })
+})
+// One install at a time (the installer keeps the guard), started from the setup checklist.
+const setupInstaller = new SetupInstaller()
 const setup = new SetupService({
   config: () => configuration.current(),
   hasSecret: (ref) => secrets.has(ref),
   path: () => [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter),
   home: homedir(),
+  agentSkills: () => agentTools.skillsSummary(),
   slackFailure: async () => {
     const snapshot = await slack.snapshot()
     return snapshot.health === 'failing' ? (snapshot.lastError ?? 'failing') : null
@@ -866,6 +889,16 @@ function openSetupWindow(page: SetupPage): void {
   setupWindows.set(page, created)
   created.on('closed', () => setupWindows.delete(page))
 }
+
+// Listing the history starts a process per account that reads every transcript's head: calls made
+// meanwhile share it, and the sidebar's lookups (several right after start-up) take one up to 10 s old.
+const namedHistory = new RecentCall(async () => {
+  const config = await configuration.current()
+  const result = await diagnostics.activity.run('history list', async () => listAllHistory(config, homedir(), historySources))
+  // A session the user named shows that name in the history too; an automation's runs say which one they are.
+  const named = result.entries.map((e) => ({ ...e, title: sessionNames.get(e.agentSessionId) ?? e.title }))
+  return { ...result, entries: linkAutomationHistory(named, config.automations ?? [], automations.engine.snapshot().owned, homedir()) }
+})
 
 function registerIpc(): void {
   // Every handler answers only the app's own renderer (see ipc-guard.ts).
@@ -984,15 +1017,6 @@ function registerIpc(): void {
   ipc.handle('updates:skip', (_e, version: unknown) => {
     if (typeof version === 'string' && version) saveUpdatePrompt({ skippedVersion: version })
   })
-  // Listing the history starts a process per account that reads every transcript's head: calls made
-  // meanwhile share it, and the sidebar's lookups (several right after start-up) take one up to 10 s old.
-  const namedHistory = new RecentCall(async () => {
-    const config = await configuration.current()
-    const result = await diagnostics.activity.run('history list', async () => listAllHistory(config, homedir(), historySources))
-    // A session the user named shows that name in the history too; an automation's runs say which one they are.
-    const named = result.entries.map((e) => ({ ...e, title: sessionNames.get(e.agentSessionId) ?? e.title }))
-    return { ...result, entries: linkAutomationHistory(named, config.automations ?? [], automations.engine.snapshot().owned, homedir()) }
-  })
   ipc.handle('history:list', () => namedHistory.get())
   ipc.handle('history:find', async (_e, keys: unknown) => {
     if (!Array.isArray(keys)) return []
@@ -1047,6 +1071,8 @@ function registerIpc(): void {
   })
 
   ipc.handle('setup:run', () => setup.run())
+  registerSetupInstallIpc(ipc, { install: (id) => setupInstaller.install(id) })
+  registerAgentToolsIpc(ipc, agentTools)
   ipc.on('setup:openWindow', (_e, page: SetupPage) => {
     if (page === 'welcome' || page === 'check' || page === 'help') openSetupWindow(page)
   })
@@ -1902,6 +1928,22 @@ void app.whenReady().then(async () => {
       planner,
       agenda: (profileId) => planView({ calendar, briefs }, profileId),
       profile: async (profileId) => (await configuration.current()).profiles.find((p) => p.id === profileId)
+    }),
+    automations: createAutomationControl({
+      ...controlProfiles,
+      snapshot: () => automations.snapshot(),
+      save: (a) => automations.save(a),
+      agentKeys: async (profileId) => resolveEffectiveAgents(await configuration.current(), profileId).map((a) => a.key),
+      history: () => namedHistory.get(10_000),
+      messages: async (entry) => {
+        const source = historySources[entry.agentId as keyof typeof historySources]
+        if (!source) return []
+        const config = await configuration.current()
+        const account = entry.accountId ? (config.accounts.find((a) => a.id === entry.accountId) ?? null) : null
+        const configDir = entry.agentId === 'claude' ? claudeConfigDirOf(config, account, homedir()) : (account?.configDir ?? undefined)
+        return source.messages(entry.agentSessionId, entry.cwd ?? homedir(), configDir)
+      },
+      newId: () => crypto.randomUUID().slice(0, 8)
     }),
     log: (m) => diagnostics.log.warn(m)
   }

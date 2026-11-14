@@ -93,7 +93,11 @@ path.
 1. Open **Help → Setup Check…** (or **Settings → Advanced → Diagnostics and help**, which has the same entry). It lists
    what Workhub needs on this machine and the optional integrations. Each item shows **Ready**,
    **Needs a look**, **Missing** or **Not set up**, with a button to fix it. Nothing in the check
-   changes a setting by itself.
+   changes a setting by itself. For a missing Claude Code, Codex, Kiro CLI or GitHub CLI the button
+   is **Install** when the tool has an official installer for your system: Workhub shows the exact
+   command, runs it in a shell on this machine only after you confirm, then checks again. Workhub
+   only runs commands from its own list of official installers. Without one, the button opens the
+   install guide or copies a command.
 2. The **Welcome…** window (Help menu) walks you through creating a first profile: a name and the
    folders you work in. You can add more later.
 3. In **Settings → Agents**, add the agent accounts you use. A Claude account is a config folder;

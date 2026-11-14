@@ -116,6 +116,11 @@ export interface AppOptions {
   /** The first-run welcome window was shown (or the user already had profiles). */
   welcomeDone: boolean
   /**
+   * Give every Workhub session Workhub's MCP server (Plan, automations, history, review, flow maps
+   * as tools). Off: agents reach the same endpoint only through the `workhub-*` skills.
+   */
+  workhubMcp: boolean
+  /**
    * Branches Close PR never deletes (Settings → Pull requests). Unset: `DEFAULT_PROTECTED_BRANCHES`.
    * `release…` branches are always kept.
    */
@@ -157,7 +162,7 @@ export const DEFAULT_SPEECH_RATE = 190
 /** The cheap model a long message is summarized with before it is read aloud. */
 export const DEFAULT_LISTEN_MODEL = 'haiku'
 
-export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, trayPopover: DEFAULT_TRAY_POPOVER_OPTIONS, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, listenModel: DEFAULT_LISTEN_MODEL, welcomeDone: false }
+export const DEFAULT_OPTIONS: AppOptions = { claudePlanUsage: false, notifyReplied: true, notifyNeedsAnswer: true, notifyError: true, checkForUpdates: false, notifyPrEvents: DEFAULT_PR_EVENT_TOGGLES, codexUsage: false, kiroUsage: true, usageBudget: DEFAULT_USAGE_BUDGET, notifySlack: true, notifyAutomations: true, notifyTickets: true, notifyHealth: true, notifyFlowMaps: true, notifyMeetings: true, notifyMetricAlerts: true, healthRefreshFloorMinutes: DEFAULT_HEALTH_FLOOR_MINUTES, keepInTray: true, reopenSessions: true, showAppBadge: true, trayPopover: DEFAULT_TRAY_POPOVER_OPTIONS, notificationsEnabled: true, readAloud: false, speechVoice: '', speechRate: DEFAULT_SPEECH_RATE, listenModel: DEFAULT_LISTEN_MODEL, welcomeDone: false, workhubMcp: true }
 
 export function appOptions(config: Pick<WorkhubConfig, 'options'>): AppOptions {
   const options = { ...DEFAULT_OPTIONS, ...config.options }
@@ -512,7 +517,8 @@ const chatWatcher = z.object({
   channels: z.array(z.object({ id: z.string().min(1), name: z.string(), purpose: z.string().default('') })).default([])
 })
 
-const automation = z.object({
+/** One automation as stored in config.json; also checks what an agent sends over the control endpoint. */
+export const automationSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   enabled: z.boolean().default(true),
@@ -617,6 +623,7 @@ export const configSchema = z.object({
       speechRate: clamped(SPEECH_RATE_RANGE, DEFAULT_SPEECH_RATE),
       listenModel: z.string().trim().max(100).regex(/^[\w.:@\-[\]]*$/).default(DEFAULT_LISTEN_MODEL),
       welcomeDone: z.boolean().default(false),
+      workhubMcp: z.boolean().default(true),
       protectedBranches: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
       notificationsPausedUntil: z.number().int().nonnegative().optional(),
       agentDefaultModes: z.record(z.string().min(1).max(64), z.string().trim().min(1).max(200)).optional()
@@ -624,7 +631,7 @@ export const configSchema = z.object({
     .optional(),
   sessionGroups: sessionGroups.optional(),
   chatWatcher: chatWatcher.optional(),
-  automations: z.array(automation).optional()
+  automations: z.array(automationSchema).optional()
 })
 
 // Compile-time guard: the schema output must stay assignable to the domain types.
