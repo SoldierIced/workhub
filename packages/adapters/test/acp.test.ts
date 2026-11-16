@@ -287,12 +287,68 @@ describe('AcpRuntime against a fake ACP agent', () => {
       })
     })
 
+    it('resumes the original session when the agent supports resume without load', async () => {
+      await withRuntime(async (rt, events) => {
+        const started = await rt.start({ ...resume, sessionId: 's-resume', env: { FAKE_ACP_RESUME: 'ok' } })
+        expect(started).toMatchObject({ agentSessionId: 'stored-session-7', currentModeId: 'bypassPermissions' })
+        expect(started.resumeFailed).toBeUndefined()
+        await rt.prompt('s-resume', 'continue')
+        await vi.waitFor(() => expect(events).toContainEqual({ sessionId: 's-resume', type: 'stderr', line: 'prompt-session:stored-session-7' }))
+        expect(events).toContainEqual({ sessionId: 's-resume', type: 'stderr', line: 'resume:stored-session-7' })
+        expect(events).not.toContainEqual(expect.objectContaining({ type: 'stderr', line: 'new-session' }))
+      })
+    })
+
+    it('tries native resume after Codex fails to load the history, keeping the original identity', async () => {
+      await withRuntime(async (rt, events) => {
+        const started = await rt.start({ ...resume, agent: { ...fakeAgent, id: 'codex' }, sessionId: 's-codex', env: { FAKE_ACP_LOAD: 'fail', FAKE_ACP_RESUME: 'ok' } })
+        expect(started.agentSessionId).toBe('stored-session-7')
+        expect(started.resumeFailed).toBeUndefined()
+        await rt.prompt('s-codex', 'continue')
+        await vi.waitFor(() => expect(events).toContainEqual({ sessionId: 's-codex', type: 'stderr', line: 'prompt-session:stored-session-7' }))
+        expect(events.filter((e) => e.type === 'stderr').map((e) => e.type === 'stderr' && e.line)).toEqual([
+          'load:stored-session-7', 'resume:stored-session-7', 'prompt-session:stored-session-7'
+        ])
+      })
+    })
+
+    it('does not replace a Codex conversation another client owns with a new empty session', async () => {
+      await withRuntime(async (rt, events) => {
+        await expect(rt.start({ ...resume, agent: { ...fakeAgent, id: 'codex' }, sessionId: 's-owned', env: { FAKE_ACP_LOAD: 'fail', FAKE_ACP_RESUME: 'fail' } })).rejects.toThrow(/in use by another Codex client/)
+        expect(events).not.toContainEqual(expect.objectContaining({ type: 'stderr', line: 'new-session' }))
+        expect(events.filter((e) => e.type === 'state').at(-1)).toMatchObject({ state: 'error', error: expect.stringContaining('Close the session there') })
+      })
+    })
+
+    it('preserves a failed Codex load when there is no alternative resume method', async () => {
+      await withRuntime(async (rt, events) => {
+        await expect(rt.start({ ...resume, agent: { ...fakeAgent, id: 'codex' }, sessionId: 's-codex-fail', env: { FAKE_ACP_LOAD: 'fail' } })).rejects.toThrow(/session not found/)
+        expect(events).not.toContainEqual(expect.objectContaining({ type: 'stderr', line: 'new-session' }))
+      })
+    })
+
+    it('does not attempt resume after a successful load even when both are supported', async () => {
+      await withRuntime(async (rt, events) => {
+        const started = await rt.start({ ...resume, sessionId: 's-both', env: { FAKE_ACP_LOAD: 'ok', FAKE_ACP_RESUME: 'ok' } })
+        expect(started.agentSessionId).toBe('stored-session-7')
+        expect(events).not.toContainEqual(expect.objectContaining({ type: 'stderr', line: expect.stringMatching(/^resume:/) }))
+      })
+    })
+
+    it('redacts credentials in a failed Codex restore before reporting the error', async () => {
+      await withRuntime(async (rt, events) => {
+        await expect(rt.start({ ...resume, agent: { ...fakeAgent, id: 'codex' }, sessionId: 's-secret', env: { FAKE_ACP_LOAD: 'fail', FAKE_ACP_LOAD_ERROR: 'restore refused: token=example-sensitive-value' } })).rejects.toThrow('restore refused: token=[redacted]')
+        expect(JSON.stringify(events)).not.toContain('example-sensitive-value')
+      })
+    })
+
     it('never loads a session that is not resumed', async () => {
       await withRuntime(async (rt, events) => {
-        const started = await rt.start({ ...resume, resume: false, sessionId: 's-fresh', env: { FAKE_ACP_LOAD: 'ok' } })
+        const started = await rt.start({ ...resume, resume: false, sessionId: 's-fresh', env: { FAKE_ACP_LOAD: 'ok', FAKE_ACP_RESUME: 'ok' } })
         expect(started.agentSessionId).toBe('fake-session-1')
         expect(started.resumeFailed).toBeUndefined()
         expect(events).not.toContainEqual(expect.objectContaining({ type: 'stderr', line: expect.stringMatching(/^load:/) }))
+        expect(events).not.toContainEqual(expect.objectContaining({ type: 'stderr', line: expect.stringMatching(/^resume:/) }))
       })
     })
   })

@@ -17,7 +17,7 @@ import {
   type RequestPermissionResponse,
   type Stream
 } from '@agentclientprotocol/sdk'
-import { launchArgs, readOnlyModeId, readSlashCommand, uniqueSlashCommands } from '@workhub/core'
+import { launchArgs, readOnlyModeId, readSlashCommand, redactText, uniqueSlashCommands } from '@workhub/core'
 import type {
   AgentCapabilities,
   AgentDefinition,
@@ -250,29 +250,43 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       ])
       // Each agent loads its own MCP configuration (P0 finding); Workhub's server, when it is on, comes on top.
       const mcpServers: McpServer[] = (req.mcpServers ?? []).map((s) => ({ type: 'stdio' as const, name: s.name, command: s.command, args: s.args, env: Object.entries(s.env).map(([name, value]) => ({ name, value })) }))
-      // A resume continues the stored conversation through `session/load`, offered only by agents
-      // that advertise `loadSession`. Without it, or when the load fails, a new conversation starts
-      // and the session says so (`resumeFailed`): the agent does not remember the earlier one.
+      // Loading replays history as well as restoring the agent's context. Some agents can only
+      // resume without replay, or fail while replaying an otherwise resumable conversation.
       const resuming = req.resume === true && Boolean(req.agentSessionId)
       const loadable = resuming && init.agentCapabilities?.loadSession === true
+      const resumable = resuming && init.agentCapabilities?.sessionCapabilities?.resume != null
       let loaded: Record<string, unknown> | null = null
-      if (loadable) {
+      let restoreError: string | undefined
+      if (loadable || resumable) {
         session.loading = true
         try {
-          // A refused load falls back to a new conversation; an agent that dies or hangs fails the start.
-          const load = session.conn.agent.request('session/load', { sessionId: req.agentSessionId!, cwd: req.cwd, mcpServers }).then(
-            (r) => (r ?? {}) as Record<string, unknown>,
-            () => null
-          )
-          loaded = await Promise.race([load, startGuard])
+          const params = { sessionId: req.agentSessionId!, cwd: req.cwd, mcpServers }
+          for (const method of [loadable ? 'session/load' : null, resumable ? 'session/resume' : null] as const) {
+            if (!method) continue
+            const restore = session.conn.agent.request(method, params).then(
+              (r) => (r ?? {}) as Record<string, unknown>,
+              (err: unknown) => {
+                restoreError = redactText(err instanceof Error ? err.message : String(err), 1000)
+                return null
+              }
+            )
+            // Keep a timeout or process exit fatal instead of trying another method on a dead agent.
+            loaded = await Promise.race([restore, startGuard])
+            if (loaded) break
+          }
         } finally {
           session.loading = false
         }
       }
+      // Preserve the original Codex identity on a failed restore. In particular, a conversation
+      // held by another client must be released there, not replaced with an unrelated new one.
+      if (resuming && req.agent.id === 'codex' && !loaded && restoreError !== undefined) {
+        throw new Error(restoreError)
+      }
       const created = loaded
         ? { ...loaded, sessionId: req.agentSessionId! }
         : await Promise.race([session.conn.agent.request('session/new', { cwd: req.cwd, mcpServers }), startGuard])
-      const resumeFailed = resuming && !loaded ? (loadable ? 'failed' : 'unsupported') : undefined
+      const resumeFailed = resuming && !loaded ? (loadable || resumable ? 'failed' : 'unsupported') : undefined
       session.agentSessionId = created.sessionId
       const modes = readModes(created)
       session.modes = modes.availableModes

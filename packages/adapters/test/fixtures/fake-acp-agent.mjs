@@ -8,6 +8,8 @@
 // FAKE_ACP_CRASH=1 makes it write why to stderr and exit with code 1 before answering.
 // FAKE_ACP_LOAD advertises `loadSession`: `ok` loads any session id, sending its stored
 // conversation again as updates first; `fail` refuses every load. Unset: no `loadSession`.
+// FAKE_ACP_RESUME advertises sessionCapabilities.resume: `ok` restores without replay;
+// `fail` simulates a conversation another Codex client still owns.
 //
 // FAKE_ACP_STYLE picks how session/new advertises models and modes:
 // - unset: ACP `modes` (permission modes) and `models` (session/set_mode, session/set_model).
@@ -63,8 +65,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (msg.method === 'initialize') {
     const agentCapabilities = process.env.FAKE_ACP_LOAD ? { loadSession: true } : {}
+    if (process.env.FAKE_ACP_RESUME) agentCapabilities.sessionCapabilities = { resume: {} }
     send({ id: msg.id, result: { protocolVersion: 1, agentCapabilities, authMethods: [], agentInfo: { name: 'fake', title: 'Fake Agent', version: '0.0.0' } } })
   } else if (msg.method === 'session/new') {
+    if (process.env.FAKE_ACP_LOAD || process.env.FAKE_ACP_RESUME) process.stderr.write('new-session\n')
     // The MCP servers it was handed, for the tests to check.
     if (msg.params.mcpServers?.length) process.stderr.write(`mcp:${JSON.stringify(msg.params.mcpServers)}\n`)
     const result =
@@ -75,7 +79,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   } else if (msg.method === 'session/load') {
     process.stderr.write(`load:${msg.params.sessionId}\n`)
     if (process.env.FAKE_ACP_LOAD !== 'ok') {
-      send({ id: msg.id, error: { code: -32002, message: 'session not found' } })
+      send({ id: msg.id, error: { code: -32002, message: process.env.FAKE_ACP_LOAD_ERROR ?? 'session not found' } })
       return
     }
     const update = (u) => send({ method: 'session/update', params: { sessionId: msg.params.sessionId, update: u } })
@@ -84,6 +88,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     update({ sessionUpdate: 'tool_call', toolCallId: 'old-t', title: 'Earlier tool', kind: 'read', status: 'completed' })
     update({ sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'review', description: 'Review the changes' }] })
     send({ id: msg.id, result: { modes: { currentModeId: currentMode, availableModes: modes }, models: { currentModelId: currentModel, availableModels: models } } })
+  } else if (msg.method === 'session/resume') {
+    process.stderr.write(`resume:${msg.params.sessionId}\n`)
+    if (process.env.FAKE_ACP_RESUME !== 'ok') {
+      send({ id: msg.id, error: { code: -32600, message: 'This Codex session is in use by another Codex client. Close the session there, then try again.' } })
+    } else {
+      send({ id: msg.id, result: { modes: { currentModeId: currentMode, availableModes: modes }, models: { currentModelId: currentModel, availableModels: models } } })
+    }
   } else if (msg.method === 'session/set_mode') {
     process.stderr.write(`set_mode:${msg.params.modeId}\n`)
     if (!modes.some((m) => m.id === msg.params.modeId)) send({ id: msg.id, error: { code: -32602, message: 'unknown mode' } })
@@ -101,6 +112,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     if (msg.params.configId === 'model') currentModel = msg.params.value
     send({ id: msg.id, result: { configOptions: configOptions() } })
   } else if (msg.method === 'session/prompt') {
+    if (process.env.FAKE_ACP_RESUME) process.stderr.write(`prompt-session:${msg.params.sessionId}\n`)
     const text = msg.params.prompt[0].text
     const update = (u) => send({ method: 'session/update', params: { sessionId, update: u } })
     const finish = (extra) => {
