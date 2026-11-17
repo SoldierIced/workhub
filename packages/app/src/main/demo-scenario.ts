@@ -15,7 +15,8 @@ import {
   productMilestones,
   productProfile,
   productTicketStates,
-  type ConfigurationService
+  type ConfigurationService,
+  type SecretStore
 } from '@workhub/core'
 import { AutomationRunLog, legacyImportDone, refreshSessionTotals, SessionRecords, Timelines, type WorkhubDb } from '@workhub/adapters/sqlite-store'
 import type { MetricAlertsState } from './metric-alerts'
@@ -157,4 +158,30 @@ export function seedScenarioAnalytics(db: WorkhubDb, folder: string = process.cw
     ])
   })
   return true
+}
+
+/**
+ * The demo's secret store. Its data is synthetic, so where the OS offers no keyring (a Linux CI
+ * runner) a secret the store will not encrypt is kept in memory for the run, instead of failing to
+ * seed the demo profile. Used only with a demo scenario; a real profile never keeps a secret this way.
+ */
+export function demoSecretStore(primary: SecretStore, unavailable: (err: unknown) => boolean): SecretStore {
+  const memory = new Map<string, string>()
+  const orElse = <T>(fallback: T) => (err: unknown): T => {
+    if (unavailable(err)) return fallback
+    throw err
+  }
+  return {
+    get: async (ref) => memory.get(ref) ?? primary.get(ref).catch(orElse(null)),
+    set: async (ref, value) => {
+      const kept = await primary.set(ref, value).then(() => true, orElse(false))
+      if (kept) memory.delete(ref)
+      else memory.set(ref, value)
+    },
+    delete: async (ref) => {
+      memory.delete(ref)
+      await primary.delete(ref).catch(orElse(undefined))
+    },
+    has: async (ref) => memory.has(ref) || primary.has(ref).catch(orElse(false))
+  }
 }

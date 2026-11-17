@@ -6,7 +6,7 @@ import { DemoTracker } from '@workhub/adapters/tracker-demo'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
 import { DB_FILE, importLegacyJson, WorkhubDb } from '@workhub/adapters/sqlite-store'
 import { ConfigurationService, configSchema, DEFAULT_ALERT_RULES, PRODUCT_PROFILE_ID, PRODUCT_TRACKER_SECRET, validateConfig, type SecretStore } from '@workhub/core'
-import { demoScenario, METRIC_ALERTS_FILE, PLANNER_STATE_FILE, seedScenarioConfig, seedScenarioState } from '../src/main/demo-scenario'
+import { demoScenario, demoSecretStore, METRIC_ALERTS_FILE, PLANNER_STATE_FILE, seedScenarioConfig, seedScenarioState } from '../src/main/demo-scenario'
 import { DemoMetricSource, MetricAlertService, ProductMetricSource, type MetricAlertsState } from '../src/main/metric-alerts'
 import { PlannerService, type PlannerState } from '../src/main/planner-service'
 
@@ -47,6 +47,22 @@ describe('seedScenarioConfig', () => {
     expect(parsed.profiles[0]).toMatchObject({ name: 'Team lead (demo)', defaultFolder: dir, modules: { planner: true, health: true, automations: true } })
     expect(parsed.options?.welcomeDone).toBe(true)
     expect([...secrets.values.values()]).toEqual([PRODUCT_TRACKER_SECRET])
+  })
+
+  it('still seeds the profile and its modules on a machine without an OS keyring', async () => {
+    const dir = tmp()
+    class NoKeyring extends Error {}
+    const refusing = { ...memorySecrets(), set: async () => Promise.reject(new NoKeyring()) }
+    const secrets = demoSecretStore(refusing, (e) => e instanceof NoKeyring)
+    const configuration = new ConfigurationService(new JsonConfigStore(join(dir, 'config.json')), secrets)
+    expect(await seedScenarioConfig(configuration, dir)).toBe(true)
+    const parsed = configSchema.parse(JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8')))
+    expect(parsed.profiles[0]?.modules).toMatchObject({ planner: true, health: true, automations: true })
+    const ref = parsed.connections.find((c) => c.secretRef)!.secretRef!
+    expect(await secrets.get(ref)).toBe(PRODUCT_TRACKER_SECRET)
+    // Any other failure of the store still surfaces.
+    const broken = demoSecretStore({ ...memorySecrets(), set: async () => Promise.reject(new Error('disk full')) }, (e) => e instanceof NoKeyring)
+    await expect(broken.set('r', 'v')).rejects.toThrow('disk full')
   })
 
   it('leaves an existing config alone', async () => {

@@ -8,7 +8,7 @@ import { CLAUDE_PERMISSION_MODES, ClaudeNativeRuntime, ClaudePlanUsageReader, Cl
 import { DemoChatSource, SlackAgentChatSource, SlackTrackingHook } from '@workhub/adapters/chat-slack'
 import { ListenSummarizer } from '@workhub/adapters/listen-summary'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
-import { SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
+import { EncryptionUnavailableError, SafeStorageSecretStore } from '@workhub/adapters/secrets-electron'
 import { TerminalRuntime } from '@workhub/adapters/agent-terminal'
 import { createCliRunner } from '@workhub/adapters/cli'
 import { augmentedPath, pathKeyOf, refreshLoginPath, utf8LocaleEnv, withFoldersFirst } from '@workhub/adapters/login-path'
@@ -138,7 +138,7 @@ import { installContext, probe, SetupService } from './setup-service'
 import { registerSignInIpc, SignInService } from './sign-in'
 import { CalendarService, usableRead } from './calendar-service'
 import { CalendarStateStore, CalendarWatcher } from './calendar-watcher'
-import { demoScenario, seedScenarioAnalytics, seedScenarioConfig, seedScenarioState } from './demo-scenario'
+import { demoScenario, demoSecretStore, seedScenarioAnalytics, seedScenarioConfig, seedScenarioState } from './demo-scenario'
 import { BriefService } from './plan-briefs'
 import { planView, registerPlanIpc } from './plan-ipc'
 import { PlannerService, type PlannerState } from './planner-service'
@@ -364,7 +364,9 @@ const configChanged = () => {
 // Every write tells every window (`config:changed`): a change in the Settings window shows in the main window.
 const configPath = join(dataDir, 'config.json')
 const configStore = broadcastingConfigStore(new JsonConfigStore(configPath), configChanged)
-const secrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
+const safeSecrets = new SafeStorageSecretStore(join(dataDir, 'secrets.json'), safeStorage)
+// A demo (synthetic data) still seeds its profile on a machine without an OS keyring.
+const secrets = scenario ? demoSecretStore(safeSecrets, (err) => err instanceof EncryptionUnavailableError) : safeSecrets
 const configuration = new ConfigurationService(configStore, secrets)
 let loadError: string | undefined
 // The main window asked for the sessions of the last run; they are reopened once the config loads.
