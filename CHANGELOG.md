@@ -4,6 +4,22 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.40](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.39...v2.0.0-alpha.40) (2026-11-17)
+
+
+### Features
+
+* **codex:** show the earlier messages of a resumed Codex chat ([fb1c99c](https://github.com/SoldierIced/workhub/commit/fb1c99c5811194c8e1a15fefb9ca1b51a757472b))
+
+
+### Bug Fixes
+
+* **adapters:** price each Claude message at its own model in the monitor ([#130](https://github.com/SoldierIced/workhub/issues/130)) ([b789685](https://github.com/SoldierIced/workhub/commit/b789685c447339c80645347ce191915b10956d70))
+* **groups:** resume ACP sessions reopened from a group ([4746858](https://github.com/SoldierIced/workhub/commit/47468587892d2c5c22124629417cb4b43e8a1563))
+* **sessions:** recover Codex conversations through ACP resume ([f7b5cdc](https://github.com/SoldierIced/workhub/commit/f7b5cdc92ae2ebf9bdb0d8904799ea3679eebe07))
+* **sessions:** replace a session whose resume failed when it is reopened ([82697fb](https://github.com/SoldierIced/workhub/commit/82697fbe7370f098cfa4de112e9d84f421d7294a))
+* **sessions:** resume Codex conversations with their history ([e1c6b2b](https://github.com/SoldierIced/workhub/commit/e1c6b2b9ff4bfa64424fa0fc0e483007d704cefe))
+
 ## [2.0.0-alpha.39](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.38...v2.0.0-alpha.39) (2026-11-17)
 
 
