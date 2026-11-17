@@ -4,6 +4,27 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.39](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.38...v2.0.0-alpha.39) (2026-11-17)
+
+
+### Features
+
+* **sessions:** close a session with /exit from the chat ([3238001](https://github.com/SoldierIced/workhub/commit/32380011c82248dcdcc062e0e5f428ee87658c62))
+* **sessions:** close a session with /exit from the chat ([b668634](https://github.com/SoldierIced/workhub/commit/b668634a517174d5e1ca97ec59645b4a76ad793b)), closes [#100](https://github.com/SoldierIced/workhub/issues/100)
+* **sessions:** turn on Remote Control from the chat ([11ae3b2](https://github.com/SoldierIced/workhub/commit/11ae3b2db316c29c6c74e988fdbf3d1f2773f0fe))
+* **sessions:** turn on Remote Control from the chat ([af93e2a](https://github.com/SoldierIced/workhub/commit/af93e2a2be5bd23409d347d18fddcd20e37147ad))
+
+
+### Bug Fixes
+
+* **app:** group the Windows app with its pinned taskbar icon ([b6b32d3](https://github.com/SoldierIced/workhub/commit/b6b32d35216cf27f1743054adb7480a56d0fca22))
+* **app:** group the Windows app with its pinned taskbar icon ([8d2758e](https://github.com/SoldierIced/workhub/commit/8d2758e91b9a1ce83209b58739796b36c5862eb6)), closes [#122](https://github.com/SoldierIced/workhub/issues/122)
+* **automations:** keep sessions the user talks in ([b72500a](https://github.com/SoldierIced/workhub/commit/b72500a21058b61cb01cec3d1c5a6c8ed0403a1b))
+* **automations:** keep sessions the user talks in ([53f3137](https://github.com/SoldierIced/workhub/commit/53f31377731db2387701cae6f37e0ab77fbe3b16))
+* **demo:** seed the demo profile on a machine without an OS keyring ([#129](https://github.com/SoldierIced/workhub/issues/129)) ([9b01f49](https://github.com/SoldierIced/workhub/commit/9b01f49d1ed0c0317b62d78854d9c130c32eb116))
+* **dist:** build the Windows installer when Node lives in a folder with spaces ([621644c](https://github.com/SoldierIced/workhub/commit/621644c080aff0cfba73f73150cd529f070cc113))
+* **dist:** build the Windows installer when Node lives in a folder with spaces ([30dcfb2](https://github.com/SoldierIced/workhub/commit/30dcfb2f39cc16bc4f1919660a8e8a63474d2783))
+
 ## [2.0.0-alpha.38](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.37...v2.0.0-alpha.38) (2026-11-16)
 
 
