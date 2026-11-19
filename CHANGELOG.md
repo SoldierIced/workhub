@@ -4,6 +4,14 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.42](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.41...v2.0.0-alpha.42) (2026-11-19)
+
+
+### Bug Fixes
+
+* **adapters:** let a large calendar finish loading ([#151](https://github.com/SoldierIced/workhub/issues/151)) ([da93ee0](https://github.com/SoldierIced/workhub/commit/da93ee0c2a974e2f406b6810d4415b9be8f0ea94))
+* **adapters:** test an Elasticsearch connection on the cluster root ([#149](https://github.com/SoldierIced/workhub/issues/149)) ([92d6bfd](https://github.com/SoldierIced/workhub/commit/92d6bfda466be8e817b0aa0d49165b647c212a61))
+
 ## [2.0.0-alpha.41](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.40...v2.0.0-alpha.41) (2026-11-19)
 
 
