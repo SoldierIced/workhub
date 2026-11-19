@@ -301,7 +301,8 @@ describe('LocalReverter on real repositories', () => {
     expect(read(join(repo, 'big.txt'))).toBe('')
   })
 
-  it('takes a path with pathspec magic as a plain name', async () => {
+  // Windows file names cannot hold ':'.
+  it.skipIf(process.platform === 'win32')('takes a path with pathspec magic as a plain name', async () => {
     repo = makeRepo({ 'a.txt': 'a\n', ':(glob)b.txt': 'b\n' })
     writeFileSync(join(repo, 'a.txt'), 'A\n')
     writeFileSync(join(repo, ':(glob)b.txt'), 'B\n')
