@@ -35,7 +35,7 @@ describe('IcsCalendarSource', () => {
     const { http, calls } = client(async () => ({ status: 200, text: ICS }))
     const r = await new IcsCalendarSource({ http }).read({ url: SECRET_URL.replace('https', 'webcal'), calendarId: 'cal', window: WINDOW })
     expect(r).toMatchObject({ ok: true, events: [{ title: 'Planning', calendarId: 'cal' }] })
-    expect(calls[0]).toMatchObject({ method: 'GET', url: SECRET_URL, timeoutMs: 20_000, maxBytes: ICS_MAX_BYTES })
+    expect(calls[0]).toMatchObject({ method: 'GET', url: SECRET_URL, timeoutMs: 60_000, maxBytes: ICS_MAX_BYTES })
   })
 
   it('names typed failures and never puts the secret address in them', async () => {

@@ -14,7 +14,7 @@ import {
   type SecretChange
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
-import { Button, Input, Select, Switch, Textarea } from '../../components/atoms'
+import { Button, Input, Select, Spinner, Switch, Textarea } from '../../components/atoms'
 import { Card, Field, HelpTip, SwitchRow } from '../../components/molecules'
 import { DeleteButton, useUnsavedChanges, useUnsavedForm } from '../../components/organisms/UnsavedChanges'
 import { useI18n } from '../../i18n/I18nProvider'
@@ -497,7 +497,7 @@ export function ConnectionEditor({
           {t(asText ? 'settingsConnections.asFields' : 'settingsConnections.asText')}
         </button>
         {testable && (
-          <Button size="sm" onClick={() => void runTest()} disabled={test.state === 'running'}>
+          <Button size="sm" onClick={() => void runTest()} disabled={test.state === 'running'} aria-busy={test.state === 'running'} icon={test.state === 'running' ? <Spinner className="size-3.5" /> : undefined}>
             {t(test.state === 'running' ? 'settingsConnections.testing' : 'settingsConnections.test')}
           </Button>
         )}

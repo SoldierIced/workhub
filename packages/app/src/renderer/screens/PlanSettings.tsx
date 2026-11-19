@@ -21,7 +21,7 @@ import {
 } from '@workhub/core'
 import type { ConfigSnapshot } from '@shared/api'
 import type { CalendarTestResult } from '@shared/plan-api'
-import { Button, Input, Select, Switch, Textarea } from '../components/atoms'
+import { Button, Input, Select, Spinner, Switch, Textarea } from '../components/atoms'
 import { Card, CardBody, CardHeader, EmptyState, Field, SwitchRow } from '../components/molecules'
 import { useUnsavedForm } from '../components/organisms/UnsavedChanges'
 import { useI18n } from '../i18n/I18nProvider'
@@ -505,7 +505,7 @@ function CalendarEditor({ initial, stored, takenIds, run, onSaved, onCancel }: {
         </Field>
       </div>
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Button onClick={() => void runTest()} disabled={test.state === 'running'}>
+        <Button onClick={() => void runTest()} disabled={test.state === 'running'} aria-busy={test.state === 'running'} icon={test.state === 'running' ? <Spinner className="size-3.5" /> : undefined}>
           {test.state === 'running' ? t('plan.settings.testing') : t('plan.settings.test')}
         </Button>
         {test.state === 'done' && (

@@ -44,7 +44,7 @@ adapter, not by reaching into a service from the UI.
 | Ticket tracker (capabilities: sprints, transitions, comments, assign, and the optional `search` and `create` that Plan uses) | `tracker-jira`, `tracker-linear`, `tracker-github` (GitHub Issues through `gh`), `tracker-demo` |
 | Chat source | `chat-slack` (through a Claude account's Slack connector) |
 | Health provider | `health-elastic` |
-| Calendar source (`CalendarSource`; ICS parsing, recurrence and rules are pure code in `core/calendar`) | `calendar-ics` (private ICS address over https, 20 s timeout, 5 MB cap; also the demo source) |
+| Calendar source (`CalendarSource`; ICS parsing, recurrence and rules are pure code in `core/calendar`) | `calendar-ics` (private ICS address over https, 60 s timeout, 20 MB cap; also the demo source) |
 | `MetricSource` (daily samples for metric alerts) | Health's own read (`HealthMetricSource` in the main process), synthetic history in the Health demo |
 | Config and secrets | `config-json`, `secrets-electron` (Electron `safeStorage`) |
 | Other | `pr-events-json`, `git-review`, `git-worktree`, `token-spend` |

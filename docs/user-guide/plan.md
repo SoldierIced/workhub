@@ -52,7 +52,7 @@ one agenda. Calendar connections are also listed in **Settings → Connections**
 What Workhub reads: the events from yesterday to two weeks ahead, with their time, title, place,
 description, attendees and organizer. Recurring meetings (daily, weekly, monthly, with exceptions
 and moved occurrences), all-day events and time zones are handled; cancelled events and attendees
-that are rooms are left out. A calendar larger than 5 MB is refused.
+that are rooms are left out. A calendar larger than 20 MB is refused. The read waits up to 60 seconds.
 
 **Read again every** (default 15 minutes) sets how often the calendars are read again. **Refresh**
 on the Plan screen reads at once (the calendars at most every 30 seconds). It is there even

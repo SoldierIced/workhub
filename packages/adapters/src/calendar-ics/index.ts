@@ -1,10 +1,10 @@
 import { parseIcs, startOfLocalDayAt, type CalendarEvent, type CalendarReadRequest, type CalendarReadResult, type CalendarSource } from '@workhub/core'
 import { describeNetworkError, fetchClient, TooLargeError, type HttpClient } from '../shared/http'
 
-/** A calendar read gives up after this long. */
-export const ICS_TIMEOUT_MS = 20_000
+/** A calendar read gives up after this long. A full history can take a while to generate. */
+export const ICS_TIMEOUT_MS = 60_000
 /** A calendar file larger than this is refused (years of history in one feed). */
-export const ICS_MAX_BYTES = 5 * 1024 * 1024
+export const ICS_MAX_BYTES = 20 * 1024 * 1024
 
 /**
  * The address a calendar is fetched from: `webcal://` (iCloud, Outlook's subscribe links) becomes

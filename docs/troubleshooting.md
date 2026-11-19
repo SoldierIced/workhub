@@ -176,7 +176,7 @@ On the Plan screen and in **Settings → Profiles → (profile) → Screens → 
 |---|---|
 | "the address was refused (it may have been reset)" | The calendar service answered 401, 403, 404 or 410. The private address was reset or revoked. Copy the current address from the calendar service and paste it again. |
 | "the address does not return a calendar" | The link answered, but not with an `.ics` calendar. Check that you copied the ICS (secret iCal) address, not the page address. |
-| "the calendar is too large (over 5 MB)" | Workhub refuses a calendar over 5 MB. Use a smaller calendar. |
+| "the calendar is too large (over 20 MB)" | Workhub refuses a calendar over 20 MB. Use a smaller calendar. |
 | "the calendar could not be reached" | The host did not answer, or the address does not start with `https://` or `webcal://`. Check the network and the address. |
 | "no address is stored" | The calendar has no saved address. Paste it again and **Save calendar**. |
 

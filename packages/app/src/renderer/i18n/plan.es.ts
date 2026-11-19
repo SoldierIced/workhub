@@ -30,7 +30,7 @@ export const planEs: Record<keyof typeof planEn, string> = {
   'plan.failure.unreachable': 'no se pudo acceder al calendario',
   'plan.failure.unauthorized': 'la dirección fue rechazada (puede haberse restablecido)',
   'plan.failure.notCalendar': 'la dirección no devuelve un calendario',
-  'plan.failure.tooLarge': 'el calendario es demasiado grande (más de 5 MB)',
+  'plan.failure.tooLarge': 'el calendario es demasiado grande (más de 20 MB)',
   'plan.failure.noSecret': 'no hay una dirección guardada',
   'plan.tab.today': 'Hoy',
   'plan.tab.people': 'Personas',

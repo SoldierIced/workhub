@@ -29,7 +29,7 @@ export const planEn = {
   'plan.failure.unreachable': 'the calendar could not be reached',
   'plan.failure.unauthorized': 'the address was refused (it may have been reset)',
   'plan.failure.notCalendar': 'the address does not return a calendar',
-  'plan.failure.tooLarge': 'the calendar is too large (over 5 MB)',
+  'plan.failure.tooLarge': 'the calendar is too large (over 20 MB)',
   'plan.failure.noSecret': 'no address is stored',
   'plan.tab.today': 'Today',
   'plan.tab.people': 'People',
