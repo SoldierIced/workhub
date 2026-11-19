@@ -1,8 +1,17 @@
+import { X509Certificate } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http'
+import { createServer as createHttpsServer } from 'node:https'
 import { createServer as createNetServer, type Server as NetServer, type Socket } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
-import { classifyNetworkError, createElasticTransport } from '../src/health-elastic'
+import { classifyNetworkError, createElasticTransport, ElasticError } from '../src/health-elastic'
+
+// A self-signed certificate made only for these tests (CN=localhost, 127.0.0.1).
+const fixture = (name: string) => readFileSync(new URL(`./fixtures/tls/${name}`, import.meta.url))
+const cert = fixture('cert.pem')
+const key = fixture('key.pem')
+const certFingerprint = new X509Certificate(cert).fingerprint256
 
 const servers: (NetServer | HttpServer)[] = []
 const sockets: Socket[] = []
@@ -46,5 +55,27 @@ describe('createElasticTransport', () => {
     const classified = classifyNetworkError(error, 200)
     expect(classified.kind).toBe('timedOut')
     expect(classified.isConnectionLevel).toBe(false)
+  })
+
+  it('reaches a self-signed cluster whose certificate matches the pin', async () => {
+    const port = await listen(createHttpsServer({ cert, key }, (_req, res) => res.end('{"count":3}')))
+    const http = createElasticTransport({ mode: 'pinned', fingerprint: certFingerprint })
+    const res = await http({ method: 'POST', url: `https://127.0.0.1:${port}/x/_count`, headers: {}, body: '{}', timeoutMs: 2000 })
+    expect(res).toEqual({ status: 200, text: '{"count":3}' })
+  })
+
+  it('rejects a self-signed cluster whose certificate does not match the pin', async () => {
+    const port = await listen(createHttpsServer({ cert, key }, (_req, res) => res.end('{}')))
+    const http = createElasticTransport({ mode: 'pinned', fingerprint: 'AA:'.repeat(31) + 'AA' })
+    const error = await failure(http({ method: 'POST', url: `https://127.0.0.1:${port}/x/_count`, headers: {}, body: '{}', timeoutMs: 2000 }))
+    expect(error).toBeInstanceOf(ElasticError)
+    expect((error as ElasticError).kind).toBe('untrustedCertificate')
+  })
+
+  it('rejects a self-signed cluster under the system trust store', async () => {
+    const port = await listen(createHttpsServer({ cert, key }, (_req, res) => res.end('{}')))
+    const http = createElasticTransport({ mode: 'system' })
+    const error = await failure(http({ method: 'POST', url: `https://127.0.0.1:${port}/x/_count`, headers: {}, body: '{}', timeoutMs: 2000 }))
+    expect(classifyNetworkError(error, 2000).kind).toBe('untrustedCertificate')
   })
 })

@@ -68,7 +68,9 @@ export function createElasticTransport(tls: TlsPolicy): HttpClient {
         path: `${url.pathname}${url.search}`,
         headers: { ...req.headers, ...(req.body === undefined ? {} : { 'Content-Length': Buffer.byteLength(req.body) }) },
         ...(secure && tls.mode === 'insecure' ? { rejectUnauthorized: false } : {}),
-        ...(socket ? { agent: false as const, createConnection: () => socket } : {})
+        // No `agent`: with `agent: false` Node builds a one-off agent that opens its own connection
+        // (with default chain validation) and never uses `createConnection`, so the pinned socket is skipped.
+        ...(socket ? { createConnection: () => socket } : {})
       }
       const out = (secure ? httpsRequest : httpRequest)(options, (res) => {
         const chunks: Buffer[] = []
