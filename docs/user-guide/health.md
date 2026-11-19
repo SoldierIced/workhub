@@ -19,7 +19,9 @@ In **Settings → Profiles → (profile) → Screens → Health** (open the row)
 4. **Refresh every**: how often the screen reads. A global floor (**Never more often than**) applies
    to every profile, Refresh included, so a shared cluster is not overloaded.
 5. **Test connection**, then **Save connection**. The test reads the cluster root. When an
-   environment already names an index, it also counts the documents in that index.
+   environment already names an index, it also counts the documents in that index. A key that may
+   only read indexes is refused at the cluster root (it needs the `monitor` cluster privilege); the
+   test then relies on the count alone.
 6. **Environments**: add each one (production, staging…) with its `service.environment` values
    (comma separated, for example `prod, production`, because services do not always tag the same
    way), its APM errors, traces and metrics indexes (or **Use Elastic's default data streams**), the

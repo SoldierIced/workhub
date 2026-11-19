@@ -351,6 +351,28 @@ describe('ElasticHealthProvider', () => {
     expect(r.ok).toBe(false)
     expect(JSON.stringify(r)).not.toContain('super-secret')
   })
+
+  it('goes on to the count when the credential may not read the cluster root', async () => {
+    const calls: string[] = []
+    const limited = (count: { status: number; text: string }, testIndex?: string) =>
+      new ElasticHealthProvider({
+        client: new ElasticClient({
+          baseUrl: 'https://es.example.test',
+          auth: { mode: 'apiKey', secret: 'k' },
+          http: async (req) => {
+            calls.push(`${req.method} ${new URL(req.url).pathname}`)
+            return req.method === 'GET' ? { status: 403, text: JSON.stringify({ error: { reason: 'action [cluster:monitor/main] is unauthorized' } }) } : count
+          }
+        }),
+        ...(testIndex ? { testIndex } : {})
+      })
+    const counted = { status: 200, text: JSON.stringify({ count: 1234 }) }
+    expect(await limited(counted, 'errors-*').test()).toEqual({ ok: true, account: '1,234 documents in errors-*' })
+    expect(calls).toEqual(['GET /', 'POST /errors-*/_count'])
+    // With no index named, the root could not prove the credential, so `*` is counted as before.
+    expect(await limited(counted).test()).toEqual({ ok: true, account: '1,234 documents in *' })
+    expect(await limited({ status: 403, text: '' }, 'errors-*').test()).toEqual({ ok: false, error: 'Elasticsearch refused the credentials (HTTP 403)' })
+  })
 })
 
 describe('Kibana links', () => {
