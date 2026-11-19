@@ -687,6 +687,7 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
           setModel: (id, model) => window.hub.sessions.setModel(id, model),
           login: (id) => window.hub.sessions.typeInConsole(id, '/login'),
           remoteControl: (id) => window.hub.sessions.typeInConsole(id, '/remote-control'),
+          terminal: (id, line) => window.hub.sessions.typeInConsole(id, line),
           exit,
           report: (kind, message) => (kind === 'error' ? pushItem(v.id, 'error', message) : pushNotice(v.id, message, value))
         },

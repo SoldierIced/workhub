@@ -62,7 +62,9 @@ export function SlashCommandMenu({
           >
             <span className="shrink-0 font-semibold text-text">/{c.name}</span>
             {c.argumentHint && <span className="shrink-0 text-xs text-subtle">{c.argumentHint}</span>}
+            {c.aliases && c.aliases.length > 0 && <span className="shrink-0 text-xs text-subtle">{c.aliases.map((a) => `/${a}`).join(' ')}</span>}
             {c.description && <span className="min-w-0 truncate text-xs text-muted">{c.description}</span>}
+            {c.terminal && <span className="ml-auto shrink-0 rounded bg-surface px-1.5 text-2xs text-subtle">{t('slash.terminal.badge')}</span>}
           </li>
         </Fragment>
       ))}

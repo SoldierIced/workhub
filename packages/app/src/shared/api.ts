@@ -403,7 +403,11 @@ export interface SessionsApi {
    * session moves to its console and the command is typed there. False when the console did not come
    * up in time.
    */
-  typeInConsole(id: string, command: '/login' | '/remote-control'): Promise<boolean>
+  /**
+   * Opens a Claude session's Terminal view and types a terminal-bound slash command there (`/login`,
+   * `/remote-control`, `/plugin`, ...). Main validates it against the session's own command list.
+   */
+  typeInConsole(id: string, command: string): Promise<boolean>
   mcp(id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string): void
   /** One subagent's conversation (prompt, steps, answer); null when the agent keeps none. */
   subagent(id: string, subagentId: string): Promise<SubagentConversation | null>

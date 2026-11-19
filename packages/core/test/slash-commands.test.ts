@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   agentSlashCommands,
   CLAUDE_BUILTIN_COMMANDS,
+  claudeConsoleCommand,
   filterSlashCommands,
   knownAgentCommands,
   parseSlashCommand,
@@ -70,5 +71,39 @@ describe('agent commands', () => {
     expect(readSlashCommand({ name: '/agent', description: ' ' }, 'agent')).toEqual({ name: 'agent', group: 'agent' })
     expect(readSlashCommand({ name: '' }, 'agent')).toBeNull()
     expect(readSlashCommand('compact', 'agent')).toBeNull()
+  })
+})
+
+describe('terminal commands and aliases', () => {
+  it('reads aliases, without slashes, blanks or the command\'s own name', () => {
+    expect(readSlashCommand({ name: 'usage', aliases: ['stats', '/cost', ' ', 'usage', 'a b', 3] }, 'agent')).toEqual({ name: 'usage', group: 'agent', aliases: ['stats', 'cost'] })
+  })
+
+  it('matches the menu query against aliases', () => {
+    const all = [{ ...cmd('usage'), aliases: ['stats'] }, cmd('compact')]
+    expect(filterSlashCommands(all, 'sta').map((c) => c.name)).toEqual(['usage'])
+  })
+
+  it('no longer lists /model in the fallback, and lists the terminal screens', () => {
+    const names = CLAUDE_BUILTIN_COMMANDS.map((c) => c.name)
+    expect(names).not.toContain('model')
+    expect(CLAUDE_BUILTIN_COMMANDS.filter((c) => c.terminal).map((c) => c.name)).toEqual(expect.arrayContaining(['config', 'resume', 'plugin']))
+  })
+
+  it('types only terminal-bound commands of the session, one validated line', () => {
+    const reported = [{ ...cmd('plugin'), terminal: true }, { ...cmd('settings'), terminal: true, aliases: ['prefs'] }, cmd('compact')]
+    expect(claudeConsoleCommand('/plugin', reported)).toBe('/plugin')
+    expect(claudeConsoleCommand('  /plugin  install acme  ', reported)).toBe('/plugin install acme')
+    expect(claudeConsoleCommand('/prefs', reported)).toBe('/prefs')
+    expect(claudeConsoleCommand('/compact', reported)).toBeNull()
+    // The reported list replaces the fallback.
+    expect(claudeConsoleCommand('/config', reported)).toBeNull()
+    expect(claudeConsoleCommand('/config', undefined)).toBe('/config')
+    expect(claudeConsoleCommand('/login', reported)).toBe('/login')
+    expect(claudeConsoleCommand('/rc', reported)).toBe('/rc')
+    expect(claudeConsoleCommand('plugin', reported)).toBeNull()
+    expect(claudeConsoleCommand('/plugin\n/exit', reported)).toBeNull()
+    expect(claudeConsoleCommand('/plugin a\u001b[2J', reported)).toBeNull()
+    expect(claudeConsoleCommand('/../etc', reported)).toBeNull()
   })
 })

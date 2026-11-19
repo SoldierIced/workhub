@@ -48,6 +48,10 @@ function actions(fail = false) {
       log.push(`remote-control ${id}`)
       return !fail
     }),
+    terminal: vi.fn(async (id: string, line: string) => {
+      log.push(`terminal ${id} ${line}`)
+      return !fail
+    }),
     report: (kind: 'done' | 'error', text: string) => log.push(`${kind}: ${text}`)
   }
 }
@@ -122,6 +126,40 @@ describe('/login', () => {
     runWorkhubCommand(view({ modes: ['app', 'console'] }), '/login', late, t)
     await settle()
     expect(late.log.at(-1)).toBe('error: The Terminal view did not come up in time. Type /login there yourself.')
+  })
+})
+
+describe('terminal-bound commands', () => {
+  const claude = (over: Partial<SessionView> = {}) => view({ modes: ['app', 'console'], ...over })
+  const reported = [
+    { name: 'plugin', group: 'agent' as const, terminal: true },
+    { name: 'usage', group: 'agent' as const, aliases: ['stats'] },
+    { name: 'compact', group: 'agent' as const }
+  ]
+
+  it('lists them in the menu for a Claude chat with a console, and hides them elsewhere', () => {
+    expect(sessionSlashCommands(claude({ commands: reported }), t).find((c) => c.name === 'plugin')?.terminal).toBe(true)
+    expect(sessionSlashCommands(claude(), t).map((c) => c.name)).toEqual(expect.arrayContaining(['config', 'resume', 'plugin']))
+    expect(sessionSlashCommands(claude(), t).map((c) => c.name)).not.toContain('model')
+    expect(sessionSlashCommands(view({ commands: reported }), t).map((c) => c.name)).not.toContain('plugin')
+    expect(sessionSlashCommands(claude({ commands: reported }), t).find((c) => c.name === 'usage')?.aliases).toEqual(['stats'])
+  })
+
+  it('types a reported terminal command, with its arguments, in the console and says so', async () => {
+    const a = actions()
+    expect(runWorkhubCommand(claude({ commands: reported }), '/plugin install acme', a, t)).toBe(true)
+    await settle()
+    expect(a.log).toEqual(['terminal s1 /plugin install acme', 'done: /plugin ran in the Terminal view. Go back to App (⌘⌥1 or Ctrl+Alt+1) when you are done.'])
+    const late = actions(true)
+    runWorkhubCommand(claude({ commands: reported }), '/plugin', late, t)
+    await settle()
+    expect(late.log.at(-1)).toBe('error: The Terminal view did not come up in time. Type /plugin there yourself.')
+  })
+
+  it('leaves SDK commands, unreported names and sessions without a console to the agent', () => {
+    for (const text of ['/compact', '/stats', '/config', '/plugin\n/exit']) expect(runWorkhubCommand(claude({ commands: reported }), text, actions(), t)).toBe(false)
+    expect(runWorkhubCommand(view({ commands: reported }), '/plugin', actions(), t)).toBe(false)
+    expect(runWorkhubCommand(claude(), '/config', actions(), t)).toBe(true)
   })
 })
 

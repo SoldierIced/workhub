@@ -192,7 +192,8 @@ const CLAUDE_BUILTIN_NAMES = new Set(CLAUDE_BUILTIN_COMMANDS.map((c) => c.name))
  * (with descriptions), `names` the init message's `slash_commands`, `skills` its skill names.
  * Claude's own commands (marked `builtin`, or known built-ins from a CLI that does not mark them) are
  * the agent's; the rest are skills and custom commands (user, project, plugin, MCP). Commands bound
- * to the terminal (`terminal_slash_commands`) are left out: the chat cannot run them.
+ * to the terminal (`terminal_slash_commands`) are kept, marked `terminal`: the chat sends them to
+ * the Terminal view instead of the SDK, which answers that they are not available here.
  */
 export function claudeSlashCommands(rows: readonly unknown[], names: readonly string[], skills: ReadonlySet<string>, terminalOnly: ReadonlySet<string>): SlashCommandInfo[] {
   const marked = rows.some((r) => typeof obj(r)?.['builtin'] === 'boolean')
@@ -200,13 +201,22 @@ export function claudeSlashCommands(rows: readonly unknown[], names: readonly st
   const out = new Map<string, SlashCommandInfo>()
   for (const raw of rows) {
     const read = readSlashCommand(raw, 'agent')
-    if (!read || terminalOnly.has(read.name) || out.has(read.name)) continue
-    out.set(read.name, { ...read, group: isBuiltin(read.name, obj(raw)) ? 'agent' : 'skill' })
+    if (!read || out.has(read.name)) continue
+    out.set(read.name, { ...read, group: isBuiltin(read.name, obj(raw)) ? 'agent' : 'skill', ...(terminalOnly.has(read.name) ? { terminal: true } : {}) })
   }
   for (const name of names) {
-    if (out.has(name) || terminalOnly.has(name) || !name || /\s/.test(name)) continue
+    if (out.has(name) || !name || /\s/.test(name)) continue
     const known = CLAUDE_BUILTIN_COMMANDS.find((c) => c.name === name)
-    out.set(name, known && !skills.has(name) ? known : { name, group: isBuiltin(name) ? 'agent' : 'skill' })
+    const info: SlashCommandInfo = known && !skills.has(name) ? { ...known } : { name, group: isBuiltin(name) ? 'agent' : 'skill' }
+    if (terminalOnly.has(name)) info.terminal = true
+    else delete info.terminal
+    out.set(name, info)
+  }
+  // A terminal-bound command the list and the names both lack still belongs in the menu.
+  for (const name of terminalOnly) {
+    if (out.has(name) || !name || /\s/.test(name)) continue
+    const known = CLAUDE_BUILTIN_COMMANDS.find((c) => c.name === name)
+    out.set(name, { ...(known ?? { name, group: skills.has(name) ? 'skill' : 'agent' }), terminal: true })
   }
   return [...out.values()]
 }

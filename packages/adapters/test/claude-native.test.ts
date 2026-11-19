@@ -322,7 +322,7 @@ describe('ClaudeBridgeMapper', () => {
     expect(modeOf(undefined)).toBeUndefined()
   })
 
-  it('reports the slash commands: Claude\'s own as the agent\'s, the rest as skills, terminal-only ones left out', () => {
+  it('reports the slash commands: Claude\'s own as the agent\'s, the rest as skills, terminal-only ones marked', () => {
     const m = new ClaudeBridgeMapper('s')
     const fromOptions = m.map({
       type: 'options',
@@ -342,17 +342,26 @@ describe('ClaudeBridgeMapper', () => {
         { name: 'acme:lint', description: 'Lint with the acme rules', argumentHint: '<path>', group: 'skill' }
       ]
     })
-    // The init message adds names the list lacked, marks skills and drops terminal-bound commands.
+    // The init message adds names the list lacked, marks skills and keeps terminal-bound commands, marked.
     const init = m.map({ type: 'sdk', message: { type: 'system', subtype: 'init', slash_commands: ['compact', 'review-pr', 'statusline'], skills: ['review-pr'], terminal_slash_commands: ['statusline'] } })
     const commands = init.find((e) => e.type === 'commands')
-    expect(commands?.type === 'commands' && commands.commands.map((c) => `${c.group}:${c.name}`)).toEqual(['agent:compact', 'skill:deploy-docs', 'skill:acme:lint', 'skill:review-pr'])
+    expect(commands?.type === 'commands' && commands.commands.map((c) => `${c.group}:${c.name}`)).toEqual(['agent:compact', 'skill:deploy-docs', 'skill:acme:lint', 'skill:review-pr', 'agent:statusline'])
+    expect(commands?.type === 'commands' && commands.commands.find((c) => c.name === 'statusline')?.terminal).toBe(true)
     // A changed list replaces the rows.
     const changed = m.map({ type: 'sdk', message: { type: 'system', subtype: 'commands_changed', commands: [{ name: 'compact', description: 'Compact', builtin: true }] } })
-    expect(changed[0]?.type === 'commands' && changed[0].commands.map((c) => c.name)).toEqual(['compact', 'review-pr'])
+    expect(changed[0]?.type === 'commands' && changed[0].commands.map((c) => c.name)).toEqual(['compact', 'review-pr', 'statusline'])
   })
 
   it('classifies a CLI\'s unmarked commands by Claude\'s known built-ins', () => {
     expect(claudeSlashCommands([{ name: 'clear' }, { name: 'ship-it' }], [], new Set(), new Set()).map((c) => `${c.group}:${c.name}`)).toEqual(['agent:clear', 'skill:ship-it'])
+  })
+
+  it('keeps aliases and lists terminal-only commands the rows and names lack', () => {
+    const rows = [{ name: 'usage', description: 'Usage', aliases: ['stats', '/cost'], builtin: true }, { name: 'plugin', description: 'Plugins', builtin: true }]
+    const out = claudeSlashCommands(rows, ['usage'], new Set(), new Set(['plugin', 'resume']))
+    expect(out.find((c) => c.name === 'usage')).toEqual({ name: 'usage', description: 'Usage', aliases: ['stats', 'cost'], group: 'agent' })
+    expect(out.find((c) => c.name === 'plugin')).toMatchObject({ terminal: true, group: 'agent' })
+    expect(out.find((c) => c.name === 'resume')).toMatchObject({ terminal: true, group: 'agent' })
   })
 
   it('shows a local command\'s output as the agent\'s reply and /clear as a notice', () => {

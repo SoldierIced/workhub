@@ -1,4 +1,4 @@
-import { agentSlashCommands, parseSlashCommand, uniqueSlashCommands, type SlashCommandInfo } from '@workhub/core'
+import { agentSlashCommands, claudeConsoleCommand, parseSlashCommand, uniqueSlashCommands, type SlashCommandInfo } from '@workhub/core'
 import type { SessionView } from '@shared/api'
 import type { MessageKey, Params } from '../i18n/translate'
 
@@ -40,9 +40,13 @@ export function workhubCommands(v: CommandView, t: Translate): SlashCommandInfo[
   return out
 }
 
-/** Everything the composer's menu offers: Workhub's commands, then the agent's (reported, else its known built-ins). */
+/**
+ * Everything the composer's menu offers: Workhub's commands, then the agent's (reported, else its
+ * known built-ins). Terminal-bound commands stay only where the Terminal view can run them.
+ */
 export function sessionSlashCommands(v: CommandView, t: Translate): SlashCommandInfo[] {
-  return uniqueSlashCommands([...workhubCommands(v, t), ...agentSlashCommands(v.agentId, v.commands)])
+  const agent = agentSlashCommands(v.agentId, v.commands).filter((c) => !c.terminal || ownsLogin(v))
+  return uniqueSlashCommands([...workhubCommands(v, t), ...agent])
 }
 
 export interface WorkhubCommandActions {
@@ -57,6 +61,8 @@ export interface WorkhubCommandActions {
   exit(sessionId: string): Promise<void>
   /** Opens the console and types `/remote-control`; false when the console did not come up. */
   remoteControl(sessionId: string): Promise<boolean>
+  /** Opens the console and types a terminal-bound command line (`/plugin`); false when the console did not come up. */
+  terminal(sessionId: string, line: string): Promise<boolean>
   /** A line in the chat: what the command did, or why it did not run. */
   report(kind: 'done' | 'error', text: string): void
 }
@@ -95,6 +101,16 @@ export function runWorkhubCommand(v: CommandView, text: string, actions: Workhub
   }
   if ((name === 'remote-control' || name === 'rc') && ownsRemoteControl(v)) {
     reportConsoleCommand(actions, actions.remoteControl(v.id), 'remoteControl', t)
+    return true
+  }
+  // Any other command the session reports as bound to Claude's terminal UI (`/plugin`, `/config`).
+  const line = ownsLogin(v) ? claudeConsoleCommand(text, v.commands) : null
+  if (line) {
+    const shown = line.split(' ')[0]!
+    actions.terminal(v.id, line).then(
+      (typed) => actions.report(typed ? 'done' : 'error', t(typed ? 'slash.terminal.done' : 'slash.terminal.timeout', { command: shown })),
+      (e: unknown) => actions.report('error', t('slash.terminal.failed', { command: shown, message: e instanceof Error ? e.message : String(e) }))
+    )
     return true
   }
   if (name === 'exit') {

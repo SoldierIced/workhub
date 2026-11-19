@@ -12,6 +12,10 @@ export interface SlashCommandInfo {
   description?: string
   /** What the command takes, e.g. `<name>`. */
   argumentHint?: string
+  /** Other names the agent answers to (`/stats` and `/cost` for `/usage`), without the slash. */
+  aliases?: string[]
+  /** The command only works in the agent's terminal UI: the chat opens the Terminal view and types it there. */
+  terminal?: boolean
   group: SlashCommandGroup
 }
 
@@ -42,7 +46,7 @@ export function filterSlashCommands(commands: readonly SlashCommandInfo[], query
   const q = query.toLowerCase()
   const rank = (c: SlashCommandInfo) => (c.name.toLowerCase().startsWith(q) ? 0 : 1)
   return commands
-    .filter((c) => !q || c.name.toLowerCase().includes(q))
+    .filter((c) => !q || c.name.toLowerCase().includes(q) || c.aliases?.some((a) => a.toLowerCase().includes(q)))
     .sort(
       (a, b) =>
         SLASH_COMMAND_GROUPS.indexOf(a.group) - SLASH_COMMAND_GROUPS.indexOf(b.group) ||
@@ -64,6 +68,7 @@ export function uniqueSlashCommands(commands: readonly SlashCommandInfo[]): Slas
 }
 
 const builtin = (name: string, description: string, argumentHint?: string): SlashCommandInfo => ({ name, description, group: 'agent', ...(argumentHint ? { argumentHint } : {}) })
+const terminalBuiltin = (name: string, description: string, argumentHint?: string): SlashCommandInfo => ({ ...builtin(name, description, argumentHint), terminal: true })
 
 /**
  * Claude Code's built-in commands that work in a chat session, from its documentation
@@ -78,7 +83,6 @@ export const CLAUDE_BUILTIN_COMMANDS: readonly SlashCommandInfo[] = [
   builtin('usage', 'Show plan usage limits'),
   builtin('init', 'Write a CLAUDE.md for this project'),
   builtin('memory', 'Show the memory files in use'),
-  builtin('model', 'Change the model', '[model]'),
   builtin('mcp', 'Show the MCP servers'),
   builtin('review', 'Review a pull request'),
   builtin('security-review', 'Review the pending changes for security issues'),
@@ -86,7 +90,16 @@ export const CLAUDE_BUILTIN_COMMANDS: readonly SlashCommandInfo[] = [
   builtin('status', 'Show the version, model and account'),
   builtin('todos', 'List the current to-dos'),
   builtin('release-notes', 'Show the release notes'),
-  builtin('help', 'Show the available commands')
+  builtin('help', 'Show the available commands'),
+  // Interactive screens of Claude's terminal UI: until the session reports which commands are bound
+  // to the terminal (`terminal_slash_commands`), these are the ones known to be.
+  terminalBuiltin('config', 'Open the settings screen'),
+  terminalBuiltin('resume', 'Resume another conversation', '[session]'),
+  terminalBuiltin('plugin', 'Manage plugins and marketplaces'),
+  terminalBuiltin('statusline', 'Set up the status line'),
+  terminalBuiltin('ide', 'Manage the IDE integrations'),
+  terminalBuiltin('theme', 'Change the color theme'),
+  terminalBuiltin('terminal-setup', 'Set up the terminal key bindings')
 ]
 
 /**
@@ -143,6 +156,32 @@ export function readSlashCommand(raw: unknown, group: Exclude<SlashCommandGroup,
   const description = typeof o['description'] === 'string' && o['description'].trim() ? o['description'].trim() : undefined
   // Claude's SDK: `argumentHint`; ACP: `input.hint`.
   const input = o['input'] !== null && typeof o['input'] === 'object' ? (o['input'] as Record<string, unknown>) : undefined
+  const aliases = Array.isArray(o['aliases'])
+    ? o['aliases'].flatMap((a) => (typeof a === 'string' && a.trim().replace(/^\//, '') && !/\s/.test(a.trim()) ? [a.trim().replace(/^\//, '')] : [])).filter((a) => a !== name)
+    : []
   const hint = [o['argumentHint'], input?.['hint']].find((h): h is string => typeof h === 'string' && h.trim().length > 0)?.trim()
-  return { name, group, ...(description ? { description } : {}), ...(hint ? { argumentHint: hint } : {}) }
+  return { name, group, ...(description ? { description } : {}), ...(hint ? { argumentHint: hint } : {}), ...(aliases.length ? { aliases } : {}) }
+}
+
+/** Commands Workhub always sends to Claude's console from the chat (its own `/login` and `/remote-control`). */
+const CONSOLE_ONLY = new Set(['login', 'remote-control', 'rc'])
+
+/** A line to type into a console: a slash command, one line, no control characters. */
+const CONSOLE_LINE = /^\/[A-Za-z0-9][\w.:-]*(?: [^\u0000-\u001f\u007f]*)?$/
+
+/**
+ * The text to type into the Claude console for `text`, or null when it is not a terminal-bound
+ * command of the session. A command qualifies when the session reports it (or an alias of it) as
+ * terminal-only; before the session reports anything, when it is one of the known terminal built-ins.
+ * Only the validated command and one line of arguments survive: nothing else is ever typed.
+ */
+export function claudeConsoleCommand(text: string, reported: readonly SlashCommandInfo[] | undefined): string | null {
+  const parsed = /[\u0000-\u001f\u007f]/.test(text.trim()) ? null : parseSlashCommand(text)
+  if (!parsed) return null
+  const name = parsed.name.toLowerCase()
+  const list = reported?.length ? reported : CLAUDE_BUILTIN_COMMANDS
+  const known = CONSOLE_ONLY.has(name) || list.some((c) => c.terminal === true && (c.name.toLowerCase() === name || c.aliases?.some((a) => a.toLowerCase() === name)))
+  if (!known) return null
+  const line = parsed.args ? `/${parsed.name} ${parsed.args}` : `/${parsed.name}`
+  return CONSOLE_LINE.test(line) ? line : null
 }

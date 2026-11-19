@@ -209,6 +209,12 @@ brings it back; its icon shows whether the panel is open.
   runs `/remote-control` there, since Claude Code only turns it on from its terminal UI. Remote
   Control stays on only while the Terminal view runs: a session has one engine at a time, so
   switching back to App stops the console and ends it.
+- **Terminal-only commands** (Claude): commands Claude Code runs only in its terminal UI, such as
+  `/plugin`, `/config`, `/resume`, `/statusline` and `/ide`, show in the `/` menu marked **opens in
+  Terminal**. Picking or typing one (with its arguments, on one line) opens the Terminal view and
+  runs it there; go back to App (⌘⌥1) when you are done. Workhub only types commands the session
+  reports as terminal-only, never other text. The menu also shows a command's aliases (`/stats` for
+  `/usage`), and typing an alias finds it.
 - **Close**: the close button on the row, `/exit` in the chat (in App mode, for every agent;
   anything typed after it is ignored), or ⌘/Ctrl+Shift+W. A session that is working asks first
   (**Stop and close**). A session in a worktree Workhub created offers to keep or remove the

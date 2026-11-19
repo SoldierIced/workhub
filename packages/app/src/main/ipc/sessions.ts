@@ -1,6 +1,6 @@
 import { shell, type BrowserWindow } from 'electron'
 import { stat } from 'node:fs/promises'
-import type { ConfigurationService } from '@workhub/core'
+import { claudeConsoleCommand, type ConfigurationService } from '@workhub/core'
 import type { GitReview } from '@workhub/adapters/git-review'
 import type { SessionMode, StartSessionInput } from '../../shared/api'
 import type { SessionSnapshot } from '../../shared/windows-api'
@@ -119,9 +119,12 @@ export function registerSessionsIpc(ipc: IpcRegistrar, deps: SessionsIpcDeps): v
     return sessions.setAgentMode(id, modeId)
   })
   ipc.handle('sessions:typeInConsole', async (_e, id: string, command: string) => {
-    if (command !== '/login' && command !== '/remote-control') throw new Error('this command cannot be typed into the console')
+    // Only a terminal-bound slash command of a Claude chat session is ever typed; anything else is refused.
+    const view = typeof id === 'string' ? sessions.list().find((v) => v.id === id) : undefined
+    const line = typeof command === 'string' && view?.adapter === 'native' && view.modes?.includes('console') ? claudeConsoleCommand(command, view.commands) : null
+    if (!line) throw new Error('this command cannot be typed into the console')
     await sessions.setMode(id, 'console', { now: true })
-    return deps.driver.typeInConsoleWhenSettled(id, command)
+    return deps.driver.typeInConsoleWhenSettled(id, line)
   })
   ipc.on('sessions:mcp', (_e, id: string, action: 'refresh' | 'reconnect' | 'enable' | 'disable', server?: string) => sessions.mcp(id, action, server))
   ipc.handle('sessions:subagent', (_e, id: string, subagentId: string) => sessions.subagent(id, subagentId))
