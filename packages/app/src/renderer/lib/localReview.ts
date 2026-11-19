@@ -68,3 +68,31 @@ export function sendOutcome(delivery: Pick<LocalReviewDelivery, 'state' | 'reaso
   if (delivery.state === 'delivered' || delivery.state === 'queued') return { done: true }
   return { done: false, message: delivery.reason ? `localReview.delivery.dropped.${delivery.reason}` : 'localReview.delivery.dropped' }
 }
+
+/** A diff row the user's text selection touches: its hunk, its index in the hunk and its kind. */
+export interface SelectedRow {
+  hunk: number
+  line: number
+  kind: 'added' | 'removed' | 'context'
+}
+
+/**
+ * The changed lines a text selection covers, when they all sit in one hunk: what "Revert selected
+ * lines" undoes. Context lines are skipped; a selection with no changed line, or across hunks, is null.
+ */
+export function selectedRevertLines(rows: readonly SelectedRow[]): { hunk: number; lines: number[] } | null {
+  const changed = rows.filter((r) => r.kind !== 'context')
+  const hunk = changed[0]?.hunk
+  if (hunk === undefined || changed.some((r) => r.hunk !== hunk)) return null
+  return { hunk, lines: [...new Set(changed.map((r) => r.line))].sort((a, b) => a - b) }
+}
+
+/** Whether the shown file can be reverted from the review: uncommitted changes, with the digest main gave it. */
+export function canRevertFile(scope: 'branch' | 'uncommitted', file: { digest?: string }): boolean {
+  return scope === 'uncommitted' && !!file.digest
+}
+
+/** Whether hunks and lines of the file can be reverted: a tracked text file that still exists. */
+export function canRevertHunks(scope: 'branch' | 'uncommitted', file: { digest?: string; untracked: boolean; binary: boolean; status: string }): boolean {
+  return canRevertFile(scope, file) && !file.untracked && !file.binary && file.status !== 'deleted'
+}

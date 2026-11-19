@@ -281,4 +281,5 @@ export function truncateDiff(text: string, maxChars: number): { text: string; tr
   return { text: text.slice(0, cut > 0 ? cut : maxChars), truncated: true }
 }
 
-export { childRepositories, limitHunks, LocalChanges, untrackedFile, LOCAL_LINE_LIMIT, type LocalReviewInput } from './local'
+export { childRepositories, diffDigest, limitHunks, LocalChanges, untrackedFile, LOCAL_LINE_LIMIT, type LocalReviewInput } from './local'
+export { LocalReverter, type LocalReverterDeps, type LocalRevertInput } from './revert'

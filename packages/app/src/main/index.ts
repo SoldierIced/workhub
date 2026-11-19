@@ -17,7 +17,7 @@ import { readNotificationPermission } from '@workhub/adapters/notification-permi
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
 import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
 import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
-import { GitReview, LocalChanges } from '@workhub/adapters/git-review'
+import { GitReview, LocalChanges, LocalReverter } from '@workhub/adapters/git-review'
 import { GitWorktrees } from '@workhub/adapters/git-worktree'
 import { AutomationRunLog, BackgroundRuns, BACKUP_FOLDER, backupDatabase, DB_FILE, describeImport, importLegacyJson, listBackups, SessionRecords, SqliteFlowMaps, SqliteHistoryIndex, SqlitePrEventStore, Timelines, TurnIngest, repoProjects, WorkhubDb, type ProjectResolver } from '@workhub/adapters/sqlite-store'
 import { DemoCalendarSource, IcsCalendarSource } from '@workhub/adapters/calendar-ics'
@@ -990,6 +990,8 @@ const localReview = new LocalReviewService({
   sessions,
   deliver: (id, text) => driver.deliver(id, text),
   changes: new LocalChanges(),
+  // Content HEAD does not have (an untracked or new file) goes to the system trash, never deleted.
+  reverter: new LocalReverter({ trash: (path) => shell.trashItem(path) }),
   myPullRequests: async (profileId) => {
     const lists = await Promise.race([codeHost.lists(profileId), new Promise<null>((r) => setTimeout(() => r(null), 5_000))]).catch(() => null)
     return lists?.mine ?? []

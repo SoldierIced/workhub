@@ -49,6 +49,19 @@ adapter, not by reaching into a service from the UI.
 | Config and secrets | `config-json`, `secrets-electron` (Electron `safeStorage`) |
 | Other | `pr-events-json`, `git-review`, `git-worktree`, `token-spend` |
 
+`git-review` reads repositories (`GitReview`, `LocalChanges`) and never writes to them, with one
+exception kept in its own class: `LocalReverter` (`git-review/revert.ts`) reverts uncommitted
+changes from the local review window (`localReview:revert`, not in the remote allowlist). The
+renderer sends a file, a hunk index, line indexes and the digest of the file's raw diff the load
+gave it (`LocalReviewFile.digest`, uncommitted scope only), never patch text. Main reads
+`git diff HEAD` again and answers `changed` when the digest differs; a hunk or lines are undone
+with a patch built from the raw diff by `buildRevertPatch` (pure, `core/local-review/revert.ts`)
+and `git apply -R`, in the index too when the change is staged; a whole file with `git restore
+--source=HEAD --staged --worktree`. A path HEAD does not have (untracked, new, a rename's new name)
+goes to the system trash (`shell.trashItem`, injected) instead of being deleted.
+`LocalReviewService.revert` checks the session, the scope and that the repo and path belong to
+the session's loaded review, and runs reverts in one repo one at a time.
+
 Trackers declare optional capabilities too. `searchByQuery` (Jira: JQL through
 `/rest/api/3/search/jql`, paged up to a cap; Linear: a project, or a team key and a label) counts
 Plan's milestones, and `createIssue` (Jira: `POST /rest/api/3/issue` with an ADF description;

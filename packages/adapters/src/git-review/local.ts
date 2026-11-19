@@ -4,12 +4,14 @@
  * only: git runs without a shell, hooks, optional locks or external diff drivers, and nothing is
  * written to the repositories.
  */
+import { createHash } from 'node:crypto'
 import { lstat, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import {
   githubPageFor,
   parseUnifiedDiff,
+  splitDiffSections,
   type DiffHunk,
   type LocalRepoNote,
   type LocalReview,
@@ -26,7 +28,20 @@ export const UNTRACKED_BYTE_LIMIT = 1_000_000
 /** New files read per repo; past this they are listed without their content. */
 export const UNTRACKED_FILE_LIMIT = 200
 /** Git's empty tree: what a repo without commits is compared with. */
-const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+
+/** The diff the review shows, against `revision`; the revert reads the same one to check what the window saw. */
+export function localDiffArgs(revision: string): string[] {
+  return ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', revision, '--']
+}
+
+/** Max bytes of a whole diff read at once. */
+export const DIFF_MAX_BUFFER = 256 * 1024 * 1024
+
+/** The digest of one file's raw diff section: what a revert checks the window saw. */
+export function diffDigest(section: string): string {
+  return createHash('sha256').update('diff\0').update(section).digest('hex')
+}
 
 export interface LocalReviewInput {
   folder: string
@@ -134,21 +149,27 @@ export class LocalChanges {
       }
     }
 
-    const common = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-M']
     const [patch, untrackedOut] = await Promise.all([
-      this.git(repo, [...common, '--src-prefix=a/', '--dst-prefix=b/', '--unified=3', revision, '--'], { maxBuffer: 256 * 1024 * 1024 }),
+      this.git(repo, localDiffArgs(revision), { maxBuffer: DIFF_MAX_BUFFER }),
       this.git(repo, ['ls-files', '--others', '--exclude-standard', '-z'])
     ])
     if (!patch.ok) return null
-    const files: LocalReviewFile[] = parseUnifiedDiff(patch.stdout).map((f) => {
+    const parsed = parseUnifiedDiff(patch.stdout)
+    // Only uncommitted changes of a repo with commits can be reverted: each file carries the digest of its raw diff.
+    const sections = input.scope === 'uncommitted' && head ? splitDiffSections(patch.stdout) : []
+    const revertible = sections.length === parsed.length
+    const files: LocalReviewFile[] = parsed.map((f, i) => {
       const limited = limitHunks(f.hunks, LOCAL_LINE_LIMIT)
       const note = f.binary ? 'binary' : f.hunks.length === 0 ? 'noText' : undefined
-      return { ...f, hunks: f.binary ? [] : limited.hunks, hiddenLines: limited.hidden, untracked: false, ...(note ? { note } : {}) }
+      const digest = revertible ? diffDigest(sections[i]!) : undefined
+      return { ...f, hunks: f.binary ? [] : limited.hunks, hiddenLines: limited.hidden, untracked: false, ...(note ? { note } : {}), ...(digest ? { digest } : {}) }
     })
     const tracked = new Set(files.map((f) => f.path))
     const untracked = untrackedOut.ok ? untrackedOut.stdout.split('\0').filter((p) => p && !p.endsWith('/') && !tracked.has(p)) : []
     for (const [i, path] of untracked.entries()) {
-      files.push(i < UNTRACKED_FILE_LIMIT ? await untrackedFile(repo, path) : { ...addedFile(path), note: 'tooManyNew' })
+      const file = i < UNTRACKED_FILE_LIMIT ? await untrackedFile(repo, path) : { ...addedFile(path), note: 'tooManyNew' as const }
+      if (input.scope !== 'uncommitted' || !head) delete file.digest
+      files.push(file)
     }
     files.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' }))
     const webUrl = pr?.url ?? (remote ? (githubPageFor(remote, branch, base) ?? undefined) : undefined)
@@ -169,19 +190,28 @@ function addedFile(path: string): LocalReviewFile {
   return { path, status: 'added', binary: false, additions: 0, deletions: 0, hunks: [], hiddenLines: 0, untracked: true }
 }
 
+/** The digest of an untracked file: its content when it was read, else its kind, size and modification time. */
+function untrackedDigest(info: { size: number; mtimeMs: number; isFile(): boolean }, data?: Buffer): string {
+  const hash = createHash('sha256').update('untracked\0')
+  if (data) hash.update(data)
+  else hash.update(`${info.isFile() ? 'file' : 'other'}:${info.size}:${info.mtimeMs}`)
+  return hash.digest('hex')
+}
+
 /**
  * A file git does not track yet, shown as added: every line is new. A symbolic link is not followed
  * (it may point outside the repository) and shows as `unreadable`, as anything that is not a plain
- * file does.
+ * file does. `digest` tells a later revert whether it is still the file that was shown.
  */
 export async function untrackedFile(repo: string, path: string, lineLimit = LOCAL_LINE_LIMIT): Promise<LocalReviewFile> {
-  const file = addedFile(path)
+  const added = addedFile(path)
   const full = join(repo, path)
   try {
     const info = await lstat(full)
-    if (!info.isFile()) return { ...file, note: 'unreadable' }
-    if (info.size > UNTRACKED_BYTE_LIMIT) return { ...file, note: 'tooLarge' }
+    if (!info.isFile()) return { ...added, note: 'unreadable', digest: untrackedDigest(info) }
+    if (info.size > UNTRACKED_BYTE_LIMIT) return { ...added, note: 'tooLarge', digest: untrackedDigest(info) }
     const data = await readFile(full)
+    const file = { ...added, digest: untrackedDigest(info, data) }
     if (data.subarray(0, 8000).includes(0)) return { ...file, binary: true, note: 'binary' }
     const lines = data.toString('utf8').split(/\r?\n/)
     if (lines.at(-1) === '') lines.pop()
@@ -189,7 +219,7 @@ export async function untrackedFile(repo: string, path: string, lineLimit = LOCA
     const hunk: DiffHunk = { header: `@@ -0,0 +1,${lines.length} @@`, lines: lines.slice(0, lineLimit).map((text, i) => ({ kind: 'added', newNumber: i + 1, text })) }
     return { ...file, additions: lines.length, hunks: [hunk], hiddenLines: Math.max(lines.length - lineLimit, 0) }
   } catch {
-    return { ...file, note: 'unreadable' }
+    return { ...added, note: 'unreadable' }
   }
 }
 

@@ -7,8 +7,8 @@
  */
 import { realpath, stat } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
-import type { LocalChanges } from '@workhub/adapters/git-review'
-import { onlySessionFiles, type HistoryMessage, type LocalReviewDelivery, type LocalReviewFiles, type LocalReviewScope, type PullRequestItem, type ReviewComment } from '@workhub/core'
+import type { LocalChanges, LocalReverter } from '@workhub/adapters/git-review'
+import { onlySessionFiles, validRevertTarget, type HistoryMessage, type LocalRevertAnswer, type LocalRevertRequest, type LocalReviewDelivery, type LocalReviewFiles, type LocalReviewScope, type PullRequestItem, type ReviewComment } from '@workhub/core'
 import type { SessionView } from '../shared/api'
 import type { LocalReviewLoad, LocalReviewSession } from '../shared/local-review-api'
 import type { IpcRegistrar } from './ipc-guard'
@@ -24,6 +24,8 @@ export interface LocalReviewDeps {
   /** Types the text into the session (chat or console); `waiting` while it is not idle. */
   deliver(sessionId: string, text: string): Promise<'delivered' | 'waiting'>
   changes: Pick<LocalChanges, 'load'>
+  /** Writes reverts of uncommitted changes; without it nothing can be reverted. */
+  reverter?: Pick<LocalReverter, 'revert'>
   /** The user's own open pull requests for a profile, to match a repo's branch; empty when unknown. */
   myPullRequests?(profileId: string | null): Promise<PullRequestItem[]>
   emit(sessionId: string, delivery: LocalReviewDelivery): void
@@ -85,6 +87,17 @@ export function validComment(c: unknown): ReviewComment | null {
   return { id, repoRoot, repoName, path, side: o['side'], line: o['line'] as number, text: text.slice(0, 20_000), createdAt }
 }
 
+/** A revert as the renderer sent it, checked field by field; null when it is not one. */
+export function validRevertRequest(value: unknown): LocalRevertRequest | null {
+  if (!value || typeof value !== 'object') return null
+  const o = value as Record<string, unknown>
+  const { repoRoot, path, digest, scope } = o
+  if (typeof repoRoot !== 'string' || !repoRoot || typeof path !== 'string' || !path || typeof digest !== 'string' || !digest || digest.length > 200) return null
+  if (scope !== 'uncommitted' && scope !== 'branch') return null
+  const target = validRevertTarget(o['target'])
+  return target ? { repoRoot, path, scope, target, digest } : null
+}
+
 export class LocalReviewService {
   private readonly drafts = new Map<string, ReviewComment[]>()
   private readonly deliveries = new Map<string, LocalReviewDelivery>()
@@ -95,6 +108,8 @@ export class LocalReviewService {
   private readonly asked = new Map<string, { path: string; base?: string }[]>()
   private timer: ReturnType<typeof setInterval> | null = null
   private readonly now: () => number
+  /** The last revert per repo root: reverts in one repo run one after the other. */
+  private readonly reverting = new Map<string, Promise<unknown>>()
 
   constructor(private readonly deps: LocalReviewDeps) {
     this.now = deps.now ?? Date.now
@@ -153,6 +168,33 @@ export class LocalReviewService {
   filePath(sessionId: string, repoRoot: string, path: string): string | null {
     if (!this.roots.get(sessionId)?.has(repoRoot)) return null
     return insideRoot(repoRoot, path)
+  }
+
+  /**
+   * Reverts uncommitted changes of a file the session's review loaded: the whole file, a hunk or
+   * some of its lines. Only in the uncommitted scope (in the branch scope a reverse patch would also
+   * undo committed work); the adapter refuses with `changed` when the file is not what the window
+   * showed (`digest`), so the window reloads instead.
+   */
+  async revert(sessionId: string, value: unknown): Promise<LocalRevertAnswer> {
+    if (!this.view(sessionId)) return { ok: false, error: 'unknownSession' }
+    const request = validRevertRequest(value)
+    if (!request) return { ok: false, error: 'failed', detail: 'invalid request' }
+    if (request.scope !== 'uncommitted') return { ok: false, error: 'scope' }
+    if (!this.deps.reverter) return { ok: false, error: 'unsupported' }
+    if (!this.filePath(sessionId, request.repoRoot, request.path)) return { ok: false, error: 'notReviewed' }
+    const reverter = this.deps.reverter
+    const root = request.repoRoot
+    const run = (this.reverting.get(root) ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => reverter.revert({ root, path: request.path, target: request.target, digest: request.digest }))
+      .catch((err: unknown): LocalRevertAnswer => ({ ok: false, error: 'failed', detail: err instanceof Error ? err.message : String(err) }))
+    this.reverting.set(root, run)
+    try {
+      return await run
+    } finally {
+      if (this.reverting.get(root) === run) this.reverting.delete(root)
+    }
   }
 
   comments(sessionId: string): ReviewComment[] {
@@ -280,6 +322,7 @@ export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewSe
   ipc.handle('localReview:send', (_e, sessionId: string, text: unknown) => service.send(String(sessionId), String(text ?? '')))
   ipc.handle('localReview:delivery', (_e, sessionId: string) => service.delivery(String(sessionId)))
   ipc.handle('localReview:openWindow', (_e, sessionId: string) => deps.openWindow(String(sessionId)))
+  ipc.handle('localReview:revert', (_e, sessionId: string, request: unknown) => service.revert(String(sessionId), request))
   ipc.handle('localReview:filePath', (_e, sessionId: string, repoRoot: string, path: string) => service.filePath(String(sessionId), String(repoRoot), String(path)))
   ipc.handle('localReview:openFile', async (_e, sessionId: string, repoRoot: string, path: string) => {
     const full = service.filePath(String(sessionId), String(repoRoot), String(path))

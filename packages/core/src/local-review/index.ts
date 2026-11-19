@@ -19,6 +19,11 @@ export interface LocalReviewFile extends DiffFile {
   hiddenLines: number
   untracked: boolean
   note?: LocalFileNote
+  /**
+   * What the file's diff was when loaded (uncommitted scope only): a revert sends it back, and is
+   * refused when the file no longer matches it. Absent when the file cannot be reverted from here.
+   */
+  digest?: string
 }
 
 export interface LocalReviewRepo {
@@ -202,3 +207,5 @@ export function onlySessionFiles(review: LocalReview, edited: ReadonlySet<string
   }
   return { review: { ...review, repos }, hidden }
 }
+
+export * from './revert'

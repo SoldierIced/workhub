@@ -362,6 +362,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       onDelivery: (cb) => subscribe<[string, LocalReviewDelivery]>('localReview:delivery', cb),
       openWindow: (sessionId) => invoke('localReview:openWindow', sessionId),
       openFile: (sessionId, repoRoot, path) => invoke('localReview:openFile', sessionId, repoRoot, path),
+      revert: (sessionId, request) => invoke('localReview:revert', sessionId, request),
       filePath: (sessionId, repoRoot, path) => invoke('localReview:filePath', sessionId, repoRoot, path)
     },
     files: {

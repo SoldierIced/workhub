@@ -1,5 +1,5 @@
 // Types of the local review and file viewer bridges (window.hub.localReview, window.hub.files), shared by main, preload and renderer.
-import type { LocalReview, LocalReviewDelivery, LocalReviewFiles, LocalReviewScope, ReviewComment } from '@workhub/core'
+import type { LocalReview, LocalReviewDelivery, LocalReviewFiles, LocalReviewScope, LocalRevertAnswer, LocalRevertRequest, ReviewComment } from '@workhub/core'
 
 /** The session a review belongs to, as the review window shows it. */
 export interface LocalReviewSession {
@@ -35,6 +35,11 @@ export interface LocalReviewApi {
   openWindow(sessionId: string): Promise<void>
   /** Opens a file of a reviewed repo in its default app; false when it is not there. */
   openFile(sessionId: string, repoRoot: string, path: string): Promise<boolean>
+  /**
+   * Reverts uncommitted changes of a reviewed file (whole, a hunk or some lines), refused with
+   * `changed` when the file is not what the window showed (the window reloads then).
+   */
+  revert(sessionId: string, request: LocalRevertRequest): Promise<LocalRevertAnswer>
   /** The absolute path of a file of a reviewed repo, for the file viewer; null when it is not one. */
   filePath(sessionId: string, repoRoot: string, path: string): Promise<string | null>
 }

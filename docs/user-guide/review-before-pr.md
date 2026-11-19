@@ -149,6 +149,31 @@ to the agent as one message (**Send {n} comments to {agent}**, or ⌘/Ctrl+Retur
 closes the review and tells the session so if you want. If the session is busy, the message is
 queued until it is idle. A reviewer session cannot receive comments.
 
+### Revert changes from the diff
+
+In **Uncommitted only**, you can undo what you do not want right in the diff:
+
+- **One change:** hover a block of changes and click the undo arrow next to its header
+  (**Revert this change**).
+- **Some lines:** select changed lines inside one block with the mouse, then click **Revert N
+  selected lines**. Unchanged lines in the selection are ignored; a selection across blocks offers
+  nothing.
+- **A whole file:** **Revert file** in the file's header. It also works for binary, deleted and
+  renamed files and for mode changes. A file the last commit does not have (a new or untracked
+  file, or the new name of a renamed one) goes to the system trash instead of being deleted, and a
+  renamed file comes back under its old name. Untracked, binary and deleted files offer only
+  this one.
+
+Each revert asks first, because uncommitted changes are not saved in git and cannot be brought back
+from it. Staged changes are reverted too: a reverted block leaves both the working tree and the
+index. If the file changed after the window showed it (the agent kept writing), nothing is reverted:
+the window reads the changes again and you can try once more. A block whose lines differ between the
+staged and unstaged version of the file is refused; revert the whole file, or stage or unstage it
+first.
+
+Reverting is not offered in **Branch vs base**: there the diff includes committed work, which a
+revert would also undo. It is not offered from a paired phone either.
+
 A tool the agent runs can open this window too. Every session (except reviewers) gets
 `WORKHUB_SESSION` (its id), `WORKHUB_SESSION_TOKEN` (its own token) and `WORKHUB_SOCKET` (a local socket only your user can reach; on Windows `WORKHUB_URL` and `WORKHUB_TOKEN`) in its
 environment. A session can open only its own review: the token must be the one of the session in the path.

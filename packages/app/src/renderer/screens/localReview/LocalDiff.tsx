@@ -1,9 +1,10 @@
-import { MessageSquarePlus } from 'lucide-react'
-import { Fragment, useEffect, useRef } from 'react'
-import { commentAnchor, isCommentOn, type CommentSide, type DiffLine, type LocalReviewFile, type ReviewComment } from '@workhub/core'
+import { MessageSquarePlus, Undo2 } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { commentAnchor, isCommentOn, type CommentSide, type DiffLine, type LocalReviewFile, type LocalRevertTarget, type ReviewComment } from '@workhub/core'
 import { Button, Textarea } from '../../components/atoms'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
+import { selectedRevertLines, type SelectedRow } from '../../lib/localReview'
 import { relativeTime } from '../../lib/pullRequests'
 
 const ROW: Record<DiffLine['kind'], string> = { added: 'bg-success-soft', removed: 'bg-danger-soft', context: '' }
@@ -31,6 +32,8 @@ export interface LocalDiffProps {
   sendShortcut: string
   /** A comment to bring into view. */
   focusId?: string | null
+  /** Reverts a hunk or the selected lines of one (uncommitted changes of a tracked text file); absent: no revert controls. */
+  onRevert?: (target: LocalRevertTarget) => void
 }
 
 function CommentBox({ comment, onEdit, onRemove }: { comment: ReviewComment; onEdit: () => void; onRemove: () => void }) {
@@ -103,14 +106,55 @@ function ComposerBox({ composer, draft, onDraft, onCancel, onCommit, sendShortcu
   )
 }
 
-/** One file's diff with the user's comments under their lines; a line's "+" opens a comment box. */
-export function LocalDiff({ file, comments, composer, draft, onDraft, onOpenComposer, onCloseComposer, onCommit, onRemove, sendShortcut, focusId }: LocalDiffProps) {
+/** The changed lines of one hunk the user's text selection covers in `root`, or null. */
+function readSelection(root: HTMLElement | null): { hunk: number; lines: number[] } | null {
+  const sel = document.getSelection()
+  if (!root || !sel || sel.isCollapsed || sel.rangeCount === 0) return null
+  const rows: SelectedRow[] = []
+  for (const row of root.querySelectorAll<HTMLTableRowElement>('tr[data-kind]')) {
+    if (!sel.containsNode(row, true)) continue
+    rows.push({ hunk: Number(row.dataset['hunk']), line: Number(row.dataset['line']), kind: row.dataset['kind'] as SelectedRow['kind'] })
+  }
+  return selectedRevertLines(rows)
+}
+
+const sameSelection = (a: { hunk: number; lines: number[] } | null, b: { hunk: number; lines: number[] } | null) =>
+  a === b || (a !== null && b !== null && a.hunk === b.hunk && a.lines.join() === b.lines.join())
+
+/**
+ * One file's diff with the user's comments under their lines; a line's "+" opens a comment box.
+ * With `onRevert`, a hunk shows an undo arrow while hovered, and selecting changed lines of one hunk
+ * offers to revert just those.
+ */
+export function LocalDiff({ file, comments, composer, draft, onDraft, onOpenComposer, onCloseComposer, onCommit, onRemove, sendShortcut, focusId, onRevert }: LocalDiffProps) {
   const { t, tn } = useI18n()
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!focusId) return
     root.current?.querySelector(`[data-comment-id="${CSS.escape(focusId)}"]`)?.scrollIntoView({ block: 'center' })
   }, [focusId])
+  const [selection, setSelection] = useState<{ hunk: number; lines: number[] } | null>(null)
+  const canRevert = onRevert !== undefined
+  useEffect(() => {
+    if (!canRevert) {
+      setSelection(null)
+      return
+    }
+    const update = () => {
+      const next = readSelection(root.current)
+      setSelection((prev) => (sameSelection(prev, next) ? prev : next))
+    }
+    // A reloaded diff: what was selected may be gone.
+    update()
+    document.addEventListener('selectionchange', update)
+    return () => document.removeEventListener('selectionchange', update)
+  }, [canRevert, file])
+  // The last hunk may be cut by the line limit: only its shown lines can be reverted.
+  const cutHunk = file.hiddenLines > 0 ? file.hunks.length - 1 : -1
+  const revertSelection = () => {
+    if (!selection || !onRevert) return
+    onRevert({ kind: 'lines', hunk: selection.hunk, lines: selection.lines })
+  }
   const shown = new Set<string>()
   return (
     <div ref={root}>
@@ -123,64 +167,92 @@ export function LocalDiff({ file, comments, composer, draft, onDraft, onOpenComp
             <col className="w-5" />
             <col />
           </colgroup>
-          <tbody>
-            {file.hunks.map((hunk, hi) => (
-              <Fragment key={`h${hi}`}>
-                <tr className="bg-info-soft text-info">
-                  <td colSpan={5} className="whitespace-pre-wrap break-all px-3 py-1">
-                    {hunk.header}
-                  </td>
-                </tr>
-                {hunk.lines.map((line, li) => {
-                  const anchor = commentAnchor(line)
-                  const here = comments.filter((c) => isCommentOn(c, line))
-                  const composing = composer && anchor && composer.side === anchor.side && composer.line === anchor.line
-                  return (
-                    <Fragment key={`${hi}:${li}`}>
-                      <tr className={cn('group', ROW[line.kind])}>
-                        <td className="select-none align-top">
-                          {anchor && (
-                            <button
-                              type="button"
-                              aria-label={t('localReview.addComment', { line: anchor.line })}
-                              title={t('localReview.addComment', { line: anchor.line })}
-                              onClick={() => onOpenComposer({ side: anchor.side, line: anchor.line }, '')}
-                              className={cn('flex size-5 items-center justify-center rounded-sm text-accent opacity-0 hover:bg-accent-soft focus-visible:opacity-100 group-hover:opacity-100', here.length > 0 && 'opacity-60')}
-                            >
-                              <MessageSquarePlus className="size-3.5" aria-hidden />
-                            </button>
-                          )}
-                        </td>
-                        <td className="select-none pr-2 text-right align-top text-subtle tabular-nums">{line.oldNumber ?? ''}</td>
-                        <td className="select-none pr-2 text-right align-top text-subtle tabular-nums">{line.newNumber ?? ''}</td>
-                        <td className={cn('select-none text-center align-top', SIGN_COLOR[line.kind])}>{SIGN[line.kind]}</td>
-                        <td className="whitespace-pre-wrap break-all pr-4">{line.text === '' ? ' ' : line.text}</td>
-                      </tr>
-                      {here.map((c) => {
-                        shown.add(c.id)
-                        return composer?.editing === c.id ? null : (
-                          <tr key={c.id}>
-                            <td colSpan={5}>
-                              <CommentBox comment={c} onEdit={() => onOpenComposer({ side: c.side, line: c.line, editing: c.id }, c.text)} onRemove={() => onRemove(c.id)} />
-                            </td>
-                          </tr>
-                        )
-                      })}
-                      {composing && (
-                        <tr>
+          {file.hunks.map((hunk, hi) => (
+            <tbody key={`h${hi}`} className="group/hunk">
+              <tr className="bg-info-soft text-info">
+                <td className="select-none align-top">
+                  {onRevert && hi !== cutHunk && (
+                    <button
+                      type="button"
+                      aria-label={t('localReview.revert.hunk')}
+                      title={t('localReview.revert.hunk')}
+                      onClick={() => onRevert({ kind: 'hunk', hunk: hi })}
+                      data-testid="review-revert-hunk"
+                      className="mt-0.5 flex size-5 items-center justify-center rounded-sm text-danger opacity-0 hover:bg-danger-soft focus-visible:opacity-100 group-hover/hunk:opacity-100"
+                    >
+                      <Undo2 className="size-3.5" aria-hidden />
+                    </button>
+                  )}
+                </td>
+                <td colSpan={4} className="whitespace-pre-wrap break-all py-1 pr-3">
+                  {hunk.header}
+                </td>
+              </tr>
+              {hunk.lines.map((line, li) => {
+                const anchor = commentAnchor(line)
+                const here = comments.filter((c) => isCommentOn(c, line))
+                const composing = composer && anchor && composer.side === anchor.side && composer.line === anchor.line
+                return (
+                  <Fragment key={`${hi}:${li}`}>
+                    <tr className={cn('group', ROW[line.kind])} data-hunk={hi} data-line={li} data-kind={line.kind}>
+                      <td className="select-none align-top">
+                        {anchor && (
+                          <button
+                            type="button"
+                            aria-label={t('localReview.addComment', { line: anchor.line })}
+                            title={t('localReview.addComment', { line: anchor.line })}
+                            onClick={() => onOpenComposer({ side: anchor.side, line: anchor.line }, '')}
+                            className={cn('flex size-5 items-center justify-center rounded-sm text-accent opacity-0 hover:bg-accent-soft focus-visible:opacity-100 group-hover:opacity-100', here.length > 0 && 'opacity-60')}
+                          >
+                            <MessageSquarePlus className="size-3.5" aria-hidden />
+                          </button>
+                        )}
+                      </td>
+                      <td className="select-none pr-2 text-right align-top text-subtle tabular-nums">{line.oldNumber ?? ''}</td>
+                      <td className="select-none pr-2 text-right align-top text-subtle tabular-nums">{line.newNumber ?? ''}</td>
+                      <td className={cn('select-none text-center align-top', SIGN_COLOR[line.kind])}>{SIGN[line.kind]}</td>
+                      <td className="whitespace-pre-wrap break-all pr-4">{line.text === '' ? ' ' : line.text}</td>
+                    </tr>
+                    {here.map((c) => {
+                      shown.add(c.id)
+                      return composer?.editing === c.id ? null : (
+                        <tr key={c.id}>
                           <td colSpan={5}>
-                            <ComposerBox composer={composer} draft={draft} onDraft={onDraft} onCancel={onCloseComposer} onCommit={onCommit} sendShortcut={sendShortcut} />
+                            <CommentBox comment={c} onEdit={() => onOpenComposer({ side: c.side, line: c.line, editing: c.id }, c.text)} onRemove={() => onRemove(c.id)} />
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </Fragment>
-            ))}
-          </tbody>
+                      )
+                    })}
+                    {composing && (
+                      <tr>
+                        <td colSpan={5}>
+                          <ComposerBox composer={composer} draft={draft} onDraft={onDraft} onCancel={onCloseComposer} onCommit={onCommit} sendShortcut={sendShortcut} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          ))}
         </table>
       </div>
+      {onRevert && selection && (
+        <div className="pointer-events-none sticky bottom-3 z-10 flex justify-center">
+          <Button
+            size="sm"
+            variant="danger"
+            className="pointer-events-auto shadow-md"
+            icon={<Undo2 className="size-3.5" aria-hidden />}
+            // Keeps the text selection while the button is pressed.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={revertSelection}
+            data-testid="review-revert-lines"
+          >
+            {tn('localReview.revert.lines', selection.lines.length)}
+          </Button>
+        </div>
+      )}
       {file.hiddenLines > 0 && <p className="border-t border-border px-4 py-2 text-sm text-muted">{tn('localReview.hiddenLines', file.hiddenLines)}</p>}
       {comments.some((c) => !shown.has(c.id)) && (
         <div className="border-t border-border py-2">

@@ -1,4 +1,4 @@
-import { AppWindow, ExternalLink, FileText, FolderGit2, GitPullRequest, Search, X } from 'lucide-react'
+import { AppWindow, ExternalLink, FileText, FolderGit2, GitPullRequest, Search, Undo2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   branchLine,
@@ -14,6 +14,8 @@ import {
   type LocalReviewFiles,
   type LocalReviewRepo,
   type LocalReviewScope,
+  type LocalRevertAnswer,
+  type LocalRevertTarget,
   type ReviewComment
 } from '@workhub/core'
 import type { LocalReviewLoad, LocalReviewSession } from '@shared/local-review-api'
@@ -22,7 +24,7 @@ import { Dialog, EmptyState, RefreshButton } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { errorText } from '../lib/errorText'
-import { fileName, newCommentId, sendOutcome } from '../lib/localReview'
+import { canRevertFile, canRevertHunks, fileName, newCommentId, sendOutcome } from '../lib/localReview'
 import { usePlatform } from '../lib/platform'
 import { setPrefs, usePrefs } from '../lib/prefs'
 import { matchesShortcut, shortcutLabel } from '../lib/shortcuts'
@@ -70,6 +72,10 @@ function Review({ sessionId }: { sessionId: string }) {
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
+  // The revert waiting for the user's confirmation, one at a time, and why the last one failed.
+  const [revert, setRevert] = useState<{ repo: LocalReviewRepo; file: LocalReviewFile; target: LocalRevertTarget } | null>(null)
+  const [reverting, setReverting] = useState(false)
+  const [revertError, setRevertError] = useState<string | null>(null)
 
   useEffect(() => {
     void window.hub.localReview.comments(sessionId).then(setCommentsState)
@@ -156,6 +162,29 @@ function Review({ sessionId }: { sessionId: string }) {
     return next
   }
 
+  /** What a revert that was refused or failed says; `changed` also reads the changes again. */
+  const revertErrorText = (answer: Exclude<LocalRevertAnswer, { ok: true }>) => t(`localReview.revert.error.${answer.error}`, { detail: answer.detail ?? '' })
+
+  const confirmRevert = () => {
+    if (!revert || reverting || !review) return
+    const { repo, file, target } = revert
+    setReverting(true)
+    void window.hub.localReview.revert(sessionId, { repoRoot: repo.root, path: file.path, scope: review.scope, target, digest: file.digest ?? '' }).then(
+      (answer) => {
+        setReverting(false)
+        setRevert(null)
+        document.getSelection()?.removeAllRanges()
+        setRevertError(answer.ok ? null : revertErrorText(answer))
+        if (answer.ok || answer.error === 'changed') reload()
+      },
+      (e: unknown) => {
+        setReverting(false)
+        setRevert(null)
+        setRevertError(t('localReview.revert.error.failed', { detail: errorText(e) }))
+      }
+    )
+  }
+
   const blocker = session?.blocker
   // Delivered or queued: the comments are the session's now. Dropped or failed: they stay, with the reason.
   const deliver = (text: string) => {
@@ -198,7 +227,7 @@ function Review({ sessionId }: { sessionId: string }) {
       if (matchesShortcut(e, SEND_SHORTCUT, platform)) {
         e.preventDefault()
         sendAll()
-      } else if (e.key === 'Escape' && !confirming) {
+      } else if (e.key === 'Escape' && !confirming && !revert) {
         if (composer) closeComposer()
         else window.close()
       }
@@ -236,6 +265,11 @@ function Review({ sessionId }: { sessionId: string }) {
           {sendError && (
             <div role="alert" className="mt-0.5 text-xs text-danger" data-testid="review-send-error">
               {sendError}
+            </div>
+          )}
+          {revertError && (
+            <div role="alert" className="mt-0.5 text-xs text-danger" data-testid="review-revert-error">
+              {revertError}
             </div>
           )}
         </div>
@@ -440,6 +474,8 @@ function Review({ sessionId }: { sessionId: string }) {
                   onRemove={(id) => setComments(removeComment(comments, id))}
                   sendShortcut={sendShortcut}
                   focusId={focusId}
+                  onRevertFile={canRevertFile(result.review.scope, current.file) ? () => setRevert({ repo: current.repo, file: current.file, target: { kind: 'file' } }) : undefined}
+                  onRevert={canRevertHunks(result.review.scope, current.file) ? (target) => setRevert({ repo: current.repo, file: current.file, target }) : undefined}
                 />
               ) : (
                 <EmptyState compact icon={<FileText className="size-5" aria-hidden />} title={t('localReview.pickFile')} />
@@ -467,6 +503,39 @@ function Review({ sessionId }: { sessionId: string }) {
         }
       >
         {blocker && <p className="text-sm text-warning">{t(`localReview.blocker.${blocker}`)}</p>}
+      </Dialog>
+
+      <Dialog
+        open={revert !== null}
+        onOpenChange={(open) => {
+          if (!open && !reverting) setRevert(null)
+        }}
+        title={
+          !revert
+            ? ''
+            : revert.target.kind === 'file'
+              ? t('localReview.revert.titleFile', { path: revert.file.path })
+              : revert.target.kind === 'hunk'
+                ? t('localReview.revert.titleHunk', { path: revert.file.path })
+                : tn('localReview.revert.titleLines', revert.target.lines.length, { path: revert.file.path })
+        }
+        description={t('localReview.revert.body')}
+        footer={
+          <>
+            <Button variant="ghost" disabled={reverting} onClick={() => setRevert(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="danger" disabled={reverting} onClick={confirmRevert} data-testid="review-revert-confirm">
+              {t('localReview.revert.confirm')}
+            </Button>
+          </>
+        }
+      >
+        {revert?.target.kind === 'file' && revert.file.status === 'renamed' && revert.file.oldPath ? (
+          <p className="text-sm text-muted">{t('localReview.revert.bodyRename', { path: revert.file.oldPath })}</p>
+        ) : revert?.target.kind === 'file' && (revert.file.untracked || revert.file.status === 'added') ? (
+          <p className="text-sm text-muted">{t('localReview.revert.bodyTrash')}</p>
+        ) : null}
       </Dialog>
     </div>
   )
@@ -517,7 +586,13 @@ function RepoCards({ repos, selected, onSelect, counts }: { repos: LocalReviewRe
   )
 }
 
-function FilePane({ sessionId, repo, file, ...diff }: { sessionId: string; repo: LocalReviewRepo; file: LocalReviewFile } & Omit<Parameters<typeof LocalDiff>[0], 'file'>) {
+function FilePane({
+  sessionId,
+  repo,
+  file,
+  onRevertFile,
+  ...diff
+}: { sessionId: string; repo: LocalReviewRepo; file: LocalReviewFile; /** Reverts every uncommitted change to the file; absent: no button. */ onRevertFile?: () => void } & Omit<Parameters<typeof LocalDiff>[0], 'file'>) {
   const { t } = useI18n()
   const viewFile = async () => {
     const path = await window.hub.localReview.filePath(sessionId, repo.root, file.path)
@@ -548,6 +623,11 @@ function FilePane({ sessionId, repo, file, ...diff }: { sessionId: string; repo:
           {canOpen && (
             <Button size="sm" variant="ghost" icon={<AppWindow className="size-3.5" aria-hidden />} title={t('localReview.openFileHint')} onClick={openFile}>
               {t('localReview.openFile')}
+            </Button>
+          )}
+          {onRevertFile && (
+            <Button size="sm" variant="ghost" className="text-danger" icon={<Undo2 className="size-3.5" aria-hidden />} title={t('localReview.revert.fileHint')} onClick={onRevertFile} data-testid="review-revert-file">
+              {t('localReview.revert.file')}
             </Button>
           )}
         </span>
