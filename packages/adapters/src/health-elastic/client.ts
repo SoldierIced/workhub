@@ -50,9 +50,22 @@ export function normalizeElasticUrl(raw: string): string | null {
   return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`
 }
 
+/**
+ * The token Elasticsearch expects after `ApiKey`. Kibana shows two forms: the already-encoded
+ * value, and `id:api_key`, which has to be base64-encoded. A pasted `ApiKey …` prefix is dropped.
+ */
+export function apiKeyCredential(secret: string): string {
+  const cleaned = secret
+    .trim()
+    .replace(/^ApiKey\s*:?\s*/i, '')
+    .replace(/\s+/g, '')
+  if (!cleaned) return ''
+  return cleaned.includes(':') ? Buffer.from(cleaned).toString('base64') : cleaned
+}
+
 /** The `Authorization` header value. HTTP Basic joins user and password with a colon, so the user cannot contain one. */
 export function authorizationHeader(auth: ElasticAuth): string {
-  if (auth.mode === 'apiKey') return `ApiKey ${auth.secret}`
+  if (auth.mode === 'apiKey') return `ApiKey ${apiKeyCredential(auth.secret)}`
   return `Basic ${Buffer.from(`${auth.username}:${auth.secret}`).toString('base64')}`
 }
 
@@ -91,23 +104,40 @@ export class ElasticClient {
     if (options.auth.mode === 'basic') {
       const problem = usernameProblem(options.auth.username)
       if (problem) throw new ElasticError(problem === 'empty' ? 'The username is empty' : 'The username cannot contain a colon', 'notConfigured')
+      if (!options.auth.secret) throw new ElasticError('No credential is stored for this connection', 'notConfigured')
+    } else if (!apiKeyCredential(options.auth.secret)) {
+      throw new ElasticError('No credential is stored for this connection', 'notConfigured')
     }
-    if (!options.auth.secret) throw new ElasticError('No credential is stored for this connection', 'notConfigured')
     this.baseUrl = base
     this.header = authorizationHeader(options.auth)
     this.http = options.http
     this.timeoutMs = options.timeoutMs ?? 20_000
   }
 
+  /**
+   * GET on the cluster root: proves the URL is Elasticsearch and the credential is accepted.
+   * A key with no index privileges still succeeds here; counting every index would answer 404.
+   */
+  async info(): Promise<{ cluster: string; version: string }> {
+    const parsed = await this.request('GET', '')
+    const version = str(at(parsed, 'version', 'number'))
+    if (!version) throw new ElasticError('This URL did not answer as Elasticsearch. Use the Elasticsearch endpoint, not the Kibana one.', 'badResponse')
+    return { cluster: str(at(parsed, 'cluster_name')) ?? 'Elasticsearch', version }
+  }
+
   private async post(index: string, endpoint: '_search' | '_count', body: unknown): Promise<Json> {
-    const url = `${this.baseUrl}/${indexPath(index)}/${endpoint}`
+    return this.request('POST', `${indexPath(index)}/${endpoint}`, body)
+  }
+
+  private async request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Json> {
+    const url = path ? `${this.baseUrl}/${path}` : this.baseUrl
     let response
     try {
       response = await this.http({
-        method: 'POST',
+        method,
         url,
-        headers: { Authorization: this.header, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(body),
+        headers: { Authorization: this.header, Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        body: body === undefined ? undefined : JSON.stringify(body),
         timeoutMs: this.timeoutMs
       })
     } catch (error) {
@@ -120,11 +150,27 @@ export class ElasticClient {
     } catch {
       parsed = undefined
     }
+    if (response.status === 404) {
+      const detail = str(at(parsed, 'error', 'reason')) ?? ''
+      throw new ElasticError(
+        path
+          ? `Elasticsearch answered HTTP 404${detail ? `: ${detail}` : ''}. A credential that cannot see an index is told it does not exist; check the index pattern and that this API key can read it.`
+          : 'This URL answered HTTP 404, so it is not the Elasticsearch endpoint. Use the Elasticsearch URL, not the Kibana one.',
+        'badResponse',
+        404
+      )
+    }
     if (response.status < 200 || response.status >= 300) {
       const detail = str(at(parsed, 'error', 'reason')) ?? str(at(parsed, 'error', 'type')) ?? ''
       throw new ElasticError(detail ? `Elasticsearch answered HTTP ${response.status}: ${detail}` : `Elasticsearch answered HTTP ${response.status}`, 'badResponse', response.status)
     }
-    if (parsed === undefined) throw new ElasticError('Elasticsearch answered something that is not JSON', 'badResponse', response.status)
+    if (parsed === undefined) {
+      throw new ElasticError(
+        path ? 'Elasticsearch answered something that is not JSON' : 'This URL did not answer as Elasticsearch. Use the Elasticsearch endpoint, not the Kibana one.',
+        'badResponse',
+        response.status
+      )
+    }
     return parsed
   }
 

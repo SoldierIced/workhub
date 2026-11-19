@@ -514,7 +514,7 @@ export class HealthService {
     }
   }
 
-  /** Checks a connection as typed in the form: one `_count`, with the typed or the stored secret. */
+  /** Checks a connection as typed in the form: the cluster root, then one `_count` when an index is named. */
   async test(connection: Connection, change: SecretChange, indexToProbe?: string): Promise<ConnectionTest> {
     if (this.deps.demo) return new DemoHealthProvider().test()
     const resolved = await secretForConnectionTest(await this.deps.configuration.current(), this.deps.secrets, connection, change)

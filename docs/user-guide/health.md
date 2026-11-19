@@ -10,14 +10,16 @@ healthy unless it could be read. It is an optional module: turn on **Health** fo
 In **Settings → Profiles → (profile) → Screens → Health** (open the row):
 
 1. **Elasticsearch URL**: `https` only (`http` is accepted for localhost).
-2. **Authentication**: **API key** or **Username and password**. Use a read-only key or user. The
-   secret is stored encrypted, never in the settings file.
+2. **Authentication**: **API key** or **Username and password**. Kibana shows the API key already
+   encoded, or as `id:api_key`; paste either one. Use a read-only key or user. The secret is stored
+   encrypted, never in the settings file.
 3. **TLS certificate**: **System trust store**, **Pin one certificate** (give its SHA-256
    fingerprint; use this for a self-signed certificate) or **No validation** (only on a network you
    trust).
 4. **Refresh every**: how often the screen reads. A global floor (**Never more often than**) applies
    to every profile, Refresh included, so a shared cluster is not overloaded.
-5. **Test connection**, then **Save connection**.
+5. **Test connection**, then **Save connection**. The test reads the cluster root. When an
+   environment already names an index, it also counts the documents in that index.
 6. **Environments**: add each one (production, staging…) with its `service.environment` values
    (comma separated, for example `prod, production`, because services do not always tag the same
    way), its APM errors, traces and metrics indexes (or **Use Elastic's default data streams**), the

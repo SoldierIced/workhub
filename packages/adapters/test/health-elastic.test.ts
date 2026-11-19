@@ -233,6 +233,8 @@ describe('ElasticClient', () => {
     expect(normalizeElasticUrl('ftp://x')).toBeNull()
     expect(normalizeElasticUrl('not a url')).toBeNull()
     expect(authorizationHeader({ mode: 'apiKey', secret: 's' })).toBe('ApiKey s')
+    expect(authorizationHeader({ mode: 'apiKey', secret: '  ApiKey abcdef== \n' })).toBe('ApiKey abcdef==')
+    expect(authorizationHeader({ mode: 'apiKey', secret: 'id-1:secret-1' })).toBe(`ApiKey ${Buffer.from('id-1:secret-1').toString('base64')}`)
     expect(indexPath('a b,c/d*')).toBe('a%20b,c%2Fd*')
     const fp = 'AB:CD:' + 'ef'.repeat(30)
     expect(normalizeFingerprint(fp)).toBe('abcd' + 'ef'.repeat(30))
@@ -249,6 +251,7 @@ describe('ElasticHealthProvider', () => {
     const http: HttpClient = async (req) => {
       const path = new URL(req.url).pathname.slice(1)
       seen.push(path)
+      if (req.method === 'GET') return { status: 200, text: JSON.stringify({ cluster_name: 'example', version: { number: '8.15.0' } }) }
       const handler = handlers[path]
       if (!handler) return { status: 404, text: JSON.stringify({ error: { reason: `no such index ${path}` } }) }
       const out = handler(JSON.parse(req.body ?? '{}'))
@@ -322,9 +325,25 @@ describe('ElasticHealthProvider', () => {
     expect(makeSnapshot(bare, { ...emptySignals(), ...out }).state).toBe('blind')
   })
 
-  it('tests the connection with one _count and never leaks the credential', async () => {
+  it('tests the credential on the cluster root, then counts a named index, and never leaks the credential', async () => {
     const ok = cluster({ 'errors-*/_count': () => ({ count: 1234 }) })
     expect(await ok.provider.test()).toEqual({ ok: true, account: '1,234 documents in errors-*' })
+    expect(ok.seen[0]).toBe('')
+    const wildcard = new ElasticHealthProvider({
+      client: new ElasticClient({
+        baseUrl: 'https://es.example.test',
+        auth: { mode: 'apiKey', secret: 'k' },
+        http: async (req) => {
+          if (req.method !== 'GET') return { status: 404, text: JSON.stringify({ error: { reason: 'no such index [*]' } }) }
+          return { status: 200, text: JSON.stringify({ cluster_name: 'example', version: { number: '8.15.0' } }) }
+        }
+      })
+    })
+    expect(await wildcard.test()).toEqual({ ok: true, account: 'cluster example (8.15.0)' })
+    const hidden = cluster({})
+    const missed = await hidden.provider.test()
+    expect(missed.ok).toBe(false)
+    if (!missed.ok) expect(missed.error).toContain('cannot see an index')
     const denied = new ElasticHealthProvider({
       client: new ElasticClient({ baseUrl: 'https://es.example.test', auth: { mode: 'apiKey', secret: 'super-secret' }, http: async () => ({ status: 401, text: '' }) })
     })

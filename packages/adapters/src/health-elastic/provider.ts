@@ -28,6 +28,10 @@ export class ElasticHealthProvider implements HealthProvider {
 
   async test(): Promise<ConnectionTest> {
     try {
+      const info = await this.client.info()
+      // `*` matches nothing a restricted API key can see, and Elasticsearch answers 404, not 403.
+      // The credential is already proven; counting starts once an environment names an index.
+      if (this.testIndex === '*') return { ok: true, account: `cluster ${info.cluster} (${info.version})` }
       const count = await this.client.count(this.testIndex, { match_all: {} })
       return { ok: true, account: `${count.toLocaleString('en-US')} documents in ${this.testIndex}` }
     } catch (error) {

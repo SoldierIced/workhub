@@ -29,6 +29,7 @@ function cluster() {
   const calls: HttpRequest[] = []
   const http: HttpClient = async (req) => {
     calls.push(req)
+    if (req.method === 'GET') return { status: 200, text: JSON.stringify({ cluster_name: 'example', version: { number: '8.15.0' } }) }
     return { status: 200, text: JSON.stringify({ count: 7, aggregations: { by_key: { buckets: [{ key: 'api', doc_count: 5, daily: { buckets: [{ doc_count: 0 }, { doc_count: 5 }] }, recent: { doc_count: 5 } }] }, by_service: { buckets: [{ key: 'api', last_seen: { value: Date.now() } }] }, by_transaction: { buckets: [] } } }) }
   }
   return { http, calls }
@@ -229,7 +230,8 @@ describe('HealthService', () => {
     const s = service({ http: c.http, connections: [] })
     const ok = await s.test(elastic, { action: 'set', value: 'typed-key' }, 'errors-*')
     expect(ok).toEqual({ ok: true, account: '7 documents in errors-*' })
-    expect(c.calls[0]?.headers['Authorization']).toBe('ApiKey typed-key')
+    expect(c.calls[0]?.method).toBe('GET')
+    expect(c.calls[1]?.headers['Authorization']).toBe('ApiKey typed-key')
     const missing = await s.test(elastic, { action: 'keep' })
     expect(missing.ok).toBe(false)
   })
