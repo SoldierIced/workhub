@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createGroup, EMPTY_SESSION_GROUPS, type SessionGroups } from '@workhub/core'
 import type { SessionView } from '../src/shared/api'
 import { startPlaced, type SessionPlacementDeps } from '../src/main/session-placement'
-import { folderGroups, folderSections, groupMatches, isFolderOpen, toggleExpanded } from '../src/renderer/lib/folders'
+import { folderGroups, folderSections, groupMatches, isFolderOpen, seedFolder, toggleExpanded } from '../src/renderer/lib/folders'
 import { parsePrefs } from '../src/renderer/lib/prefs'
 import { groupChoiceOf, groupOptionsOf, NEW_GROUP } from '../src/renderer/lib/sessionGroups'
 
@@ -114,5 +114,26 @@ describe('placing a new session in its group (main)', () => {
     await startPlaced({ profileId: 'acme', agentKey: 'claude', cwd: '/work/acme/api' }, d)
     await startPlaced({ profileId: 'acme', agentKey: 'claude', cwd: '/work/acme/api', group: { groupId: 'gone' } }, d)
     expect(d.saveGroups).not.toHaveBeenCalled()
+  })
+})
+
+describe('the new session dialog folder', () => {
+  it('starts in the folder the dialog was opened with', () => {
+    expect(seedFolder('', { initial: '/work/acme/api' }, false)).toBe('/work/acme/api')
+  })
+
+  it('falls back to the default folder only when the field is empty', () => {
+    expect(seedFolder('', { fallback: '/work' }, false)).toBe('/work')
+    expect(seedFolder('/work/side', { fallback: '/work' }, false)).toBe('/work/side')
+  })
+
+  it('keeps a folder the user typed or browsed to when the agent list changes', () => {
+    expect(seedFolder('/work/side/notes', { initial: '/work/acme/api' }, true)).toBe('/work/side/notes')
+    expect(seedFolder('/work/side/notes', { fallback: '/work' }, true)).toBe('/work/side/notes')
+  })
+
+  it('seeds the folder again when the dialog is opened again', () => {
+    // Opening clears the edited mark, so the dialog's folder wins over the last one used.
+    expect(seedFolder('/work/side/notes', { initial: '/work/acme/api' }, false)).toBe('/work/acme/api')
   })
 })

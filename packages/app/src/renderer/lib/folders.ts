@@ -166,3 +166,12 @@ export function toggleFavorite(favorites: readonly string[], path: string): stri
 export function newSessionProfile(cwd: string, activeProfileId: string | null, profiles: readonly FolderProfile[], home?: string): string | null {
   return owningProfile(cwd, profiles, home)?.id ?? activeProfileId
 }
+
+/**
+ * The folder field of the new session dialog: a folder the user typed or browsed to stays; otherwise
+ * the folder the dialog was opened with, else the one already there, else the default folder.
+ */
+export function seedFolder(current: string, seed: { initial?: string; fallback?: string }, edited: boolean): string {
+  if (edited) return current
+  return seed.initial || current || seed.fallback || ''
+}

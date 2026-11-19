@@ -3,7 +3,7 @@ import { FolderOpen } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentSetupKind, pickAgent, worktreeDefault, worktreeSettings, type EffectiveAgent, type Profile, type SessionGroups, type SetupFix, EMPTY_SESSION_GROUPS } from '@workhub/core'
 import { InstallAction } from './InstallAction'
-import { newSessionProfile } from '../../lib/folders'
+import { newSessionProfile, seedFolder } from '../../lib/folders'
 import { useI18n } from '../../i18n/I18nProvider'
 import { installHintKey } from '../../lib/agents'
 import type { AgentOptionsView, WorkspaceFolder } from '@shared/api'
@@ -123,19 +123,51 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
   const groupChoice = groupChoiceOf(groupPick, newGroupName, groups.groups)
   const groupUnnamed = groupPick === NEW_GROUP && !groupChoice
 
+  // What the user chose while the dialog is open: a later change to the agent list (it is re-read on
+  // every config change) must not put the dialog's initial folder or agent back over it.
+  const folderEdited = useRef(false)
+  const agentEdited = useRef(false)
   useEffect(() => {
     if (!open) return
+    folderEdited.current = false
+    agentEdited.current = false
     setError('')
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
     setAgentKey((k) =>
-      initialAgentKey && activeAgents.some((a) => a.key === initialAgentKey)
-        ? initialAgentKey
-        : activeAgents.some((a) => a.key === k)
-          ? k
-          : (pickAgent({ preferredAgents: activePreferred }, activeAgents, 'any')?.key ?? '')
+      agentEdited.current && activeAgents.some((a) => a.key === k)
+        ? k
+        : initialAgentKey && activeAgents.some((a) => a.key === initialAgentKey)
+          ? initialAgentKey
+          : activeAgents.some((a) => a.key === k)
+            ? k
+            : (pickAgent({ preferredAgents: activePreferred }, activeAgents, 'any')?.key ?? '')
     )
-    if (initialCwd) setCwd(initialCwd)
-    else void window.hub.getDefaultCwd().then((d) => setCwd((c) => c || d))
-  }, [open, initialAgentKey, initialCwd, activeAgents, activePreferred])
+  }, [open, initialAgentKey, activeAgents, activePreferred])
+
+  // The folder is seeded when the dialog opens, not when the agent list changes.
+  useEffect(() => {
+    if (!open) return
+    if (initialCwd) {
+      setCwd((c) => seedFolder(c, { initial: initialCwd }, folderEdited.current))
+      return
+    }
+    let alive = true
+    void window.hub.getDefaultCwd().then((d) => alive && setCwd((c) => seedFolder(c, { fallback: d }, folderEdited.current)))
+    return () => {
+      alive = false
+    }
+  }, [open, initialCwd])
+  const pickAgentKey = (key: string) => {
+    agentEdited.current = true
+    setAgentKey(key)
+  }
+  const editFolder = (path: string) => {
+    folderEdited.current = true
+    setCwd(path)
+  }
 
   // Another profile's agents: keep the pick when that profile offers it too, else its first choice.
   useEffect(() => {
@@ -283,7 +315,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         >
           <Select
             value={agentKey}
-            onChange={(v) => (v === ORDER_AGENTS_OPTION ? listedProfile && window.hub.setup.openSettings(profileAgentsTarget(listedProfile.id)) : setAgentKey(v))}
+            onChange={(v) => (v === ORDER_AGENTS_OPTION ? listedProfile && window.hub.setup.openSettings(profileAgentsTarget(listedProfile.id)) : pickAgentKey(v))}
             options={newSessionAgentOptions({
               agents,
               preferredAgents,
@@ -341,7 +373,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         ) : null}
         <Field label={t('newSession.folder')}>
           <div className="flex gap-2">
-            <Input aria-label={t('newSession.folder')} value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} list={folders.length ? 'new-session-folders' : undefined} />
+            <Input aria-label={t('newSession.folder')} value={cwd} onChange={(e) => editFolder(e.target.value)} spellCheck={false} list={folders.length ? 'new-session-folders' : undefined} />
             {folders.length > 0 && (
               <datalist id="new-session-folders">
                 {folders.map((f) => (
@@ -353,7 +385,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
               label={t('newSession.browse')}
               icon={<FolderOpen className="size-4" />}
               className="border border-border bg-surface"
-              onClick={() => void window.hub.pickFolder().then((d) => d && setCwd(d))}
+              onClick={() => void window.hub.pickFolder().then((d) => d && editFolder(d))}
             />
           </div>
         </Field>
