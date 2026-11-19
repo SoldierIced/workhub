@@ -151,6 +151,7 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
     // Another Codex client (the app, CLI or IDE) can hold a conversation: a refused resume is
     // reported, not replaced with a new conversation.
     strictResume: true,
+    startHint: "check the sandbox, permissions and MCP servers in CODEX_HOME/config.toml (default ~/.codex/config.toml), and Codex's own logs",
     builtIn: true
   },
   {

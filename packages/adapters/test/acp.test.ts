@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { BUILTIN_AGENTS, mergeMonitor, type AgentDefinition, type AgentEvent, type SessionMonitorSnapshot } from '@workhub/core'
 import { AcpMonitor, AcpRuntime, permissionMode, readModes } from '../src/agent-acp'
+import { startTimeoutMessage } from '../src/agent-acp/runtime'
 
 // Fixtures were cut from the P0 probe logs (spike/probe/out) and sanitized: server names
 // replaced with neutral ones, session ids fixed, OAuth URLs, tool schemas and prompts removed.
@@ -405,14 +406,49 @@ describe('AcpRuntime against a fake ACP agent', () => {
     const events: AgentEvent[] = []
     rt.subscribe((e) => events.push(e))
     try {
+      // Never answered `initialize`: no hint about the agent's configuration, it may not be an ACP agent at all.
       await expect(rt.start({ sessionId: 's-silent', agent: fakeAgent, account: null, cwd: process.cwd(), env: { FAKE_ACP_SILENT: '1' } })).rejects.toThrow(
-        /"Fake" did not finish starting within 0 s; it was stopped/
+        /^"Fake" did not answer `initialize` within 0 s while starting; it was stopped$/
       )
       expect(events.at(-1)).toMatchObject({ type: 'state', state: 'error' })
       await expect(rt.prompt('s-silent', 'hello')).rejects.toThrow(/no ready ACP session/)
     } finally {
       await rt.stopAll()
     }
+  })
+
+  it('names the step that hung, adds the stderr tail and the hint when initialize had answered', async () => {
+    const rt = new AcpRuntime({ clientName: 'workhub-test', clientVersion: '0.0.0', startTimeoutMs: 800 })
+    const events: AgentEvent[] = []
+    rt.subscribe((e) => events.push(e))
+    try {
+      const err = await rt
+        .start({ sessionId: 's-hang-new', agent: { ...fakeAgent, startHint: 'check the sandbox in config.toml' }, account: null, cwd: process.cwd(), env: { FAKE_ACP_HANG_NEW: '1' } })
+        .then(() => new Error('started'), (e: Error) => e)
+      expect(err.message).toBe(
+        '"Fake" did not answer `session/new` within 1 s while starting; it was stopped. It answered `initialize`, so it started: check the sandbox in config.toml:\nsandbox: waiting for the elevated helper'
+      )
+      expect(events.filter((e) => e.type === 'state').at(-1)).toMatchObject({ state: 'error', error: expect.stringContaining('elevated helper') })
+    } finally {
+      await rt.stopAll()
+    }
+  })
+
+  it('uses a generic hint without startHint, and the agent startTimeoutMs over the runtime default', async () => {
+    const rt = new AcpRuntime({ clientName: 'workhub-test', clientVersion: '0.0.0', startTimeoutMs: 60_000 })
+    try {
+      const err = await rt
+        .start({ sessionId: 's-hang-own', agent: { ...fakeAgent, startTimeoutMs: 600 }, account: null, cwd: process.cwd(), env: { FAKE_ACP_HANG_NEW: '1' } })
+        .then(() => new Error('started'), (e: Error) => e)
+      expect(err.message).toContain("check the agent's own configuration and logs")
+      expect(err.message).toContain('within 1 s')
+    } finally {
+      await rt.stopAll()
+    }
+  })
+
+  it('names session/load when a restore hangs', () => {
+    expect(startTimeoutMessage({ name: 'Fake' }, 'session/load', 30_000)).toContain('`session/load` within 30 s')
   })
 
   it.skipIf(process.platform === 'win32')('stops the agent by signalling its whole process group', async () => {

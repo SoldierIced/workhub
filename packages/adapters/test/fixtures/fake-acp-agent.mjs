@@ -5,6 +5,7 @@
 // "commands" reports its slash commands first.
 //
 // FAKE_ACP_SILENT=1 makes it read its input and never answer.
+// FAKE_ACP_HANG_NEW=1 answers initialize, writes a stderr line, and never answers session/new.
 // FAKE_ACP_CRASH=1 makes it write why to stderr and exit with code 1 before answering.
 // FAKE_ACP_LOAD advertises `loadSession`: `ok` loads any session id, sending its stored
 // conversation again as updates first; `fail` refuses every load. Unset: no `loadSession`.
@@ -68,6 +69,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     if (process.env.FAKE_ACP_RESUME) agentCapabilities.sessionCapabilities = { resume: {} }
     send({ id: msg.id, result: { protocolVersion: 1, agentCapabilities, authMethods: [], agentInfo: { name: 'fake', title: 'Fake Agent', version: '0.0.0' } } })
   } else if (msg.method === 'session/new') {
+    if (process.env.FAKE_ACP_HANG_NEW) {
+      process.stderr.write('sandbox: waiting for the elevated helper\n')
+      return
+    }
     if (process.env.FAKE_ACP_LOAD || process.env.FAKE_ACP_RESUME) process.stderr.write('new-session\n')
     // The MCP servers it was handed, for the tests to check.
     if (msg.params.mcpServers?.length) process.stderr.write(`mcp:${JSON.stringify(msg.params.mcpServers)}\n`)

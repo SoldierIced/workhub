@@ -113,6 +113,16 @@ export interface AgentDefinition {
    * retries, rather than ending up in an unrelated empty conversation.
    */
   strictResume?: boolean
+  /**
+   * How long (ms) the agent gets to finish starting (ACP: `initialize`, `session/new` or restore,
+   * and the start-up mode and model switches) before it is stopped. 60 000 by default.
+   */
+  startTimeoutMs?: number
+  /**
+   * What to check when the agent answered `initialize` but a later start step never answered
+   * (ACP). Shown after the timeout error; a generic hint is used when it is not set.
+   */
+  startHint?: string
   /** True for agents shipped with Workhub; false for agents defined in the user's config. */
   builtIn?: boolean
 }

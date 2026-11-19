@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   BUILTIN_AGENTS,
+  CONFIG_VERSION,
   freshTokens,
+  parseConfig,
   launchEnvironment,
   mergeMonitor,
   moduleScreens,
@@ -91,6 +93,17 @@ describe('built-in agents over ACP', () => {
 
   it('keep a refused resume as an error only for Codex, whose conversations another client can hold', () => {
     expect(BUILTIN_AGENTS.filter((a) => a.strictResume).map((a) => a.id)).toEqual(['codex'])
+  })
+
+  it('point Codex at its own configuration when a start step hangs', () => {
+    expect(BUILTIN_AGENTS.find((a) => a.id === 'codex')?.startHint).toMatch(/sandbox, permissions and MCP servers/)
+  })
+
+  it('keep startTimeoutMs and startHint of an agent defined in the config', () => {
+    const base = { id: 'mine', name: 'Mine', adapter: 'acp', command: 'mine', capabilities: NO_CAPABILITIES }
+    const parsed = parseConfig({ version: CONFIG_VERSION, agents: [{ ...base, startTimeoutMs: 180_000, startHint: 'check my MCP servers' }] })
+    expect(parsed.agents[0]).toMatchObject({ startTimeoutMs: 180_000, startHint: 'check my MCP servers' })
+    expect(() => parseConfig({ version: CONFIG_VERSION, agents: [{ ...base, startTimeoutMs: 0 }] })).toThrow()
   })
 })
 

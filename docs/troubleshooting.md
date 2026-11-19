@@ -192,6 +192,24 @@ To see the whole output, run the agent's command yourself in the same folder, fo
 `npx -y @agentclientprotocol/codex-acp@2.3.0` or `opencode acp`. When it starts fine it waits
 silently for input (stop it with Ctrl+C).
 
+## An agent does not finish starting
+
+The session shows which start step the agent never answered (`initialize`, `session/load`,
+`session/resume`, `session/new`, or the start-up mode or model switch), after 60 s by default,
+and the last lines it wrote to stderr, which also go to `main.log`. When the agent had answered
+`initialize`, the message adds what to check. For Codex that is the sandbox, permissions and MCP
+servers in `CODEX_HOME/config.toml` (default `~/.codex/config.toml`), and Codex's own logs: a
+profile or sandbox setting the agent cannot enforce can make `session/new` hang with nothing on
+stderr. For other agents it points to the agent's own configuration. The step name and the hint
+are in English.
+
+A slow machine or a big folder may just need more time. Set `startTimeoutMs` (milliseconds) on the
+agent in `config.json`; a custom agent can also set `startHint` to the text shown after a hang:
+
+```json
+{ "id": "my-agent", "startTimeoutMs": 180000, "startHint": "check my-agent's MCP servers" }
+```
+
 ## An agent cannot reach Workhub
 
 Agents talk to Workhub through its local control endpoint (Plan, flow maps, review). Every session

@@ -284,6 +284,8 @@ const agent = z.object({
   transcript: z.string().optional(),
   accountsOf: id.optional(),
   strictResume: z.boolean().optional(),
+  startTimeoutMs: z.number().int().positive().max(3_600_000).optional(),
+  startHint: z.string().max(500).optional(),
   builtIn: z.boolean().optional()
 })
 

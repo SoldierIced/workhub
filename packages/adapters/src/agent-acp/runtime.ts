@@ -67,8 +67,20 @@ export interface AcpRuntimeOptions {
 
 const DEFAULT_START_TIMEOUT_MS = 60_000
 
+/** Said when the agent answered `initialize` but a later start step hung and the agent has no `startHint`. */
+const GENERIC_START_HINT = "check the agent's own configuration and logs"
+
+/** The start timeout message: the step that never answered, and what to check once `initialize` had answered. */
+export function startTimeoutMessage(agent: Pick<AgentDefinition, 'name' | 'startHint'>, step: string, timeoutMs: number): string {
+  const secs = Math.round(timeoutMs / 1000)
+  const base = `"${agent.name}" did not answer \`${step}\` within ${secs} s while starting; it was stopped`
+  return step === 'initialize' ? base : `${base}. It answered \`initialize\`, so it started: ${agent.startHint ?? GENERIC_START_HINT}`
+}
+
 /** The `session/update` kinds that make up a conversation, which `session/load` replays. */
 const REPLAYED_UPDATES: ReadonlySet<string> = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call', 'tool_call_update', 'plan'])
+
+class StartTimeoutError extends Error {}
 
 interface AcpSession {
   id: string
@@ -186,11 +198,13 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
     })
     spawnFailed.catch(() => {})
     // An agent that starts but never answers would leave the session starting forever.
-    const startTimeoutMs = this.options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS
+    const startTimeoutMs = req.agent.startTimeoutMs ?? this.options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS
+    // The step being waited on, for the timeout message: `initialize`, `session/load`, `session/new`, `session/set_mode`...
+    let step = 'initialize'
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined
     const deadline = new Promise<never>((_, reject) => {
       deadlineTimer = setTimeout(
-        () => reject(new Error(`"${req.agent.name}" did not finish starting within ${Math.round(startTimeoutMs / 1000)} s; it was stopped`)),
+        () => reject(new StartTimeoutError(startTimeoutMessage(req.agent, step, startTimeoutMs))),
         startTimeoutMs
       )
     })
@@ -248,6 +262,7 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
         }),
         startGuard
       ])
+      step = 'session/new'
       // Each agent loads its own MCP configuration (P0 finding); Workhub's server, when it is on, comes on top.
       const mcpServers: McpServer[] = (req.mcpServers ?? []).map((s) => ({ type: 'stdio' as const, name: s.name, command: s.command, args: s.args, env: Object.entries(s.env).map(([name, value]) => ({ name, value })) }))
       // Loading replays history as well as restoring the agent's context. Some agents can only
@@ -263,6 +278,7 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
           const params = { sessionId: req.agentSessionId!, cwd: req.cwd, mcpServers }
           for (const method of [loadable ? 'session/load' : null, resumable ? 'session/resume' : null] as const) {
             if (!method) continue
+            step = method
             const restore = session.conn.agent.request(method, params).then(
               (r) => (r ?? {}) as Record<string, unknown>,
               (err: unknown) => {
@@ -283,6 +299,7 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       if (resuming && req.agent.strictResume === true && !loaded && restoreError !== undefined) {
         throw new Error(restoreError)
       }
+      step = 'session/new'
       const created = loaded
         ? { ...loaded, sessionId: req.agentSessionId! }
         : await Promise.race([session.conn.agent.request('session/new', { cwd: req.cwd, mcpServers }), startGuard])
@@ -303,6 +320,7 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       const wanted = readOnlyMode ?? (req.readOnly ? undefined : req.modeId)
       let modeIgnored = false
       if (wanted && wanted !== session.currentModeId) {
+        step = 'start-up mode switch (session/set_mode)'
         const applied = availableModes.some((m) => m.id === wanted) && (await this.applyMode(session, wanted, startGuard))
         // A reviewer that cannot get into its read-only mode does not start.
         if (!applied && readOnlyMode) throw new Error(`could not switch the reviewer to the "${readOnlyMode}" mode`)
@@ -311,6 +329,7 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       const currentModeId = session.currentModeId
       // A model asked for: ACP's session model selection, when the agent reports models and takes it.
       // An agent launched with the model on its command line already runs it, whatever it lists.
+      if (req.model) step = 'start-up model switch (session/set_model)'
       const modelIgnored = req.model ? !(await this.selectModel(session, req.model, startGuard)) && !req.agent.modelArgs?.length : false
       const started: StartedSession = {
         agentSessionId: created.sessionId,
@@ -338,7 +357,9 @@ export class AcpRuntime implements AgentRuntime, ModelControl, SessionModeContro
       const code = session.child.pid === undefined ? timedOut : await Promise.race([session.ended, new Promise<typeof timedOut>((r) => setTimeout(() => r(timedOut), 500))])
       const cause = code === timedOut ? null : withStderr(`agent exited during start (code ${code})`, session.stderr)
       await this.stop(id).catch(() => {})
-      const message = cause ?? (err instanceof Error ? err.message : JSON.stringify(err))
+      // A timeout says nothing about why; what the agent wrote to stderr meanwhile may.
+      const raw = err instanceof Error ? err.message : JSON.stringify(err)
+      const message = cause ?? (err instanceof StartTimeoutError ? withStderr(raw, session.stderr) : raw)
       this.emit({ sessionId: id, type: 'state', state: 'error', error: message })
       throw new Error(message)
     } finally {
