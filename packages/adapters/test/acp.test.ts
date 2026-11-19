@@ -334,8 +334,9 @@ describe('AcpRuntime against a fake ACP agent', () => {
       await withRuntime(async (rt, events) => {
         const started = await rt.start({ ...resume, sessionId: 's-lenient', env: { FAKE_ACP_LOAD: 'fail', FAKE_ACP_RESUME: 'fail' } })
         expect(started).toMatchObject({ agentSessionId: 'fake-session-1', resumeFailed: 'failed' })
-        expect(events).toContainEqual({ sessionId: 's-lenient', type: 'stderr', line: 'resume:stored-session-7' })
-        expect(events).toContainEqual({ sessionId: 's-lenient', type: 'stderr', line: 'new-session' })
+        // stderr is read on its own stream and can land after start() resolves.
+        await expect.poll(() => events).toContainEqual({ sessionId: 's-lenient', type: 'stderr', line: 'resume:stored-session-7' })
+        await expect.poll(() => events).toContainEqual({ sessionId: 's-lenient', type: 'stderr', line: 'new-session' })
       })
     })
 
