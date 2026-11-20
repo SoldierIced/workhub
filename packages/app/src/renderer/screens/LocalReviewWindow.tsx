@@ -12,6 +12,7 @@ import {
   type LocalReview,
   type LocalReviewFile,
   type LocalReviewFiles,
+  type LocalReviewOther,
   type LocalReviewRepo,
   type LocalReviewScope,
   type LocalRevertAnswer,
@@ -69,6 +70,53 @@ export function ElsewhereBar({ repos, busy, onInclude }: { repos: readonly Local
   )
 }
 
+/**
+ * The folder's other repos with changes the session was not traced to (`untouched`), with a button
+ * to show them; once shown (`wholeFolder`), a line saying so and a button to go back.
+ */
+export function UntouchedBar({
+  untouched,
+  wholeFolder,
+  busy,
+  onShow,
+  onHide
+}: {
+  untouched: readonly LocalReviewOther[]
+  wholeFolder: boolean
+  busy: boolean
+  onShow: () => void
+  onHide: () => void
+}) {
+  const { t, tn } = useI18n()
+  const files = untouched.reduce((n, r) => n + r.files, 0)
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-surface px-5 py-2 text-sm" role="status" data-testid="review-untouched">
+      <FolderGit2 className="size-4 shrink-0 text-muted" aria-hidden />
+      {wholeFolder ? (
+        <>
+          <span className="min-w-0 flex-1 text-muted">{t('localReview.wholeFolder')}</span>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={onHide} aria-label={t('localReview.wholeFolderHideLabel')} data-testid="review-untouched-hide">
+            {t('localReview.wholeFolderHide')}
+          </Button>
+        </>
+      ) : (
+        <>
+          <span className="text-muted">
+            {tn('localReview.untouched', untouched.length)} · {tn('localReview.fileCount', files)} ·{' '}
+            <Counts additions={untouched.reduce((n, r) => n + r.additions, 0)} deletions={untouched.reduce((n, r) => n + r.deletions, 0)} />
+          </span>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-subtle" title={untouched.map((r) => r.root).join('\n')}>
+            {untouched.map((r) => r.name).join(', ')}
+          </span>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={onShow} title={t('localReview.untouchedHint')} aria-label={t('localReview.untouchedShowLabel')} data-testid="review-untouched-show">
+            {t('localReview.untouchedShow')}
+          </Button>
+        </>
+      )}
+    </div>
+  )
+}
+
 function Review({ sessionId }: { sessionId: string }) {
   const { t, tn } = useI18n()
   const platform = usePlatform()
@@ -77,8 +125,11 @@ function Review({ sessionId }: { sessionId: string }) {
   const savedShown = usePrefs().reviewFiles
   // Until the switch is used the saved default is only a wish: main shows a review a tool asked for whole.
   const [chosen, setChosen] = useState(false)
+  // The window's own switch (off on open, never saved): every repo of the folder, not only the session's.
+  const [wholeFolder, setWholeFolder] = useState(false)
   const setShown = (f: LocalReviewFiles) => {
     setChosen(true)
+    if (f === 'session') setWholeFolder(false)
     setPrefs({ reviewFiles: f })
   }
   const [reloads, setReloads] = useState(0)
@@ -109,7 +160,7 @@ function Review({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     let alive = true
     setLoading(true)
-    void window.hub.localReview.load(sessionId, scope, savedShown, chosen).then(
+    void window.hub.localReview.load(sessionId, scope, wholeFolder ? 'repo' : savedShown, wholeFolder || chosen, wholeFolder).then(
       (r) => {
         if (!alive) return
         setResult(r)
@@ -125,7 +176,7 @@ function Review({ sessionId }: { sessionId: string }) {
     return () => {
       alive = false
     }
-  }, [sessionId, scope, savedShown, chosen, reloads])
+  }, [sessionId, scope, savedShown, chosen, wholeFolder, reloads])
 
   // The session's state (closed, renamed) follows the main window's list.
   useEffect(
@@ -146,9 +197,11 @@ function Review({ sessionId }: { sessionId: string }) {
   /** Changed files the session's agent did not edit, left out while `shown` is 'session'. */
   const hiddenFiles = result?.ok ? (result.hiddenFiles ?? 0) : 0
   const elsewhere = result?.ok ? (result.elsewhere ?? []) : []
+  const untouched = result?.ok ? (result.untouched ?? []) : []
+  const showUntouchedBar = result?.ok === true && (untouched.length > 0 || result.wholeFolder === true)
   const includeElsewhere = () => void window.hub.localReview.includeElsewhere(sessionId).then(reload)
   /** What the switch shows: what main actually loaded, else the saved default. */
-  const shown: LocalReviewFiles = result?.ok && result.files ? result.files : savedShown
+  const shown: LocalReviewFiles = result?.ok && result.files ? result.files : wholeFolder ? 'repo' : savedShown
   const setComments = useCallback(
     (next: ReviewComment[]) => {
       setCommentsState(next)
@@ -345,6 +398,9 @@ function Review({ sessionId }: { sessionId: string }) {
         </Button>
       </header>
       {elsewhere.length > 0 && <ElsewhereBar repos={elsewhere} busy={loading} onInclude={includeElsewhere} />}
+      {showUntouchedBar && (
+        <UntouchedBar untouched={untouched} wholeFolder={result?.ok === true && result.wholeFolder === true} busy={loading} onShow={() => setWholeFolder(true)} onHide={() => setWholeFolder(false)} />
+      )}
 
       {!result ? (
         <div className="flex flex-1 items-center justify-center gap-2 text-muted">

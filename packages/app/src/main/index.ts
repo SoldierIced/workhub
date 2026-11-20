@@ -1003,6 +1003,7 @@ const localReview = new LocalReviewService({
   },
   emit: (sessionId, delivery) => broadcast.toWindows('localReview:delivery', sessionId, delivery),
   history: (sessionId) => sessions.history(sessionId),
+  changePaths: (sessionId) => sessions.changePathsOf(sessionId),
   touchedRepos: async (sessionId) => {
     const cwd = sessions.cwdOf(sessionId)
     return cwd ? ((await localGit.localChanges(cwd, sessions.changePathsOf(sessionId)))?.repos ?? []) : []

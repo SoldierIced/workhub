@@ -80,7 +80,9 @@ describe('LocalChanges on real repositories', () => {
   it('takes the repos inside a folder that the session touched', async () => {
     const review = await changes.load({ folder, scope: 'branch', since: Date.now() + 60_000 })
     expect(review.scannedRepos).toBe(2)
-    expect(review.repos.map((r) => r.name)).toEqual(['svc-a'])
+    // Changed long before `since`: not the session's, so under `untouched`.
+    expect(review.repos).toEqual([])
+    expect(review.untouched?.map((o) => o.name)).toEqual(['svc-a'])
     // A commit made since the session started counts too.
     const all = await changes.load({ folder, scope: 'uncommitted', since: 0 })
     expect(all.repos.map((r) => r.name)).toEqual(['svc-a'])

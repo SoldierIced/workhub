@@ -33,6 +33,8 @@ export interface LocalReviewDeps {
   history?(sessionId: string): Promise<HistoryMessage[]>
   /** Every repo the session changed something in (the session bar's count), wherever it is. */
   touchedRepos?(sessionId: string): Promise<RepoChanges[]>
+  /** The absolute paths the session's agent changed (what it reports; Claude today); undefined when unknown. */
+  changePaths?(sessionId: string): string[] | undefined
   now?: () => number
 }
 
@@ -110,6 +112,8 @@ export class LocalReviewService {
   private readonly asked = new Map<string, { path: string; base?: string }[]>()
   /** The repos the last load of each session listed as changed elsewhere. */
   private readonly elsewhere = new Map<string, LocalReviewElsewhere[]>()
+  /** Repos outside the folder the user chose to review here too ("Review them here too"), per session. */
+  private readonly also = new Map<string, string[]>()
   private timer: ReturnType<typeof setInterval> | null = null
   private readonly now: () => number
   /** The last revert per repo root: reverts in one repo run one after the other. */
@@ -138,15 +142,20 @@ export class LocalReviewService {
    * base to compare with) then shows the whole repo: the tool already chose what to compare, and the
    * agent may have edited through shell commands or sub-agents, which the session filter cannot see.
    */
-  async load(sessionId: string, scope: LocalReviewScope, asked: LocalReviewFiles = 'repo', chosen = true): Promise<LocalReviewLoad> {
+  async load(sessionId: string, scope: LocalReviewScope, asked: LocalReviewFiles = 'repo', chosen = true, wholeFolder = false): Promise<LocalReviewLoad> {
     const v = this.view(sessionId)
     if (!v) return { ok: false, reason: 'unknownSession' }
     const prs = (await this.deps.myPullRequests?.(v.profileId ?? null).catch(() => [])) ?? []
     try {
-      const review = await this.deps.changes.load({
+      const paths = this.deps.changePaths?.(sessionId)
+      const also = this.also.get(sessionId)
+      const loaded = await this.deps.changes.load({
         folder: v.cwd,
         scope,
         since: v.startedAt,
+        ...(paths?.length ? { touched: paths } : {}),
+        ...(also?.length ? { alsoRepos: also } : {}),
+        ...(wholeFolder ? { wholeFolder: true } : {}),
         ...(this.asked.get(sessionId)?.length ? { extraRepos: this.asked.get(sessionId) } : {}),
         pullRequestOf: ({ name, remoteName, branch }) => {
           const repo = (remoteName ?? name).toLowerCase()
@@ -154,10 +163,14 @@ export class LocalReviewService {
           return hit ? { number: hit.pr.number, url: hit.pr.url, base: hit.pr.base } : undefined
         }
       })
+      // `untouched` and `wholeFolder` travel at the top level of the answer, not inside `review`.
+      const { untouched: other, wholeFolder: scanned, ...review } = loaded
       this.roots.set(sessionId, new Set([...(this.roots.get(sessionId) ?? []), ...review.repos.map((r) => r.root)]))
-      const elsewhere = await this.changedElsewhere(sessionId, review.repos.map((r) => r.root))
+      const untouched = other?.length ? { untouched: other } : {}
+      const whole = scanned ? { wholeFolder: true } : {}
+      const elsewhere = await this.changedElsewhere(sessionId, [...review.repos, ...(other ?? [])].map((r) => r.root))
       this.elsewhere.set(sessionId, elsewhere)
-      const extra = elsewhere.length ? { elsewhere } : {}
+      const extra = { ...(elsewhere.length ? { elsewhere } : {}), ...untouched, ...whole }
       const files: LocalReviewFiles = !chosen && this.asked.get(sessionId)?.length ? 'repo' : asked
       if (files === 'session' && this.deps.history) {
         const edited = editedPaths(v.cwd, await this.deps.history(sessionId))
@@ -189,17 +202,16 @@ export class LocalReviewService {
   }
 
   /**
-   * Reviews the repos the last load listed as changed elsewhere too. Asked repos replace the folder
-   * scan, so the session's own folder is asked for as well; a base a tool chose is kept.
+   * Reviews the repos the last load listed as changed elsewhere too. They are kept in a list of their
+   * own and loaded next to the folder's repos; `asked` (which replaces the scan) is not touched.
    */
   includeElsewhere(sessionId: string): void {
     const v = this.view(sessionId)
     const extra = this.elsewhere.get(sessionId) ?? []
     if (!v || extra.length === 0) return
-    const current = this.asked.get(sessionId) ?? []
-    const paths = new Set(current.map((r) => r.path))
-    const next = [...current, ...[v.cwd, ...extra.map((r) => r.root)].filter((p) => !paths.has(p)).map((path) => ({ path }))]
-    this.asked.set(sessionId, next)
+    const have = new Set(this.also.get(sessionId) ?? [])
+    for (const r of extra) have.add(r.root)
+    this.also.set(sessionId, [...have])
   }
 
   /** The absolute path of a file in a repo this session's review loaded; null otherwise. */
@@ -352,8 +364,8 @@ export interface LocalReviewIpcDeps {
 export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewService, deps: LocalReviewIpcDeps): void {
   const scopeOf = (s: unknown): LocalReviewScope => (s === 'uncommitted' ? 'uncommitted' : 'branch')
   const filesOf = (f: unknown): LocalReviewFiles => (f === 'session' ? 'session' : 'repo')
-  ipc.handle('localReview:load', (_e, sessionId: string, scope: unknown, files?: unknown, chosen?: unknown) =>
-    service.load(String(sessionId), scopeOf(scope), filesOf(files), chosen !== false)
+  ipc.handle('localReview:load', (_e, sessionId: string, scope: unknown, files?: unknown, chosen?: unknown, wholeFolder?: unknown) =>
+    service.load(String(sessionId), scopeOf(scope), filesOf(files), chosen !== false, wholeFolder === true)
   )
   ipc.handle('localReview:comments', (_e, sessionId: string) => service.comments(String(sessionId)))
   ipc.handle('localReview:setComments', (_e, sessionId: string, comments: unknown) => service.setComments(String(sessionId), comments))
