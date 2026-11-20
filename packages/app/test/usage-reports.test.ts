@@ -13,7 +13,9 @@ import { tagsSessionId } from '../src/renderer/lib/monitorView'
 import {
   bucketFor,
   bucketStarts,
+  canClearReport,
   chartSeries,
+  clearedReport,
   largestSeries,
   customAdjusted,
   DEFAULT_REPORT_STATE,
@@ -53,6 +55,26 @@ const day = (y: number, m: number, d: number, h = 0) => new Date(y, m - 1, d, h)
 const NOW = day(2026, 11, 18, 15)
 
 const row = (group: string | null, over: Partial<SpendTotals> = {}): SpendTotals => ({ group, tokensIn: 0, tokensOut: 0, cacheRead: 0, cacheWrite: 0, usd: 0, unpricedTokens: 0, activeMs: 0, turns: 1, sessions: 1, ...over })
+
+describe('clearing the report filters', () => {
+  const custom: ReportState = { ...DEFAULT_REPORT_STATE, period: 'custom', from: '2025-10-30', to: '2026-11-15', groupBy: 'tag', filters: { profileId: 'personal' } }
+
+  it('removes every filter and sends a custom period back to the last 30 days', () => {
+    // A custom period that ended days ago hides everything since: Clear must not leave it behind.
+    expect(clearedReport(custom)).toEqual({ filters: {}, period: '30d', from: '', to: '' })
+  })
+
+  it('keeps a preset period, which always reaches today', () => {
+    expect(clearedReport({ ...DEFAULT_REPORT_STATE, period: '7d', filters: { agent: 'claude' } })).toEqual({ filters: {} })
+  })
+
+  it('has something to clear with a filter in use or a custom period', () => {
+    expect(canClearReport(DEFAULT_REPORT_STATE)).toBe(false)
+    expect(canClearReport({ ...DEFAULT_REPORT_STATE, period: 'week' })).toBe(false)
+    expect(canClearReport({ ...DEFAULT_REPORT_STATE, filters: { tag: 'spike' } })).toBe(true)
+    expect(canClearReport({ ...custom, filters: {} })).toBe(true)
+  })
+})
 
 describe('report period', () => {
   it('turns each preset into local days, the end exclusive', () => {
@@ -375,6 +397,12 @@ describe('Usage and reports screen', () => {
     expect(html).toContain('>Done<')
     // Nothing to clear yet.
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-testid="report-clear-filters"/)
+  })
+
+  it('offers Clear for a custom period even with no filter in use', () => {
+    const html = panel({ state: { ...DEFAULT_REPORT_STATE, period: 'custom', from: '2025-10-30', to: '2026-11-15' } })
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-testid="report-clear-filters"/)
+    expect(html).toContain('data-testid="report-clear-filters"')
   })
 
   it('tints the menus in use and counts them in the panel', () => {

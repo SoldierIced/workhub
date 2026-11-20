@@ -58,6 +58,19 @@ export function parseReportState(raw: string | null): ReportState {
   }
 }
 
+/**
+ * What Clear changes: every filter goes, and a custom period goes back to the default one (its end
+ * can be days ago, hiding everything since). A preset period always reaches today, so it stays.
+ */
+export function clearedReport(state: Pick<ReportState, 'period' | 'filters'>): Partial<ReportState> {
+  return state.period === 'custom' ? { filters: {}, period: DEFAULT_REPORT_STATE.period, from: '', to: '' } : { filters: {} }
+}
+
+/** Whether Clear has something to do: a filter in use or a custom period. */
+export function canClearReport(state: Pick<ReportState, 'period' | 'filters'>): boolean {
+  return state.period === 'custom' || Object.keys(state.filters).length > 0
+}
+
 export function loadReportState(): ReportState {
   return typeof localStorage === 'undefined' ? DEFAULT_REPORT_STATE : parseReportState(localStorage.getItem(REPORT_STATE_KEY))
 }

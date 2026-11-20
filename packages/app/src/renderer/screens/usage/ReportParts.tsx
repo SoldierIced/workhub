@@ -13,6 +13,8 @@ import { folderName, formatTokens } from '../../lib/home'
 import { pullRequestLabel } from '../../lib/monitorView'
 import { abbreviateFolder } from '../../lib/sessionHeader'
 import {
+  canClearReport,
+  clearedReport,
   filterLabel,
   foldSmallProjects,
   formatActive,
@@ -153,7 +155,7 @@ export function ReportFiltersBar({
           <ReportFilterPanel state={state} values={values} names={names} onChange={onChange} overall={overall} />
         </FiltersPopover>
       </div>
-      <ActiveFilterChips filters={chips} clearLabel={t('reports.clearFilters')} removeLabel={(label) => t('reports.removeFilter', { label })} onClear={() => onChange({ filters: {} })} data-testid="report-active-filters" />
+      <ActiveFilterChips filters={chips} clearLabel={t('reports.clearFilters')} removeLabel={(label) => t('reports.removeFilter', { label })} onClear={() => onChange(clearedReport(state))} data-testid="report-active-filters" />
     </section>
   )
 }
@@ -171,7 +173,7 @@ export function ReportFilterPanel({ state, values, names, onChange, overall }: {
       <div className="mb-2.5 flex items-center gap-2">
         <h2 className="text-md font-semibold text-text">{t('reports.filters')}</h2>
         {inUse > 0 && <span className="text-xs text-subtle">{tn('reports.filtersActive', inUse)}</span>}
-        <Button size="sm" variant="ghost" className="ml-auto" disabled={inUse === 0} onClick={() => onChange({ filters: {} })} data-testid="report-clear-filters">
+        <Button size="sm" variant="ghost" className="ml-auto" disabled={!canClearReport(state)} onClick={() => onChange(clearedReport(state))} data-testid="report-clear-filters">
           {t('reports.clearFilters')}
         </Button>
       </div>

@@ -106,7 +106,8 @@ every one. **Group by** picks what the charts
 and the table split by (project, agent, model, account, ticket, pull request or tag), and
 **Measure** what they show: **Tokens** (fresh tokens: input, cache writes and output, as on Home),
 **USD** (cost at list prices) or **Agent time**. **Clear**, beside the chips or in the panel,
-removes every filter. The choices are
+removes every filter and puts a **Custom** period back to **Last 30 days** (a custom period that
+ended days ago hides everything since; the presets always reach today and stay). The choices are
 remembered on this computer.
 
 **Charts.** The four tiles sum the period: fresh tokens (input, output and cache writes, which add
