@@ -130,8 +130,8 @@ terminal's output to the screen in batches of about one frame, so a command that
   token spend on Home. While it summarizes, the button shows a spinner (click to cancel); while it
   reads, click it to **Pause** and again to **Resume**, and **Stop listening** ends it. One thing
   is read at a time: starting another message stops the current one. If the summary fails (no
-  Claude login, a limit reached, a timeout after about 45 seconds), a notice says so and the start
-  of the message is read instead. The voice and speed are those of **Settings → General → Voice**;
+  Claude login, a limit reached, a timeout after about 45 seconds), a warning says so and the
+  message is read instead: whole when it is up to about 1,500 characters, otherwise its start. The voice and speed are those of **Settings → General → Voice**;
   with **System voice**, a voice of the app's language is used when one is installed.
 - **Idle notice**: agents keep the conversation's prompt in a cache for a few minutes (Claude: 5
   minutes or 1 hour, renewed by each request). When you come back to a session that has been idle

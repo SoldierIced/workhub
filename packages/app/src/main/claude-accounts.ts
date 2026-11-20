@@ -38,3 +38,23 @@ export function claudeConfigDirOf(config: WorkhubConfig, account: AgentAccount |
   const own = agent ? launchEnvironment(agent, account)['CLAUDE_CONFIG_DIR'] : account?.configDir
   return resolve(own || env['CLAUDE_CONFIG_DIR'] || join(home, '.claude'))
 }
+
+/**
+ * Which config folder to name (`CLAUDE_CONFIG_DIR`) when Claude Code starts for an account:
+ * - `noClaude`: no Claude agent is configured at all;
+ * - `default`: name nothing, so Claude Code uses its own default folder (and, on macOS, the sign-in
+ *   and the user settings a normal session reads);
+ * - `named`: the folder `launchEnvironment` carries, resolved, whatever its path: the default
+ *   path included, because a session names it too (and Claude Code then reads other places).
+ * It is exactly what a session does: the folder is the one `launchEnvironment` carries, else none.
+ * `claudeConfigDirOf` is the folder to find files in, not the one to name.
+ */
+export type ClaudeLaunchDir = { kind: 'noClaude' } | { kind: 'default' } | { kind: 'named'; dir: string }
+
+export function claudeLaunchDir(config: WorkhubConfig, account: AgentAccount | null): ClaudeLaunchDir {
+  const agent = knownAgents(config).find((a) => a.id === 'claude')
+  if (!agent) return { kind: 'noClaude' }
+  const own = launchEnvironment(agent, account)['CLAUDE_CONFIG_DIR']
+  if (!own) return { kind: 'default' }
+  return { kind: 'named', dir: resolve(own) }
+}

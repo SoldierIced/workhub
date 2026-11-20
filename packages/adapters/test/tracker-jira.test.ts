@@ -280,9 +280,40 @@ describe('JiraTracker search and create', () => {
     expect(found[0]!.url).toBe('https://acme.example.com/browse/PAY-1')
     expect(calls).toHaveLength(2)
     expect(calls[0]!.url.searchParams.get('jql')).toBe('project = PAY AND fixVersion = "1.4"')
-    expect(calls[0]!.url.searchParams.get('fields')).toBe('summary,status')
+    expect(calls[0]!.url.searchParams.get('fields')).toBe('summary,status,assignee,created,updated')
     expect(calls[0]!.url.searchParams.get('maxResults')).toBe('50')
     expect(calls[1]!.url.searchParams.get('nextPageToken')).toBe('p2')
+  })
+
+  it('returns who has each ticket and when it was created and last updated, in the same request', async () => {
+    const { tracker, calls } = make({
+      'GET /rest/api/3/search/jql': () => ({
+        body: {
+          issues: [
+            issue('PAY-1', status('To Do', 'new'), { assignee: { displayName: 'Dana Test' }, created: '2026-10-01T09:00:00.000+0000', updated: '2026-10-20T10:30:00.000+0000' }),
+            issue('PAY-2', status('To Do', 'new'), { assignee: null, created: '2026-10-02T09:00:00.000+0000' })
+          ],
+          isLast: true
+        }
+      })
+    })
+    const [a, b] = await tracker.searchByQuery('project = PAY')
+    expect(a).toMatchObject({ assignee: 'Dana Test', createdAt: Date.parse('2026-10-01T09:00:00Z'), updatedAt: Date.parse('2026-10-20T10:30:00Z') })
+    expect(b!.assignee).toBeNull()
+    expect(b!.createdAt).toBe(Date.parse('2026-10-02T09:00:00Z'))
+    expect(b!.updatedAt).toBeUndefined()
+    expect(calls).toHaveLength(1)
+    const fields = calls[0]!.url.searchParams.get('fields')!.split(',')
+    expect(fields).toEqual(expect.arrayContaining(['assignee', 'created', 'updated']))
+  })
+
+  it('leaves the assignee out when Jira did not answer the field, and null only when it did and nobody has it', async () => {
+    const { tracker } = make({
+      'GET /rest/api/3/search/jql': () => ({ body: { issues: [issue('PAY-1', status('To Do', 'new'), { assignee: undefined }), issue('PAY-2', status('To Do', 'new'), { assignee: null })], isLast: true } })
+    })
+    const [absent, none] = await tracker.searchByQuery('project = PAY')
+    expect('assignee' in absent!).toBe(false)
+    expect(none!.assignee).toBeNull()
   })
 
   it('stops at the limit even when more pages exist', async () => {
@@ -313,7 +344,8 @@ describe('JiraTracker search and create', () => {
     const found = await tracker.readTickets(['PAY-1', 'PAY-404'])
     expect(found.map((t) => [t.key, t.category])).toEqual([['PAY-1', 'todo']])
     expect(calls.map((c) => c.url.pathname)).toEqual(['/rest/api/3/search/jql', '/rest/api/3/issue/PAY-1', '/rest/api/3/issue/PAY-404'])
-    expect(calls[1]!.url.searchParams.get('fields')).toBe('summary,status')
+    expect(calls[1]!.url.searchParams.get('fields')).toBe('summary,status,assignee,created,updated')
+    expect(found[0]).toMatchObject({ assignee: 'Dana Test' })
   })
 
   it('creates an issue with an ADF description, a mapped priority and labels without spaces', async () => {
@@ -358,5 +390,13 @@ describe('backlogJql', () => {
   })
   it('quotes project keys', () => {
     expect(backlogJql({ projectKeys: ['A"B'] }).where).toBe('project IN ("A\\"B") AND statusCategory != Done')
+  })
+})
+
+describe('JiraTracker queryUrl', () => {
+  it('opens the issue search of the site with the JQL encoded, and gives none for an empty query', async () => {
+    const { tracker } = make({})
+    expect(await tracker.queryUrl('project = PAY AND fixVersion = "1.4" ORDER BY key')).toBe('https://acme.example.com/issues/?jql=project%20%3D%20PAY%20AND%20fixVersion%20%3D%20%221.4%22%20ORDER%20BY%20key')
+    expect(await tracker.queryUrl('   ')).toBeUndefined()
   })
 })

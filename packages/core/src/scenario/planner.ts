@@ -4,10 +4,11 @@ import { alertInboxProposal } from '../inbox/alert'
 import { newInboxItem } from '../inbox/inbox'
 import type { InboxItem, InboxProposal, InboxSource } from '../inbox/types'
 import { countsKey, ticketStateKey, type Milestone, type MilestoneCounts, type TrackedTicket } from '../milestones'
+import { openTicketsOf } from '../milestones/open-tickets'
 import { countByCategory } from '../tickets/ticket-tracker'
 import type { TicketSummary } from '../tickets/types'
 import { PRODUCT_PEOPLE, PRODUCT_TRACKER_ID } from './profile'
-import { PRODUCT_QUERIES, PRODUCT_QUERY_RESULTS, productTicket } from './tracker'
+import { PRODUCT_QUERIES, productQueryTickets, productTicket } from './tracker'
 
 const HOUR = 3_600_000
 
@@ -79,7 +80,8 @@ export function productMilestoneCounts(milestones: readonly Milestone[], now: nu
   for (const m of milestones) {
     const key = countsKey(m)
     if (key === null || m.source.kind !== 'tracker') continue
-    out[m.id] = { ...countByCategory(PRODUCT_QUERY_RESULTS[m.source.query] ?? []), at: now, key }
+    const tickets = productQueryTickets(m.source.query, now) ?? []
+    out[m.id] = { ...countByCategory(tickets), at: now, key, open: openTicketsOf(tickets, m, now) }
   }
   return out
 }

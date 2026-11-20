@@ -85,6 +85,9 @@ describe('seedScenarioState', () => {
     const p = planner.profiles[PRODUCT_PROFILE_ID]!
     expect(p.milestones).toHaveLength(7)
     expect(Object.keys(p.counts)).toHaveLength(5)
+    // The at-risk milestone starts with its open tickets, unowned and untouched ones among them.
+    const activation = Object.values(p.counts).map((c) => c.open!).find((o) => o.unassigned > 0 && o.stale > 0 && o.addedLate > 0)
+    expect(activation?.tickets.length).toBeGreaterThan(0)
     // The pieces' tickets and those of the items in the tracker are seeded, so they show before the first read.
     expect(Object.keys(p.tickets).sort()).toEqual(['acme-notes-tracker-demo|NOTE-252', 'acme-notes-tracker-demo|NOTE-255', 'acme-notes-tracker-demo|WEB-34', '|NOTE-238', '|NOTE-253'])
     expect(p.inbox.some((i) => i.source.type === 'alert')).toBe(true)

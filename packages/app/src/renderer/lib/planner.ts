@@ -15,6 +15,9 @@ import {
   type IssuePriority,
   type Milestone,
   type MilestonePiece,
+  type MilestoneOpenTickets,
+  type MilestoneTicketFlag,
+  MILESTONE_STALE_DAYS,
   type MilestoneStatusKind,
   type PieceKind,
   type PieceState,
@@ -23,7 +26,7 @@ import {
 } from '@workhub/core'
 import type { MilestoneView } from '@shared/planner-api'
 import type { Tone } from '../components/atoms'
-import type { MessageKey } from '../i18n/translate'
+import type { MessageKey, Params, PluralKey } from '../i18n/translate'
 import { slugify } from './tickets'
 import { listToText, textToList } from './plan'
 
@@ -317,3 +320,30 @@ export function stepSelection(shown: readonly string[], selected: string | null,
   if (at < 0) return shown[step === 1 ? 0 : shown.length - 1]!
   return shown[Math.min(Math.max(at + step, 0), shown.length - 1)]!
 }
+
+export const OPEN_FLAG_LABEL: Record<MilestoneTicketFlag, MessageKey> = { unassigned: 'planner.open.flag.unassigned', stale: 'planner.open.flag.stale', addedLate: 'planner.open.flag.addedLate' }
+export const OPEN_FLAG_TONE: Record<MilestoneTicketFlag, Tone> = { unassigned: 'warning', stale: 'danger', addedLate: 'info' }
+
+/** The pieces of the "why is it behind" line of a counted milestone: how many are open, then each count that is not zero. Empty when nothing is open. */
+export function openTicketsParts(open: MilestoneOpenTickets | undefined): { part: 'total' | MilestoneTicketFlag; count: number }[] {
+  if (!open || open.total <= 0) return []
+  return [
+    { part: 'total' as const, count: open.total },
+    ...(open.unassigned > 0 ? [{ part: 'unassigned' as const, count: open.unassigned }] : []),
+    ...(open.stale > 0 ? [{ part: 'stale' as const, count: open.stale }] : []),
+    ...(open.addedLate > 0 ? [{ part: 'addedLate' as const, count: open.addedLate }] : [])
+  ]
+}
+
+/** The line itself, e.g. "9 open · 4 with no owner · 5 not updated in 7 days · 4 added after the start". */
+export function openTicketsSummary(open: MilestoneOpenTickets | undefined, tn: (base: PluralKey, count: number, params?: Params) => string): string {
+  return openTicketsParts(open)
+    .map(({ part, count }) => (part === 'total' ? tn('planner.open.total', count) : part === 'unassigned' ? tn('planner.open.unassigned', count) : part === 'stale' ? tn('planner.open.stale', count, { days: MILESTONE_STALE_DAYS }) : tn('planner.open.addedLate', count)))
+    .join(' · ')
+}
+
+/** Only a milestone that is Late or At risk says why it is behind. */
+export const explainsBehind = (status: MilestoneStatusKind): boolean => status === 'late' || status === 'atRisk'
+
+/** How many open tickets the list leaves out (it holds at most 50). */
+export const openTicketsHidden = (open: MilestoneOpenTickets): number => Math.max(0, open.total - open.tickets.length)

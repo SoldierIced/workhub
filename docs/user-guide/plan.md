@@ -216,6 +216,38 @@ and, for a counted one, the counts and when they were read:
 | **At risk** | Progress is behind the share of time gone by more than the margin (default 10 points, **Settings → Profiles → (profile) → Screens → Plan → Inbox → At-risk margin**), or a counted milestone has started and its query finds no ticket, or a milestone made of pieces has started with no pieces. |
 | **On track** | Otherwise. |
 
+### Why a counted milestone is behind
+
+A milestone counted from a tracker query keeps its open tickets. When it is **Late** or **At risk**,
+the line under the counts says why, for example "9 open · 4 with no owner · 5 not updated in 7 days
+· 4 added after the start". Only the numbers that are not zero appear. A milestone with any other
+status shows no such line, only a control that says how many are open (for example "5 open
+tickets"); one with no open ticket shows nothing. The control (**Show open tickets** on a late or
+at-risk milestone) opens the list under it, and clicking it again closes it; it starts hidden. The
+milestone's own window always shows the list, and the line only when the milestone is Late or At
+risk.
+
+Each open ticket shows its key and title (click it to open the ticket in the tracker), its status,
+who has it ("No owner" when nobody does; nothing when the tracker does not say; on GitHub it is the
+person's login, not a display name), when it was last updated, and a badge for each thing that looks wrong:
+
+- **No owner**: nobody has the ticket.
+- **No movement**: not updated for more than 7 days, worked out when you look, from the same clock
+  as "updated ... ago" (so it stays right when the tracker cannot be reached for days). The number
+  in the line counts the tickets the list shows the same way; the ones it leaves out keep what the
+  count said.
+- **Added after the start**: created after the milestone's start date.
+
+The list shows at most 50 tickets, the most worrying first (the most badges, then the longest
+without an update); a last line says how many more open tickets there are, with a **See them all in
+the tracker** link that opens the query in the tracker's own search (Jira, GitHub; Linear shows no
+link because its addresses need the workspace name, which Workhub does not know). On GitHub the
+link is given only when at most 5 repositories are in scope and Workhub could read them; with more,
+or when reading them fails, there is no link, because a search of other repositories would show
+other results than the count. The numbers in the line
+always count every open ticket. They come with the count, so they are as fresh as "counted ... ago"
+says, and a milestone counted before this existed shows them after its next count.
+
 **Add milestone** opens the form of a new milestone in a window; saving creates it and closes the
 window, **Cancel** (or **Esc**) closes it without saving. The pencil on a milestone opens its window
 in the edit form (or switches the window already open to it); saving goes back to its details. The

@@ -15,7 +15,7 @@ import {
   type WorkhubConfig
 } from '@workhub/core'
 import type { SignInEvent, SignInPhase, SignInView } from '../shared/sign-in-api'
-import { claudeConfigDirOf } from './claude-accounts'
+import { claudeLaunchDir } from './claude-accounts'
 import type { IpcRegistrar } from './ipc-guard'
 import { probe } from './setup-service'
 
@@ -261,7 +261,10 @@ export class SignInService {
       }
     }
     const env: Record<string, string> = { ...SIGN_IN_COMMANDS[tool].env }
-    if (account) env['CLAUDE_CONFIG_DIR'] = claudeConfigDirOf(config, account, this.deps.home)
+    if (tool === 'claude') {
+      const launch = claudeLaunchDir(config, account)
+      if (launch.kind === 'named') env['CLAUDE_CONFIG_DIR'] = launch.dir
+    }
     const id = randomUUID()
     const entry: Entry = { key, sender: null, flow: null as unknown as SignInFlow }
     entry.flow = new SignInFlow({

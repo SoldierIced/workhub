@@ -173,7 +173,17 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    *Ended*), the inbox waiting for a decision (approve, keep or discard; agents' milestone
    proposals too), the tasks you took on (done with a tap, or open one to edit it or add a note),
    and the milestones with their progress against time, pieces and notes (their dates read
-   "Aug 26 – Nov 15", with the year only when it is not this one). *+* adds a pending item, from
+   "Aug 26 – Nov 15", with the year only when it is not this one). A milestone counted from a
+   tracker query that is *Late* or *At risk* says why in one line (how many tickets are open, how many
+   have no owner, have not moved in a week or were added after the start); a control with the number of
+   open tickets opens their list, asked from the computer when you open it and again whenever the
+   computer counts the milestone again. The milestone says when it was last counted; when the computer
+   does not know its open tickets yet (never counted, counted by an older version, or the query
+   changed), the list says so and that it is counted again on the computer, instead of saying none are
+   open. Each row has the key, the
+   title, a badge per reason, who has it and when it was last updated; tap it to open the ticket in the
+   phone's browser. Past the first 50 it says how many more there are and links to the search in the
+   tracker. The query itself is behind *Show the tracker query*. *+* adds a pending item, from
    *Today*, *Inbox* and *Tasks*. An item's text keeps its lines.
    The calendars' addresses and the Plan settings stay on the desktop.
 6. **Automations.** With the *Automations* capability, an *Automations* entry in Settings opens the list of the computer's automations (it has no tab of its own): name,

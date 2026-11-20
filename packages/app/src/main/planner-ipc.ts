@@ -96,6 +96,10 @@ export function registerPlannerIpc(ipc: IpcRegistrar, service: PlannerService, e
     if (!isId(profileId)) throw new Error('bad request')
     return service.refreshMilestones(profileId)
   })
+  ipc.handle('planner:openTickets', (_e, profileId: unknown, id: unknown) => {
+    if (!isId(profileId) || !isId(id)) throw new Error('bad request')
+    return service.openTickets(profileId, id)
+  })
   ipc.handle('planner:lookupTicket', (_e, profileId: unknown, key: unknown, connectionId: unknown) => {
     const k = parseTicketKey(key)
     if (!isId(profileId) || !k || (connectionId !== undefined && connectionId !== null && !(typeof connectionId === 'string' && connectionId.length <= PIECE_LIMITS.connectionId))) return BAD

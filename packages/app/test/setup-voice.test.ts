@@ -108,6 +108,22 @@ describe('SetupService', () => {
     expect(calls.find((c) => c.cmd === 'gh' && c.args[0] === '--version')?.timeoutMs).toBeUndefined()
     expect(items.find((i) => i.id === 'profile')).toMatchObject({ status: 'missing' })
   })
+  it('names the default folder for an account configured with it, as its sessions do', async () => {
+    const dirs: (string | undefined)[] = []
+    const service = new SetupService({
+      config: async () => ({ ...config, accounts: [{ id: 'main', agentId: 'claude', name: 'Main', configDir: '/tmp/workhub-test-home/.claude' }] }),
+      hasSecret: async () => false,
+      path: () => '/bin',
+      home: '/tmp/workhub-test-home',
+      slackFailure: async () => null,
+      run: async (cmd, args, options) => {
+        if (cmd === 'claude' && args[0] === 'auth') dirs.push(options?.env?.['CLAUDE_CONFIG_DIR'])
+        return { result: 'ok', output: '{"loggedIn":true}' }
+      }
+    })
+    await service.run()
+    expect(dirs).toEqual([resolve('/tmp/workhub-test-home/.claude')])
+  })
 })
 
 describe('setup wording', () => {

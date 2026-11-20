@@ -20,6 +20,8 @@ import {
   markTicketDone,
   MAX_MILESTONE_PROPOSALS,
   MAX_SEARCH_RESULTS,
+  openTicketsOf,
+  type MilestoneOpenTickets,
   MILESTONE_LIMITS,
   moveMilestone,
   moveMilestonePreview,
@@ -188,6 +190,8 @@ function cleanState(raw: PlannerState, now: number): PlannerState {
 export class PlannerService {
   private state: PlannerState
   private queue: Promise<unknown> = Promise.resolve()
+  /** Milestones (profile id, NUL, id) whose start moved and so are counted again, though their counts are kept meanwhile. */
+  private readonly recount = new Set<string>()
   private timer: ReturnType<typeof setInterval> | null = null
   private first: ReturnType<typeof setTimeout> | null = null
   private readonly now: () => number
@@ -260,6 +264,15 @@ export class PlannerService {
     return inboxDueBy(this.of(profileId).inbox, localDay(this.now()))
   }
 
+  /** The open tickets in the last good count of a tracker milestone, or null (not counted yet, no longer counted from this query, or counted before open tickets existed). */
+  openTickets(profileId: string, milestoneId: string): MilestoneOpenTickets | null {
+    const p = this.of(profileId)
+    const m = p.milestones.find((x) => x.id === milestoneId)
+    const key = m ? countsKey(m) : null
+    const counts = p.counts[milestoneId]
+    return key !== null && counts?.key === key ? (counts.open ?? null) : null
+  }
+
   async view(profileId: string): Promise<PlannerView> {
     const profile = await this.profile(profileId)
     const today = localDay(this.now())
@@ -315,8 +328,11 @@ export class PlannerService {
       const current = p.milestones.find((m) => m.id === milestone.id)
       if (!current && p.milestones.length >= MILESTONE_LIMITS.items) return { ok: false, error: PLANNER_ERRORS.tooMany }
       const saved = this.stamp({ ...milestone, createdAt: current?.createdAt ?? this.now() }, 'user')
+      // A moved start changes which open tickets were added late, so the milestone is counted again.
+      // The last good counts stay until the new count succeeds.
+      const startMoved = current !== undefined && current.start !== saved.start
       this.put(profileId, { milestones: current ? p.milestones.map((m) => (m.id === milestone.id ? saved : m)) : [...p.milestones, saved] })
-      if (milestone.source.kind === 'tracker') await this.count(profileId, false, milestone.id)
+      if (milestone.source.kind === 'tracker') await this.count(profileId, startMoved, milestone.id)
       if (milestone.source.kind === 'items') await this.readTickets(profile, false)
       return { ok: true }
     })
@@ -368,6 +384,10 @@ export class PlannerService {
   private async setMilestones(profileId: string, milestones: Milestone[], countId?: string): Promise<void> {
     const p = this.of(profileId)
     const kept = new Set(milestones.map((m) => m.id))
+    // A moved start changes which open tickets were added late, so those milestones are counted again;
+    // their last good counts stay until the new count succeeds.
+    const startOf = new Map(p.milestones.map((m) => [m.id, m.start]))
+    for (const m of milestones) if (startOf.has(m.id) && startOf.get(m.id) !== m.start) this.recount.add(`${profileId}\0${m.id}`)
     const counts = Object.fromEntries(Object.entries(p.counts).filter(([id]) => kept.has(id)))
     const errors = Object.fromEntries(Object.entries(p.errors).filter(([id]) => kept.has(id)))
     this.put(profileId, { milestones, counts, errors })
@@ -455,19 +475,23 @@ export class PlannerService {
       const key = countsKey(m)
       if (key === null || (onlyId && m.id !== onlyId)) return false
       const last = p.counts[m.id]
-      return force || !last || last.key !== key || now - last.at >= MILESTONE_REFRESH_MS || p.errors[m.id] !== undefined
+      // Counts stored before the open tickets existed have none: they are made again.
+      return force || this.recount.has(`${profileId}\0${m.id}`) || !last || last.key !== key || !last.open || now - last.at >= MILESTONE_REFRESH_MS || p.errors[m.id] !== undefined
     })
     if (due.length === 0) return
     const counts = { ...p.counts }
     const errors = { ...p.errors }
     for (const m of due) {
       if (m.source.kind !== 'tracker') continue
+      this.recount.delete(`${profileId}\0${m.id}`)
       const found = await this.deps.tracker(profileId, m.source.connectionId)
       try {
         if ('error' in found) throw new Error(found.error)
         if (!found.tracker.searchByQuery || !found.tracker.capabilities.search) throw new Error(PLANNER_ERRORS.noSearch)
         const tickets = await found.tracker.searchByQuery(m.source.query, { limit: MAX_SEARCH_RESULTS })
-        counts[m.id] = { ...countByCategory(tickets), at: this.now(), key: countsKey(m) ?? '' }
+        // The address of the query is a courtesy: a tracker that cannot give one, or fails, leaves it out.
+        const url = found.tracker.queryUrl ? await found.tracker.queryUrl(m.source.query).catch(() => undefined) : undefined
+        counts[m.id] = { ...countByCategory(tickets), at: this.now(), key: countsKey(m) ?? '', open: { ...openTicketsOf(tickets, m, this.now()), ...(url ? { url } : {}) } }
         delete errors[m.id]
       } catch (error) {
         errors[m.id] = error instanceof Error ? error.message : String(error)

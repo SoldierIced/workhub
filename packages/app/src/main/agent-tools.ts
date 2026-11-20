@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path'
 import type { McpServerLaunch, Probe, WorkhubConfig } from '@workhub/core'
 import type { AgentToolsStatus, SkillState } from '../shared/agent-tools-api'
-import { claudeAccounts, claudeConfigDirOf } from './claude-accounts'
+import { claudeAccounts, claudeConfigDirOf, claudeLaunchDir } from './claude-accounts'
 import type { IpcRegistrar } from './ipc-guard'
 
 export const WORKHUB_MCP_SCRIPT = 'workhub-mcp.mjs'
@@ -109,13 +109,15 @@ export interface AgentToolsDeps {
 }
 
 /** The Claude config folders, each with a label for the UI (empty: the default folder). */
-async function folders(deps: AgentToolsDeps): Promise<{ id: string; name: string; dir: string }[]> {
+/** `named` is the folder `claude` is started with, null for the default account (nothing named, as a session does). */
+async function folders(deps: AgentToolsDeps): Promise<{ id: string; name: string; dir: string; named: string | null }[]> {
   const config = await deps.config()
   const seen = new Set<string>()
   return claudeAccounts(config, deps.home)
     .map((ref) => {
       const account = config.accounts.find((a) => a.id === ref.accountId) ?? null
-      return { id: ref.accountId ?? 'default', name: ref.name, dir: resolve(claudeConfigDirOf(config, account, deps.home)) }
+      const launch = claudeLaunchDir(config, account)
+      return { id: ref.accountId ?? 'default', name: ref.name, dir: resolve(claudeConfigDirOf(config, account, deps.home)), named: launch.kind === 'named' ? launch.dir : null }
     })
     .filter((f) => (seen.has(f.dir) ? false : (seen.add(f.dir), true)))
 }
@@ -123,8 +125,9 @@ async function folders(deps: AgentToolsDeps): Promise<{ id: string; name: string
 export class AgentToolsService {
   constructor(private readonly deps: AgentToolsDeps) {}
 
-  private envFor(dir: string): NodeJS.ProcessEnv {
-    return { ...this.deps.env(), CLAUDE_CONFIG_DIR: dir }
+  /** The default account names no folder: Claude Code then reads the sign-in and settings its sessions read. */
+  private envFor(named: string | null): NodeJS.ProcessEnv {
+    return named ? { ...this.deps.env(), CLAUDE_CONFIG_DIR: named } : this.deps.env()
   }
 
   async status(): Promise<AgentToolsStatus> {
@@ -133,7 +136,7 @@ export class AgentToolsService {
     const socket = this.deps.socket()
     const accounts = await Promise.all(
       list.map(async (f) => {
-        const mcp = socket ? await this.deps.run('claude', ['mcp', 'get', WORKHUB_MCP_NAME], { env: this.envFor(f.dir) }) : null
+        const mcp = socket ? await this.deps.run('claude', ['mcp', 'get', WORKHUB_MCP_NAME], { env: this.envFor(f.named) }) : null
         return {
           id: f.id,
           name: f.name,
@@ -175,7 +178,7 @@ export class AgentToolsService {
     const f = (await folders(this.deps)).find((x) => x.id === accountId)
     const socket = this.deps.socket()
     if (!f || !socket) return { ok: false, output: !f ? 'unknown account' : 'the endpoint is not a socket here' }
-    const env = this.envFor(f.dir)
+    const env = this.envFor(f.named)
     await this.deps.run('claude', ['mcp', 'remove', WORKHUB_MCP_NAME, '--scope', 'user'], { env })
     const r = await this.deps.run('claude', ['mcp', 'add-json', WORKHUB_MCP_NAME, globalMcpJson({ node: this.deps.node, script: this.deps.script, socket }), '--scope', 'user'], { env })
     return { ok: r.result === 'ok', output: r.output }
@@ -184,7 +187,7 @@ export class AgentToolsService {
   async removeGlobalMcp(accountId: string): Promise<{ ok: boolean; output: string }> {
     const f = (await folders(this.deps)).find((x) => x.id === accountId)
     if (!f) return { ok: false, output: 'unknown account' }
-    const r = await this.deps.run('claude', ['mcp', 'remove', WORKHUB_MCP_NAME, '--scope', 'user'], { env: this.envFor(f.dir) })
+    const r = await this.deps.run('claude', ['mcp', 'remove', WORKHUB_MCP_NAME, '--scope', 'user'], { env: this.envFor(f.named) })
     return { ok: r.result === 'ok', output: r.output }
   }
 }

@@ -91,6 +91,11 @@ export interface TicketSummary {
   status: string
   category: StatusCategory
   url?: string
+  /** Display name of who has it; `null`: nobody; absent: the tracker does not say. */
+  assignee?: string | null
+  /** Epoch ms; absent when the tracker does not say. */
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface SearchOptions {

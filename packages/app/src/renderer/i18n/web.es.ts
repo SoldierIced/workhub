@@ -213,5 +213,13 @@ export const webEs: Record<keyof typeof webEn, string> = {
   'web.automations.turnOff': 'Apagar {name}',
   'web.automations.turnOnAtDesktop': 'Apagada. Encendela en la computadora.',
   'web.automations.failed': 'La computadora no pudo hacerlo.',
-  'web.automations.refused': 'No se hizo: {message}'
+  'web.automations.refused': 'No se hizo: {message}',
+  'web.milestone.loading': 'Pidiéndole a la computadora los tickets abiertos…',
+  'web.milestone.unreachable': 'No se pudo conectar con la computadora, así que no se pueden listar los tickets abiertos.',
+  'web.milestone.empty': 'La computadora no tiene tickets abiertos de este hito por ahora.',
+  'web.milestone.showQuery': 'Mostrar la consulta del tracker',
+  'web.milestone.hideQuery': 'Ocultar la consulta del tracker',
+  'web.milestone.openRow': '{row}. Abrir en el navegador',
+  'web.milestone.unknown': 'Todavía no se sabe: la computadora no contó este hito con sus tickets abiertos desde que se cambió o se actualizó. Se cuenta de nuevo en la computadora (Plan, Hitos, Contar de nuevo).',
+  'web.milestone.range': '{start} – {end}'
 }

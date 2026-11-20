@@ -211,5 +211,13 @@ export const webEn = {
   'web.automations.turnOff': 'Turn off {name}',
   'web.automations.turnOnAtDesktop': 'Off. Turn it on at the computer.',
   'web.automations.failed': 'The computer could not do that.',
-  'web.automations.refused': 'Not done: {message}'
+  'web.automations.refused': 'Not done: {message}',
+  'web.milestone.loading': 'Asking the computer for the open tickets…',
+  'web.milestone.unreachable': 'The computer could not be reached, so the open tickets cannot be listed.',
+  'web.milestone.empty': 'The computer has no open tickets for this milestone right now.',
+  'web.milestone.showQuery': 'Show the tracker query',
+  'web.milestone.hideQuery': 'Hide the tracker query',
+  'web.milestone.openRow': '{row}. Open in the browser',
+  'web.milestone.unknown': 'Not known yet: the computer has not counted this milestone with its open tickets since it was last changed or updated. It is counted again on the computer (Plan, Milestones, Count again).',
+  'web.milestone.range': '{start} – {end}'
 } as const

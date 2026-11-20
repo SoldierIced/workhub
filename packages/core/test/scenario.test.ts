@@ -123,6 +123,20 @@ describe('team-lead scenario: milestones', () => {
     expect(new Set(Object.values(PRODUCT_MILESTONE_EXPECTED))).toEqual(new Set(['onTrack', 'atRisk', 'late', 'notStarted', 'done']))
   })
 
+  it('count the open tickets, the at-risk one with unowned, untouched and late ones, on any day', () => {
+    for (const offset of [0, 1, 3, 9, 20]) {
+      const now = NOW + offset * 86_400_000
+      const counts = productMilestoneCounts(productMilestones(localDay(now)), now)
+      const open = (id: string) => counts[id]!.open!
+      expect(Object.values(counts).every((c) => c.open !== undefined && c.open.total === c.total - c.done)).toBe(true)
+      expect(open('ms-activation')).toMatchObject({ total: 9, unassigned: 4, stale: 5, addedLate: 4 })
+      expect(open('ms-activation').tickets[0]!.flags.length).toBeGreaterThanOrEqual(2)
+      expect(open('ms-sso')).toMatchObject({ total: 5, unassigned: 0, stale: 0, addedLate: 1 })
+      expect(open('ms-billing')).toMatchObject({ unassigned: 0, stale: 0, addedLate: 1 })
+      expect(open('ms-docs')).toMatchObject({ total: 0, tickets: [] })
+    }
+  })
+
   it('include one made of two tickets in different states, a local task and a link, all known to the demo', () => {
     const now = NOW
     const milestones = productMilestones(TODAY)

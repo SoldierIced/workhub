@@ -1,6 +1,6 @@
 import {
   PRODUCT_ASSIGNED,
-  PRODUCT_QUERY_RESULTS,
+  productQueryTickets,
   TrackerError,
   productTicket,
   isTicketKey,
@@ -145,6 +145,8 @@ const TEAM_SEEDS: Seed[] = [
   { key: 'DEMO-121', title: 'Dark mode for the settings page', state: 'todo', type: 'Story', priority: 'Low', description: 'Follow the system theme.', labels: ['frontend'], comments: [], assignee: 'Jordan Lee' }
 ]
 
+const DEMO_PEOPLE = ['Sam Rivera', 'Ana Costa', 'Alex Kim'] as const
+
 /** A small stable number from a string, so the same demo query always finds the same tickets. */
 function hashOf(text: string): number {
   let h = 0
@@ -159,10 +161,15 @@ export function demoSearch(query: string, limit: number): TicketSummary[] {
   const done = Math.floor(total * (((h >> 4) % 70) / 100))
   const inProgress = Math.min(total - done, 1 + ((h >> 8) % 3))
   const prefix = 100 + (h % 800)
+  // Whole days, so the same query gives the same tickets all day.
+  const today = Math.floor(Date.now() / 86_400_000) * 86_400_000
   return Array.from({ length: Math.min(total, limit) }, (_, i) => {
     const state = STATES[i < done ? 'done' : i < done + inProgress ? 'progress' : 'todo']!
     const key = `DEMO-${prefix + i}`
-    return { key, title: `Demo work item ${i + 1} for "${query.trim().slice(0, 40)}"`, status: state.name, category: state.category, url: `https://demo.example.com/browse/${key}` }
+    // Every fourth ticket has no owner, every fifth has not moved for ten days.
+    const assignee = i % 4 === 3 ? null : DEMO_PEOPLE[i % DEMO_PEOPLE.length]!
+    const updatedAt = today - (i % 5 === 4 ? 10 : 1 + (i % 3)) * 86_400_000
+    return { key, title: `Demo work item ${i + 1} for "${query.trim().slice(0, 40)}"`, status: state.name, category: state.category, url: `https://demo.example.com/browse/${key}`, assignee, createdAt: updatedAt - (20 + i) * 86_400_000, updatedAt }
   })
 }
 
@@ -255,8 +262,12 @@ export class DemoTracker implements TicketTracker {
 
   async searchByQuery(query: string, options?: SearchOptions): Promise<TicketSummary[]> {
     if (!query.trim()) throw new TrackerError('The query is empty')
-    const known = this.product ? PRODUCT_QUERY_RESULTS[query.trim()] : undefined
+    const known = this.product ? productQueryTickets(query.trim(), Date.now()) : undefined
     return known ? known.slice(0, searchLimit(options)) : demoSearch(query, searchLimit(options))
+  }
+
+  async queryUrl(query: string): Promise<string | undefined> {
+    return query.trim() ? `https://demo.example.com/issues?q=${encodeURIComponent(query.trim())}` : undefined
   }
 
   /** Tickets by key: the seeded ones with their current state, the scenario's query results, and the issues created in this run. */

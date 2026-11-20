@@ -77,6 +77,9 @@ export const spokenSummary = (answer: string): string => speechText(answer)
 /** What is read when the summary failed: the cleaned message, cut short. */
 export const fallbackSpeech = (markdown: string): string => speechText(markdown, LISTEN_FALLBACK_MAX)
 
+/** Whether the fallback leaves part of the message out (it reads the whole of one up to `LISTEN_FALLBACK_MAX`). */
+export const fallbackIsCut = (markdown: string): boolean => speechText(markdown, Infinity).length > LISTEN_FALLBACK_MAX
+
 /** What a summary request answers (main → renderer). */
 export type ListenSummaryResult =
   | { ok: true; summary: string; costUsd?: number; usage?: RunUsage }

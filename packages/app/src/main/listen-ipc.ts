@@ -4,7 +4,7 @@
  */
 import { accountAgentId, appOptions, knownAgents, type ListenSummaryResult, type WorkhubConfig } from '@workhub/core'
 import type { ListenSummaryRequest } from '@workhub/adapters/listen-summary'
-import { claudeConfigDirOf } from './claude-accounts'
+import { claudeLaunchDir, type ClaudeLaunchDir } from './claude-accounts'
 import type { BackgroundUsage } from './background-usage'
 import type { IpcRegistrar } from './ipc-guard'
 
@@ -17,7 +17,6 @@ export interface ListenIpcDeps {
   /** The agent and account a session runs with; null for an unknown session. */
   session: (id: string) => { agentId: string; accountId: string | null } | null
   home: string
-  env?: NodeJS.ProcessEnv
   /** Where a failed summary is reported; the app passes `main.log`. The renderer only gets the failure kind. */
   log?: (message: string) => void
   /** Each summary is a model run on the account: its tokens and cost go to the usage data ("Workhub background"). */
@@ -28,14 +27,12 @@ export interface ListenIpcDeps {
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 200
 
 /**
- * The Claude config folder a summary runs with: the session's own account when it is a Claude
- * account, else Claude's default folder (a Codex or Kiro session has no Claude login of its own).
- * Null when no Claude agent is configured at all.
+ * The Claude folder a summary names: the session's own account when it is a Claude account, else
+ * Claude's default account (a Codex or Kiro session has no Claude login of its own). `default`
+ * names no folder; `noClaude` when no Claude agent is configured at all.
  */
-export function listenConfigDir(config: WorkhubConfig, session: { agentId: string; accountId: string | null } | null, home: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  const claude = knownAgents(config).find((a) => a.id === 'claude')
-  if (!claude) return null
-  return claudeConfigDirOf(config, listenAccount(config, session), home, env)
+export function listenConfigDir(config: WorkhubConfig, session: { agentId: string; accountId: string | null } | null): ClaudeLaunchDir {
+  return claudeLaunchDir(config, listenAccount(config, session))
 }
 
 /** The session's own Claude account, when it runs on one; null for the default folder. */
@@ -52,13 +49,14 @@ export function registerListenIpc(ipc: IpcRegistrar, deps: ListenIpcDeps): void 
     if (!isId(requestId) || !isId(sessionId) || typeof text !== 'string' || !text.trim()) throw new Error('Invalid listen request')
     const config = await deps.config()
     const session = deps.session(sessionId)
-    const configDir = listenConfigDir(config, session, deps.home, deps.env)
+    const launch = listenConfigDir(config, session)
+    const configDir = launch.kind === 'named' ? launch.dir : undefined
     const log = deps.log ?? ((message: string) => console.warn(message))
     const report = (result: ListenSummaryResult): ListenSummaryResult => {
-      if (!result.ok && result.failure !== 'cancelled') log(`listen summary failed (${result.failure}, configDir ${configDir ?? 'none'}): ${result.error}`)
+      if (!result.ok && result.failure !== 'cancelled') log(`listen summary failed (${result.failure}, configDir ${launch.kind === 'named' ? 'named' : 'default'}): ${result.error}`)
       return result
     }
-    if (!configDir) return report({ ok: false, failure: 'noAccount', error: 'No Claude agent is set up.' })
+    if (launch.kind === 'noClaude') return report({ ok: false, failure: 'noAccount', error: 'No Claude agent is set up.' })
     running.get(requestId)?.abort()
     const controller = new AbortController()
     running.set(requestId, controller)
@@ -66,7 +64,7 @@ export function registerListenIpc(ipc: IpcRegistrar, deps: ListenIpcDeps): void 
     const started = now()
     try {
       const model = appOptions(config).listenModel
-      const result = await deps.summarize({ text: text.slice(0, MAX_TEXT), model, configDir, signal: controller.signal })
+      const result = await deps.summarize({ text: text.slice(0, MAX_TEXT), model, ...(configDir ? { configDir } : {}), signal: controller.signal })
       // A run that reported nothing (cancelled before it started, no helper answer) spent nothing known.
       if (result.usage || result.costUsd !== undefined) {
         deps.background?.record({

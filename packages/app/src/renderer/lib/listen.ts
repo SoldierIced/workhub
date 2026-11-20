@@ -3,8 +3,9 @@
  * it is long. It shares the window's one voice (readAloud.ts): starting a message stops whatever
  * was being read or summarized.
  */
+import type { MessageKey } from '../i18n/translate'
 import { useSyncExternalStore } from 'react'
-import { fallbackSpeech, listenPlan, type ListenSummaryResult } from '@workhub/core'
+import { fallbackIsCut, fallbackSpeech, listenPlan, type ListenSummaryResult } from '@workhub/core'
 import { pauseSpeaking, resumeSpeaking, speak, stopSpeaking, useSpeech, type SpeakOptions } from './readAloud'
 
 export type ListenPhase = 'idle' | 'summarizing' | 'playing' | 'paused'
@@ -23,7 +24,7 @@ export function listenPhase(id: string, summarizingId: string | null, speech: { 
 export type ListenOutcome =
   | { kind: 'spoken'; summarized: boolean }
   /** The summary failed: the cleaned message, cut short, was read instead. */
-  | { kind: 'fallback'; failure: Exclude<ListenSummaryResult, { ok: true }>['failure'] }
+  | { kind: 'fallback'; failure: Exclude<ListenSummaryResult, { ok: true }>['failure']; cut: boolean }
   /** Stopped, or replaced by another message, before anything was read. */
   | { kind: 'cancelled' }
   /** Nothing could be read (an empty message, or no voice on this system). */
@@ -76,8 +77,9 @@ export async function listen({ sessionId, itemId, markdown, voice }: ListenReque
   setPending(null)
   if (result.ok) return speak(result.summary, { id, ...voice }) ? { kind: 'spoken', summarized: true } : { kind: 'silent' }
   if (result.failure === 'cancelled') return { kind: 'cancelled' }
-  speak(fallbackSpeech(markdown), { id, ...voice })
-  return { kind: 'fallback', failure: result.failure }
+  // A message with nothing to speak (only code) is not read: the notice must not say it is.
+  if (!speak(fallbackSpeech(markdown), { id, ...voice })) return { kind: 'silent' }
+  return { kind: 'fallback', failure: result.failure, cut: fallbackIsCut(markdown) }
 }
 
 /** One click on the button: start, cancel the summary, pause or resume. */
@@ -98,4 +100,13 @@ export function useListenPhase(id: string): ListenPhase {
     () => pending?.id ?? null
   )
   return listenPhase(id, summarizingId, useSpeech())
+}
+
+/**
+ * The two sentences of the notice after a failed summary: why it failed (a usage limit has no line
+ * of its own), then what is read instead: the start of the message only when it was cut.
+ */
+export function fallbackNoticeKeys(outcome: Extract<ListenOutcome, { kind: 'fallback' }>): [MessageKey, MessageKey] {
+  const why = outcome.failure === 'noAccount' ? 'chat.listenNoAccount' : outcome.failure === 'timeout' ? 'chat.listenTimeout' : 'chat.listenFailed'
+  return [why, outcome.cut ? 'chat.listenReadStart' : 'chat.listenReadWhole']
 }
