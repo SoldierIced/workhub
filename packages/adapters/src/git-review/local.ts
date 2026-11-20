@@ -5,9 +5,9 @@
  * written to the repositories.
  */
 import { createHash } from 'node:crypto'
-import { lstat, readdir, readFile, stat } from 'node:fs/promises'
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import {
   githubPageFor,
   parseUnifiedDiff,
@@ -16,6 +16,7 @@ import {
   type LocalRepoNote,
   type LocalReview,
   type LocalReviewFile,
+  type LocalReviewOther,
   type LocalReviewRepo,
   type LocalReviewScope
 } from '@workhub/core'
@@ -27,6 +28,8 @@ export const LOCAL_LINE_LIMIT = 2_000
 export const UNTRACKED_BYTE_LIMIT = 1_000_000
 /** New files read per repo; past this they are listed without their content. */
 export const UNTRACKED_FILE_LIMIT = 200
+/** Paths of `git status` looked at per repo for their time; a repo with more counts as the session's. */
+export const STATUS_PATH_LIMIT = 500
 /** Git's empty tree: what a repo without commits is compared with. */
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
@@ -55,6 +58,14 @@ export interface LocalReviewInput {
    * other repos are not scanned, since a container folder often holds unrelated uncommitted work.
    */
   extraRepos?: { path: string; base?: string }[]
+  /** Absolute paths the session changed: the repos of the folder that contain one are the session's. */
+  touched?: readonly string[]
+  /** Repos loaded next to the folder's own (and next to `extraRepos`), whatever the split says. */
+  alsoRepos?: readonly string[]
+  /** No split between the session's repos and the folder's others: every repo with changes is loaded. */
+  wholeFolder?: boolean
+  /** The platform the paths come from; defaults to `process.platform`. Only Windows reads `touched` paths no child contains by time. */
+  platform?: NodeJS.Platform
   /** The branch's pull request, when one is known (its base is preferred as the branch to compare with). */
   pullRequestOf?: (repo: { name: string; remoteName?: string; branch: string }) => { number: number; url: string; base: string } | undefined
 }
@@ -81,16 +92,90 @@ export class LocalChanges {
     }
     // Repos asked for by name replace the folder scan: only those are reviewed.
     const children = asked.size ? [] : (await childRepositories(folder)).filter((c) => c !== own)
-    const touched = await mapLimit(children, 6, async (repo) => ((await this.isTouched(repo, input.since)) ? repo : null))
-    const found = [...(own ? [own] : []), ...touched.filter((r): r is string => r !== null)]
-    const candidates = asked.size ? [...asked.keys()] : found
-    const repos = await mapLimit(candidates, 4, (repo) => this.loadRepo(repo, folder, input, asked.get(repo)).catch(() => null))
+    const touchedChildren = await mapLimit(children, 6, async (repo) => ((await this.isTouched(repo, input.since)) ? repo : null))
+    const changed = touchedChildren.filter((r): r is string => r !== null)
+    const mine = input.wholeFolder || !changed.length ? null : await this.sessionRepos(children, changed, input)
+    const also = new Set<string>()
+    for (const path of input.alsoRepos ?? []) {
+      const top = await this.value(resolve(path), ['rev-parse', '--show-toplevel'])
+      if (top) also.add(resolve(top))
+    }
+    const own1 = own ? [own] : []
+    const kept = mine ? changed.filter((r) => mine.has(r)) : changed
+    const base = asked.size ? [...asked.keys()] : [...own1, ...kept]
+    const candidates = [...base, ...[...also].filter((r) => !base.includes(r))]
+    const others = mine ? changed.filter((r) => !mine.has(r) && !also.has(r)) : []
+    const [repos, rest] = await Promise.all([
+      mapLimit(candidates, 4, (repo) => this.loadRepo(repo, folder, input, asked.get(repo)).catch(() => null)),
+      mapLimit(others, 4, (repo) => this.loadRepo(repo, folder, input).catch(() => null))
+    ])
+    const untouched: LocalReviewOther[] = []
+    for (const r of rest) {
+      if (!r || !r.files.length) continue
+      untouched.push({
+        name: r.name,
+        root: r.root,
+        files: r.files.length,
+        additions: r.files.reduce((n, f) => n + f.additions, 0),
+        deletions: r.files.reduce((n, f) => n + f.deletions, 0)
+      })
+    }
     return {
       folder,
       scope: input.scope,
       repos: repos.filter((r): r is LocalReviewRepo => r !== null && r.files.length > 0),
+      ...(untouched.length ? { untouched } : {}),
+      // Scanned without the split because it was asked to; repos that resolved replace the scan.
+      ...(input.wholeFolder && !asked.size ? { wholeFolder: true as const } : {}),
       scannedRepos: asked.size || (own ? 1 : 0) + children.length
     }
+  }
+
+  /**
+   * The children that are the session's, or null when there is no way to tell (no `since`): then every
+   * child counts. By `touched` when one of its paths is inside a child; `touched` with entries and none
+   * in a child means none (Windows: by time); no entries, by time.
+   */
+  private async sessionRepos(children: string[], changed: string[], input: LocalReviewInput): Promise<Set<string> | null> {
+    const paths: string[] = []
+    for (const p of input.touched ?? []) paths.push(await realpath(resolve(p)).catch(() => resolve(p)))
+    const entries = paths.length > 0
+    if (entries) {
+      const roots = new Map<string, string>()
+      for (const child of children) roots.set(child, await realpath(child).catch(() => child))
+      const hit = children.filter((c) => {
+        const root = roots.get(c)!
+        return paths.some((p) => p === root || p.startsWith(root.endsWith(sep) ? root : root + sep))
+      })
+      if (hit.length) return new Set(hit)
+      // Paths the session changed, none in a child: outside the folder, so no child is the session's.
+      // On Windows a Git Bash path (`/c/x/app`) never matches, so the time rule decides there.
+      if ((input.platform ?? process.platform) !== 'win32') return new Set()
+    }
+    if (input.since === undefined) return null
+    const since = input.since
+    const flags = await mapLimit(changed, 6, async (repo) => (await this.changedSince(repo, since)))
+    return new Set(changed.filter((_, i) => flags[i]))
+  }
+
+  /** Whether something in the repo changed at or after `since`: a path of `git status` or the last commit. */
+  private async changedSince(repo: string, since: number): Promise<boolean> {
+    const last = Number(await this.value(repo, ['log', '-1', '--format=%ct']))
+    if (Number.isFinite(last) && last * 1000 >= since) return true
+    const status = await this.git(repo, ['status', '--porcelain=v1', '-z', '--untracked-files=normal'])
+    if (!status.ok) return false
+    const parts = status.stdout.split('\0')
+    const paths: string[] = []
+    for (let i = 0; i < parts.length; i++) {
+      const entry = parts[i]!
+      if (entry.length < 4) continue
+      paths.push(entry.slice(3))
+      // A rename or copy is followed by its old path, which is not read.
+      if (entry[0] === 'R' || entry[0] === 'C' || entry[1] === 'R' || entry[1] === 'C') i++
+    }
+    if (paths.length > STATUS_PATH_LIMIT) return true
+    for (const path of paths) if ((await modifiedAt(join(repo, path))) >= since) return true
+    return false
   }
 
   private async isTouched(repo: string, since?: number): Promise<boolean> {
@@ -239,6 +324,31 @@ export function limitHunks(hunks: DiffHunk[], limit: number): { hunks: DiffHunk[
     kept.push({ header: h.header, lines })
   }
   return { hunks: kept, hidden }
+}
+
+/**
+ * When a path was last modified: a deleted one, the nearest folder above it that still exists; a
+ * folder (an untracked one), the newest of it and its direct entries.
+ */
+async function modifiedAt(path: string): Promise<number> {
+  let current = path.replace(/[\\/]+$/, '')
+  const original = current
+  for (;;) {
+    const info = await lstat(current).catch(() => null)
+    if (info) {
+      let newest = info.mtimeMs
+      if (info.isDirectory() && current === original) {
+        for (const name of await readdir(current).catch(() => [])) {
+          const child = await lstat(join(current, name)).catch(() => null)
+          if (child && child.mtimeMs > newest) newest = child.mtimeMs
+        }
+      }
+      return newest
+    }
+    const up = dirname(current)
+    if (up === current) return 0
+    current = up
+  }
 }
 
 /** Repositories directly inside a folder (never in the home folder or the root), sorted by name. */

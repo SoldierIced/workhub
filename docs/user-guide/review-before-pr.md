@@ -137,12 +137,30 @@ its permission requests; prefer an agent with a read-only mode for reviewing.
 
 ## Review changes: review it yourself
 
-**Review changes** in the header opens a window with the session's local changes in every repo it
-touched. **This session** shows only the files the agent edited with its file tools; **Whole repo**
-shows every change in those repos, whoever made it (other sessions, you). Edits the agent made
-through shell commands or sub-agents are only in **Whole repo**. The window remembers the choice;
-a review a tool opens for you (below) starts in **Whole repo**, since the tool already says what to
-compare with.
+**Review changes** in the header opens a window with the session's local changes. It lists the
+repositories of the session's folder that the session changed. For an agent that reports what it
+changed (Claude Code today) those are the repositories where it edited or wrote a file with its file
+tools, ran a git command that writes (commit, push, merge, rebase, cherry-pick, revert, am, apply,
+`checkout -b`, `switch -c`) or opened or merged a pull request with the GitHub CLI. While such a
+session has not changed anything yet, the list is by time, as for other agents: the repositories with
+changes made since the session started, by anyone (you, another session, a pull). On Windows the
+list is always by time, because the paths of the agent's edits are not recognized there.
+
+When other repositories of the folder have changes not traced to the session, a bar says how many,
+with their files and lines. **Show them too** shows every change of every repository in the folder,
+as **Whole repo** does, and the bar then reads "Showing every repo in this folder with changes"
+with **Only this session's repos** to go back. The choice lasts while the window is open. A
+repository where the agent only edited files through shell commands (`sed -i`, a generator, an
+install) is not traced to the session, so it may be under that bar. Of the git commands run in the
+shell only the ones that write, listed above, are traced; others, such as `git pull` or
+`git stash pop`, are not.
+
+**This session** shows only the files the agent edited with its file tools; **Whole repo** shows
+every change in the listed repos, whoever made it. Edits the agent made through shell commands or
+sub-agents are not in **This session**; they appear in **Whole repo**, and **Show them too** turns
+the window to **Whole repo** while it is on. The window remembers the choice of **This session** or
+**Whole repo**; a review a tool opens for you (below) starts in **Whole repo**, since the tool
+already says what to compare with.
 The session bar counts the changes in every repo the session changed, also worktrees and clones
 outside its folder; the window reviews its folder's repos. When the session changed repos it does
 not show, a line under the header says how many, with their files and lines, and **Review them
