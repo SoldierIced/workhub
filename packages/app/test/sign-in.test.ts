@@ -197,6 +197,7 @@ describe('SignInService', () => {
   const config = {
     accounts: [
       { id: 'work', agentId: 'claude', name: 'Work', configDir: '/tmp/acme-claude-work' },
+      { id: 'main', agentId: 'claude', name: 'Main', configDir: '/tmp/acme-home/.claude' },
       { id: 'cx', agentId: 'codex', name: 'Codex work' }
     ],
     agents: []
@@ -301,6 +302,22 @@ describe('SignInService', () => {
     not.emit({ sessionId: not.windows[0]!, type: 'exit', code: 1 })
     await vi.waitFor(() => expect(not.s.flow(not.windows[0])!.view().phase).toBe('ended'))
     expect(signedIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('names no folder for the default account, so it signs in where sessions read', async () => {
+    const run = vi.fn(async (): Promise<Probe> => ({ result: 'failed', output: '{"loggedIn":false}' }))
+    const { s, started, windows } = service(run)
+    expect(await s.open('claude', null)).toBe(true)
+    await s.attach(windows[0], { send: vi.fn(), isDestroyed: () => false })
+    expect(started[0]!.env).not.toHaveProperty('CLAUDE_CONFIG_DIR')
+  })
+
+  it('names the folder of an account configured with the default folder, as a session does', async () => {
+    const run = vi.fn(async (): Promise<Probe> => ({ result: 'failed', output: '{"loggedIn":false}' }))
+    const { s, started, windows } = service(run)
+    expect(await s.open('claude', 'main')).toBe(true)
+    await s.attach(windows[0], { send: vi.fn(), isDestroyed: () => false })
+    expect(started[0]!.env['CLAUDE_CONFIG_DIR']).toMatch(/acme-home[\\/]\.claude$/)
   })
 
   it('the status check runs the table\'s check with the account\'s folder on the app\'s PATH', async () => {

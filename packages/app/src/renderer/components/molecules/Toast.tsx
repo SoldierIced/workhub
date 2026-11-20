@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck } from 'lucide-react'
+import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react'
 import { Toast as RToast } from 'radix-ui'
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import { cn } from '../../lib/cn'
@@ -6,8 +6,11 @@ import { cn } from '../../lib/cn'
 interface ToastMessage {
   id: number
   text: string
-  tone: 'success' | 'danger'
+  tone: 'success' | 'warning' | 'danger'
 }
+
+/** A success is a glance (2.5 s); a warning or an error has a sentence or two to read (5 s). */
+export const toastDuration = (tone: ToastMessage['tone']): number => (tone === 'success' ? 2500 : 5000)
 
 type Notify = (text: string, tone?: ToastMessage['tone']) => void
 const ToastContext = createContext<Notify>(() => undefined)
@@ -25,10 +28,17 @@ export function ToastProvider({ children, label }: { children: ReactNode; label:
         {toasts.map((m) => (
           <RToast.Root
             key={m.id}
+            duration={toastDuration(m.tone)}
             onOpenChange={(open) => !open && setToasts((list) => list.filter((x) => x.id !== m.id))}
             className="flex animate-slide-in items-center gap-2 rounded-lg border border-border bg-surface-raised px-3.5 py-2.5 shadow-lg"
           >
-            {m.tone === 'success' ? <CircleCheck className="size-4 text-success" aria-hidden /> : <CircleAlert className="size-4 text-danger" aria-hidden />}
+            {m.tone === 'success' ? (
+              <CircleCheck className="size-4 shrink-0 text-success" aria-hidden />
+            ) : m.tone === 'warning' ? (
+              <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden />
+            ) : (
+              <CircleAlert className="size-4 shrink-0 text-danger" aria-hidden />
+            )}
             <RToast.Title className={cn('text-base')}>{m.text}</RToast.Title>
           </RToast.Root>
         ))}

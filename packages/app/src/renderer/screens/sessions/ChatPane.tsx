@@ -27,7 +27,7 @@ import { followLog, isAtBottom, lastPromptId, type FollowMark } from '../../lib/
 import { onRevealChatItem, revealEarlier, revealItemStart, showJumpToLatest, windowAfterScroll, windowStart } from '../../lib/chatWindow'
 import { currentConfig, refreshConfig, useConfig } from '../../configStore'
 import { isLongMessage } from '../../lib/longMessage'
-import { listen, listenId, stopListening, toggleListen, useListenPhase, type ListenOutcome } from '../../lib/listen'
+import { fallbackNoticeKeys, listen, listenId, stopListening, toggleListen, useListenPhase, type ListenOutcome } from '../../lib/listen'
 import { sessionBudget } from '../../lib/agent-usage'
 import { useAccountLabel, useAccountUsage, useApiSpend, useNow, useSessionCeilings, useUsageSettings } from '../../lib/usage'
 import { BudgetNotice } from './BudgetNotice'
@@ -195,7 +195,8 @@ function ListenButton({ sessionId, itemId, text }: { sessionId: string; itemId: 
   const start = () => {
     const options = appOptions(snap?.config ?? { options: undefined })
     void listen({ sessionId, itemId, markdown: text, voice: { voice: options.speechVoice, wpm: options.speechRate, lang: locale } }).then((outcome: ListenOutcome) => {
-      if (outcome.kind === 'fallback') toast(t(outcome.failure === 'noAccount' ? 'chat.listenNoAccount' : outcome.failure === 'timeout' ? 'chat.listenTimeout' : 'chat.listenFailed'), 'danger')
+      // The app still read the message: a caveat, not an error.
+      if (outcome.kind === 'fallback') toast(fallbackNoticeKeys(outcome).map((key) => t(key)).join(' '), 'warning')
       else if (outcome.kind === 'silent') toast(t('chat.listenSilent'), 'danger')
     })
   }

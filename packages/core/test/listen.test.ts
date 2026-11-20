@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   appOptions,
   DEFAULT_LISTEN_MODEL,
+  fallbackIsCut,
   fallbackSpeech,
   LISTEN_DIRECT_MAX,
   LISTEN_FALLBACK_MAX,
@@ -74,6 +75,12 @@ describe('spoken text', () => {
   it('cleans Markdown the model still wrote, and caps the fallback', () => {
     expect(spokenSummary('**The build** passed. See https://example.com.')).toBe('The build passed. See.')
     expect(fallbackSpeech(long(200)).length).toBeLessThanOrEqual(LISTEN_FALLBACK_MAX)
+  })
+
+  it('tells a cut fallback from one that reads the whole message', () => {
+    expect(fallbackIsCut(long(200))).toBe(true)
+    // Between the 400 characters that ask for a summary and the 1,500 the fallback reads: whole.
+    expect(fallbackIsCut('A sentence of some length. '.repeat(30))).toBe(false)
   })
 })
 

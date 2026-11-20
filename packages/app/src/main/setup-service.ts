@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import {
   agentItem,
   agentSkillsItem,
@@ -27,7 +27,7 @@ import {
   type WorkhubConfig
 } from '@workhub/core'
 import { planSpawn } from '@workhub/adapters/spawn-plan'
-import { claudeAccounts, claudeConfigDirOf } from './claude-accounts'
+import { claudeAccounts, claudeLaunchDir } from './claude-accounts'
 
 /** Seconds a command-line check may take. */
 export const SETUP_TIMEOUT_MS = 10_000
@@ -132,13 +132,11 @@ export class SetupService {
     const run = this.deps.run ?? probe
     const config = await this.deps.config()
     const base = { ...process.env, PATH: this.deps.path() }
-    const defaultDir = resolve(process.env['CLAUDE_CONFIG_DIR'] || join(this.deps.home, '.claude'))
 
     const logins = claudeAccounts(config, this.deps.home).map(async (ref) => {
       const account = config.accounts.find((a) => a.id === ref.accountId) ?? null
-      const dir = claudeConfigDirOf(config, account, this.deps.home)
-      const isDefault = dir === defaultDir
-      const env = isDefault ? base : { ...base, CLAUDE_CONFIG_DIR: dir }
+      const launch = claudeLaunchDir(config, account)
+      const env = launch.kind === 'named' ? { ...base, CLAUDE_CONFIG_DIR: launch.dir } : base
       const p = await run('claude', ['auth', 'status'], { env })
       return claudeSignInItem(`claudeSignIn:${ref.accountId ?? 'default'}`, ref.name || 'Claude', p, ref.accountId)
     })

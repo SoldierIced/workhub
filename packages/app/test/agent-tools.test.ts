@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { BUILTIN_AGENTS, consoleCommand } from '@workhub/core'
+import { BUILTIN_AGENTS, consoleCommand, emptyConfig } from '@workhub/core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bundledSkills, globalMcpJson, installSkills, removeSkills, skillState, workhubMcpLaunch } from '../src/main/agent-tools'
+import { AgentToolsService, bundledSkills, globalMcpJson, installSkills, removeSkills, skillState, workhubMcpLaunch } from '../src/main/agent-tools'
 import { consoleMcpConfig } from '../src/main/session-manager'
 
 const dirs: string[] = []
@@ -74,5 +74,51 @@ describe('Workhub skills in a Claude folder', () => {
     expect(removeSkills(skillsDir, v2)).toEqual(['workhub-plan'])
     expect(existsSync(join(skillsDir, 'workhub-plan'))).toBe(false)
     expect(readFileSync(join(skillsDir, 'workhub-automations', 'SKILL.md'), 'utf8')).toBe('mine')
+  })
+})
+
+describe('the claude commands of the Workhub tools', () => {
+  it('name a folder for an account of its own only: the default account reads what its sessions read', async () => {
+    const config = { ...emptyConfig(), accounts: [{ id: 'work', agentId: 'claude', name: 'Work', configDir: '/tmp/acme-claude-work' }] }
+    const seen: (string | undefined)[] = []
+    const service = new AgentToolsService({
+      config: async () => config,
+      home: '/tmp/acme-home',
+      skillsDir: tmp(),
+      node: '/app/Workhub',
+      script: '/x.mjs',
+      socket: () => '/d/control.sock',
+      run: async (_command, _args, options) => {
+        seen.push(options.env?.['CLAUDE_CONFIG_DIR'])
+        return { result: 'failed', output: '' }
+      },
+      env: () => ({ PATH: '/usr/bin' })
+    })
+    const status = await service.status()
+    expect(status.accounts.map((a) => a.id)).toEqual(['default', 'work'])
+    // The skills path keeps the real folder of the default account.
+    expect(status.accounts[0]!.dir).toBe(resolve('/tmp/acme-home/.claude'))
+    expect(seen).toEqual([undefined, resolve('/tmp/acme-claude-work')])
+  })
+
+  it('name the default folder when an account is configured with it, as its sessions do', async () => {
+    const config = { ...emptyConfig(), accounts: [{ id: 'main', agentId: 'claude', name: 'Main', configDir: '/tmp/acme-home/.claude' }] }
+    const seen: (string | undefined)[] = []
+    const service = new AgentToolsService({
+      config: async () => config,
+      home: '/tmp/acme-home',
+      skillsDir: tmp(),
+      node: '/app/Workhub',
+      script: '/x.mjs',
+      socket: () => '/d/control.sock',
+      run: async (_command, _args, options) => {
+        seen.push(options.env?.['CLAUDE_CONFIG_DIR'])
+        return { result: 'failed', output: '' }
+      },
+      env: () => ({ PATH: '/usr/bin' })
+    })
+    const status = await service.status()
+    expect(status.accounts.map((a) => a.id)).toEqual(['main'])
+    expect(seen).toEqual([resolve('/tmp/acme-home/.claude')])
   })
 })
