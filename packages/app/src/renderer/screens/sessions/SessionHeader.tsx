@@ -1,4 +1,4 @@
-import { Ear, Folder, GitBranch, GitPullRequestCreate, MessagesSquare, MoreHorizontal, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
+import { Ear, Folder, GitBranch, GitPullRequestCreate, MessagesSquare, MoreHorizontal, Server, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import { sessionIdentity, type LocalChanges } from '@workhub/core'
 import type { PullRequestDraftResult } from '@shared/codehost-api'
@@ -266,13 +266,15 @@ export function SessionBar({ data, title, now, slackCount, branch, counts, canCr
     </HeaderButton>
   )
   const folder = abbreviateFolder(v.cwd)
+  // The WSL distribution the session runs in (`wsl:<distro>`); nothing on this computer.
+  const distro = v.hostId?.startsWith('wsl:') ? v.hostId.slice(4) : null
 
   return (
     <header ref={ref} className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-surface/60 px-4" data-testid="session-header" data-density={density}>
       {/* Clips rather than spills: nothing here is ever drawn under the controls on the right. */}
       <div ref={identityRef} className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-sm" data-testid="session-identity">
         <AgentIcon agentId={v.agentId} adapter={v.adapter} label={v.agentName} className="size-5" />
-        <SessionTitle id={v.id} title={title} name={v.name} tooltip={`${title}\n${v.cwd}`} />
+        <SessionTitle id={v.id} title={title} name={v.name} tooltip={[title, distro && t('profileHost.sessionTag', { distro }), v.cwd].filter(Boolean).join('\n')} />
         <ActivityPill data={data} now={now} />
         {branchInline && (
           <span className="flex min-w-14 shrink items-center gap-1.5 font-mono text-xs text-subtle" title={branch} data-testid="session-branch">
@@ -305,6 +307,12 @@ export function SessionBar({ data, title, now, slackCount, branch, counts, canCr
               <span className="flex items-center gap-1.5 font-mono" title={branch}>
                 <GitBranch className="size-3.5 shrink-0" aria-hidden />
                 <span className="truncate">{branch}</span>
+              </span>
+            )}
+            {distro && (
+              <span className="flex items-center gap-1.5" title={t('profileHost.sessionTagHint', { distro })} data-testid="session-host">
+                <Server className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{t('profileHost.sessionTag', { distro })}</span>
               </span>
             )}
             <span className="flex items-center gap-1.5 font-mono" title={v.cwd} data-testid="session-folder">

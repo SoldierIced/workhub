@@ -1,0 +1,26 @@
+/** Settings → Profiles → a profile → Folders: "Where sessions run" (this computer or a WSL distribution), and the session tag. */
+export const profileHostEn = {
+  'profileHost.label': 'Where sessions run',
+  'profileHost.local': 'This computer',
+  'profileHost.wsl': 'WSL: {distro}',
+  'profileHost.wslDefault': 'WSL: {distro} (default)',
+  'profileHost.wslMissing': 'WSL: {distro} (not found)',
+  'profileHost.hint': 'In WSL, this profile’s folders are Linux paths such as /home/<you>/work. The first use downloads about 180 MB once.',
+  'profileHost.noDistros': 'No WSL distribution found. Install one (Ubuntu 22.04 or newer) to run sessions inside WSL.',
+  'profileHost.pending': 'Starts when you save.',
+  'profileHost.connecting': 'Starting Workhub in {distro}…',
+  'profileHost.downloading': 'Downloading Workhub for {distro}: {received} of {total}',
+  'profileHost.downloadingUnknown': 'Downloading Workhub for {distro}: {received}',
+  'profileHost.verifying': 'Checking the download for {distro}…',
+  'profileHost.unpacking': 'Installing Workhub in {distro}…',
+  'profileHost.connected': 'Connected: this profile’s sessions run in {distro}.',
+  'profileHost.noControl': 'Connected, but sessions in {distro} cannot reach Workhub’s tools (MCP). Help › Reveal Logs shows why.',
+  'profileHost.failed': 'Could not start Workhub in {distro}: {detail}. Meanwhile sessions run on this computer.',
+  'profileHost.unavailable': 'WSL is not available here.',
+  'profileHost.retry': 'Retry',
+  'profileHost.retryLabel': 'Retry starting Workhub in {distro}',
+  'profileHost.folderNotWsl': 'This profile runs in WSL: pick a folder inside {distro} (\\\\wsl.localhost\\{distro}\\…), not a Windows folder.',
+  'profileHost.folderOtherDistro': 'That folder is in {picked}, but this profile runs in {distro}.',
+  'profileHost.sessionTag': 'WSL: {distro}',
+  'profileHost.sessionTagHint': 'This session runs inside the WSL distribution {distro}'
+} as const

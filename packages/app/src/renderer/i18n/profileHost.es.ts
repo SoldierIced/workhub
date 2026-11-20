@@ -1,0 +1,27 @@
+import type { profileHostEn } from './profileHost.en'
+
+export const profileHostEs: Record<keyof typeof profileHostEn, string> = {
+  'profileHost.label': 'Dónde se ejecutan las sesiones',
+  'profileHost.local': 'Este equipo',
+  'profileHost.wsl': 'WSL: {distro}',
+  'profileHost.wslDefault': 'WSL: {distro} (predeterminada)',
+  'profileHost.wslMissing': 'WSL: {distro} (no encontrada)',
+  'profileHost.hint': 'En WSL, las carpetas de este perfil son rutas de Linux, como /home/<you>/work. El primer uso descarga unos 180 MB una sola vez.',
+  'profileHost.noDistros': 'No se encontró ninguna distribución de WSL. Instala una (Ubuntu 22.04 o posterior) para ejecutar sesiones dentro de WSL.',
+  'profileHost.pending': 'Se inicia al guardar.',
+  'profileHost.connecting': 'Iniciando Workhub en {distro}…',
+  'profileHost.downloading': 'Descargando Workhub para {distro}: {received} de {total}',
+  'profileHost.downloadingUnknown': 'Descargando Workhub para {distro}: {received}',
+  'profileHost.verifying': 'Comprobando la descarga para {distro}…',
+  'profileHost.unpacking': 'Instalando Workhub en {distro}…',
+  'profileHost.connected': 'Conectado: las sesiones de este perfil se ejecutan en {distro}.',
+  'profileHost.noControl': 'Conectado, pero las sesiones en {distro} no llegan a las herramientas de Workhub (MCP). Ayuda › Mostrar registros indica el motivo.',
+  'profileHost.failed': 'No se pudo iniciar Workhub en {distro}: {detail}. Mientras tanto, las sesiones se ejecutan en este equipo.',
+  'profileHost.unavailable': 'WSL no está disponible aquí.',
+  'profileHost.retry': 'Reintentar',
+  'profileHost.retryLabel': 'Reintentar el inicio de Workhub en {distro}',
+  'profileHost.folderNotWsl': 'Este perfil se ejecuta en WSL: elige una carpeta dentro de {distro} (\\\\wsl.localhost\\{distro}\\…), no una carpeta de Windows.',
+  'profileHost.folderOtherDistro': 'Esa carpeta está en {picked}, pero este perfil se ejecuta en {distro}.',
+  'profileHost.sessionTag': 'WSL: {distro}',
+  'profileHost.sessionTagHint': 'Esta sesión se ejecuta dentro de la distribución de WSL {distro}'
+}

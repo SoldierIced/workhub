@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ControlAuth } from '../src/main/control-auth'
-import { controlEnv, controlSocketPath, NO_CONTROL_ENV, newControlToken, parseReviewBody, privateSocketDir, probeSocket, reviewPathOutside, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
+import { controlEnv, controlSocketPath, NO_CONTROL_ENV, newControlToken, parseReviewBody, privateSocketDir, probeSocket, reviewPathOutside, serveControl, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -81,6 +81,26 @@ describe('control endpoint', () => {
     }
   })
 
+  it('answers a failure inside a route with a fixed message, and logs what failed', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-ctl-'))
+    dirs.push(dir)
+    const logged: string[] = []
+    const socket = controlSocketPath(dir)
+    const server = await startControlServer(socket, {
+      auth: testAuth(['s1']),
+      log: (m) => void logged.push(m),
+      openReview: () => {
+        throw new Error('<img src=x onerror=alert(1)>')
+      }
+    })
+    try {
+      expect(await call(socket, 'POST', '/v1/sessions/s1/review', {})).toEqual({ status: 500, json: { ok: false, error: 'internal error' } })
+      expect(logged.some((m) => m.includes('<img src=x onerror=alert(1)>'))).toBe(true)
+    } finally {
+      server?.close()
+    }
+  })
+
   it('checks the repos of a review request', () => {
     const dir = (p: string) => p.startsWith('/ok')
     expect(parseReviewBody(undefined, dir)).toEqual([])
@@ -111,6 +131,40 @@ describe('control endpoint', () => {
     } finally {
       server?.close()
     }
+  })
+})
+
+describe('serveControl (plain requests)', () => {
+  const plain = (method: string, url: string, token: string | null, body?: unknown) => ({
+    method,
+    url,
+    headers: token ? { 'x-workhub-token': token } : {},
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  })
+
+  it('answers like the HTTP endpoint: 200 with the token, 401 without, 403 for another session', async () => {
+    const opened: string[] = []
+    const deps = { auth: testAuth(['s1', 's2']), openReview: (id: string) => (opened.push(id), { ok: true as const }) }
+    const ok = await serveControl(deps, plain('POST', '/v1/sessions/s1/review', 't-s1', {}), () => true)
+    expect(ok).toEqual({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ok: true }) })
+    expect(opened).toEqual(['s1'])
+    const anonymous = await serveControl(deps, plain('POST', '/v1/sessions/s1/review', null, {}))
+    expect(anonymous.status).toBe(401)
+    expect(JSON.parse(anonymous.body)).toMatchObject({ ok: false })
+    expect((await serveControl(deps, plain('POST', '/v1/sessions/s2/review', 't-s1', {}))).status).toBe(403)
+    expect((await serveControl(deps, plain('GET', '/v1/health', null))).status).toBe(200)
+    expect(opened).toEqual(['s1'])
+  })
+
+  it('refuses a body that is not JSON or passed the cap', async () => {
+    const deps = { auth: testAuth(), openReview: () => ({ ok: true as const }) }
+    const bad = await serveControl(deps, { method: 'POST', url: '/v1/sessions/s1/review', headers: { 'x-workhub-token': 't-s1' }, body: '<script>nope' })
+    expect(bad.status).toBe(400)
+    // The parser's message quotes the body: it is not sent back.
+    expect(JSON.parse(bad.body)).toEqual({ ok: false, error: 'the body is not valid JSON' })
+    const big = await serveControl(deps, { method: 'POST', url: '/v1/sessions/s1/review', headers: { 'x-workhub-token': 't-s1' }, bodyTooLarge: true })
+    expect(big.status).toBe(400)
+    expect(JSON.parse(big.body)).toEqual({ ok: false, error: 'body too large' })
   })
 })
 

@@ -1,11 +1,11 @@
 import { AgentIcon } from '../atoms/AgentIcon'
 import { FolderOpen } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { agentSetupKind, pickAgent, worktreeDefault, worktreeSettings, type EffectiveAgent, type Profile, type SessionGroups, type SetupFix, EMPTY_SESSION_GROUPS } from '@workhub/core'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { agentSetupKind, pickAgent, worktreeDefault, worktreeSettings, type AgentAvailability, type EffectiveAgent, type Profile, type SessionGroups, type SetupFix, EMPTY_SESSION_GROUPS } from '@workhub/core'
 import { InstallAction } from './InstallAction'
 import { newSessionProfile, seedFolder } from '../../lib/folders'
 import { useI18n } from '../../i18n/I18nProvider'
-import { installHintKey } from '../../lib/agents'
+import { availabilityNote, installHintKey } from '../../lib/agents'
 import type { AgentOptionsView, WorkspaceFolder } from '@shared/api'
 import { initialStartChoice } from '../../lib/agent-pickers'
 import { readPrefs, rememberMode, rememberModel } from '../../lib/prefs'
@@ -95,8 +95,8 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
   const reads = useAccountUsage()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  // Agent id -> installed; an agent missing from the answer is treated as installed.
-  const [installed, setInstalled] = useState<Record<string, boolean>>({})
+  // Agent id -> installed (or, in WSL, pending or unsupported); an agent missing from the answer is treated as installed.
+  const [installed, setInstalled] = useState<Record<string, AgentAvailability>>({})
   // What the chosen agent offers (models, agents or modes) and the picks for this session.
   const [options, setOptions] = useState<AgentOptionsView | null>(null)
   const [loadingOptions, setLoadingOptions] = useState(false)
@@ -175,12 +175,17 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
     setAgentKey((k) => (agents.some((a) => a.key === k) ? k : (pickAgent({ preferredAgents }, agents, 'any')?.key ?? '')))
   }, [open, agents, preferredAgents])
 
+  // A profile in WSL offers what runs there, not what this computer has installed.
+  const checkAvailability = useCallback(() => void window.hub.agents.availability(sessionProfileId).then(setInstalled, () => setInstalled({})), [sessionProfileId])
   useEffect(() => {
-    if (open) void window.hub.agents.availability().then(setInstalled, () => setInstalled({}))
-  }, [open])
+    if (open) checkAvailability()
+  }, [open, checkAvailability])
 
   const chosen = agents.find((a) => a.key === agentKey)
   const missing = chosen !== undefined && installed[chosen.agent.id] === false
+  // An agent sessions in WSL cannot run yet: it cannot start there, and there is nothing to install.
+  const unsupported = chosen !== undefined && installed[chosen.agent.id] === 'unsupported'
+  const wslDistro = profiles.find((p) => p.id === sessionProfileId)?.host
   // A missing agent gets the setup check's own Install action, when the check has one for it here.
   const [installFix, setInstallFix] = useState<Extract<SetupFix, { kind: 'install' }> | null>(null)
   const missingKind = missing ? agentSetupKind(chosen.agent.id) : null
@@ -287,7 +292,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" disabled={!agentKey || !cwd || busy || missing || ownerLoading || groupUnnamed} onClick={() => void start()}>
+          <Button variant="primary" disabled={!agentKey || !cwd || busy || missing || unsupported || ownerLoading || groupUnnamed} onClick={() => void start()}>
             {t('newSession.start')}
           </Button>
         </>
@@ -298,7 +303,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         className="flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault()
-          if (agentKey && cwd && !busy && !missing && !ownerLoading && !groupUnnamed) void start()
+          if (agentKey && cwd && !busy && !missing && !unsupported && !ownerLoading && !groupUnnamed) void start()
         }}
       >
         <Field
@@ -306,6 +311,10 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
           hint={
             agents.length === 0 ? (
               t('session.noAgents')
+            ) : unsupported ? (
+              <span className="text-warning" data-testid="agent-wsl-hint">
+                {t('newSession.notInWslHint', { distro: wslDistro?.kind === 'wsl' ? wslDistro.distro : 'WSL' })}
+              </span>
             ) : missing ? (
               <span className="text-warning" data-testid="agent-install-hint">
                 {t(installHintKey(chosen.agent.id), { command: chosen.agent.command })}
@@ -320,7 +329,10 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
               agents,
               preferredAgents,
               reads,
-              labelOf: (a) => (installed[a.agent.id] === false ? `${a.label} (${t('newSession.notInstalled')})` : a.label),
+              labelOf: (a) => {
+                const note = availabilityNote(installed[a.agent.id])
+                return note ? `${a.label} (${t(note)})` : a.label
+              },
               ...(listedProfile ? { profile: listedProfile } : {}),
               t
             }).map(({ agent, ...o }) => (agent ? { ...o, icon: <AgentIcon agentId={agent.agent.id} adapter={agent.agent.adapter} /> } : o))}
@@ -329,7 +341,7 @@ export function NewSessionDialog({ open, onOpenChange, profileId, agents: active
         </Field>
         {missing && installFix && (
           <div className="-mt-2 flex justify-end" data-testid="agent-install">
-            <InstallAction fix={installFix} name={chosen.agent.name} onInstalled={() => void window.hub.agents.availability().then(setInstalled, () => setInstalled({}))} />
+            <InstallAction fix={installFix} name={chosen.agent.name} onInstalled={checkAvailability} />
           </div>
         )}
         {configurable && (options?.models.length || options?.modes.length || loadingOptions || options?.source === 'none') ? (

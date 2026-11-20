@@ -1,7 +1,5 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { createCliRunner, type CliRunner } from '@workhub/adapters/cli'
-import { GIT_HARDENING } from '@workhub/adapters/git-hardening'
+import { runGit } from '@workhub/adapters/git-review'
 import { GitHubCodeHost, createDemoRunner } from '@workhub/adapters/codehost-github'
 import { GitLabCodeHost } from '@workhub/adapters/codehost-gitlab'
 import {
@@ -32,6 +30,7 @@ import {
   type ReviewAction,
   type WorkhubConfig
 } from '@workhub/core'
+import { originUrl, type HostFolders, type HostTarget } from './hosts'
 import type { IpcRegistrar } from './ipc-guard'
 import {
   isPullRequestWindowTab,
@@ -44,7 +43,6 @@ import {
   type PullRequestWindowTab
 } from '../shared/codehost-api'
 
-const exec = promisify(execFile)
 const LIST_TTL_MS = 30_000
 /** How long a pull request read by URL for the session monitor is kept. */
 const ITEM_TTL_MS = 180_000
@@ -54,7 +52,9 @@ interface Resolved {
   key: string
   scope: string
   cli: string
+  /** The profile's folders, on the host its profile runs on. */
   folders: string[]
+  profileId: string | null
   filter?: PullRequestFilterSettings
 }
 
@@ -87,11 +87,14 @@ export class CodeHostService {
   /** Reads under way, so concurrent callers of `lists` share one. */
   private readonly inflight = new Map<string, Promise<CodeHostLists>>()
   private readonly onListsChanged: (() => void) | undefined
+  /** The host a profile's folders live on. */
+  private readonly folderHost: (target: HostTarget) => Pick<HostFolders, 'git'>
 
   constructor(
     private readonly loadConfig: () => Promise<WorkhubConfig>,
-    options: { demo: boolean; /** Called when a read stored lists that differ from the cached ones (the tray shows the cached lists and never reads). */ onListsChanged?: () => void; /** Demo only: the step the synthetic pull requests are at (see the GitHub demo). */ demoStep?: () => number }
+    options: { demo: boolean; /** Called when a read stored lists that differ from the cached ones (the tray shows the cached lists and never reads). */ onListsChanged?: () => void; /** Demo only: the step the synthetic pull requests are at (see the GitHub demo). */ demoStep?: () => number; /** The host a profile's folders live on; this computer when not given. */ hostFor?: (target: HostTarget) => Pick<HostFolders, 'git'> }
   ) {
+    this.folderHost = options.hostFor ?? (() => ({ git: runGit }))
     this.run = createCliRunner()
     this.onListsChanged = options.onListsChanged
     this.demoHost = options.demo ? new GitHubCodeHost({ run: createDemoRunner(Date.now(), options.demoStep) }) : null
@@ -113,20 +116,19 @@ export class CodeHostService {
     return null
   }
 
-  private async remotesOf(folders: string[]): Promise<string[]> {
+  /** The `origin` URLs of the folders, read where the profile's folders live; folders without one are skipped. */
+  private async remotesOf(folders: string[], profileId: string | null): Promise<string[]> {
+    const { git } = this.folderHost({ profileId })
     const out: string[] = []
     for (const folder of folders) {
-      try {
-        out.push((await exec('git', [...GIT_HARDENING, '-C', folder, 'remote', 'get-url', 'origin'], { windowsHide: true, timeout: 10_000 })).stdout.trim())
-      } catch {
-        // Not a git repository, or no origin.
-      }
+      const url = await originUrl(git, folder)
+      if (url !== null) out.push(url)
     }
     return out
   }
 
   private async resolve(profileId: string | null): Promise<Resolved | null> {
-    if (this.demoHost) return { host: this.demoHost, key: 'demo', scope: '', cli: 'gh', folders: [] }
+    if (this.demoHost) return { host: this.demoHost, key: 'demo', scope: '', cli: 'gh', folders: [], profileId: null }
     const config = await this.loadConfig()
     const profile: Profile | undefined = config.profiles.find((p) => p.id === (profileId ?? config.activeProfileId))
     const connection = config.connections.find((c) => c.id === profile?.connections.codeHost)
@@ -141,6 +143,7 @@ export class CodeHostService {
       scope: configured,
       cli: made.cli,
       folders: profile.folders ?? [],
+      profileId: profile.id,
       filter
     }
   }
@@ -153,7 +156,7 @@ export class CodeHostService {
   private async scopeOf(r: Resolved): Promise<string> {
     if (r.host.provider === 'github' && r.filter?.owners?.length) return githubScopeFromFilter(r.filter)
     if (r.scope || r.host.provider !== 'github' || r.folders.length === 0) return r.scope
-    return githubScopeFromRemotes(await this.remotesOf(r.folders))
+    return githubScopeFromRemotes(await this.remotesOf(r.folders, r.profileId))
   }
 
   async lists(profileId: string | null, force = false): Promise<CodeHostLists> {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { emptyConfig, type AgentAccount, type HistoryEntry, type SessionHistorySource, type WorkhubConfig } from '@workhub/core'
 import { canResume, historyAccounts, listAllHistory } from '../src/main/history'
 import { BUILTIN_AGENTS } from '@workhub/core'
-import { accountEnvHintKey, installHintKey } from '../src/renderer/lib/agents'
+import { accountEnvHintKey, availabilityNote, installHintKey } from '../src/renderer/lib/agents'
 import { en } from '../src/renderer/i18n/en'
 
 const agent = (id: string) => BUILTIN_AGENTS.find((a) => a.id === id)!
@@ -105,5 +105,16 @@ describe('agent hints', () => {
   it('has account environment hints only for the agents that document one', () => {
     expect(accountEnvHintKey('codex')).toBe('settings.envHint.codex')
     expect(accountEnvHintKey('claude')).toBeNull()
+  })
+})
+
+describe('availabilityNote', () => {
+  it('tags an agent missing here, one WSL cannot run yet, and one waiting for its WSL host, and nothing for one that is there', () => {
+    expect(availabilityNote(false)).toBe('newSession.notInstalled')
+    expect(availabilityNote('unsupported')).toBe('newSession.notInWsl')
+    expect(availabilityNote('pending')).toBe('newSession.hostPending')
+    expect(availabilityNote(true)).toBeNull()
+    expect(availabilityNote(undefined)).toBeNull()
+    for (const key of ['newSession.notInWsl', 'newSession.hostPending', 'newSession.notInWslHint']) expect(key in en).toBe(true)
   })
 })

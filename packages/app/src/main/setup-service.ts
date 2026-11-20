@@ -12,6 +12,7 @@ import {
   githubItem,
   gitlabItem,
   healthItem,
+  hostToolItems,
   jiraItem,
   linearItem,
   nodeItem,
@@ -105,12 +106,27 @@ export interface SetupServiceDeps {
   run?: typeof probe
   /** Test seam: whether Codex's saved sign-in exists. */
   codexSignedIn?: () => boolean
+  /**
+   * The WSL distribution the active profile runs in, when it names one: Claude Code, its sign-in
+   * and git are then checked there (`probe`), and wait while its host has not connected (null).
+   */
+  profileHost?: (config: WorkhubConfig) => { distro: string; probe: HostToolProbe | null } | null
 }
+
+/** Runs one check inside a WSL host: the host's Claude Code `--version`, its `auth status`, or `git --version`. */
+export type HostToolProbe = (tool: 'claude' | 'auth' | 'git') => Promise<Probe>
 
 /** What the install table needs to know about this machine: Homebrew and npm are checked, never assumed. */
 export async function installContext(run: typeof probe, env: NodeJS.ProcessEnv, platform: NodeJS.Platform, arch?: string): Promise<InstallContext> {
   const [brew, npm] = await Promise.all([platform === 'win32' ? Promise.resolve(null) : run('brew', ['--version'], { env }), run('npm', ['--version'], { env })])
   return { platform, ...(arch ? { arch } : {}), brew: brew?.result === 'ok', npm: npm.result === 'ok' }
+}
+
+/** Claude Code, its sign-in and git inside a WSL host; pending rows while it has not connected. */
+async function hostChecks(distro: string, probe: HostToolProbe | null): Promise<SetupItem[]> {
+  if (!probe) return hostToolItems(distro, null)
+  const [claude, auth, git] = await Promise.all([probe('claude'), probe('auth'), probe('git')])
+  return hostToolItems(distro, { claude, auth, git })
 }
 
 /** Checks what Workhub needs on this machine. Nothing here changes any setting. */
@@ -133,13 +149,18 @@ export class SetupService {
     const config = await this.deps.config()
     const base = { ...process.env, PATH: this.deps.path() }
 
-    const logins = claudeAccounts(config, this.deps.home).map(async (ref) => {
-      const account = config.accounts.find((a) => a.id === ref.accountId) ?? null
-      const launch = claudeLaunchDir(config, account)
-      const env = launch.kind === 'named' ? { ...base, CLAUDE_CONFIG_DIR: launch.dir } : base
-      const p = await run('claude', ['auth', 'status'], { env })
-      return claudeSignInItem(`claudeSignIn:${ref.accountId ?? 'default'}`, ref.name || 'Claude', p, ref.accountId)
-    })
+    // A profile in WSL runs Claude Code and git there: they are checked there, not on this computer.
+    const inHost = this.deps.profileHost?.(config) ?? null
+    const hostItems = inHost ? hostChecks(inHost.distro, inHost.probe) : null
+    const logins = hostItems
+      ? []
+      : claudeAccounts(config, this.deps.home).map(async (ref) => {
+          const account = config.accounts.find((a) => a.id === ref.accountId) ?? null
+          const launch = claudeLaunchDir(config, account)
+          const env = launch.kind === 'named' ? { ...base, CLAUDE_CONFIG_DIR: launch.dir } : base
+          const p = await run('claude', ['auth', 'status'], { env })
+          return claudeSignInItem(`claudeSignIn:${ref.accountId ?? 'default'}`, ref.name || 'Claude', p, ref.accountId)
+        })
     const platform = this.deps.platform ?? process.platform
     const ctx = await installContext(run, base, platform, this.deps.arch)
     const nodeProbe = (async () => {
@@ -164,8 +185,8 @@ export class SetupService {
     const needs = setupNeeds(config, this.deps.agents?.(config))
     const secretRefs = new Set<string>()
     for (const c of config.connections) if (c.secretRef && (await this.deps.hasSecret(c.secretRef))) secretRefs.add(c.secretRef)
-    const [claudeCode, codex, kiro, opencode, gemini, node, git, githubResult, gitlabResult, ...loginItems] = await Promise.all([
-      run('claude', ['--version'], { env: base }).then((p) => claudeCodeItem(p, ctx)),
+    const [claudeLocal, codex, kiro, opencode, gemini, node, gitLocal, githubResult, gitlabResult, hostRows, ...loginLocal] = await Promise.all([
+      hostItems ? null : run('claude', ['--version'], { env: base }).then((p) => claudeCodeItem(p, ctx)),
       // Codex sessions start through npx, with the session's PATH (no login shell fallback). Its
       // sign-in is read with Codex's own command, when that is installed.
       Promise.all([run('npx', ['--version'], { env: base }), run('node', ['--version'], { env: base }), run('codex', ['login', 'status'], { env: base })]).then(([npx, n, auth]) => codexItem(npx, n, ctx, auth, this.codexSignedIn())),
@@ -173,11 +194,13 @@ export class SetupService {
       run('opencode', ['--version'], { env: base }).then((p) => agentItem('opencode', p, ctx)),
       run('gemini', ['--version'], { env: base }).then((p) => agentItem('gemini', p, ctx)),
       nodeProbe.then((p) => nodeItem(p, needs.node, ctx)),
-      run('git', ['--version'], { env: base }).then((p) => gitItem(p, ctx)),
+      hostItems ? null : run('git', ['--version'], { env: base }).then((p) => gitItem(p, ctx)),
       github,
       gitlab,
+      hostItems,
       ...logins
     ])
+    const [claudeCode, loginItems, git] = hostRows ? [hostRows[0]!, [hostRows[1]!], hostRows[2]!] : [claudeLocal!, loginLocal, gitLocal!]
     const options = appOptions(config)
     const has = (ref: string) => secretRefs.has(ref)
     return applyNeeds(

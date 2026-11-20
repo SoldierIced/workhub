@@ -136,6 +136,21 @@ describe('HostClient and HostServer', () => {
     await expect(client.request('hang')).rejects.toMatchObject({ code: 'closed' })
   })
 
+  it('tells close subscribers once, with the reason, and late subscribers at once', async () => {
+    const { client, hostChannel } = connect()
+    await client.ready
+    const reasons: string[] = []
+    client.onClose((r) => reasons.push(r))
+    const off = client.onClose(() => reasons.push('unsubscribed'))
+    off()
+    hostChannel.close()
+    await tick()
+    hostChannel.close()
+    client.onClose((r) => reasons.push(`late: ${r}`))
+    await tick()
+    expect(reasons).toEqual(['the host channel closed', 'late: the host channel closed'])
+  })
+
   it('aborts in-flight handlers and drops their late answers when the channel closes', async () => {
     let seen: AbortSignal | undefined
     const { client, hostChannel } = connect({

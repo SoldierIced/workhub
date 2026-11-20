@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CHROME_PROFILE_DIR, ENV_NAME } from '../domain/profile'
+import { isWslDistroName } from '../host/paths'
 import type { AgentAccount, AgentDefinition } from '../domain/agent'
 import { CONNECTION_KINDS, type Connection } from '../domain/connection'
 import { OPTIONAL_MODULES, type Profile } from '../domain/profile'
@@ -478,6 +479,12 @@ const worktrees = z.object({
   onClose: z.enum(WORKTREE_CLOSE_MODES).default(DEFAULT_WORKTREE_SETTINGS.onClose)
 })
 
+// Optional, so an older file loads unchanged (no version bump): a profile without one runs on this computer.
+const profileHost = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('local') }),
+  z.object({ kind: z.literal('wsl'), distro: z.string().max(200).refine(isWslDistroName, 'not a WSL distribution name') })
+])
+
 const profile = z.object({
   id,
   name: z.string().min(1),
@@ -504,7 +511,8 @@ const profile = z.object({
   accountFailover: z.enum(['ask', 'automatic', 'off']).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   planner: planner.optional(),
-  alerts: profileAlerts.optional()
+  alerts: profileAlerts.optional(),
+  host: profileHost.optional()
 })
 
 const groupMember = z.object({
