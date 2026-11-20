@@ -4,6 +4,20 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.43](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.42...v2.0.0-alpha.43) (2026-11-20)
+
+
+### Features
+
+* **plan:** show why a counted milestone is behind and list its open tickets ([#156](https://github.com/SoldierIced/workhub/issues/156)) ([ec7f93b](https://github.com/SoldierIced/workhub/commit/ec7f93b5df589e72e097399b4a5eebe9649cfd7d))
+* **remote:** polish the phone app after an audit at 390 px ([#157](https://github.com/SoldierIced/workhub/issues/157)) ([b354a9f](https://github.com/SoldierIced/workhub/commit/b354a9f5fbaad5da34b9679649a81e517110ba5e))
+
+
+### Bug Fixes
+
+* **app:** clear a custom period with the usage report filters ([#161](https://github.com/SoldierIced/workhub/issues/161)) ([eb74c43](https://github.com/SoldierIced/workhub/commit/eb74c4345a5040a2bdfc5f6a5ef45541335f5f25))
+* **chat:** summarize for Listen on Claude's default account ([#162](https://github.com/SoldierIced/workhub/issues/162)) ([e6b410a](https://github.com/SoldierIced/workhub/commit/e6b410a782602c3aa6f02bca637153f3bcb9f023))
+
 ## [2.0.0-alpha.42](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.41...v2.0.0-alpha.42) (2026-11-19)
 
 
