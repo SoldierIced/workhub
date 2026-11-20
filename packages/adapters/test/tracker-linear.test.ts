@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupBySprint, type TicketDetail } from '@workhub/core'
+import { groupBySprint, type TicketDetail, type TicketTracker } from '@workhub/core'
 import { LinearTracker, linearCategory, parseLinearQuery } from '../src/tracker-linear'
 import type { HttpClient, HttpRequest } from '../src/shared/http'
 
@@ -184,6 +184,21 @@ describe('LinearTracker search and create', () => {
     expect(calls[2]!.variables).toEqual({ filter: { project: { id: { eq: '3f2b1c4d-0000-4000-8000-123456789abc' } } }, first: 5, after: null })
   })
 
+  it('returns assignee, createdAt and updatedAt for searched and read issues, asking for them in the same query', async () => {
+    const nodes = [
+      node('ENG-1', { name: 'Todo', type: 'unstarted' }, { assignee: { name: 'Dana Test' }, createdAt: '2026-10-01T09:00:00.000Z', updatedAt: '2026-10-20T10:30:00.000Z' }),
+      node('ENG-2', { name: 'Todo', type: 'unstarted' }, { assignee: null, createdAt: '2026-10-02T09:00:00.000Z' })
+    ]
+    const { tracker, calls } = fakeLinear([['issues(filter', () => ({ data: { issues: { nodes, pageInfo: { hasNextPage: false } } } })]])
+    for (const found of [await tracker.searchByQuery('Checkout revamp'), await tracker.readTickets(['ENG-1', 'ENG-2'])]) {
+      expect(found[0]).toMatchObject({ assignee: 'Dana Test', createdAt: Date.parse('2026-10-01T09:00:00Z'), updatedAt: Date.parse('2026-10-20T10:30:00Z') })
+      expect(found[1]!.assignee).toBeNull()
+      expect(found[1]!.updatedAt).toBeUndefined()
+    }
+    expect(calls).toHaveLength(2)
+    for (const c of calls) for (const f of ['createdAt', 'updatedAt', 'assignee { name }']) expect(c.query).toContain(f)
+  })
+
   it('searches a team with a label, and refuses a query it cannot read', async () => {
     const { tracker, calls } = fakeLinear([['issues(filter', () => ({ data: { issues: { nodes: [], pageInfo: { hasNextPage: false } } } })]])
     expect(await tracker.searchByQuery('team:ENG label:Launch')).toEqual([])
@@ -219,5 +234,12 @@ describe('LinearTracker search and create', () => {
   it('says when the team does not exist', async () => {
     const { tracker } = fakeLinear([['teams(filter', () => ({ data: { teams: { nodes: [] } } })]])
     await expect(tracker.createIssue({ project: 'NOPE', title: 'x', description: '' })).rejects.toThrow('Linear did not find the team NOPE')
+  })
+})
+
+describe('LinearTracker queryUrl', () => {
+  it('gives no address: the adapter does not know the workspace slug a Linear address needs', () => {
+    const { tracker } = fakeLinear([])
+    expect((tracker as TicketTracker).queryUrl).toBeUndefined()
   })
 })

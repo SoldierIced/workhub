@@ -4,13 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DemoTracker } from '@workhub/adapters/tracker-demo'
-import { DEFAULT_PLANNER_SETTINGS, TrackerError, type MetricAlert, type PlannerSettings, type Profile, type TicketTracker } from '@workhub/core'
+import { DEFAULT_PLANNER_SETTINGS, TrackerError, type MetricAlert, type MilestoneOpenTickets, type PlannerSettings, type Profile, type TicketSummary, type TicketTracker } from '@workhub/core'
 import { controlSocketPath, startControlServer } from '../src/main/control-server'
 import { addControlInboxItems, parseBulkPatch, parseInboxEdit } from '../src/main/planner-ipc'
 import { PLANNER_ERRORS, PlannerService, type PlannerState } from '../src/main/planner-service'
-import { BULK_CLEAR, bulkChangeCount, createsTicket, bulkFormToPatch, EMPTY_BULK_FORM, formToInboxSettings, formToMilestone, formToProposal, inboxActionLabel, inboxSettingsToForm, linksToRows, milestoneFormProblem, milestoneId, milestonesAtRisk, milestoneToForm, pieceTaskChoices, plainPreview, rowsToLinks } from '../src/renderer/lib/planner'
+import { BULK_CLEAR, bulkChangeCount, createsTicket, bulkFormToPatch, openTicketsHidden, openTicketsParts, openTicketsSummary, OPEN_FLAG_LABEL, OPEN_FLAG_TONE, EMPTY_BULK_FORM, formToInboxSettings, formToMilestone, formToProposal, inboxActionLabel, inboxSettingsToForm, linksToRows, milestoneFormProblem, milestoneId, milestonesAtRisk, milestoneToForm, pieceTaskChoices, plainPreview, rowsToLinks } from '../src/renderer/lib/planner'
 import { en } from '../src/renderer/i18n/en'
 import { es } from '../src/renderer/i18n/es'
+import { translatePlural } from '../src/renderer/i18n/translate'
 
 // 2026-11-06 is day 5 of a milestone from 11-01 to 11-11 (50 % of the time gone).
 const NOW = new Date(2026, 10, 6, 12).getTime()
@@ -24,8 +25,8 @@ const profile = (planner: Partial<PlannerSettings> = {}, on = true): Profile => 
   planner: { ...DEFAULT_PLANNER_SETTINGS, people: [{ id: 'ana', name: 'Ana Costa', emails: ['ana@example.com'] }], ...planner }
 })
 
-function setup(over: { profiles?: Profile[]; tracker?: TicketTracker | { error: string } } = {}) {
-  let saved: PlannerState = { profiles: {} }
+function setup(over: { profiles?: Profile[]; tracker?: TicketTracker | { error: string }; initial?: PlannerState } = {}) {
+  let saved: PlannerState = over.initial ?? { profiles: {} }
   const changed: string[] = []
   const lookups: (string | undefined)[] = []
   const tracker = over.tracker ?? new DemoTracker()
@@ -33,7 +34,7 @@ function setup(over: { profiles?: Profile[]; tracker?: TicketTracker | { error: 
   let now = NOW
   const service = new PlannerService({
     profiles: async () => over.profiles ?? [profile({ inbox: { ...formToInboxSettings(inboxSettingsToForm(undefined, 10)), project: 'PAY', criticalities: [{ name: 'Critical', priority: 1 }] } })],
-    store: { load: (fallback) => fallback, save: (v) => void (saved = JSON.parse(JSON.stringify(v))) },
+    store: { load: (fallback) => over.initial ?? fallback, save: (v) => void (saved = JSON.parse(JSON.stringify(v))) },
     tracker: async (_p, connectionId) => {
       lookups.push(connectionId)
       return 'error' in tracker ? tracker : { tracker }
@@ -46,6 +47,35 @@ function setup(over: { profiles?: Profile[]; tracker?: TicketTracker | { error: 
 }
 
 describe('PlannerService milestones', () => {
+  it('keeps the address of the query next to the open tickets, and leaves it out when the tracker gives none or fails', async () => {
+    const milestone = { id: 't', name: 'Launch', start: '2026-11-01', end: '2026-11-30', source: { kind: 'tracker' as const, query: 'project = DEMO' } }
+    const withUrl = new DemoTracker()
+    const asked: string[] = []
+    withUrl.queryUrl = async (q) => (asked.push(q), 'https://tracker.example.com/search?q=1')
+    const a = setup({ tracker: withUrl })
+    await a.service.saveMilestone('work', milestone)
+    expect((await a.service.view('work')).milestones[0]!.counts?.open?.url).toBe('https://tracker.example.com/search?q=1')
+    expect(asked).toEqual(['project = DEMO'])
+
+    const without = new DemoTracker()
+    ;(without as { queryUrl?: unknown }).queryUrl = undefined
+    const b = setup({ tracker: without })
+    await b.service.saveMilestone('work', milestone)
+    const open = (await b.service.view('work')).milestones[0]!.counts?.open
+    expect(open).toBeDefined()
+    expect('url' in open!).toBe(false)
+
+    const failing = new DemoTracker()
+    failing.queryUrl = async () => {
+      throw new Error('boom')
+    }
+    const c = setup({ tracker: failing })
+    await c.service.saveMilestone('work', milestone)
+    const counted = (await c.service.view('work')).milestones[0]!
+    expect(counted.error).toBeUndefined()
+    expect('url' in counted.counts!.open!).toBe(false)
+  })
+
   it('saves a manual milestone and reports its status against time', async () => {
     const { service, saved, changed } = setup()
     expect(await service.saveMilestone('work', { id: 'm', name: 'Beta', start: '2026-11-01', end: '2026-11-11', source: { kind: 'manual', progress: 30 } })).toEqual({ ok: true })
@@ -70,6 +100,139 @@ describe('PlannerService milestones', () => {
     expect(searches).toBe(1)
     await service.refreshMilestones('work')
     expect(searches).toBe(2)
+  })
+
+  describe('open tickets', () => {
+    const DAY = 86_400_000
+    const stub = () => {
+      const tracker = new DemoTracker()
+      let found: TicketSummary[] = [
+        { key: 'A-1', title: 'One', status: 'Done', category: 'done', assignee: 'Ana Costa', updatedAt: NOW },
+        { key: 'A-2', title: 'Two', status: 'To Do', category: 'todo', assignee: null, createdAt: NOW - 2 * DAY, updatedAt: NOW - 9 * DAY },
+        { key: 'A-3', title: 'Three', status: 'In Progress', category: 'inProgress', assignee: 'Ana Costa', createdAt: NOW - 30 * DAY, updatedAt: NOW - DAY }
+      ]
+      tracker.searchByQuery = async () => found
+      return { tracker, set: (next: TicketSummary[]) => void (found = next) }
+    }
+    const milestone = { id: 't', name: 'Launch', start: '2026-11-01', end: '2026-11-30', source: { kind: 'tracker' as const, query: 'q' } }
+
+    it('keeps the open tickets with the counts, in the view and in the stored state, and after a restart', async () => {
+      const { tracker } = stub()
+      const { service, saved } = setup({ tracker })
+      await service.saveMilestone('work', milestone)
+      const open = (await service.view('work')).milestones[0]!.counts!.open!
+      expect(open).toMatchObject({ total: 2, unassigned: 1, stale: 1, addedLate: 1 })
+      expect(open.tickets.map((t) => [t.key, t.flags])).toEqual([
+        ['A-2', ['unassigned', 'stale', 'addedLate']],
+        ['A-3', []]
+      ])
+      expect(saved().profiles.work!.counts['t']!.open).toEqual(open)
+      const restarted = setup({ tracker, initial: saved() })
+      expect((await restarted.service.view('work')).milestones[0]!.counts!.open).toEqual(open)
+    })
+
+    it('answers a device the open tickets of one milestone, and null when it has none or is unknown', async () => {
+      const { tracker } = stub()
+      const { service } = setup({ tracker })
+      await service.saveMilestone('work', milestone)
+      expect(service.openTickets('work', 't')?.tickets.map((x) => x.key)).toEqual(['A-2', 'A-3'])
+      expect(service.openTickets('work', 'nope')).toBeNull()
+      expect(service.openTickets('other', 't')).toBeNull()
+    })
+
+    it('counts again what was counted before the open tickets existed', async () => {
+      const { tracker } = stub()
+      const first = setup({ tracker })
+      await first.service.saveMilestone('work', milestone)
+      const old = first.saved()
+      delete old.profiles.work!.counts['t']!.open
+      const { service } = setup({ tracker, initial: old })
+      await service.tick()
+      expect((await service.view('work')).milestones[0]!.counts!.open?.total).toBe(2)
+    })
+
+    it('counts again when the start moves, since which tickets were added late changes with it', async () => {
+      const { tracker } = stub()
+      const { service } = setup({ tracker })
+      await service.saveMilestone('work', milestone)
+      await service.saveMilestone('work', { ...milestone, start: '2026-10-01' })
+      expect((await service.view('work')).milestones[0]!.counts!.open).toMatchObject({ total: 2, addedLate: 2 })
+      await service.saveMilestone('work', { ...milestone, start: '2026-11-05' })
+      expect((await service.view('work')).milestones[0]!.counts!.open).toMatchObject({ total: 2, addedLate: 0 })
+    })
+
+    it('keeps the last good counts and open tickets when the start moves and the recount fails, until a count works', async () => {
+      const { tracker, set } = stub()
+      const { service, saved } = setup({ tracker })
+      await service.saveMilestone('work', milestone)
+      const good = (await service.view('work')).milestones[0]!.counts!
+      const search = tracker.searchByQuery
+      tracker.searchByQuery = async () => {
+        throw new TrackerError('offline')
+      }
+      await service.saveMilestone('work', { ...milestone, start: '2026-10-01' })
+      const row = (await service.view('work')).milestones[0]!
+      expect(row.error).toBe('offline')
+      expect(row.counts).toEqual(good)
+      expect(saved().profiles.work!.counts['t']).toEqual(good)
+      tracker.searchByQuery = search
+      set([{ key: 'A-9', title: 'Nine', status: 'To Do', category: 'todo', assignee: 'Ana Costa' }])
+      await service.tick()
+      const after = (await service.view('work')).milestones[0]!
+      expect(after.error).toBeUndefined()
+      expect(after.counts?.open?.total).toBe(1)
+    })
+
+    it('keeps the last good counts too when an agent moves the start and the recount fails', async () => {
+      const { tracker } = stub()
+      const { service } = setup({ tracker, profiles: [profile({ agentMilestones: 'allow' })] })
+      await service.saveMilestone('work', milestone)
+      const good = (await service.view('work')).milestones[0]!.counts!
+      tracker.searchByQuery = async () => {
+        throw new TrackerError('offline')
+      }
+      const r = await service.agentMilestone('work', { action: 'update', milestoneId: 't', milestone: { ...milestone, start: '2026-10-01' } }, { session: 's1' } as never)
+      expect(r).toMatchObject({ ok: true, applied: true })
+      const row = (await service.view('work')).milestones[0]!
+      expect(row.counts).toEqual(good)
+      expect(row.error).toBe('offline')
+    })
+
+    it('still drops the counts of a changed query', async () => {
+      const { tracker } = stub()
+      const { service } = setup({ tracker })
+      await service.saveMilestone('work', milestone)
+      tracker.searchByQuery = async () => {
+        throw new TrackerError('offline')
+      }
+      await service.saveMilestone('work', { ...milestone, source: { kind: 'tracker', query: 'other' } })
+      const row = (await service.view('work')).milestones[0]!
+      expect(row.counts).toBeUndefined()
+      expect(row.error).toBe('offline')
+    })
+
+    it('keeps the last good open tickets when a count fails', async () => {
+      const { tracker } = stub()
+      const { service } = setup({ tracker })
+      await service.saveMilestone('work', milestone)
+      tracker.searchByQuery = async () => {
+        throw new TrackerError('down')
+      }
+      const row = (await service.refreshMilestones('work')).milestones[0]!
+      expect(row.error).toBe('down')
+      expect(row.counts?.open?.total).toBe(2)
+    })
+
+    it('goes with the milestone to another profile and is counted there', async () => {
+      const { tracker } = stub()
+      const other = { ...profile(), id: 'other', name: 'Other' }
+      const { service } = setup({ tracker, profiles: [profile(), other] })
+      await service.saveMilestone('work', milestone)
+      const moved = await service.moveMilestone('work', 't', 'other')
+      if (!moved.ok) throw new Error(moved.error)
+      expect((await service.view('other')).milestones[0]!.counts!.open?.total).toBe(2)
+      expect((await service.view('work')).milestones).toEqual([])
+    })
   })
 
   it('keeps the last good count and says why a count failed', async () => {
@@ -661,5 +824,42 @@ describe('createsTicket', () => {
     expect(createsTicket({ kind: 'bug' }, 'approve')).toBe(true)
     expect(createsTicket({ kind: 'decision' }, 'approve')).toBe(false)
     expect(createsTicket({ kind: 'task' }, 'keep')).toBe(false)
+  })
+})
+
+describe('open tickets of a counted milestone', () => {
+  const open = (over: Partial<MilestoneOpenTickets> = {}): MilestoneOpenTickets => ({ tickets: [], total: 9, unassigned: 4, stale: 5, addedLate: 4, ...over })
+  const line = (locale: 'en' | 'es', o: MilestoneOpenTickets | undefined) => openTicketsSummary(o, (base, count, params) => translatePlural(locale, base, count, params))
+
+  it('builds the line from the counts that are not zero', () => {
+    expect(line('en', open())).toBe('9 open · 4 with no owner · 5 not updated in 7 days · 4 added after the start')
+    expect(line('en', open({ unassigned: 0, addedLate: 0 }))).toBe('9 open · 5 not updated in 7 days')
+    expect(line('en', open({ unassigned: 0, stale: 0, addedLate: 0 }))).toBe('9 open')
+    expect(line('en', open({ total: 1, unassigned: 1, stale: 0, addedLate: 0 }))).toBe('1 open · 1 with no owner')
+  })
+
+  it('says it in Spanish too, with the plural', () => {
+    expect(line('es', open())).toBe('9 abiertos · 4 sin responsable · 5 sin cambios en 7 días · 4 agregados después del inicio')
+    expect(line('es', open({ total: 1, unassigned: 0, stale: 0, addedLate: 1 }))).toBe('1 abierto · 1 agregado después del inicio')
+  })
+
+  it('has no line when nothing is open or the milestone was not counted with it', () => {
+    expect(openTicketsParts(undefined)).toEqual([])
+    expect(openTicketsParts(open({ total: 0, unassigned: 0, stale: 0, addedLate: 0 }))).toEqual([])
+    expect(line('en', undefined)).toBe('')
+  })
+
+  it('counts the tickets the list leaves out', () => {
+    const t = { key: 'A-1', title: 'x', status: 'To Do', category: 'todo' as const, flags: [] }
+    expect(openTicketsHidden(open({ tickets: [t, t], total: 60 }))).toBe(58)
+    expect(openTicketsHidden(open({ tickets: [t], total: 1 }))).toBe(0)
+  })
+
+  it('labels every flag in both languages', () => {
+    for (const f of ['unassigned', 'stale', 'addedLate'] as const) {
+      expect(en[OPEN_FLAG_LABEL[f]]).toBeTruthy()
+      expect(es[OPEN_FLAG_LABEL[f]]).toBeTruthy()
+      expect(OPEN_FLAG_TONE[f]).toBeTruthy()
+    }
   })
 })

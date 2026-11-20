@@ -6,10 +6,12 @@
 import { daysBetween, isDay } from '../alerts/days'
 import { parsePlanLinks, planLinksOk, type PlanEditor, type PlanLink } from '../inbox/links'
 import { parsePieces, piecesOk, type MilestonePiece } from './pieces'
+import type { MilestoneOpenTickets } from './open-tickets'
 
 export * from './pieces'
 export * from './membership'
 export * from './move'
+export * from './open-tickets'
 
 export type MilestoneSource = { kind: 'manual'; progress: number } | { kind: 'tracker'; connectionId?: string; query: string } | { kind: 'items'; items: MilestonePiece[] }
 
@@ -43,6 +45,8 @@ export interface MilestoneCounts {
   error?: string
   /** `countsKey` of the milestone when it was counted: a changed query ignores old counts. */
   key?: string
+  /** The tickets of the query still open, with what makes them look stuck (absent in counts made before it existed). */
+  open?: MilestoneOpenTickets
 }
 
 export const MILESTONE_STATUSES = ['late', 'atRisk', 'onTrack', 'notStarted', 'done'] as const

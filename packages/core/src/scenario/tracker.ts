@@ -180,3 +180,49 @@ export function productTicket(key: string): TicketSummary | undefined {
   if (assigned) return { key, title: assigned.title, ...productTicketStatus(assigned.state), url: `https://demo.example.com/browse/${key}` }
   return [...Object.values(PRODUCT_QUERY_RESULTS).flat(), ...PRODUCT_INBOX_TICKETS].find((s) => s.key === key)
 }
+
+const DAY_MS = 86_400_000
+
+/**
+ * Who has each query ticket and how old it is: `[assignee, created days ago, updated days ago]`
+ * (`null`: nobody). The activation milestone is the one at risk: open tickets with no owner, some
+ * untouched for over a week, some added after its start (50 days ago). The others are mostly clean.
+ */
+const PRODUCT_TICKET_ACTIVITY: Readonly<Record<string, readonly [string | null, number, number]>> = {
+  // SSO (started 40 days ago): one ticket added late, the rest owned and moving.
+  'NOTE-219': ['Priya Nair', 45, 1],
+  'NOTE-221': ['Tom Becker', 44, 2],
+  'NOTE-224': ['Mia Novak', 42, 4],
+  'NOTE-227': ['Omar Haddad', 12, 3],
+  'NOTE-230': ['Priya Nair', 48, 5],
+  // Activation (started 50 days ago): the risky one.
+  'NOTE-240': ['Tom Becker', 60, 2],
+  'NOTE-253': ['Priya Nair', 52, 1],
+  'NOTE-246': ['Tom Becker', 58, 12],
+  'NOTE-247': [null, 55, 16],
+  'NOTE-248': [null, 20, 20],
+  'NOTE-249': [null, 14, 14],
+  'NOTE-251': ['Tom Becker', 70, 9],
+  'NOTE-252': ['Kenji Ito', 8, 2],
+  'NOTE-254': [null, 6, 6],
+  // Billing (started 85 days ago).
+  'OPS-31': ['Omar Haddad', 90, 1],
+  'OPS-33': ['Omar Haddad', 9, 2],
+  // Offline (starts in 12 days): nothing started, the last three still need an owner.
+  'WEB-18': ['Sara Lind', 30, 3],
+  'WEB-19': ['Priya Nair', 30, 4],
+  'WEB-20': ['Priya Nair', 29, 5],
+  'WEB-21': [null, 25, 4],
+  'WEB-22': [null, 25, 5],
+  'WEB-23': [null, 24, 6]
+}
+
+/** The tickets a scenario query finds, with who has them and when they were created and last changed, as of `now`. */
+export function productQueryTickets(query: string, now: number): TicketSummary[] | undefined {
+  const found = PRODUCT_QUERY_RESULTS[query]
+  if (!found) return undefined
+  return found.map((ticket) => {
+    const [assignee, created, updated] = PRODUCT_TICKET_ACTIVITY[ticket.key] ?? ['Priya Nair', 100, 30]
+    return { ...ticket, assignee, createdAt: now - created * DAY_MS, updatedAt: now - updated * DAY_MS }
+  })
+}

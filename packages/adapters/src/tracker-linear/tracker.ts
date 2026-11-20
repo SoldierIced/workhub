@@ -37,6 +37,8 @@ type Json = Record<string, any>
 const DEFAULT_ENDPOINT = 'https://api.linear.app/graphql'
 
 const ISSUE_FIELDS = `identifier title url priorityLabel state { name type } assignee { name } cycle { id name number startsAt endsAt isActive }`
+/** What a ticket summary reads, in the one request that lists the issues. */
+const SUMMARY_FIELDS = `identifier title url createdAt updatedAt state { name type } assignee { name }`
 const LIST_EXTRA = `description comments(first: 20) { nodes { body } }`
 /** At most this many assigned tickets, read in at most `LIST_PAGES` pages. */
 const LIST_CAP = 500
@@ -192,12 +194,12 @@ export class LinearTracker implements TicketTracker {
     let after: string | null = null
     while (out.length < limit) {
       const data = await this.query(
-        `query($filter: IssueFilter, $first: Int!, $after: String) { issues(filter: $filter, first: $first, after: $after) { nodes { identifier title url state { name type } } pageInfo { hasNextPage endCursor } } }`,
+        `query($filter: IssueFilter, $first: Int!, $after: String) { issues(filter: $filter, first: $first, after: $after) { nodes { ${SUMMARY_FIELDS} } pageInfo { hasNextPage endCursor } } }`,
         { filter, first: Math.min(100, limit - out.length), after }
       )
       const nodes = (data['issues']?.nodes as Json[] | undefined) ?? []
       for (const n of nodes) {
-        out.push({ key: String(n['identifier']), title: String(n['title'] ?? ''), status: String(n['state']?.name ?? ''), category: linearCategory(n['state']?.type), ...(typeof n['url'] === 'string' ? { url: n['url'] } : {}) })
+        out.push(toSummary(n))
       }
       const page = data['issues']?.pageInfo as Json | undefined
       after = page?.['hasNextPage'] && typeof page['endCursor'] === 'string' ? page['endCursor'] : null
@@ -226,11 +228,11 @@ export class LinearTracker implements TicketTracker {
     let after: string | null = null
     for (;;) {
       const data = await this.query(
-        `query($filter: IssueFilter, $first: Int!, $after: String) { issues(filter: $filter, first: $first, after: $after) { nodes { identifier title url state { name type } } pageInfo { hasNextPage endCursor } } }`,
+        `query($filter: IssueFilter, $first: Int!, $after: String) { issues(filter: $filter, first: $first, after: $after) { nodes { ${SUMMARY_FIELDS} } pageInfo { hasNextPage endCursor } } }`,
         { filter, first: 100, after }
       )
       const nodes = (data['issues']?.nodes as Json[] | undefined) ?? []
-      for (const n of nodes) out.push({ key: String(n['identifier']), title: String(n['title'] ?? ''), status: String(n['state']?.name ?? ''), category: linearCategory(n['state']?.type), ...(typeof n['url'] === 'string' ? { url: n['url'] } : {}) })
+      for (const n of nodes) out.push(toSummary(n))
       const page = data['issues']?.pageInfo as Json | undefined
       after = page?.['hasNextPage'] && typeof page['endCursor'] === 'string' ? page['endCursor'] : null
       if (!after || nodes.length === 0) break
@@ -346,6 +348,21 @@ function normalizeEndpoint(input: string | undefined): string {
 function parseDate(value: unknown): number | undefined {
   const ms = typeof value === 'string' ? Date.parse(value) : NaN
   return Number.isNaN(ms) ? undefined : ms
+}
+
+function toSummary(n: Json): TicketSummary {
+  const createdAt = parseDate(n['createdAt'])
+  const updatedAt = parseDate(n['updatedAt'])
+  return {
+    key: String(n['identifier']),
+    title: String(n['title'] ?? ''),
+    status: String(n['state']?.name ?? ''),
+    category: linearCategory(n['state']?.type),
+    ...(typeof n['url'] === 'string' ? { url: n['url'] } : {}),
+    assignee: typeof n['assignee']?.name === 'string' ? n['assignee'].name : null,
+    ...(createdAt !== undefined ? { createdAt } : {}),
+    ...(updatedAt !== undefined ? { updatedAt } : {})
+  }
 }
 
 function toRef(n: Json): TicketRef {

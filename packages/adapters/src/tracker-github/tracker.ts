@@ -150,9 +150,11 @@ export class GitHubIssuesTracker implements TicketTracker {
   }
 
   /** The repositories in scope: the listed ones, else the fallback's (folders' remotes), else none (all of GitHub). */
-  private async scope(): Promise<string[]> {
+  private async scope(strict = false): Promise<string[]> {
     const listed = (this.options.repositories ?? []).map((r) => r.trim()).filter((r) => REPO.test(r))
-    const repos = listed.length > 0 ? listed : this.options.fallbackRepositories ? await this.options.fallbackRepositories().catch(() => []) : []
+    // `strict`: a failure reading the fallback is thrown, not taken for "no repository in scope".
+    const fallback = this.options.fallbackRepositories
+    const repos = listed.length > 0 ? listed : fallback ? await (strict ? fallback() : fallback().catch(() => [])) : []
     return [...new Set(repos.map((r) => r.toLowerCase()))]
   }
 
@@ -278,6 +280,28 @@ export class GitHubIssuesTracker implements TicketTracker {
     return items.map((n) => this.toSummary(n))
   }
 
+  /**
+   * The issue search of the web site for the query, limited to the repositories in scope like
+   * `searchByQuery`. Undefined for an empty query, or when more repositories are in scope than one
+   * search takes, or when reading them fails (a link that shows other results would be worse than none).
+   */
+  async queryUrl(query: string): Promise<string | undefined> {
+    const q = query.trim()
+    if (!q) return undefined
+    const scoped = /(?:^|\s)-?(?:repo|org|user):/i.test(q)
+    let repos: string[] = []
+    if (!scoped) {
+      try {
+        repos = await this.scope(true)
+      } catch {
+        return undefined
+      }
+    }
+    if (repos.length > REPOS_PER_QUERY) return undefined
+    const text = [`is:issue ${q}`, ...repos.map((r) => `repo:${r}`)].join(' ')
+    return `https://${this.host}/search?q=${encodeURIComponent(text)}&type=issues`
+  }
+
   /** Issues by key in as few requests as possible: one GraphQL query per group of 40. Unknown keys are left out. */
   async readTickets(keys: readonly string[]): Promise<TicketSummary[]> {
     const fallback = await this.defaultRepo()
@@ -291,7 +315,7 @@ export class GitHubIssuesTracker implements TicketTracker {
       const body = group
         .map(([, ref], i) => {
           const [owner, name] = ref.repo.split('/')
-          return `i${i}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { issue(number: ${ref.number}) { title url state stateReason } }`
+          return `i${i}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { issue(number: ${ref.number}) { title url state stateReason createdAt updatedAt assignees(first: 1) { nodes { login } } } }`
         })
         .join(' ')
       const result = await this.run('gh', ['api', ...this.hostArgs, 'graphql', '-f', `query=query { ${body} }`]).catch((e) => {
@@ -309,7 +333,19 @@ export class GitHubIssuesTracker implements TicketTracker {
       group.forEach(([key], i) => {
         const issue = data![`i${i}`]?.issue as Json | undefined
         if (!issue) return
-        out.push({ key, title: String(issue['title'] ?? ''), status: githubIssueStatus(issue['state'], issue['stateReason']), category: githubIssueCategory(issue['state']), ...(typeof issue['url'] === 'string' ? { url: issue['url'] } : {}) })
+        const login = (issue['assignees']?.nodes as Json[] | undefined)?.[0]?.['login']
+        const createdAt = parseDate(issue['createdAt'])
+        const updatedAt = parseDate(issue['updatedAt'])
+        out.push({
+          key,
+          title: String(issue['title'] ?? ''),
+          status: githubIssueStatus(issue['state'], issue['stateReason']),
+          category: githubIssueCategory(issue['state']),
+          ...(typeof issue['url'] === 'string' ? { url: issue['url'] } : {}),
+          assignee: typeof login === 'string' ? login : null,
+          ...(createdAt !== undefined ? { createdAt } : {}),
+          ...(updatedAt !== undefined ? { updatedAt } : {})
+        })
       })
     }
     return out
@@ -329,12 +365,19 @@ export class GitHubIssuesTracker implements TicketTracker {
   }
 
   private toSummary(n: Json): TicketSummary {
+    // The first assignee (a REST issue has `assignee` and `assignees`); GitHub gives a login, not a display name.
+    const login = n['assignee']?.login ?? (n['assignees'] as Json[] | undefined)?.[0]?.['login']
+    const createdAt = parseDate(n['created_at'])
+    const updatedAt = parseDate(n['updated_at'])
     return {
       key: keyOf(repoOfItem(n), Number(n['number'])),
       title: String(n['title'] ?? ''),
       status: githubIssueStatus(n['state'], n['state_reason']),
       category: githubIssueCategory(n['state']),
-      ...(typeof n['html_url'] === 'string' ? { url: n['html_url'] } : {})
+      ...(typeof n['html_url'] === 'string' ? { url: n['html_url'] } : {}),
+      assignee: typeof login === 'string' ? login : null,
+      ...(createdAt !== undefined ? { createdAt } : {}),
+      ...(updatedAt !== undefined ? { updatedAt } : {})
     }
   }
 

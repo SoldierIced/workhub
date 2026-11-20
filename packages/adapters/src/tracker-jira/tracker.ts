@@ -37,6 +37,7 @@ export interface JiraOptions {
 
 const SPRINT_SCHEMA = 'com.pyxis.greenhopper.jira:gh-sprint'
 const LIST_FIELDS = ['summary', 'status', 'issuetype', 'priority', 'assignee', 'description', 'comment']
+const SUMMARY_FIELDS = 'summary,status,assignee,created,updated'
 const DETAIL_FIELDS = 'summary,status,issuetype,priority,assignee,reporter,created,updated,labels,description,comment,parent,subtasks'
 const AGILE_CONCURRENCY = 5
 const SEARCH_PAGE = 100
@@ -211,6 +212,12 @@ export class JiraTracker implements TicketTracker {
     await this.request('PUT', `/rest/api/3/issue/${encodeURIComponent(key)}/assignee`, undefined, { accountId: this.accountId })
   }
 
+  /** The issue search of the site for a JQL query. */
+  async queryUrl(query: string): Promise<string | undefined> {
+    const jql = query.trim()
+    return jql ? `${this.site}/issues/?jql=${encodeURIComponent(jql)}` : undefined
+  }
+
   /** Every ticket a JQL query finds (any status), page by page up to the limit. */
   async searchByQuery(query: string, options?: SearchOptions): Promise<TicketSummary[]> {
     const jql = query.trim()
@@ -221,7 +228,7 @@ export class JiraTracker implements TicketTracker {
     while (out.length < limit) {
       const page = (await this.request('GET', '/rest/api/3/search/jql', {
         jql,
-        fields: 'summary,status',
+        fields: SUMMARY_FIELDS,
         maxResults: String(Math.min(SEARCH_PAGE, limit - out.length)),
         ...(token ? { nextPageToken: token } : {})
       })) as Json
@@ -229,7 +236,7 @@ export class JiraTracker implements TicketTracker {
       for (const issue of issues) {
         const f = issue['fields'] as Json | undefined
         if (typeof issue['key'] !== 'string' || !f) continue
-        out.push({ key: issue['key'], title: String(f['summary'] ?? ''), status: String(f['status']?.name ?? ''), category: statusCategoryOf(f['status']?.statusCategory?.key), url: `${this.site}/browse/${issue['key']}` })
+        out.push(this.toSummary(issue['key'], f))
       }
       token = typeof page['nextPageToken'] === 'string' ? page['nextPageToken'] : undefined
       if (!token || page['isLast'] === true || issues.length === 0) break
@@ -252,9 +259,9 @@ export class JiraTracker implements TicketTracker {
         if (!(error instanceof TrackerError) || error.status !== 400) throw error
         for (const key of chunk) {
           try {
-            const issue = (await this.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { fields: 'summary,status' })) as Json
+            const issue = (await this.request('GET', `/rest/api/3/issue/${encodeURIComponent(key)}`, { fields: SUMMARY_FIELDS })) as Json
             const f = issue['fields'] as Json | undefined
-            if (typeof issue['key'] === 'string' && f) out.push({ key: issue['key'], title: String(f['summary'] ?? ''), status: String(f['status']?.name ?? ''), category: statusCategoryOf(f['status']?.statusCategory?.key), url: `${this.site}/browse/${issue['key']}` })
+            if (typeof issue['key'] === 'string' && f) out.push(this.toSummary(issue['key'], f))
           } catch (inner) {
             if (!(inner instanceof TrackerError) || inner.status !== 404) throw inner
           }
@@ -314,6 +321,20 @@ export class JiraTracker implements TicketTracker {
       }
     }
     await Promise.all(Array.from({ length: Math.min(AGILE_CONCURRENCY, queue.length) }, worker))
+  }
+
+  private toSummary(key: string, f: Json): TicketSummary {
+    return {
+      key,
+      title: String(f['summary'] ?? ''),
+      status: String(f['status']?.name ?? ''),
+      category: statusCategoryOf(f['status']?.statusCategory?.key),
+      url: `${this.site}/browse/${key}`,
+      // Absent when Jira left the field out (unknown); null when it is there and nobody has the issue.
+      ...('assignee' in f ? { assignee: typeof f['assignee']?.displayName === 'string' ? f['assignee'].displayName : null } : {}),
+      createdAt: parseDate(f['created']),
+      updatedAt: parseDate(f['updated'])
+    }
   }
 
   private toTicket(issue: Json, sprintField: string | undefined): Ticket | null {

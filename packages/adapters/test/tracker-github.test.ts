@@ -143,29 +143,50 @@ describe('GitHubIssuesTracker', () => {
     const { run, calls } = fakeGh([['search/issues', () => ({ items: [item(1, { state: 'closed', state_reason: 'not_planned' })] })]])
     const t = new GitHubIssuesTracker({ run, repositories: ['acme/app'] })
     const found = await t.searchByQuery('milestone:"v1.0"', { limit: 10 })
-    expect(found).toEqual([{ key: 'acme/app#1', title: 'Issue 1', status: 'Closed (not planned)', category: 'done', url: 'https://github.com/acme/app/issues/1' }])
+    expect(found).toEqual([{ key: 'acme/app#1', title: 'Issue 1', status: 'Closed (not planned)', category: 'done', url: 'https://github.com/acme/app/issues/1', assignee: 'dana', updatedAt: Date.parse('2026-10-11T10:00:00Z') }])
     expect(field(calls[0]!, 'q')).toBe('is:issue milestone:"v1.0" repo:acme/app')
     await t.searchByQuery('org:acme label:bug')
     expect(field(calls[1]!, 'q')).toBe('is:issue org:acme label:bug')
     await expect(t.searchByQuery('  ')).rejects.toThrow(TrackerError)
   })
 
+  it('returns the first assignee, null for nobody, and the created and updated times', async () => {
+    const { run, calls } = fakeGh([
+      [
+        'search/issues',
+        () => ({
+          items: [
+            item(1, { assignee: null, assignees: [{ login: 'lee' }, { login: 'sam' }], created_at: '2026-10-01T09:00:00Z' }),
+            item(2, { assignee: null, assignees: [], created_at: '2026-10-02T09:00:00Z' })
+          ]
+        })
+      ]
+    ])
+    const t = new GitHubIssuesTracker({ run, repositories: ['acme/app'] })
+    const found = await t.searchByQuery('milestone:"v1.0"')
+    const byKey = Object.fromEntries(found.map((x) => [x.key, x]))
+    expect(byKey['acme/app#1']).toMatchObject({ assignee: 'lee', createdAt: Date.parse('2026-10-01T09:00:00Z'), updatedAt: Date.parse('2026-10-11T10:00:00Z') })
+    expect(byKey['acme/app#2']!.assignee).toBeNull()
+    expect(calls).toHaveLength(1)
+  })
+
   it('reads tickets by key in one GraphQL request, leaving out unknown ones', async () => {
     const { run, calls } = fakeGh([
       [
         'graphql',
-        () => fail('Could not resolve', JSON.stringify({ data: { i0: { issue: { title: 'One', url: 'https://github.com/acme/app/issues/1', state: 'OPEN', stateReason: null } }, i1: { issue: null }, i2: { issue: { title: 'Three', url: 'https://github.com/acme/api/issues/3', state: 'CLOSED', stateReason: 'NOT_PLANNED' } } } }))
+        () => fail('Could not resolve', JSON.stringify({ data: { i0: { issue: { title: 'One', url: 'https://github.com/acme/app/issues/1', state: 'OPEN', stateReason: null, createdAt: '2026-10-01T09:00:00Z', updatedAt: '2026-10-20T10:30:00Z', assignees: { nodes: [{ login: 'dana' }] } } }, i1: { issue: null }, i2: { issue: { title: 'Three', url: 'https://github.com/acme/api/issues/3', state: 'CLOSED', stateReason: 'NOT_PLANNED', createdAt: '2026-10-02T09:00:00Z', updatedAt: '2026-10-03T09:00:00Z', assignees: { nodes: [] } } } } }))
       ]
     ])
     const t = new GitHubIssuesTracker({ run, repositories: ['acme/app'] })
     const got = await t.readTickets(['#1', 'acme/app#2', 'Acme/API#3', 'ABC-4', '#1'])
     expect(got).toEqual([
-      { key: 'acme/app#1', title: 'One', status: 'Open', category: 'todo', url: 'https://github.com/acme/app/issues/1' },
-      { key: 'acme/api#3', title: 'Three', status: 'Closed (not planned)', category: 'done', url: 'https://github.com/acme/api/issues/3' }
+      { key: 'acme/app#1', title: 'One', status: 'Open', category: 'todo', url: 'https://github.com/acme/app/issues/1', assignee: 'dana', createdAt: Date.parse('2026-10-01T09:00:00Z'), updatedAt: Date.parse('2026-10-20T10:30:00Z') },
+      { key: 'acme/api#3', title: 'Three', status: 'Closed (not planned)', category: 'done', url: 'https://github.com/acme/api/issues/3', assignee: null, createdAt: Date.parse('2026-10-02T09:00:00Z'), updatedAt: Date.parse('2026-10-03T09:00:00Z') }
     ])
     expect(calls).toHaveLength(1)
     const query = field(calls[0]!, 'query')!
     expect(query).toContain('repository(owner: "acme", name: "app") { issue(number: 1)')
+    for (const f of ['createdAt', 'updatedAt', 'assignees']) expect(query).toContain(f)
     expect(await new GitHubIssuesTracker({ run: fakeGh([]).run }).readTickets(['ABC-1'])).toEqual([])
   })
 
@@ -184,5 +205,35 @@ describe('GitHubIssuesTracker', () => {
     expect(calls[0]!.slice(0, 3)).toEqual(['api', '--hostname', 'git.example.com'])
     const gone = new GitHubIssuesTracker({ run: async () => { throw new CliNotFoundError('gh') } })
     await expect(gone.listAssigned()).rejects.toThrow('not installed')
+  })
+})
+
+describe('GitHub Issues queryUrl', () => {
+  const never: CliRunner = async () => fail('no call expected')
+  const q = (url: string | undefined) => new URL(url!).searchParams.get('q')
+
+  it('opens the issue search limited to the repositories in scope, as the count does', async () => {
+    const url = await new GitHubIssuesTracker({ run: never, repositories: ['Acme/App', 'acme/api'] }).queryUrl('milestone:"v1" label:bug')
+    expect(url!.startsWith('https://github.com/search?')).toBe(true)
+    expect(new URL(url!).searchParams.get('type')).toBe('issues')
+    expect(q(url)).toBe('is:issue milestone:"v1" label:bug repo:acme/app repo:acme/api')
+  })
+
+  it('leaves the scope out when the query names its own, and uses the enterprise host', async () => {
+    const url = await new GitHubIssuesTracker({ run: never, host: 'git.example.com', repositories: ['acme/app'] }).queryUrl('repo:acme/other milestone:"v1"')
+    expect(url!.startsWith('https://git.example.com/search?')).toBe(true)
+    expect(q(url)).toBe('is:issue repo:acme/other milestone:"v1"')
+  })
+
+  it('reads the fallback repositories, and gives none for an empty query, too many repositories, or repositories that cannot be read', async () => {
+    const fallback = new GitHubIssuesTracker({ run: never, fallbackRepositories: async () => ['acme/app'] })
+    expect(q(await fallback.queryUrl('label:bug'))).toBe('is:issue label:bug repo:acme/app')
+    expect(await fallback.queryUrl('  ')).toBeUndefined()
+    const many = new GitHubIssuesTracker({ run: never, repositories: ['a/1', 'a/2', 'a/3', 'a/4', 'a/5', 'a/6'] })
+    expect(await many.queryUrl('label:bug')).toBeUndefined()
+    const none = new GitHubIssuesTracker({ run: never, fallbackRepositories: async () => { throw new Error('boom') } })
+    expect(await none.queryUrl('label:bug')).toBeUndefined()
+    const unscoped = new GitHubIssuesTracker({ run: never })
+    expect(q(await unscoped.queryUrl('label:bug'))).toBe('is:issue label:bug')
   })
 })

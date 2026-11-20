@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { countByCategory, groupBySprint, localDay, milestoneStatus, PRODUCT_MILESTONE_EXPECTED, productMilestones, ticketsInProgress } from '@workhub/core'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { countByCategory, groupBySprint, localDay, milestoneStatus, openTicketsOf, PRODUCT_MILESTONE_EXPECTED, productMilestoneCounts, productMilestones, ticketsInProgress } from '@workhub/core'
 import { DemoTracker } from '../src/tracker-demo'
+
+afterEach(() => vi.useRealTimers())
 
 describe('DemoTracker', () => {
   it('lists synthetic open tickets in an active sprint, a future sprint and the backlog', async () => {
@@ -56,6 +58,41 @@ describe('DemoTracker in the team-lead scenario', () => {
     }
   })
 
+  it('gives an owner (or nobody), a creation and an update time to every ticket a query finds', async () => {
+    for (const scenario of [undefined, 'team-lead']) {
+      const demo = new DemoTracker('jira', scenario ? { scenario } : {})
+      const queries = scenario ? productMilestones('2026-11-04').flatMap((m) => (m.source.kind === 'tracker' ? [m.source.query] : [])) : ['project = DEMO', 'other']
+      for (const q of queries) {
+        const found = await demo.searchByQuery(q)
+        expect(found.length).toBeGreaterThan(0)
+        for (const t of found) {
+          expect(t.assignee === null || typeof t.assignee === 'string').toBe(true)
+          expect(t.createdAt).toBeLessThanOrEqual(t.updatedAt!)
+          expect(t.updatedAt).toBeLessThanOrEqual(Date.now())
+        }
+      }
+    }
+  })
+
+  it('shows the at-risk milestone with more flagged open tickets than the on-track one, as Count again would', async () => {
+    const demo = new DemoTracker('jira', { scenario: 'team-lead' })
+    const now = new Date(2026, 10, 4, 10).getTime()
+    vi.useFakeTimers({ now, toFake: ['Date'] })
+    const ms = productMilestones(localDay(now))
+    const open = async (id: string) => {
+      const m = ms.find((x) => x.id === id)!
+      if (m.source.kind !== 'tracker') throw new Error('not counted')
+      return openTicketsOf(await demo.searchByQuery(m.source.query), m, now)
+    }
+    const risk = await open('ms-activation')
+    const sso = await open('ms-sso')
+    expect(risk.unassigned).toBeGreaterThan(0)
+    expect(risk.stale).toBeGreaterThan(0)
+    expect(risk.addedLate).toBeGreaterThan(0)
+    expect(risk.unassigned + risk.stale + risk.addedLate).toBeGreaterThan(3 * (sso.unassigned + sso.stale + sso.addedLate))
+    expect(productMilestoneCounts(ms, now)['ms-activation']!.open).toEqual(risk)
+  })
+
   it('reads the scenario tickets by key with their current state, and leaves unknown keys out', async () => {
     const demo = new DemoTracker('jira', { scenario: 'team-lead' })
     const read = await demo.readTickets(['NOTE-253', 'note-238', 'NOTE-255', 'NOPE-1'])
@@ -73,5 +110,13 @@ describe('DemoTracker in the team-lead scenario', () => {
   it('keeps the generic demo for other queries and for a tracker without a scenario', async () => {
     expect((await new DemoTracker('jira', { scenario: 'team-lead' }).searchByQuery('project = OTHER')).length).toBeGreaterThanOrEqual(4)
     expect((await new DemoTracker().listAssigned()).some((t) => t.key.startsWith('DEMO-'))).toBe(true)
+  })
+})
+
+describe('DemoTracker queryUrl', () => {
+  it('gives an address on example.com with the query encoded, none for an empty query', async () => {
+    const demo = new DemoTracker()
+    expect(await demo.queryUrl('project = DEMO')).toBe('https://demo.example.com/issues?q=project%20%3D%20DEMO')
+    expect(await demo.queryUrl(' ')).toBeUndefined()
   })
 })

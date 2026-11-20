@@ -50,6 +50,7 @@ export const REMOTE_INVOKES: Readonly<Record<string, RemoteCapability | 'any'>> 
   'planner:deleteMilestone': 'plan',
   'planner:resolveProposal': 'plan',
   'planner:refreshMilestones': 'plan',
+  'planner:openTickets': 'plan',
   // Automations: a paged list, run now, stop a run and turn one off (dispatcher.ts refuses turning one on).
   'remote:automations': 'automations',
   'automations:runNow': 'automations',

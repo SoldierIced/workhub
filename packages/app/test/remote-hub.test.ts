@@ -312,6 +312,50 @@ describe('RemoteHub', () => {
     expect(JSON.stringify([snapshot, agents])).not.toMatch(/private|secret|SECRET/)
   })
 
+  it('sends a device the open ticket counters of a milestone, not the tickets', async () => {
+    const { ipc: inner } = fakeIpc()
+    const { ipc, handlers } = recordIpc(inner)
+    const ticket = { key: 'ACME-1', title: 'One', status: 'To Do', category: 'todo', flags: ['unassigned'] }
+    const view = () => ({
+      enabled: true,
+      milestones: [
+        { milestone: { id: 'm', name: 'Beta' }, status: 'atRisk', progress: 10, elapsed: 50, counts: { total: 3, done: 1, inProgress: 0, todo: 2, at: 1, key: 'k', open: { tickets: [ticket], total: 2, unassigned: 1, stale: 0, addedLate: 0 } } },
+        { milestone: { id: 'n', name: 'Manual' }, status: 'onTrack', progress: 10, elapsed: 50 }
+      ],
+      inbox: []
+    })
+    ipc.handle('planner:get', view)
+    ipc.handle('planner:refreshMilestones', view)
+    const hub = new RemoteHub({ handlers, profileFolders: async () => [], startMode: async () => null })
+    hub.attach(device('phone', ['plan']))
+    for (const channel of ['planner:get', 'planner:refreshMilestones']) {
+      const got = (await hub.invoke('phone', channel, ['work'])) as { milestones: { counts?: { open?: unknown } }[] }
+      expect(got.milestones[0]!.counts?.open).toEqual({ tickets: [], total: 2, unassigned: 1, stale: 0, addedLate: 0 })
+      expect(got.milestones[0]!.counts).toMatchObject({ total: 3, done: 1 })
+      expect(got.milestones[1]).toEqual(view().milestones[1])
+      expect(JSON.stringify(got)).not.toContain('ACME-1')
+    }
+  })
+
+  it('answers the open tickets of one milestone only to a device with the Plan capability, within the size limit', async () => {
+    const { ipc: inner } = fakeIpc()
+    const { ipc, handlers } = recordIpc(inner)
+    const long = 'x'.repeat(5_000)
+    const tickets = Array.from({ length: 50 }, (_, i) => ({ key: `ACME-${i}`, title: long, status: 'To Do', category: 'todo', assignee: long, flags: [] }))
+    ipc.handle('planner:openTickets', (_e, profileId, id) => ({ tickets, total: 80, unassigned: 0, stale: 0, addedLate: 0, url: `https://tracker.example.com/${profileId}/${id}` }))
+    const hub = new RemoteHub({ handlers, profileFolders: async () => [], startMode: async () => null })
+    hub.attach(device('phone', ['plan']))
+    hub.attach(device('watch', ['sessions']))
+    const got = (await hub.invoke('phone', 'planner:openTickets', ['work', 'm'])) as { tickets: { key: string; title: string }[]; total: number; url: string }
+    expect(got.total).toBe(80)
+    expect(got.url).toBe('https://tracker.example.com/work/m')
+    expect(got.tickets.length).toBeGreaterThan(0)
+    expect(got.tickets[0]!.key).toBe('ACME-0')
+    expect(got.tickets[0]!.title.length).toBeLessThanOrEqual(300)
+    expect(Buffer.byteLength(JSON.stringify(got))).toBeLessThan(192 * 1024)
+    await expect(hub.invoke('watch', 'planner:openTickets', ['work', 'm'])).rejects.toBeInstanceOf(RemoteRefused)
+  })
+
   it('delivers allowed one-way messages and refuses the rest', () => {
     const { hub, calls } = setup()
     hub.message('phone', 'sessions:permission', ['s1', 'r1', 'allow'])

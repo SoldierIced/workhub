@@ -11,6 +11,7 @@ import { milestoneFormProblem, milestoneId, MILESTONE_STATUS_LABEL, MILESTONE_ST
 import { relativeTime } from '../../lib/pullRequests'
 import { usePlanner } from '../../plannerStore'
 import { LinksEditor } from './LinksEditor'
+import { OpenTicketsBlock } from './MilestoneOpenTickets'
 import { PiecesEditor, PiecesList } from './MilestonePieces'
 import type { PlanTabContext } from './planTabs'
 
@@ -265,6 +266,7 @@ export function MilestonesTab({ profile, openItem }: PlanTabContext) {
                     {t('planner.milestone.countFailed', { message: row.error })}
                   </p>
                 )}
+                <OpenTicketsBlock open={row.counts?.open} profileId={profile.id} listId={`open-${m.id}`} name={m.name} status={row.status} />
                 {row.pieces && <PiecesList pieces={row.pieces} profileId={profile.id} compact limit={ROW_PIECES} />}
                 {m.notes && <p className="line-clamp-2 whitespace-pre-wrap text-sm text-muted">{plainPreview(m.notes)}</p>}
               </li>

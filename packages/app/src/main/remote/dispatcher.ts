@@ -1,6 +1,8 @@
 import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { RemoteCapability, RemotePullRequestList, RemotePullRequestsPage } from '../../shared/remote-api'
 import { isUnattendedMode, type AgentEvent, type ConversationEntry, type EffectiveAgent, type Profile, type PullRequestItem, type SubagentConversation, type ToolResultView, type ToolView, type WorkhubConfig } from '@workhub/core'
+import type { MilestoneOpenTickets } from '@workhub/core'
+import type { PlannerView } from '../../shared/planner-api'
 import type { ConfigSnapshot, HistorySearchResult, SessionView, StartSessionInput } from '../../shared/api'
 import type { CodeHostLists } from '../../shared/codehost-api'
 import { pageOf, PAGE_BYTES, PageRequestError, readPageRequest, type PageRequest } from './paging'
@@ -567,12 +569,42 @@ export function remoteSubagent(c: SubagentConversation): SubagentConversation {
 function redactResult(channel: string, result: unknown): unknown {
   if (channel === 'config:get' && result && typeof result === 'object') return remoteConfigSnapshot(result as ConfigSnapshot)
   if (channel === 'sessions:list' && Array.isArray(result)) return (result as SessionView[]).map(remoteSessionView)
+  if (channel === 'planner:openTickets' && result && typeof result === 'object') return remoteOpenTickets(result as MilestoneOpenTickets)
+  if ((channel === 'planner:get' || channel === 'planner:refreshMilestones') && result && typeof result === 'object') return remotePlannerView(result as PlannerView)
   if (channel === 'config:effectiveAgents' && Array.isArray(result)) return (result as EffectiveAgent[]).map(remoteEffectiveAgent)
   if (channel === 'sessions:subagent' && result && typeof result === 'object') return remoteSubagent(result as SubagentConversation)
   if (channel === 'history:search' && result && typeof result === 'object') return remoteHistorySearch(result as HistorySearchResult)
   // The answer carries the whole config (connections, agents): the device learns only whether it worked.
   if (channel === 'automations:setEnabled') return { ok: (result as { ok?: unknown } | null)?.ok === true }
   return result
+}
+
+/** The open tickets of one milestone as a device gets them: long texts cut, and as few of the first (most worrying) tickets as fit well under the relay's frame. The counters stay whole. */
+export const OPEN_TICKETS_MAX_BYTES = PAGE_BYTES / 2
+export function remoteOpenTickets(open: MilestoneOpenTickets): MilestoneOpenTickets {
+  const { tickets, ...rest } = open
+  const kept: MilestoneOpenTickets['tickets'] = []
+  let size = bytesOf(rest) + 32
+  for (const t of tickets) {
+    const slim = { ...t, key: cutText(t.key, 100), title: cutText(t.title, 300), status: cutText(t.status, 100), ...(typeof t.assignee === 'string' ? { assignee: cutText(t.assignee, 100) } : {}) }
+    size += bytesOf(slim) + 1
+    if (size > OPEN_TICKETS_MAX_BYTES) break
+    kept.push(slim)
+  }
+  return { ...rest, tickets: kept }
+}
+
+/** The planner view as a device sees it: the counters of a counted milestone stay, the list of its open tickets does not (the phone shows none, and the answer has a size limit). */
+export function remotePlannerView(view: PlannerView): PlannerView {
+  return {
+    ...view,
+    milestones: view.milestones.map((row) => {
+      const open = row.counts?.open
+      if (!row.counts || !open) return row
+      const { tickets: _listed, ...counters } = open
+      return { ...row, counts: { ...row.counts, open: { ...counters, tickets: [] } } }
+    })
+  }
 }
 
 /**

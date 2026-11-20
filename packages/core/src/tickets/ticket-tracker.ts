@@ -42,6 +42,11 @@ export interface TicketTracker {
    */
   searchByQuery?(query: string, options?: SearchOptions): Promise<TicketSummary[]>
   /**
+   * The address that opens `query` (the one `searchByQuery` takes) in the tracker's own search, or
+   * undefined when the tracker cannot build one from what it knows. Never throws.
+   */
+  queryUrl?(query: string): Promise<string | undefined>
+  /**
    * Tickets by key, any status, in as few requests as the tracker allows (Plan reads the tickets of
    * milestone pieces and linked inbox items with it). Keys the tracker does not know are left out.
    * Jira: one JQL `key in (...)` search; Linear: one filtered issues query.

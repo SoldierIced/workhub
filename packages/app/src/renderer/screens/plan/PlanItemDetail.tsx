@@ -1,6 +1,6 @@
 import { ExternalLink, Flag, Inbox, Link2, Pencil, Unlink } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { inboxSettings, INBOX_KINDS, parseTicketKey, plannerSettings, trackedState, type InboxItem, type InboxKind, type PlanEditor, type PlanLink, type Profile, type TrackedTicket } from '@workhub/core'
+import { inboxSettings, INBOX_KINDS, openTicketsAt, parseTicketKey, plannerSettings, trackedState, type InboxItem, type InboxKind, type PlanEditor, type PlanLink, type Profile, type TrackedTicket } from '@workhub/core'
 import type { PlanItemKind } from '@shared/plan-item-window'
 import type { MilestoneView, PlannerView } from '@shared/planner-api'
 import { Badge, Button, Input, Select, Spinner, Textarea } from '../../components/atoms'
@@ -11,12 +11,13 @@ import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
 import { errorText } from '../../lib/errorText'
 import { isDirty } from '../../lib/unsavedChanges'
-import { formToMilestone, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, linksToRows, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, milestoneToForm, PIECE_STATE_LABEL, PIECE_STATE_TONE, rowsToLinks, type LinkRow, type MilestoneForm } from '../../lib/planner'
+import { explainsBehind, openTicketsSummary, formToMilestone, INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, linksToRows, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, milestoneToForm, PIECE_STATE_LABEL, PIECE_STATE_TONE, rowsToLinks, type LinkRow, type MilestoneForm } from '../../lib/planner'
 import { relativeTime } from '../../lib/pullRequests'
 import { usePlanner } from '../../plannerStore'
 import { PeoplePicker } from './PeoplePicker'
 import { LinksEditor } from './LinksEditor'
 import { PiecesList } from './MilestonePieces'
+import { OpenTicketsList } from './MilestoneOpenTickets'
 import { MilestoneBar, MilestoneEditor } from './MilestonesTab'
 import { MoveMilestoneButton } from './MoveMilestone'
 
@@ -448,11 +449,12 @@ function InboxEditor({ profile, item, initial, onDone }: { profile: Profile; ite
 // Milestone
 
 function MilestoneDetail({ profile, row, view, editRequest }: { profile: Profile; row: MilestoneView; view: PlannerView; editRequest: number }) {
-  const { t, locale, formatDate } = useI18n()
+  const { t, tn, locale, formatDate } = useI18n()
   const toast = useToast()
   const snap = useConfig()
   const [editing, setEditing] = useState<{ form: MilestoneForm; since: number | undefined } | null>(null)
   const m = row.milestone
+  const now = Date.now()
   useEditRequest(editRequest, () => setEditing({ form: milestoneToForm(m, view.today), since: m.updatedAt }), editing !== null)
   const trackers = (snap?.config.connections ?? []).filter((c) => c.kind === 'tracker')
   const day = (d: string) => formatDate(dayDate(d), { day: 'numeric', month: 'short', year: 'numeric' })
@@ -531,6 +533,12 @@ function MilestoneDetail({ profile, row, view, editRequest }: { profile: Profile
             <p role="status" className="text-sm text-danger">
               {t('planner.milestone.countFailed', { message: row.error })}
             </p>
+          )}
+          {row.counts?.open && row.counts.open.total > 0 && (
+            <Section title={t('planner.open.title')}>
+              {explainsBehind(row.status) && <p className="text-sm text-muted">{openTicketsSummary(openTicketsAt(row.counts.open, now), tn)}</p>}
+              <OpenTicketsList open={row.counts.open} profileId={profile.id} name={row.milestone.name} now={now} />
+            </Section>
           )}
           {row.pieces && (
             <Section title={t('planner.pieces.title')}>

@@ -1,5 +1,5 @@
 // Types of the Plan work bridge (window.hub.planner): milestones and the inbox, shared by main, preload and renderer.
-import type { AgentMilestoneMode, InboxAction, InboxBulkPatch, InboxItem, InboxKind, InboxProposal, Milestone, MilestoneCounts, MilestoneProposal, MilestoneStatusKind, MoveMilestoneSummary, PieceView, PlanLink, TicketSummary, TrackedTicket } from '@workhub/core'
+import type { AgentMilestoneMode, InboxAction, InboxBulkPatch, InboxItem, InboxKind, InboxProposal, Milestone, MilestoneCounts, MilestoneOpenTickets, MilestoneProposal, MilestoneStatusKind, MoveMilestoneSummary, PieceView, PlanLink, TicketSummary, TrackedTicket } from '@workhub/core'
 import type { PlanItemTarget } from './plan-item-window'
 
 export interface MilestoneView {
@@ -65,6 +65,8 @@ export interface PlannerApi {
   resolveProposal(profileId: string, proposalId: string, accept: boolean): Promise<PlannerResult>
   /** Counts the tracker milestones, and reads the tickets of pieces and linked items, again now. */
   refreshMilestones(profileId: string): Promise<PlannerView>
+  /** The open tickets of one counted milestone (the last good count); null when it has none. A device asks for them when the person opens the list, since its planner view leaves them out. */
+  openTickets(profileId: string, milestoneId: string): Promise<MilestoneOpenTickets | null>
   /** A ticket by key as the tracker answers it now (null when it does not know the key); the milestone editor shows its title. */
   lookupTicket(profileId: string, key: string, connectionId?: string): Promise<{ ok: true; ticket: TicketSummary | null } | { ok: false; error: string }>
   /** Links a local task or bug to an existing ticket by key, or unlinks it (null). Never creates a ticket. */

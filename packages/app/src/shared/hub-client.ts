@@ -211,6 +211,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       moveMilestone: (fromId, id, toId) => invoke('planner:moveMilestone', fromId, id, toId),
       resolveProposal: (profileId, id, accept) => invoke('planner:resolveProposal', profileId, id, accept),
       refreshMilestones: (profileId) => invoke('planner:refreshMilestones', profileId),
+      openTickets: (profileId, milestoneId) => invoke('planner:openTickets', profileId, milestoneId),
       lookupTicket: (profileId, key, connectionId) => invoke('planner:lookupTicket', profileId, key, connectionId),
       linkTicket: (profileId, id, ticket) => invoke('planner:linkTicket', profileId, id, ticket),
       addItem: (profileId, proposal, force) => invoke('planner:addItem', profileId, proposal, force),
