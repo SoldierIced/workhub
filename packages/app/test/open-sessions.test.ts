@@ -23,8 +23,9 @@ function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?
   const live: SessionView[] = []
   const engines = new Map<string, 'app' | 'console'>()
   const starts: StartSessionInput[] = []
-  const extras: { dormant?: boolean; title?: string }[] = []
+  const extras: { dormant?: boolean; title?: string; firstPrompt?: string }[] = []
   const modes: [string, SessionMode][] = []
+  const prompts = new Map<string, string>()
   const open = new OpenSessions({
     store: {
       load: () => file,
@@ -37,7 +38,7 @@ function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?
     engineOf: (id) => engines.get(id),
     start: async (input, extra) => {
       starts.push(input)
-      extras.push({ ...(extra.dormant ? { dormant: true } : {}), ...(extra.title ? { title: extra.title } : {}) })
+      extras.push({ ...(extra.dormant ? { dormant: true } : {}), ...(extra.title ? { title: extra.title } : {}), ...(extra.firstPrompt ? { firstPrompt: extra.firstPrompt } : {}) })
       if (opts.failing?.includes(input.cwd)) throw new Error('agent gone')
       const v = view(`s${starts.length}`, { cwd: input.cwd, agentSessionId: input.resumeAgentSessionId, identity: input.resumeAgentSessionId ?? input.identity, mode: input.mode ?? 'app', ...(extra.dormant ? { state: 'stopped' as const } : {}) })
       live.push(v)
@@ -53,9 +54,10 @@ function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?
       return opts.enabled ?? true
     },
     startAtLaunch: async () => opts.atLaunch ?? true,
-    groups: async () => opts.groups
+    groups: async () => opts.groups,
+    firstPrompt: (id) => prompts.get(id)
   })
-  return { open, live, engines, starts, extras, modes, file: () => file, flushed: () => flushed }
+  return { open, prompts, live, engines, starts, extras, modes, file: () => file, flushed: () => flushed }
 }
 
 describe('open sessions across launches', () => {
@@ -70,6 +72,10 @@ describe('open sessions across launches', () => {
       agentSessionId: 'agent-a',
       model: 'opus'
     })
+    // The shortened first prompt is stored next to the title, and read back.
+    expect(savedSessionOf(view('p'), 'app', 'Refactor billing')?.firstPrompt).toBe('Refactor billing')
+    expect(savedSessionOf(view('p'), 'app')).not.toHaveProperty('firstPrompt')
+    expect(readSavedSessions({ sessions: [saved('p', { firstPrompt: 'Refactor billing' })] })[0]?.firstPrompt).toBe('Refactor billing')
     expect(savedSessionOf(view('n', { agentTitle: 'Fix the login bug' }), 'app')?.title).toBe('Fix the login bug')
     // A plain terminal keeps its identity, with no agent session id.
     expect(savedSessionOf(view('t', { agentId: 'shell', accountId: null, agentSessionId: undefined, identity: 'term-1' }), 'console')).toMatchObject({ identity: 'term-1', agentKey: 'shell' })
@@ -114,6 +120,15 @@ describe('open sessions across launches', () => {
     expect(h.modes).toEqual([['s3', 'shell']])
     // Saved again from what is open now: the missing folder and the failed start are gone.
     expect(h.file().sessions.map((s) => s.identity)).toEqual(['a', 'b', 'c', 'term'])
+  })
+
+  it('saves a session\'s first prompt and hands it back when the session is restored', async () => {
+    const h = harness({ sessions: [saved('a', { firstPrompt: 'Refactor billing' })] })
+    await h.open.restore()
+    expect(h.extras).toEqual([{ firstPrompt: 'Refactor billing' }])
+    h.prompts.set('s1', 'Refactor billing')
+    h.open.changed()
+    expect(h.file().sessions[0]?.firstPrompt).toBe('Refactor billing')
   })
 
   it('brings the sessions back stopped by default, with their titles, and saves them while stopped', async () => {

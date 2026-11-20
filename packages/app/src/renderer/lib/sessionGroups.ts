@@ -63,7 +63,7 @@ const BARE_COMMAND = /^\/\S+$/
  */
 export function sessionNameInfo(s: Pick<SessionData, 'items' | 'view'>): { title: string; titled: boolean } {
   const firstPrompt = s.items.find((item) => item.kind === 'user' && item.text.trim() && !BARE_COMMAND.test(item.text.trim()))
-  return resolveSessionName({ name: s.view.name, title: s.view.agentTitle, firstPrompt: firstPrompt?.kind === 'user' ? firstPrompt.text : undefined, cwd: s.view.cwd })
+  return resolveSessionName({ name: s.view.name, title: s.view.agentTitle, firstPrompt: s.view.firstPrompt ?? (firstPrompt?.kind === 'user' ? firstPrompt.text : undefined), cwd: s.view.cwd })
 }
 
 /**

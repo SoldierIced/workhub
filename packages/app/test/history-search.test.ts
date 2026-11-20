@@ -376,6 +376,11 @@ describe('phone History search', () => {
     expect(render({ settled: 'zzz', data: { entries: [] } })).toContain('No session matches.')
   })
 
+  it('says which folders the search covers and what to do when nothing matches', () => {
+    const html = render({ settled: 'zzz', data: { entries: [] }, profileName: 'Acme' })
+    expect(html).toContain('Only sessions run in Acme’s folders are searched')
+  })
+
   it('shows matches with their snippet, the resume note and Load more', () => {
     const html = render({ settled: 'deploy', data: { entries: [match({ snippet: `the ${O}deploy${C} window` })], nextCursor: '50' } })
     expect(html.match(/data-testid="web-history-row"/g)).toHaveLength(1)

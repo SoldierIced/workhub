@@ -7,7 +7,7 @@ import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { INBOX_KIND_LABEL, INBOX_SOURCE_LABEL, INBOX_STATUS_LABEL, inboxActionLabel } from '../../renderer/lib/planner'
 import { goBack, useConfig, useProfileId } from '../app-context'
 import { openLink, usePlanner } from '../plan-data'
-import { BigButton, Body, Empty, Header, InlineConfirm, Row, Screen, SectionTitle } from '../ui'
+import { BigButton, Body, Empty, Header, IconButton, InlineConfirm, Row, Screen, SectionTitle } from '../ui'
 import { itemActions, useItemActions } from './PlanScreen'
 
 const INPUT = 'h-11 w-full rounded-xl border border-border-strong bg-surface px-3 text-md text-text'
@@ -27,7 +27,7 @@ export function PlanItemScreen({ id }: { id: string }) {
   if (!view) {
     return (
       <Screen>
-        <Header title={t('web.plan.item')} back={{ screen: 'plan', tab: 'tasks' }} />
+        <Header title={t('web.plan.item')} back={{ screen: 'plan', tab: 'today' }} />
         <Body>{planner.loading ? <Spinner className="mx-auto mt-16 size-6" /> : <p className="px-4 pt-4 text-sm text-danger">{planner.error}</p>}</Body>
       </Screen>
     )
@@ -35,7 +35,7 @@ export function PlanItemScreen({ id }: { id: string }) {
   if (!item || !profileId) {
     return (
       <Screen>
-        <Header title={t('web.plan.item')} back={{ screen: 'plan', tab: 'tasks' }} />
+        <Header title={t('web.plan.item')} back={{ screen: 'plan', tab: 'today' }} />
         <Body>
           <Empty title={t('planner.detail.missing')} hint={t('planner.detail.missingHint')} />
         </Body>
@@ -53,9 +53,9 @@ export function PlanItemScreen({ id }: { id: string }) {
         title={t(INBOX_KIND_LABEL[item.kind])}
         back={{ screen: 'plan', tab: item.status === 'pending' ? 'inbox' : 'tasks' }}
         right={
-          <button type="button" aria-label={t('planner.detail.edit')} onClick={() => setEditing(true)} className="flex size-10 items-center justify-center rounded-lg text-muted active:bg-surface-hover">
+          <IconButton aria-label={t('planner.detail.edit')} onClick={() => setEditing(true)} className="text-muted">
             <Pencil className="size-5" aria-hidden />
-          </button>
+          </IconButton>
         }
       />
       <Body>
@@ -65,7 +65,7 @@ export function PlanItemScreen({ id }: { id: string }) {
             <span className="text-xs text-muted">{item.source.label ?? t(INBOX_SOURCE_LABEL[item.source.type])}</span>
           </div>
           <h1 className="text-xl font-semibold leading-snug">{item.title}</h1>
-          {item.detail ? <Markdown text={item.detail} className="text-md" /> : <p className="text-sm text-subtle">{t('planner.detail.noBody')}</p>}
+          {item.detail ? <Markdown text={item.detail} breaks className="text-md" /> : <p className="text-sm text-subtle">{t('planner.detail.noBody')}</p>}
         </div>
 
         <SectionTitle>{t('web.plan.facts')}</SectionTitle>
@@ -168,7 +168,7 @@ export function ItemFields({ title, detail, kind, due, onTitle, onDetail, onKind
     <div className="flex flex-col gap-4 px-4 pt-4">
       <div role="radiogroup" aria-label={t('planner.inbox.kind')} className="flex gap-1 rounded-xl bg-surface-hover p-1">
         {(['task', 'bug', 'decision'] as const).map((k) => (
-          <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => onKind(k)} className={kind === k ? 'h-9 flex-1 rounded-lg bg-surface text-sm font-medium shadow-sm' : 'h-9 flex-1 rounded-lg text-sm text-muted'}>
+          <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => onKind(k)} className={kind === k ? 'min-h-11 flex-1 rounded-lg bg-surface px-2 text-sm font-medium shadow-sm' : 'min-h-11 flex-1 rounded-lg px-2 text-sm text-muted'}>
             {t(INBOX_KIND_LABEL[k])}
           </button>
         ))}

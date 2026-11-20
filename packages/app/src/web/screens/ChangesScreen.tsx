@@ -1,4 +1,4 @@
-import { ChevronLeft, RefreshCw } from 'lucide-react'
+import { RefreshCw, WrapText } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { LocalReviewScope } from '@workhub/core'
 import { Spinner } from '../../renderer/components/atoms'
@@ -7,8 +7,10 @@ import { cn } from '../../renderer/lib/cn'
 import { useSessions } from '../../renderer/store'
 import type { RemoteChangedFile, RemoteChangedRepo, RemoteChangesPage, RemoteDiffPage, RemoteDiffPiece } from '../../shared/remote-changes-api'
 import { useClient, useClientStatus } from '../app-context'
-import { addFiles, addPieces, fileKey } from '../changes-pages'
-import { Body, Header, Screen } from '../ui'
+import { PHONE_TEXT_SCALE } from '../appearance'
+import { addFiles, addPieces, fileKey, fileParts } from '../changes-pages'
+import { PathText } from '../path-text'
+import { ACTION_BUTTON, Body, Header, IconButton, Screen } from '../ui'
 import { ReviewCard, useRemoteReview } from './ReviewCard'
 import { sessionTitle } from './HomeScreen'
 
@@ -29,7 +31,10 @@ function errorText(err: unknown): string {
 }
 
 /** One file's diff, a page of hunks at a time; a binary, hidden or too-large file shows why instead. */
-function DiffView({ sessionId, scope, file }: { sessionId: string; scope: LocalReviewScope; file: RemoteChangedFile }) {
+/** A diff's text size: 13 px at the phone's normal text size, growing with the Text size setting. */
+const DIFF_FONT = { fontSize: `calc(13px * var(--wh-text-scale, 1) / ${PHONE_TEXT_SCALE})` }
+
+function DiffView({ sessionId, scope, file, wrap }: { sessionId: string; scope: LocalReviewScope; file: RemoteChangedFile; wrap: boolean }) {
   const { t, tn } = useI18n()
   const client = useClient()
   const [pieces, setPieces] = useState<RemoteDiffPiece[]>([])
@@ -59,20 +64,20 @@ function DiffView({ sessionId, scope, file }: { sessionId: string; scope: LocalR
   return (
     <div className="flex flex-col gap-2" data-testid="remote-diff">
       {note && <p className="rounded-lg bg-surface px-3 py-2 text-xs text-muted" data-testid="remote-diff-note">{note === 'hidden' ? t('web.changes.hidden') : t(`localReview.fileNote.${note}`)}</p>}
-      {!note && !loading && !error && pieces.length === 0 && <p className="text-xs text-muted">{meta.status === 'deleted' ? t('localReview.deleted') : t('localReview.noDiff')}</p>}
+      {!note && !loading && !error && pieces.length === 0 && <p className="text-sm text-muted">{meta.status === 'deleted' ? t('localReview.deleted') : t('localReview.noDiff')}</p>}
       {pieces.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border bg-bg font-mono text-2xs">
+        <div className="overflow-x-auto rounded-lg border border-border bg-bg font-mono" style={DIFF_FONT} data-testid="remote-diff-lines" data-wrap={wrap}>
           {pieces.map((p) => (
             <div key={`${p.hunk}:${p.start}`}>
-              {p.start === 0 && <div className="bg-surface px-2 py-1 text-info whitespace-pre">{p.header}</div>}
+              {p.start === 0 && <div className={cn('bg-surface px-2 py-1 text-info', wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre')}>{p.header}</div>}
               {p.lines.map((line, i) => (
-                <div key={i} className={cn('flex whitespace-pre', line.kind === 'added' && 'bg-success-soft', line.kind === 'removed' && 'bg-danger-soft')}>
+                <div key={i} className={cn('flex', !wrap && 'whitespace-pre', line.kind === 'added' && 'bg-success-soft', line.kind === 'removed' && 'bg-danger-soft')}>
                   <span className="w-10 shrink-0 pr-1 text-right text-subtle select-none">{line.kind === 'removed' ? line.oldNumber : line.newNumber}</span>
                   <span className="w-3 shrink-0 select-none text-subtle">{line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}</span>
-                  <span className="pr-2">{line.text}</span>
+                  <span className={cn('pr-2', wrap && 'min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]')}>{line.text}</span>
                 </div>
               ))}
-              {p.cutLines ? <div className="px-2 py-0.5 text-subtle font-sans">{tn('web.changes.cutLines', p.cutLines)}</div> : null}
+              {p.cutLines ? <div className="px-2 py-0.5 font-sans text-subtle">{tn('web.changes.cutLines', p.cutLines)}</div> : null}
             </div>
           ))}
         </div>
@@ -83,7 +88,7 @@ function DiffView({ sessionId, scope, file }: { sessionId: string; scope: LocalR
         <Spinner className="mx-auto size-4" />
       ) : (
         (cursor || error) && (
-          <button type="button" onClick={() => void read(error && !cursor ? null : cursor)} className="mx-auto min-h-9 rounded-full border border-border px-3 text-xs text-muted">
+          <button type="button" onClick={() => void read(error && !cursor ? null : cursor)} className={cn(ACTION_BUTTON, 'mx-auto rounded-full text-muted')}>
             {error ? t('web.changes.retry') : t('web.changes.loadMore')}
           </button>
         )
@@ -93,11 +98,16 @@ function DiffView({ sessionId, scope, file }: { sessionId: string; scope: LocalR
 }
 
 function FileRow({ file, onOpen }: { file: RemoteChangedFile; onOpen: () => void }) {
+  const { name, dir } = fileParts(file.path)
   return (
-    <button type="button" onClick={onOpen} className="flex w-full items-center gap-2 border-b border-border px-1 py-2.5 text-left text-xs active:bg-surface-hover" data-testid="remote-changed-file">
-      <span className={cn('w-4 shrink-0 text-center font-mono font-semibold', STATUS_TONE[file.status])}>{STATUS_LETTER[file.status]}</span>
-      <span className="min-w-0 flex-1 truncate font-mono" title={file.path}>
-        {file.path}
+    <button type="button" onClick={onOpen} className="flex min-h-14 w-full items-center gap-2 border-b border-border px-1 py-2 text-left text-sm active:bg-surface-hover" data-testid="remote-changed-file" title={file.path}>
+      <span className={cn('w-4 shrink-0 self-start pt-0.5 text-center font-mono font-semibold', STATUS_TONE[file.status])}>{STATUS_LETTER[file.status]}</span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {/* The name is the part you look for: it wraps instead of being cut. */}
+        <span className="font-mono font-semibold [overflow-wrap:anywhere]" data-testid="remote-changed-name">
+          {name}
+        </span>
+        {dir && <PathText path={dir} className="text-xs text-muted" />}
       </span>
       <span className="shrink-0 font-mono tabular-nums text-success">+{file.additions}</span>
       <span className="shrink-0 font-mono tabular-nums text-danger">-{file.deletions}</span>
@@ -114,6 +124,8 @@ export function ChangesScreen({ sessionId }: { sessionId: string }) {
   const [scope, setScope] = useState<LocalReviewScope>('branch')
   const [list, setList] = useState<ListState>({ state: 'loading' })
   const [open, setOpen] = useState<RemoteChangedFile | null>(null)
+  // Long lines wrap unless the person switches it off; the choice stays across files.
+  const [wrap, setWrap] = useState(true)
   const [generation, setGeneration] = useState(0)
   const reading = useRef(0)
   const review = useRemoteReview(sessionId, session?.view.state)
@@ -147,23 +159,24 @@ export function ChangesScreen({ sessionId }: { sessionId: string }) {
     }
   }
 
+  // A file's diff is not a history entry of its own: the header's back closes it, and any other way out of the screen leaves nothing behind.
   const title = session ? sessionTitle(session) : t('web.changes.title')
   if (open) {
     return (
       <Screen>
         <Header
-          title={<span className="font-mono text-base">{open.path.split('/').pop()}</span>}
-          subtitle={<span className="font-mono">{open.repo} · {open.path}</span>}
+          title={<span className="font-mono text-base [overflow-wrap:anywhere]">{fileParts(open.path).name}</span>}
+          subtitle={<PathText path={`${open.repo}/${fileParts(open.path).dir}`} />}
+          back={() => setOpen(null)}
           right={
-            <button type="button" aria-label={t('web.changes.back')} onClick={() => setOpen(null)} className="flex h-10 items-center gap-1 rounded-lg px-2 text-xs text-muted active:bg-surface-hover">
-              <ChevronLeft className="size-4" aria-hidden />
-              {t('web.changes.back')}
-            </button>
+            <IconButton aria-label={t('web.changes.wrap')} aria-pressed={wrap} onClick={() => setWrap((v) => !v)} className={cn('rounded-lg', wrap && 'bg-surface-raised text-text')} data-testid="diff-wrap">
+              <WrapText className="size-5" aria-hidden />
+            </IconButton>
           }
         />
         <Body className="px-3 py-3">
-          {open.oldPath && <p className="mb-2 truncate font-mono text-2xs text-subtle">{t('localReview.renamedFrom', { path: open.oldPath })}</p>}
-          <DiffView key={fileKey(open)} sessionId={sessionId} scope={scope} file={open} />
+          {open.oldPath && <p className="mb-2 truncate font-mono text-xs text-subtle">{t('localReview.renamedFrom', { path: open.oldPath })}</p>}
+          <DiffView key={fileKey(open)} sessionId={sessionId} scope={scope} file={open} wrap={wrap} />
         </Body>
       </Screen>
     )
@@ -176,23 +189,23 @@ export function ChangesScreen({ sessionId }: { sessionId: string }) {
         subtitle={title}
         back={{ screen: 'session', id: sessionId }}
         right={
-          <button type="button" aria-label={t('web.changes.refresh')} disabled={!online} onClick={() => { setGeneration((n) => n + 1); review.reload() }} className="flex size-10 items-center justify-center rounded-lg text-muted active:bg-surface-hover disabled:opacity-50">
-            <RefreshCw className="size-4.5" aria-hidden />
-          </button>
+          <IconButton aria-label={t('web.changes.refresh')} disabled={!online} onClick={() => { setGeneration((n) => n + 1); review.reload() }}>
+            <RefreshCw className="size-5" aria-hidden />
+          </IconButton>
         }
       />
       <Body className="px-4 py-3">
         <div className="flex flex-col gap-3">
           {review.state && <ReviewCard sessionId={sessionId} state={review.state} onDone={review.reload} />}
-          <div role="group" aria-label={t('localReview.scope')} className="grid grid-cols-2 gap-1 rounded-xl border border-border p-1 text-xs">
+          <div role="group" aria-label={t('localReview.scope')} className="grid grid-cols-2 gap-1 rounded-xl border border-border p-1 text-sm">
             {(['branch', 'uncommitted'] as const).map((s) => (
-              <button key={s} type="button" aria-pressed={scope === s} onClick={() => setScope(s)} className={cn('h-9 rounded-lg', scope === s ? 'bg-surface-raised font-semibold text-text' : 'text-muted')}>
+              <button key={s} type="button" aria-pressed={scope === s} onClick={() => setScope(s)} className={cn('min-h-11 rounded-lg px-2 py-1', scope === s ? 'bg-surface-raised font-semibold text-text' : 'text-muted')}>
                 {t(`localReview.scope.${s}`)}
               </button>
             ))}
           </div>
           {list.state === 'loading' && (
-            <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted">
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted">
               <Spinner className="size-4" />
               {t('web.changes.loading')}
             </div>
@@ -205,7 +218,7 @@ export function ChangesScreen({ sessionId }: { sessionId: string }) {
           {list.state === 'ready' && (
             <>
               {list.repos.map((r) => (
-                <div key={r.key} className="text-2xs text-subtle">
+                <div key={r.key} className="text-xs text-subtle">
                   <span className="font-semibold text-muted">{r.name}</span>
                   {r.branch ? ` · ${r.branch}` : ` · ${t('localReview.detached')}`}
                   {r.base ? ` · ${t('web.changes.against', { base: r.base })}` : ''} · {tn('web.changes.files', r.files)}
@@ -213,7 +226,10 @@ export function ChangesScreen({ sessionId }: { sessionId: string }) {
                 </div>
               ))}
               {list.total === 0 ? (
-                <p className="py-6 text-center text-sm text-muted">{scope === 'uncommitted' ? t('localReview.noChangesUncommitted') : t('localReview.noChangesBranch')}</p>
+                <div className="py-6 text-center text-sm text-muted">
+                  <p>{scope === 'uncommitted' ? t('localReview.noChangesUncommitted') : t('localReview.noChangesBranch')}</p>
+                  <p className="mt-1 text-subtle">{t('web.changes.emptyHint')}</p>
+                </div>
               ) : (
                 <div>
                   {list.files.map((f) => (
@@ -222,7 +238,7 @@ export function ChangesScreen({ sessionId }: { sessionId: string }) {
                 </div>
               )}
               {list.cursor && (
-                <button type="button" onClick={() => void loadMore()} disabled={list.more || !online} className="mx-auto flex min-h-9 items-center gap-2 rounded-full border border-border px-3 text-xs text-muted disabled:opacity-60">
+                <button type="button" onClick={() => void loadMore()} disabled={list.more || !online} className={cn(ACTION_BUTTON, 'mx-auto rounded-full text-muted')}>
                   {list.more && <Spinner className="size-3.5" />}
                   {t('web.changes.loadMore')}
                 </button>

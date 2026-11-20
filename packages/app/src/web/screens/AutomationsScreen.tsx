@@ -7,7 +7,7 @@ import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { cn } from '../../renderer/lib/cn'
 import { relativeTime } from '../../renderer/lib/pullRequests'
 import { useNow } from '../../renderer/lib/usage'
-import { useClient, useClientStatus, useRemoteData } from '../app-context'
+import { goBack, useClient, useClientStatus, useRemoteData } from '../app-context'
 import { loadAutomations } from '../automations'
 import { Body, Empty, Header, Screen } from '../ui'
 
@@ -17,7 +17,7 @@ const HEALTH_TONE: Record<string, string> = {
   waiting: 'bg-info-soft text-info',
   paused: 'bg-warning-soft text-warning',
   failing: 'bg-danger-soft text-danger',
-  running: 'bg-accent/15 text-accent'
+  running: 'bg-accent-soft text-accent'
 }
 
 const ACTION = 'flex min-h-11 items-center gap-1.5 rounded-full border border-border px-4 text-sm font-medium active:bg-surface-hover disabled:opacity-60'
@@ -44,9 +44,9 @@ function AutomationRow({ automation: a, online, now, onDone }: { automation: Rem
     <li className="px-4 py-3" data-testid="automation-row">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-md font-medium">{a.name}</div>
+          <div className="text-md font-medium [overflow-wrap:anywhere]">{a.name}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
-            <span className={cn('rounded-full px-2 py-px text-2xs font-semibold', HEALTH_TONE[a.health] ?? HEALTH_TONE['off'])}>{t(`automations.health.${a.health}` as 'automations.health.idle')}</span>
+            <span className={cn('rounded-full px-2 py-px text-xs font-semibold', HEALTH_TONE[a.health] ?? HEALTH_TONE['off'])}>{t(`automations.health.${a.health}` as 'automations.health.idle')}</span>
             {a.lastRun ? (
               <span>
                 {t('web.automations.lastRun', { time: relativeTime(a.lastRun.at, now, locale) })} · {t(`automations.outcome.${a.lastRun.outcome}` as 'automations.outcome.ok')}
@@ -59,8 +59,10 @@ function AutomationRow({ automation: a, online, now, onDone }: { automation: Rem
         </div>
         {/* Only off: an automation an agent added or edited is turned on at the desktop, never from here. */}
         {a.enabled && (
-          <button type="button" role="switch" aria-checked="true" aria-label={t('web.automations.turnOff', { name: a.name })} disabled={pending || !online} onClick={() => void act(() => window.hub.automations.setEnabled(a.id, false))} className="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border border-accent bg-accent disabled:opacity-60">
-            <span className="ml-auto mr-0.5 size-5 rounded-full bg-accent-fg" />
+          <button type="button" role="switch" aria-checked="true" aria-label={t('web.automations.turnOff', { name: a.name })} disabled={pending || !online} onClick={() => void act(() => window.hub.automations.setEnabled(a.id, false))} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center disabled:opacity-60">
+            <span className="relative inline-flex h-7 w-12 items-center rounded-full border border-accent bg-accent">
+              <span className="ml-auto mr-0.5 size-5 rounded-full bg-accent-fg" />
+            </span>
           </button>
         )}
       </div>
@@ -99,12 +101,12 @@ export function AutomationsScreen() {
   const rows = list.data ?? []
   return (
     <Screen>
-      <Header title={t('web.automations.title')} />
+      <Header title={t('web.automations.title')} back={() => goBack({ screen: 'settings' })} />
       <Body>
         {!list.data && list.loading && <Spinner className="mx-auto mt-16 size-6" />}
         {list.error && <p className="px-4 pt-4 text-sm text-danger">{list.error}</p>}
         {!supported && <Empty title={t('web.automations.updateDesktop')} />}
-        {supported && list.data && rows.length === 0 && <Empty title={t('web.automations.empty')} />}
+        {supported && list.data && rows.length === 0 && <Empty title={t('web.automations.empty')} hint={t('web.automations.emptyHint')} />}
         {rows.length > 0 && (
           <ul className="divide-y divide-border">
             {rows.map((a) => (

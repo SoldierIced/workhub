@@ -1,25 +1,41 @@
 import { ExternalLink } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { PullRequestItem } from '@workhub/core'
+import type { PullRequestItem, PullRequestStatus } from '@workhub/core'
 import type { CodeHostLists } from '../../shared/codehost-api'
 import { REMOTE_FEATURES, type RemotePullRequestList, type RemotePullRequestsPage } from '../../shared/remote-api'
-import { cachedPullRequests, PR_LISTS, prFailed, prLoaded, prLoading, prStateFrom, type PrListState, type PrPagesState } from '../pr-pages'
+import { cachedPullRequests, PR_LISTS, prFailed, prLoaded, prLoading, prStateFrom, prTitleParts, type PrListState, type PrPagesState } from '../pr-pages'
 import { Spinner } from '../../renderer/components/atoms'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
+import type { MessageKey } from '../../renderer/i18n/translate'
 import { safeHref } from '../../renderer/components/molecules/Markdown'
 import { cn } from '../../renderer/lib/cn'
 import { useClient, useClientStatus, useConfig, useProfileId, useRemoteData } from '../app-context'
 import { Body, Empty, Header, Screen, SectionTitle } from '../ui'
 import { ProfilePicker } from './ProfilePicker'
 
-const STATUS_TONE: Record<string, string> = {
+const STATUS_TONE: Record<PullRequestStatus, string> = {
   merged: 'bg-accent-2/15 text-accent-2',
   closed: 'bg-surface-hover text-muted',
   conflicts: 'bg-danger-soft text-danger',
   ciFailed: 'bg-danger-soft text-danger',
   changesRequested: 'bg-warning-soft text-warning',
   approved: 'bg-success-soft text-success',
-  draft: 'bg-surface-hover text-muted'
+  draft: 'bg-surface-hover text-muted',
+  ciRunning: 'bg-info-soft text-info',
+  waitingReview: 'bg-surface-hover text-muted'
+}
+
+/** The words of each state, the same ones the desktop uses. */
+const STATUS_LABEL: Record<PullRequestStatus, MessageKey> = {
+  merged: 'pr.status.merged',
+  closed: 'pr.status.closed',
+  conflicts: 'pr.status.conflicts',
+  ciFailed: 'pr.status.ciFailed',
+  changesRequested: 'pr.status.changesRequested',
+  draft: 'pr.status.draft',
+  approved: 'pr.status.approved',
+  ciRunning: 'pr.status.ciRunning',
+  waitingReview: 'pr.status.waitingReview'
 }
 
 const ROW = 'flex items-start gap-3 px-4 py-3 active:bg-surface-hover'
@@ -28,16 +44,21 @@ function PrRow({ item }: { item: PullRequestItem }) {
   const { t } = useI18n()
   const { pr, status } = item
   const href = safeHref(pr.url)
+  const { key, title } = prTitleParts(pr.title, pr.isDraft)
+  const state = pr.isDraft ? 'draft' : status
   const content = (
     <div className="min-w-0 flex-1">
-      <div className="truncate text-md font-medium">{pr.title}</div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
+      <div className="line-clamp-2 text-md font-medium break-words">{title}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+        <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_TONE[state] ?? 'bg-surface-hover text-muted')}>{t(STATUS_LABEL[state] ?? 'pr.status.waitingReview')}</span>
         <span className="font-mono">
           {pr.repo}#{pr.number}
         </span>
+        {key && (
+          <span className="rounded border border-border px-1.5 font-mono">{key}</span>
+        )}
         <span>{pr.author}</span>
-        <span className={cn('rounded-full px-2 py-px text-2xs font-semibold', STATUS_TONE[status] ?? 'bg-surface-hover text-muted')}>{pr.isDraft ? t('web.prs.draft') : status}</span>
-        <span className="font-mono text-2xs">
+        <span className="font-mono">
           <span className="text-success">+{pr.additions}</span> <span className="text-danger">−{pr.deletions}</span>
         </span>
       </div>
@@ -66,7 +87,10 @@ function PrSection({ list, state, count, online, onLoadMore }: { list: RemotePul
   return (
     <section data-testid={`prs-${list}`}>
       <SectionTitle right={String(count)}>{t(list === 'mine' ? 'web.prs.mine' : 'web.prs.toReview')}</SectionTitle>
-      {state.items.length === 0 && !state.cursor ? <p className="px-4 pb-2 text-sm text-muted">{t('web.prs.empty')}</p> : <ul className="divide-y divide-border">{state.items.map((i) => <PrRow key={i.pr.url} item={i} />)}</ul>}
+      {state.items.length === 0 && !state.cursor ? <div className="px-4 pb-3 text-sm text-muted">
+          <p>{t('web.prs.empty')}</p>
+          <p className="mt-0.5 text-xs">{t('web.prs.emptyHint')}</p>
+        </div> : <ul className="divide-y divide-border">{state.items.map((i) => <PrRow key={i.pr.url} item={i} />)}</ul>}
       {state.cursor && (
         <div className="flex flex-col items-center gap-1 px-4 py-3">
           <button
@@ -74,12 +98,12 @@ function PrSection({ list, state, count, online, onLoadMore }: { list: RemotePul
             data-testid="load-more"
             onClick={() => onLoadMore(list)}
             disabled={state.loading || !online}
-            className="flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-xs text-muted disabled:opacity-60"
+            className="flex min-h-11 items-center gap-2 rounded-full border border-border px-4 text-sm text-muted disabled:opacity-60"
           >
             {state.loading && <Spinner className="size-3.5" />}
             {state.loading ? t('web.prs.loadingMore') : t('web.prs.loadMore')}
           </button>
-          <span className="text-2xs text-subtle">{t('web.prs.shown', { shown: String(state.items.length), total: String(count) })}</span>
+          <span className="text-xs text-muted">{t('web.prs.shown', { shown: String(state.items.length), total: String(count) })}</span>
         </div>
       )}
     </section>
@@ -141,7 +165,7 @@ export function PullRequestsScreen() {
       <Body>
         {!state && lists.loading && <Spinner className="mx-auto mt-16 size-6" />}
         {lists.error && <p className="px-4 pt-4 text-sm text-danger">{t('web.prs.error', { message: lists.error })}</p>}
-        {data?.state === 'notConnected' && <Empty title={t('web.prs.notConnected')} />}
+        {data?.state === 'notConnected' && <Empty title={t('web.prs.notConnected')} hint={t('web.prs.notConnectedHint')} />}
         {state && data && data.state !== 'notConnected' && (
           <>
             {data.message && data.state === 'error' && <p className="px-4 pt-4 text-sm text-danger">{t('web.prs.error', { message: data.message })}</p>}

@@ -1,7 +1,7 @@
 // The pull requests screen's state: both lists, each paged on its own, and the answers of "Load
 // more" that still belong to what is on screen (a profile switch or a refresh starts a new
 // generation, and an answer of an older one is dropped).
-import type { PullRequestItem } from '@workhub/core'
+import { isTicketKey, type PullRequestItem } from '@workhub/core'
 import type { CodeHostLists } from '../shared/codehost-api'
 import type { RemotePage, RemotePullRequestList, RemotePullRequestsPage } from '../shared/remote-api'
 
@@ -75,4 +75,25 @@ export function prFailed(state: PrPagesState, list: RemotePullRequestList, gener
  */
 export function cachedPullRequests(cached: <T>(channel: string, args: unknown[]) => T | null, profileId: string | null, firstArgs: unknown[]): RemotePullRequestsPage | CodeHostLists | null {
   return cached<RemotePullRequestsPage>('remote:pullRequests', firstArgs) ?? cached<CodeHostLists>('codeHost:lists', [profileId])
+}
+
+/**
+ * The ticket key a title starts with ("ABC-123 Fix the cart", "[ABC-123] Fix", "ABC-123: Fix"); core
+ * then decides whether it is a key (not "UTF-8", "HTTP-2"...). The phone is not told the profile's
+ * project keys (the config it receives has no connections), so core's exclusions are what it has.
+ */
+const TICKET_PREFIX = /^\s*\[?([A-Z][A-Z0-9]{1,9}-\d+)\]?\s*[:\-–]?\s+(?=\S)/
+/** A draft marker a title carries ("Draft: ...", "[Draft] ...", "WIP: ..."); the row's chip says it already. */
+const DRAFT_PREFIX = /^\s*(?:\[(?:draft|wip)\]|(?:draft|wip)\s*:)\s*/i
+
+/**
+ * What a row shows of a title: the ticket key apart (it goes in the meta line) and the rest, so the
+ * line the title owns starts with what tells two pull requests apart. A draft's own marker is dropped.
+ */
+export function prTitleParts(title: string, isDraft: boolean): { key: string | null; title: string } {
+  let rest = title
+  if (isDraft) rest = rest.replace(DRAFT_PREFIX, '')
+  const m = TICKET_PREFIX.exec(rest)
+  if (!m || !isTicketKey(m[1]!, { provider: 'jira' })) return { key: null, title: rest.trim() || title }
+  return { key: m[1]!, title: rest.slice(m[0].length).trim() }
 }

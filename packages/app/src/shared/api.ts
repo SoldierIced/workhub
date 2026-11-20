@@ -131,6 +131,8 @@ export interface SessionView extends Session {
   name?: string
   /** The title the agent gave the conversation (Claude's, an ACP agent's `session_info_update`); a name the user gave wins. */
   agentTitle?: string
+  /** What the user first asked, cut to a row's length: only set on what a paired device receives, which has not loaded the chat to name the session by it. */
+  firstPrompt?: string
   /** The slash commands the agent reported (built-ins, skills, custom commands); absent until it reports them. */
   commands?: SlashCommandInfo[]
   agentName: string

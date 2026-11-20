@@ -391,10 +391,17 @@ describe('what a device gets of sessions', () => {
     expect(slim).toMatchObject({ id: 's1', cwd: '/work/acme-api', state: 'ready' })
   })
 
+  it('adds what the user first asked, cut like the sidebar names a session, from the desktop', () => {
+    const asked = (id: string) => (id === 's1' ? 'Refactor the billing module' : undefined)
+    expect(remoteSessionView(view('s1'), asked).firstPrompt).toBe('Refactor the billing module')
+    expect(remoteSessionView(view('s2'), asked).firstPrompt).toBeUndefined()
+    expect(remoteSessionView(view('s1')).firstPrompt).toBeUndefined()
+  })
+
   it('fits a dozen sessions with many skills in one relay frame', () => {
     const full = Array.from({ length: 14 }, (_, i) => view(`s${i}`))
     expect(fitsFrame({ t: 'result', id: 1, ok: true, value: full })).toBe(false)
-    expect(fitsFrame({ t: 'result', id: 1, ok: true, value: full.map(remoteSessionView) })).toBe(true)
+    expect(fitsFrame({ t: 'result', id: 1, ok: true, value: full.map((v) => remoteSessionView(v)) })).toBe(true)
   })
 
   it('trims sessions:list answers and session:changed events', async () => {

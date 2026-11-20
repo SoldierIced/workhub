@@ -53,7 +53,7 @@ export function NotifyScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <Screen>
-      <div className="safe-top flex flex-1 flex-col gap-5 px-6 pt-6">
+      <div className="safe-top scroll-y flex min-h-0 flex-1 flex-col gap-5 px-6 pt-6">
         {status.desktop && (
           <div className="flex items-center gap-2 self-center rounded-full bg-success-soft px-3 py-1.5 text-sm font-medium text-success">
             <Check className="size-4" aria-hidden />

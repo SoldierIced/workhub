@@ -1,4 +1,4 @@
-import { mergeMonitor, type AgentEvent, type HistoryMessage, type SessionMonitorSnapshot } from '@workhub/core'
+import { mergeMonitor, promptTitle, type AgentEvent, type HistoryMessage, type SessionMonitorSnapshot } from '@workhub/core'
 import type { ChatEntry, ChatJournal, JournalEntry } from '../shared/chat-journal'
 
 /** Most entries kept per session (a streamed reply is one entry: its deltas are merged). */
@@ -19,6 +19,9 @@ interface Journal {
   monitor: SessionMonitorSnapshot
 }
 
+/** A bare slash command (`/clear`, `/compact`) says nothing about what the session is for (as the sidebar's naming sees it). */
+const askedText = (text: string): boolean => !!text.trim() && !/^\/\S+$/.test(text.trim())
+
 const sizeOf = (value: unknown): number => JSON.stringify(value)?.length ?? 0
 
 /**
@@ -32,6 +35,8 @@ const sizeOf = (value: unknown): number => JSON.stringify(value)?.length ?? 0
  */
 export class ChatJournals {
   private readonly journals = new Map<string, Journal>()
+  /** Each session's shortened first prompt, kept apart from the entries so trimming them cannot rename the session. */
+  private readonly firstPrompts = new Map<string, string>()
 
   constructor(
     private readonly limits: { entries: number; bytes: number } = { entries: JOURNAL_MAX_ENTRIES, bytes: JOURNAL_MAX_BYTES },
@@ -61,7 +66,10 @@ export class ChatJournals {
         if (typeof first !== 'string' || typeof second !== 'string') return args
         return [first, second, this.append(first, { kind: 'turnEnd', stopReason: second })]
       case 'session:removed':
-        if (typeof first === 'string') this.journals.delete(first)
+        if (typeof first === 'string') {
+          this.journals.delete(first)
+          this.firstPrompts.delete(first)
+        }
         return args
       default:
         return args
@@ -78,6 +86,27 @@ export class ChatJournals {
     const j = this.journals.get(sessionId)
     if (!j) return { seq: 0, truncated: false, entries: [], monitor: {} }
     return { seq: j.seq, truncated: j.truncated, entries: [...j.entries], monitor: j.monitor }
+  }
+
+  /**
+   * What the user first asked in a session (a bare slash command says nothing, so it is passed
+   * over), already cut to a row's length; undefined when nothing was asked yet. Remembered the
+   * first time it is seen, so it does not change when the oldest entries are trimmed.
+   */
+  firstPrompt(sessionId: string): string | undefined {
+    return this.firstPrompts.get(sessionId)
+  }
+
+  /** Gives a session back the first prompt it had before the app restarted (already shortened); it wins over what a replay says. */
+  restoreFirstPrompt(sessionId: string, text: string): void {
+    if (text) this.firstPrompts.set(sessionId, text)
+  }
+
+  /** Remembers the first meaningful prompt of a session, once. */
+  private noteAsked(sessionId: string, text: string): void {
+    if (this.firstPrompts.has(sessionId) || !askedText(text)) return
+    const title = promptTitle(text)
+    if (title) this.firstPrompts.set(sessionId, title)
   }
 
   private journal(sessionId: string): Journal {
@@ -114,6 +143,7 @@ export class ChatJournals {
    */
   private replay(sessionId: string, messages: HistoryMessage[]): number {
     const j = this.journal(sessionId)
+    for (const m of messages) if (m.kind === 'user') this.noteAsked(sessionId, m.text)
     const sizes = messages.map(sizeOf)
     let start = 0
     let bytes = sizes.reduce((a, b) => a + b, 0)
@@ -127,6 +157,7 @@ export class ChatJournals {
   }
 
   private append(sessionId: string, entry: ChatEntry): number {
+    if (entry.kind === 'prompt') this.noteAsked(sessionId, entry.text)
     const j = this.journal(sessionId)
     const seq = ++j.seq
     const full = { ...entry, seq, at: this.now() } as JournalEntry

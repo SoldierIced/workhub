@@ -60,7 +60,7 @@ function useDecide(sessionId: string, onDone: () => void) {
   return { decide, pending, error }
 }
 
-const button = 'h-10 rounded-xl px-3 text-sm font-medium disabled:opacity-50'
+const button = 'min-h-11 rounded-xl px-3 py-1 text-sm font-medium disabled:opacity-50'
 
 function BranchReviewCard({ sessionId, review, onDone }: { sessionId: string; review: RemoteBranchReview; onDone: () => void }) {
   const { t, tn } = useI18n()
@@ -74,8 +74,8 @@ function BranchReviewCard({ sessionId, review, onDone }: { sessionId: string; re
         <span className="min-w-0 flex-1 truncate">{t('aiReview.panel')}</span>
         <span className={cn('text-xs', review.status === 'paused' ? 'text-danger' : 'text-muted')}>{t(`aiReview.status.${review.status}`)}</span>
       </div>
-      <div className="truncate font-mono text-2xs text-subtle">{t('aiReview.branch', { branch: review.branch, base: review.baseRef })}</div>
-      {review.round > 0 && <div className="text-2xs text-subtle">{t('web.review.round', { n: review.round })}</div>}
+      <div className="truncate font-mono text-xs text-subtle">{t('aiReview.branch', { branch: review.branch, base: review.baseRef })}</div>
+      {review.round > 0 && <div className="text-xs text-subtle">{t('web.review.round', { n: review.round })}</div>}
       {review.escalation && (
         <div role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger">
           {t(`aiReview.reason.${review.escalation.reason}` as MessageKey)}
@@ -91,7 +91,7 @@ function BranchReviewCard({ sessionId, review, onDone }: { sessionId: string; re
           ))}
         </ul>
       )}
-      {review.omittedFindings ? <p className="text-2xs text-subtle">{tn('web.review.omitted', review.omittedFindings)}</p> : null}
+      {review.omittedFindings ? <p className="text-xs text-subtle">{tn('web.review.omitted', review.omittedFindings)}</p> : null}
       {review.decisions.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {can('continue') && (
@@ -107,7 +107,7 @@ function BranchReviewCard({ sessionId, review, onDone }: { sessionId: string; re
           {pending && <Spinner className="size-4 self-center" />}
         </div>
       )}
-      {error && <p className="text-2xs text-danger">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   )
 }
@@ -135,23 +135,27 @@ function LoopCard({ sessionId, loop, onDone }: { sessionId: string; loop: Remote
         <span className="min-w-0 flex-1 truncate">{t('agentReview.loop.title', { reviewer: loop.reviewerLabel })}</span>
         <span className={cn('text-xs', loop.phase === 'awaitingApproval' ? 'text-warning' : 'text-muted')}>{t(`agentReview.phase.${loop.phase}`)}</span>
       </div>
-      {loop.round > 0 && <div className="text-2xs text-subtle">{t('aiReview.round', { n: loop.round, max: loop.maxRounds })}</div>}
+      {loop.round > 0 && <div className="text-xs text-subtle">{t('aiReview.round', { n: loop.round, max: loop.maxRounds })}</div>}
       {can('approve') && (
         <>
           <div className="text-xs font-medium">{t('agentReview.pick.title')}</div>
-          <p className="text-2xs text-subtle">{t('agentReview.pick.hint')}</p>
+          <p className="text-xs text-subtle">{t('agentReview.pick.hint')}</p>
           <ul className="flex flex-col gap-1.5">
             {findings.length === 0 ? (
-              <li className="flex items-start gap-2 text-xs">
-                <input type="checkbox" className="mt-0.5 size-4" checked={keep.has('all')} onChange={(e) => toggle('all', e.target.checked)} aria-label={t('agentReview.pick.whole')} />
-                <span>{t('agentReview.pick.whole')}</span>
+              <li className="flex items-center gap-2 text-xs">
+                <label className="flex min-h-11 flex-1 items-center gap-3 text-sm">
+                  <input type="checkbox" className="size-5 shrink-0" checked={keep.has('all')} onChange={(e) => toggle('all', e.target.checked)} />
+                  <span>{t('agentReview.pick.whole')}</span>
+                </label>
               </li>
             ) : (
               findings.map((f) => (
-                <li key={f.id} className="flex items-start gap-2 rounded-lg border border-border px-2 py-1.5 text-xs">
-                  <input type="checkbox" className="mt-0.5 size-4 shrink-0" checked={keep.has(f.id)} onChange={(e) => toggle(f.id, e.target.checked)} aria-label={t('aiReview.select', { id: f.id })} />
+                <li key={f.id} className="flex items-start gap-1 rounded-lg border border-border pr-2 text-xs">
+                  <label className="flex min-h-11 min-w-11 shrink-0 items-center justify-center">
+                    <input type="checkbox" className="size-5" checked={keep.has(f.id)} onChange={(e) => toggle(f.id, e.target.checked)} aria-label={t('aiReview.select', { id: f.id })} />
+                  </label>
                   <details className="min-w-0 flex-1">
-                    <summary className="[overflow-wrap:anywhere]">
+                    <summary className="min-h-11 py-3 [overflow-wrap:anywhere]">
                       <span className="font-mono text-subtle">{f.id}</span> {f.title}
                     </summary>
                     <pre className="mt-1 font-sans whitespace-pre-wrap [overflow-wrap:anywhere] text-muted">{f.text}</pre>
@@ -160,10 +164,10 @@ function LoopCard({ sessionId, loop, onDone }: { sessionId: string; loop: Remote
               ))
             )}
           </ul>
-          {loop.omittedFindings ? <p className="text-2xs text-subtle">{tn('web.review.omitted', loop.omittedFindings)}</p> : null}
+          {loop.omittedFindings ? <p className="text-xs text-subtle">{tn('web.review.omitted', loop.omittedFindings)}</p> : null}
           {loop.review && (
             <details className="text-xs">
-              <summary className="text-muted">{t('agentReview.pick.showReview')}</summary>
+              <summary className="min-h-11 py-3 text-muted">{t('agentReview.pick.showReview')}</summary>
               <pre className="mt-1 max-h-64 overflow-y-auto font-sans whitespace-pre-wrap [overflow-wrap:anywhere] text-muted">{loop.review}</pre>
             </details>
           )}
@@ -197,7 +201,7 @@ function LoopCard({ sessionId, loop, onDone }: { sessionId: string; loop: Remote
           {pending && <Spinner className="size-4 self-center" />}
         </div>
       )}
-      {error && <p className="text-2xs text-danger">{error}</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   )
 }

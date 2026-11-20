@@ -107,9 +107,12 @@ The phone opens the relay's address in its browser: the relay serves the phone a
 3. **Sessions.** The sessions as the desktop's sidebar lists them: the same order, groups and
    sub-groups (a group collapsed on the desktop starts collapsed; a tap opens or closes it on the
    phone only), and the same rows: the agent's icon with its state dot, the profile's colour bar,
-   the account, folder and state, and a glyph for what it is up to (a spinner while it works, a
+   the name the sidebar gives the session (what you first asked it; the computer sends it, so a
+   session whose chat the phone has not opened is named too), then the account, folder and
+   state, and a glyph for what it is up to (a spinner while it works, a
    question mark while it waits for you). A group's header shows the most urgent state inside it.
-   Closed members of a group are listed dimmed; a tap reopens them. A session's sub-agents (those
+   Stopped sessions and closed members of a group are listed with a quieter title (never dimmed
+   to the point of being hard to read); a tap reopens a closed member. A session's sub-agents (those
    at work, and those that ended in the last few minutes) are listed under its row, open while one
    runs; a tap opens the sub-agent's conversation: what it was asked, its steps and its answer (its
    oldest steps and tool output stay on the desktop when it is long). A Task call in the chat opens
@@ -123,7 +126,8 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    archive), only downloads; files above about 290 KB (what fits one relay frame once encoded) stay on the computer and show "too large to open on the phone". An image outside the folder opens too when
    the session's agent read or wrote it, such as a screenshot you gave it; other files outside do not. Opening a session loads its latest messages;
    scrolling up loads earlier ones a page at a time (very long tool output and pasted images stay
-   on the desktop). Under the chat, in this order: a row that says how many of the session's
+   on the desktop); the *Earlier messages* divider only shows when there are earlier messages, and
+   a session with nothing said yet tells you to type the first message. Under the chat, in this order: a row that says how many of the session's
    sub-agents are at work and names them (a tap on a name opens that sub-agent; it goes away when
    none runs or the session stopped); a line counting the tasks the agent left running in the
    background (a command, a watcher), which a tap opens into the desktop's notice with what each
@@ -133,12 +137,16 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    finished ones stop showing as running) even when they changed while it was away. The prompt
    box sends a message or stops the
    turn; what you send shows in the desktop's chat as your message too. *New* opens a session in one of the profile's folders, with the agent and an optional
-   first message; the session appears on the desktop too.
+   first message; the session appears on the desktop too. Each folder shows its path with the
+   middle cut when it does not fit, so the last folders, which tell two repositories apart, stay.
    The **Changes** icon at the top of a session shows what it changed: the same changes as the
    desktop's [review before a pull request](review-before-pr.md), read only. Pick *Branch vs base* or
    *Uncommitted only*; each repository the session touched lists its branch, and each changed file
-   its status and the lines added and removed, a page at a time (*Load more*). A tap on a file shows
-   its diff, again a page at a time; very long lines are cut (the computer shows them whole). A
+   its status and the lines added and removed, a page at a time (*Load more*). A row shows the
+   file's name on the first line, always whole, and its folder under it, cut in the middle when it
+   does not fit. A tap on a file shows its diff, again a page at a time; lines wrap by default and
+   the button at the top right switches wrapping off to scroll sideways, and the back button at the
+   top left returns to the list; extremely long lines are cut (the computer shows them whole). A
    binary or too-large file, and hidden files or key-like names (`.env`, `id_rsa`), show a notice
    instead of their content. The phone can only open files from that list. When the session has a
    review loop, its state shows at the top of Changes; while it waits for you, the chat shows it
@@ -149,34 +157,48 @@ The phone opens the relay's address in its browser: the relay serves the phone a
    The search icon at the top of Sessions (a *Search sessions* box) searches the computer's History (see
    [History](history.md#find-and-filter)), limited to sessions run in the folders of the profile
    the phone has picked, the same folders it may open a session in. Results come best match first
-   with the text around each match, a page at a time (*Show more*); they open on the computer, not
+   with the text around each match, a page at a time (*Show more*); an empty result says which
+   profile's folders were searched; they open on the computer, not
    on the phone. The search runs again when the computer comes back online.
 4. **Pull requests and alerts.** The same lists the desktop shows for the profile you pick; a tap
    opens the pull request or the alert's link in the phone's browser. Both lists of pull requests
    show at once with how many each holds; a long one comes a page at a time, with *Show more*
-   under it (it waits while the desktop is unreachable).
-5. **Plan.** With the *Plan* capability: today's and tomorrow's meetings (join the call, prepare or
-   open the brief), the inbox waiting for a decision (approve, keep or discard; agents' milestone
+   under it (it waits while the desktop is unreachable). A row gives the title on up to two lines,
+   then its state in words (*CI failing*, *Changes requested*, *Awaiting review*, *Approved*...)
+   in the phone's language, the repository and number, the ticket key and the author. An alert's
+   severity (*High*, *Medium*, *Low*) is in the phone's language too. An empty list says where its
+   content comes from.
+5. **Plan.** With the *Plan* capability, it always opens on *Today*, as the desktop does: today's
+   and tomorrow's meetings (join the call, prepare or open the brief; a meeting that is over says
+   *Ended*), the inbox waiting for a decision (approve, keep or discard; agents' milestone
    proposals too), the tasks you took on (done with a tap, or open one to edit it or add a note),
-   and the milestones with their progress against time, pieces and notes. *+* adds a pending item.
+   and the milestones with their progress against time, pieces and notes (their dates read
+   "Aug 26 – Nov 15", with the year only when it is not this one). *+* adds a pending item, from
+   *Today*, *Inbox* and *Tasks*. An item's text keeps its lines.
    The calendars' addresses and the Plan settings stay on the desktop.
-6. **Automations.** With the *Automations* capability, a tab lists the computer's automations: name,
+6. **Automations.** With the *Automations* capability, an *Automations* entry in Settings opens the list of the computer's automations (it has no tab of its own): name,
    state (off, idle, waiting, paused, failing, running), the last run with how it ended, and when it
    runs next. *Run now* starts one that is on (it counts against the same budget of new agent runs per
    minute as starting a session from the phone), *Stop* ends a run in progress, and the switch turns an automation off.
    The phone never turns one on, and never runs one that is off: an agent can add or edit
    automations (they are always saved off), so you review and turn them on at the computer, in
    Automations. Prompts, folders and agents stay on the computer. The computer must be on a version
-   with this screen; an older one says so.
+   with this screen; an older one says so. With none yet, the screen says where they are created.
    A session's chat also shows its permission mode (read-only) under the header: the mode the
    session really runs in, tinted while tools run without asking.
 7. **Several computers.** One phone can pair with more than one desktop (home and work, say):
    Settings → *Pair another computer*. The phone talks to one at a time; a selector at the top of
-   Sessions and the list in Settings switch between them, and a notification from another
+   Sessions and the *Computers* section in Settings switch between them (each computer's fingerprint is
+   behind its *Details* control), and a notification from another
    computer switches to it when tapped. Each desktop keeps its own cached state and its own
    capabilities. Revoking the phone on one desktop leaves the others paired.
-8. **Phone settings.** Language, theme and text size are the phone's own; the profile the lists
-   open with is remembered per phone.
+8. **Phone settings.** Settings opens with Notifications and Appearance. Language, theme and text size
+   are the phone's own (the bottom bar and the screens hold at the largest text size and in Spanish);
+   the profile the lists open with is remembered per phone. On the lists that depend on a profile, a
+   chip with the profile's colour and name opens a sheet to pick another. The bottom bar has five
+   tabs: Sessions, PRs, Plan, Alerts and Settings. A notification that arrives while the app is open
+   shows briefly under the header (swipe it away, or tap to open it), and does not show for the
+   session you already have open.
 9. **Without network.** The phone keeps the last answer to each list and the latest messages of
    each open session, encrypted with its own key, and shows them with a banner under the header
    while the desktop is unreachable (after a second and a half, so a quick reconnect does not

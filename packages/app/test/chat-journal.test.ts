@@ -24,6 +24,41 @@ const ev = (sessionId: string, e: Record<string, unknown>) => ({ sessionId, ...e
 const shape = (items: readonly ChatItem[]) => items.map(({ id: _id, at: _at, ...rest }: ChatItem & { at?: number }) => rest)
 const lastSeq = (args: unknown[]) => args[args.length - 1] as number
 
+describe('what the user first asked', () => {
+  it('is the first prompt that says something, from a prompt or a resumed conversation', () => {
+    const j = new ChatJournals()
+    expect(j.firstPrompt('s')).toBeUndefined()
+    j.tap('automations:prompted', ['s', '/clear'])
+    expect(j.firstPrompt('s')).toBeUndefined()
+    j.tap('automations:prompted', ['s', 'Refactor the billing module'])
+    j.tap('automations:prompted', ['s', 'And then add tests'])
+    expect(j.firstPrompt('s')).toBe('Refactor the billing module')
+    j.tap('session:replay', ['r', [{ kind: 'agent', text: 'hi' }, { kind: 'user', text: 'Earlier ask' }] as HistoryMessage[]])
+    expect(j.firstPrompt('r')).toBe('Earlier ask')
+    j.tap('session:removed', ['s'])
+    expect(j.firstPrompt('s')).toBeUndefined()
+  })
+})
+
+describe('the first prompt of a long session', () => {
+  it('is shortened once and survives the trimming of the entries that held it', () => {
+    const j = new ChatJournals({ entries: 3, bytes: 1_000_000 })
+    j.tap('automations:prompted', ['s', '  Refactor the billing module\nand add tests '])
+    expect(j.firstPrompt('s')).toBe('Refactor the billing module')
+    for (let i = 0; i < 6; i++) j.tap('automations:prompted', ['s', `Later ask ${i}`])
+    expect(j.get('s').truncated).toBe(true)
+    expect(j.get('s').entries.some((e) => e.kind === 'prompt' && e.text.startsWith('  Refactor'))).toBe(false)
+    expect(j.firstPrompt('s')).toBe('Refactor the billing module')
+  })
+
+  it('can be handed back after a restart, and wins over a later replay', () => {
+    const j = new ChatJournals()
+    j.restoreFirstPrompt('s', 'Refactor the billing module')
+    j.tap('session:replay', ['s', [{ kind: 'user', text: 'Something later' }] as HistoryMessage[]])
+    expect(j.firstPrompt('s')).toBe('Refactor the billing module')
+  })
+})
+
 describe('chat journal bounds', () => {
   it('numbers chat messages, merges streamed deltas and leaves other messages alone', () => {
     const j = new ChatJournals(undefined, () => 7)

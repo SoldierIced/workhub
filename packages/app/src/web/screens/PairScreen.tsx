@@ -78,7 +78,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
   if (status.state === 'pairing') {
     return (
       <Screen>
-        <div className="safe-top flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
+        <div className="safe-top scroll-y flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
           <Spinner className="size-8" />
           <h1 className="text-xl font-semibold">{t('web.pair.waiting')}</h1>
           <p className="text-sm text-muted">{t('web.pair.waitingHint')}</p>
@@ -113,7 +113,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
     const host = relayHost(status.offer)
     return (
       <Screen>
-        <div className="safe-top flex flex-1 flex-col gap-5 px-6 pt-10">
+        <div className="safe-top scroll-y flex min-h-0 flex-1 flex-col gap-5 px-6 pt-10">
           <span className="flex size-16 items-center justify-center self-center rounded-2xl bg-accent-soft text-accent">
             <Smartphone className="size-8" aria-hidden />
           </span>
@@ -134,7 +134,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
           </div>
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="font-medium text-muted">{t('web.pair.deviceName')}</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className="h-12 rounded-xl border border-border-strong bg-surface px-4 text-md text-text" />
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className="min-h-12 rounded-xl border border-border-strong bg-surface px-4 text-md text-text" />
           </label>
           <div className="safe-bottom mt-auto flex flex-col gap-2 pb-4">
             <BigButton onClick={confirm}>
@@ -153,7 +153,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
   return (
     <Screen>
       {adding && <Header title={t('web.desktops.add')} back={{ screen: 'settings' }} />}
-      <div className={adding ? 'flex flex-1 flex-col gap-5 px-6 pt-6' : 'safe-top flex flex-1 flex-col gap-5 px-6 pt-12'}>
+      <div className={adding ? 'scroll-y flex min-h-0 flex-1 flex-col gap-5 px-6 pt-6' : 'safe-top scroll-y flex min-h-0 flex-1 flex-col gap-5 px-6 pt-12'}>
         {!adding && (
           <span className="flex size-16 items-center justify-center self-center rounded-2xl bg-accent-soft text-accent">
             <Smartphone className="size-8" aria-hidden />
@@ -179,7 +179,7 @@ export function PairScreen({ defaultName }: { defaultName: string }) {
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
-              className="h-12 rounded-xl border border-border-strong bg-surface px-4 text-md text-text"
+              className="min-h-12 rounded-xl border border-border-strong bg-surface px-4 text-md text-text"
             />
           </label>
           <BigButton type="submit" disabled={!pasted.trim()}>

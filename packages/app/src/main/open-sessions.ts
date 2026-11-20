@@ -25,6 +25,8 @@ export interface SavedOpenSession {
   model?: string
   /** The title its agent gave it, shown while the session waits stopped (its first prompt is not loaded yet). */
   title?: string
+  /** What the user first asked, already shortened: the phone names the session by it, and the chat that held it is gone after a restart. */
+  firstPrompt?: string
   /** The worktree Workhub created for the session (its `cwd` is inside it), so closing it later can still offer to remove it. */
   worktree?: SessionWorktree
 }
@@ -46,8 +48,10 @@ export interface OpenSessionsDeps {
   /** The engine a session runs (the shell shows over one of them). */
   engineOf(id: string): 'app' | 'console' | undefined
   /** Starts a stored session again (`SessionManager.start` with `restored`: it resumes only a conversation that still exists). */
-  start(input: StartSessionInput, extra: { worktree?: SessionWorktree; dormant?: boolean; title?: string }): Promise<SessionView>
+  start(input: StartSessionInput, extra: { worktree?: SessionWorktree; dormant?: boolean; title?: string; firstPrompt?: string }): Promise<SessionView>
   setMode(id: string, mode: SessionMode): Promise<void>
+  /** The shortened first prompt of an open session, when it has one. */
+  firstPrompt?(id: string): string | undefined
   /** Whether the session's folder is still there. */
   folderExists(path: string): Promise<boolean>
   /** Settings → General → "Reopen sessions on launch": the sessions come back to the sidebar, stopped. */
@@ -62,7 +66,7 @@ export interface OpenSessionsDeps {
 const MODES: readonly SessionMode[] = ['app', 'console', 'shell']
 
 /** What is stored for an open session; null for one that is not reopened (an AI reviewer). */
-export function savedSessionOf(view: SessionView, engine: 'app' | 'console' | undefined): SavedOpenSession | null {
+export function savedSessionOf(view: SessionView, engine: 'app' | 'console' | undefined, firstPrompt?: string): SavedOpenSession | null {
   if (view.readOnly || !view.agentId) return null
   const identity = view.agentSessionId ?? view.identity ?? view.id
   return {
@@ -75,6 +79,7 @@ export function savedSessionOf(view: SessionView, engine: 'app' | 'console' | un
     ...(view.agentSessionId ? { agentSessionId: view.agentSessionId } : {}),
     ...(view.currentModelId ? { model: view.currentModelId } : {}),
     ...(view.agentTitle ? { title: view.agentTitle } : {}),
+    ...(firstPrompt ? { firstPrompt } : {}),
     ...(view.worktree ? { worktree: view.worktree } : {})
   }
 }
@@ -97,6 +102,7 @@ export function readSavedSessions(raw: unknown): SavedOpenSession[] {
     const agentSessionId = str(r['agentSessionId'])
     const model = str(r['model'])
     const title = str(r['title'])
+    const firstPrompt = str(r['firstPrompt'])
     const w = r['worktree'] && typeof r['worktree'] === 'object' ? (r['worktree'] as Record<string, unknown>) : undefined
     const worktree = w && str(w['repoRoot']) && str(w['path']) && str(w['branch']) ? { repoRoot: str(w['repoRoot'])!, path: str(w['path'])!, branch: str(w['branch'])! } : undefined
     out.push({
@@ -109,6 +115,7 @@ export function readSavedSessions(raw: unknown): SavedOpenSession[] {
       ...(agentSessionId ? { agentSessionId } : {}),
       ...(model ? { model } : {}),
       ...(title ? { title } : {}),
+      ...(firstPrompt ? { firstPrompt } : {}),
       ...(worktree ? { worktree } : {})
     })
   }
@@ -179,7 +186,7 @@ export class OpenSessions {
     const out: SavedOpenSession[] = []
     const live: boolean[] = []
     for (const v of this.deps.list()) {
-      const s = savedSessionOf(v, this.deps.engineOf(v.id))
+      const s = savedSessionOf(v, this.deps.engineOf(v.id), this.deps.firstPrompt?.(v.id))
       if (!s) continue
       const running = v.state !== 'stopped' && v.state !== 'error'
       const at = out.findIndex((o) => o.identity === s.identity)
@@ -211,7 +218,7 @@ export class OpenSessions {
           mode: s.engine,
           ...(s.agentSessionId ? { resumeAgentSessionId: s.agentSessionId } : { identity: s.identity }),
           ...(s.model ? { model: s.model } : {})
-        }, { ...(s.worktree ? { worktree: s.worktree } : {}), ...(dormant ? { dormant: true, ...(s.title ? { title: s.title } : {}) } : {}) })
+        }, { ...(s.worktree ? { worktree: s.worktree } : {}), ...(s.firstPrompt ? { firstPrompt: s.firstPrompt } : {}), ...(dormant ? { dormant: true, ...(s.title ? { title: s.title } : {}) } : {}) })
         if (s.mode === 'shell' && !dormant) await this.deps.setMode(view.id, 'shell').catch((err: unknown) => this.deps.log?.('could not reopen the shell of a restored session', err))
       } catch (err) {
         this.deps.log?.(`could not reopen session ${s.identity}`, err)

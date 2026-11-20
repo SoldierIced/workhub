@@ -14,7 +14,7 @@ export function PermissionBadge({ view }: { view: SessionView }) {
   const unattended = view.permissionMode?.unattended === true
   const Icon = unattended ? ShieldAlert : Shield
   return (
-    <span data-testid="permission-badge" title={t('session.permissionMode', { mode: shown })} className={cn('inline-flex max-w-full items-center gap-1 rounded-full px-2 py-px text-2xs font-semibold', unattended ? 'bg-warning-soft text-warning' : 'bg-surface-hover text-muted')}>
+    <span data-testid="permission-badge" title={t('session.permissionMode', { mode: shown })} className={cn('inline-flex max-w-full items-center gap-1 rounded-full px-2 py-px text-xs font-semibold', unattended ? 'bg-warning-soft text-warning' : 'bg-surface-hover text-muted')}>
       <Icon className="size-3 shrink-0" aria-hidden />
       <span className="truncate">{shown}</span>
     </span>

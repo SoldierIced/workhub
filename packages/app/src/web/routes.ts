@@ -53,9 +53,9 @@ export function parseRoute(hash: string): Route {
   if (h === 'automations') return { screen: 'automations' }
   if (h === 'settings') return { screen: 'settings' }
   if (h === 'history') return { screen: 'history' }
-  if (h === 'plan') return { screen: 'plan', tab: 'tasks' }
+  if (h === 'plan') return { screen: 'plan', tab: 'today' }
   const plan = /^plan\/([^/?#]+)/.exec(h)
-  if (plan) return { screen: 'plan', tab: isPlanTab(plan[1]!) ? plan[1]! : 'tasks' }
+  if (plan) return { screen: 'plan', tab: isPlanTab(plan[1]!) ? plan[1]! : 'today' }
   if (h === 'item/new') return { screen: 'newItem' }
   const item = /^item\/([^/?#]+)/.exec(h)
   if (item) {
@@ -124,4 +124,70 @@ export function routeHash(route: Route): string {
 /** The screen a notification's route names; anything unknown goes home. */
 export function routeFromNotification(route: string | undefined): Route {
   return route ? parseRoute(route) : { screen: 'home' }
+}
+
+/** The tabs of the bottom bar, in order; each needs a capability the desktop granted (Settings needs none). Automations is reached from Settings. */
+export const NAV_TABS = [
+  { screen: 'home', need: 'sessions' },
+  { screen: 'pullRequests', need: 'pullRequests' },
+  { screen: 'plan', need: 'plan' },
+  { screen: 'alerts', need: 'health' },
+  { screen: 'settings' }
+] as const
+export type NavTab = (typeof NAV_TABS)[number]['screen']
+
+/** The tabs a phone with these capabilities shows. */
+export function navTabsFor(capabilities: readonly string[]): NavTab[] {
+  return NAV_TABS.filter((tab) => !('need' in tab) || capabilities.includes(tab.need)).map((tab) => tab.screen)
+}
+
+/** The tab a screen belongs to: a chat belongs to Sessions, an item to Plan, Automations to Settings. */
+export function tabOf(route: Route): NavTab | null {
+  switch (route.screen) {
+    case 'home':
+    case 'session':
+    case 'new':
+    case 'subagent':
+    case 'changes':
+    case 'history':
+      return 'home'
+    case 'pullRequests':
+      return 'pullRequests'
+    case 'plan':
+    case 'planItem':
+    case 'newItem':
+    case 'milestone':
+      return 'plan'
+    case 'alerts':
+      return 'alerts'
+    case 'settings':
+    case 'automations':
+      return 'settings'
+    case 'pair':
+      return null
+  }
+}
+
+/** The session a screen is about, when it is one (its chat, its changes, one of its sub-agents). */
+function sessionOf(route: Route): string | null {
+  return route.screen === 'session' ? route.id : route.screen === 'subagent' || route.screen === 'changes' ? route.sessionId : null
+}
+
+/**
+ * A notification about the session that is already on screen says nothing new: no toast for it.
+ * One that needs an answer is dropped only when the session's own screen is open: the Changes and
+ * sub-agent screens cannot show a permission request.
+ */
+export function isAboutOpenSession(
+  payloadRoute: string | undefined,
+  payloadDesktop: string | undefined,
+  current: Route,
+  currentDesktop: string | undefined,
+  kind?: string
+): boolean {
+  if (!payloadRoute) return false
+  if (payloadDesktop && currentDesktop && payloadDesktop !== currentDesktop) return false
+  const open = sessionOf(current)
+  if (open === null || open !== sessionOf(parseRoute(payloadRoute))) return false
+  return kind === 'needsAnswer' ? current.screen === 'session' && parseRoute(payloadRoute).screen === 'session' : true
 }

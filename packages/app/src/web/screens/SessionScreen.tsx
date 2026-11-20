@@ -7,14 +7,14 @@ import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { cn } from '../../renderer/lib/cn'
 import { QuestionCard } from '../../renderer/screens/sessions/QuestionCard'
 import { answerText, openRequests, type AnswerPermission, type PermissionItem } from '../../renderer/screens/sessions/PermissionCard'
-import { loadBacklog, loadEarlier, markPermission, pushUser, useSessions, type ChatItem, type SessionData } from '../../renderer/store'
+import { dropStale, itemMark, loadBacklog, loadEarlier, markPermission, pushUser, useSessions, type ChatItem, type SessionData } from '../../renderer/store'
 import { useNow } from '../../renderer/lib/usage'
 import { usePendingFocus } from '../../renderer/lib/pendingFocus'
 import { REMOTE_FEATURES, type RemoteFile, type RemoteHistoryPage } from '../../shared/remote-api'
 import { navigate, useClient, useClientStatus } from '../app-context'
 import { filePreview, type FilePreview } from '../file-preview'
 import { takeFirstPrompt } from '../first-prompt'
-import { basename, Body, Header, InlineConfirm, Screen } from '../ui'
+import { ACTION_BUTTON, basename, Body, Header, IconButton, InlineConfirm, Screen } from '../ui'
 import { sessionTitle } from './HomeScreen'
 import { SubagentLink } from './SubagentScreen'
 import { subagentOfCall } from '../../renderer/lib/subagentView'
@@ -36,7 +36,7 @@ export function FilePreviewBody({ file, preview, expanded }: { file: RemoteFile;
   if (preview.kind === 'image') return <img src={`data:${file.mime};base64,${file.data}`} alt={file.name} className="max-h-72 w-full object-contain" />
   if (preview.kind === 'tooLong') {
     return (
-      <div data-testid="file-preview-too-long" className="border-b border-border px-2.5 py-1.5 text-2xs text-muted">
+      <div data-testid="file-preview-too-long" className="border-b border-border px-2.5 py-1.5 text-xs text-muted">
         {t('web.session.file.tooLong')}
       </div>
     )
@@ -50,7 +50,7 @@ export function FilePreviewBody({ file, preview, expanded }: { file: RemoteFile;
     )
   }
   return (
-    <pre data-testid="file-preview-text" className={cn(box, 'overflow-x-auto font-mono text-2xs text-fg')}>
+    <pre data-testid="file-preview-text" className={cn(box, 'overflow-x-auto font-mono text-xs text-fg')}>
       {preview.text}
     </pre>
   )
@@ -83,28 +83,28 @@ export function FileChip({ sessionId, path }: { sessionId: string; path: string 
   return (
     <div className="mt-1.5 overflow-hidden rounded-lg border border-border bg-bg">
       {file && <FilePreviewBody file={file} preview={preview} expanded={expanded} />}
-      <div className="flex items-center gap-3 px-2.5 py-1.5 text-xs">
+      <div className="flex min-h-11 items-center gap-1 px-2.5 text-xs">
         {isImage ? <ImageIcon className="size-3.5 shrink-0 text-info" aria-hidden /> : <FileText className="size-3.5 shrink-0 text-info" aria-hidden />}
-        <span className="min-w-0 flex-1 truncate font-mono text-muted">{basename(path)}</span>
+        <span className="ml-1 min-w-0 flex-1 font-mono text-muted [overflow-wrap:anywhere]">{basename(path)}</span>
         {readable && (
-          <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="shrink-0 text-accent">
+          <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="flex min-h-11 shrink-0 items-center px-2 text-accent">
             {t(expanded ? 'web.session.file.collapse' : 'web.session.file.expand')}
           </button>
         )}
         {loading ? (
           <Spinner className="size-3.5" />
         ) : dataUrl ? (
-          <a href={dataUrl} download={file!.name} className="flex shrink-0 items-center gap-1 text-accent">
+          <a href={dataUrl} download={file!.name} className="flex min-h-11 shrink-0 items-center gap-1 px-2 text-accent">
             <Download className="size-3.5" aria-hidden />
             {t('web.session.file.download')}
           </a>
         ) : (
-          <button type="button" onClick={() => void fetchFile()} className="text-accent">
+          <button type="button" onClick={() => void fetchFile()} className="flex min-h-11 shrink-0 items-center px-2 text-accent">
             {t('web.session.file.open')}
           </button>
         )}
       </div>
-      {error && <div className="px-2.5 pb-1.5 text-2xs text-danger">{error}</div>}
+      {error && <div className="px-2.5 pb-1.5 text-xs text-danger">{error}</div>}
     </div>
   )
 }
@@ -129,18 +129,18 @@ function PermissionCard({ item, onAnswer }: { item: PermissionItem; onAnswer: An
         <div className="flex flex-col gap-2">
           <div className="grid grid-cols-2 gap-2">
             {allow[0] && (
-              <button type="button" onClick={() => onAnswer(item.requestId, allow[0]!.optionId, allow[0]!.name)} className="h-11 rounded-xl bg-accent text-sm font-semibold text-accent-fg">
+              <button type="button" onClick={() => onAnswer(item.requestId, allow[0]!.optionId, allow[0]!.name)} className="min-h-11 rounded-xl bg-accent px-2 py-1 text-sm font-semibold text-accent-fg">
                 {allow[0].name}
               </button>
             )}
             {reject[0] && (
-              <button type="button" onClick={() => onAnswer(item.requestId, reject[0]!.optionId, reject[0]!.name)} className="h-11 rounded-xl border border-border-strong text-sm font-medium">
+              <button type="button" onClick={() => onAnswer(item.requestId, reject[0]!.optionId, reject[0]!.name)} className="min-h-11 rounded-xl border border-border-strong px-2 py-1 text-sm font-medium">
                 {reject[0].name}
               </button>
             )}
           </div>
           {[...allow.slice(1), ...reject.slice(1)].map((o) => (
-            <button key={o.optionId} type="button" onClick={() => onAnswer(item.requestId, o.optionId, o.name)} className="h-9 rounded-lg text-sm text-muted">
+            <button key={o.optionId} type="button" onClick={() => onAnswer(item.requestId, o.optionId, o.name)} className="min-h-11 rounded-lg px-2 py-1 text-sm text-muted">
               {o.name}
             </button>
           ))}
@@ -195,9 +195,9 @@ function Item({ item, session, onAnswer }: { item: ChatItem; session: SessionDat
         </div>
       )
     case 'turnEnd':
-      return <div className="my-1 text-center text-2xs text-subtle">{item.stopReason === 'end_turn' ? t('web.session.turnEnded') : t('web.session.stopped', { reason: item.stopReason })}</div>
+      return <div className="my-1 text-center text-xs text-subtle">{item.stopReason === 'end_turn' ? t('web.session.turnEnded') : t('web.session.stopped', { reason: item.stopReason })}</div>
     case 'exit':
-      return <div className="my-1 text-center text-2xs text-subtle">{t('web.session.exited')}</div>
+      return <div className="my-1 text-center text-xs text-subtle">{t('web.session.exited')}</div>
     case 'notice':
       return (
         <div className={cn('rounded-lg border px-3 py-2 text-chat-xs', item.failed || item.noticeKind === 'warning' ? 'border-warning/40 bg-warning-soft' : 'border-border bg-surface text-muted')}>
@@ -206,9 +206,11 @@ function Item({ item, session, onAnswer }: { item: ChatItem; session: SessionDat
         </div>
       )
     case 'compaction':
-      return <div className="my-1 text-center text-2xs text-subtle">{t('web.session.compaction')}</div>
+      return <div className="my-1 text-center text-xs text-subtle">{t('web.session.compaction')}</div>
     case 'replayStart':
-      return <div className="my-1 text-center text-2xs text-subtle">{t('web.session.earlier')}</div>
+      // The divider between earlier messages and this one: with none loaded there is nothing earlier to mark.
+      if (item.count === 0) return null
+      return <div className="my-1 text-center text-xs text-subtle">{t('web.session.earlier')}</div>
   }
 }
 
@@ -240,13 +242,16 @@ export function SessionScreen({ id }: { id: string }) {
   useEffect(() => {
     if (!exists) return
     let alive = true
+    const asked = itemMark()
     ;(client.transport.invoke('remote:history', id) as Promise<RemoteHistoryPage | null>).then(
       (page) => {
         if (!alive || !page) return
         // Back at the end only when nothing was read yet: a reload after a reconnect leaves the reader where they are.
         if (!loaded.current) stuck.current = true
         loaded.current = true
-        loadBacklog(id, page.messages)
+        // An empty page: nothing stored, so what the chat showed before the question goes (the empty state shows); a message sent since stays.
+        if (page.messages.length > 0) loadBacklog(id, page.messages)
+        else dropStale(id, asked)
         setStart(page.start)
       },
       () => {}
@@ -348,13 +353,13 @@ export function SessionScreen({ id }: { id: string }) {
         right={
           <>
             {client.supports(REMOTE_FEATURES.changes) && (
-              <button type="button" aria-label={t('web.changes.open')} onClick={() => navigate({ screen: 'changes', sessionId: id })} className="flex size-10 items-center justify-center rounded-lg text-muted active:bg-surface-hover" data-testid="open-changes">
+              <IconButton aria-label={t('web.changes.open')} onClick={() => navigate({ screen: 'changes', sessionId: id })} data-testid="open-changes">
                 <FileDiff className="size-5" aria-hidden />
-              </button>
+              </IconButton>
             )}
-            <button type="button" aria-label={t('web.session.closeSession')} onClick={() => setClosing(true)} className="flex size-10 items-center justify-center rounded-lg text-muted active:bg-surface-hover">
+            <IconButton aria-label={t('web.session.closeSession')} onClick={() => setClosing(true)}>
               <X className="size-5" aria-hidden />
-            </button>
+            </IconButton>
           </>
         }
       />
@@ -383,11 +388,16 @@ export function SessionScreen({ id }: { id: string }) {
               type="button"
               onClick={() => void loadMore()}
               disabled={loadingEarlier || !online}
-              className="mx-auto flex min-h-9 items-center gap-2 rounded-full border border-border px-3 text-xs text-muted disabled:opacity-60"
+              className={cn(ACTION_BUTTON, 'mx-auto rounded-full text-muted')}
             >
               {loadingEarlier && <Spinner className="size-3.5" />}
               {loadingEarlier ? t('web.session.loadingEarlier') : t('web.session.loadEarlier')}
             </button>
+          )}
+          {items.length === 0 && !busy && start !== null && (
+            <p data-testid="chat-empty" className="px-4 py-10 text-center text-sm text-muted">
+              {t('web.session.empty')}
+            </p>
           )}
           {items.map((item) => (
             <Item key={item.id} item={item} session={session} onAnswer={answer} />

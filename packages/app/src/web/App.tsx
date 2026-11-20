@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ReactElement, type ReactNode } from 'react'
+import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { TooltipProvider } from '../renderer/components/atoms'
 import { I18nProvider, useI18n } from '../renderer/i18n/I18nProvider'
 import { getSessions, onEvent, onRemoved, startupList } from '../renderer/store'
@@ -7,7 +7,7 @@ import type { PushPayload } from '@workhub/protocol'
 import { WebAppProvider, navigate, useClient, useClientStatus, useRoute, type WebApp } from './app-context'
 import { NOTIFY_ASKED_KEY } from './device'
 import { kvSet, LOCALE_KEY } from './kv'
-import { parseRoute, routeHash } from './routes'
+import { isAboutOpenSession, parseRoute, routeHash, type Route } from './routes'
 import { AlertsScreen } from './screens/AlertsScreen'
 import { AutomationsScreen } from './screens/AutomationsScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
@@ -31,16 +31,45 @@ interface Toast {
   payload: PushPayload
 }
 
-/** Notifications that arrive over the live channel show briefly at the top; a tap opens their session. */
+const SWIPE_PX = 56
+
+/**
+ * Notifications that arrive over the live channel show briefly; a tap opens their session and a
+ * swipe sideways dismisses one. They hang under the header (never over its back button or
+ * actions), wherever it ends now: measured again on every render and whenever the header changes
+ * size. A screen with no header leaves the room the status bar takes.
+ */
 function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
   const client = useClient()
+  const [top, setTop] = useState<number | null>(null)
+  const swipe = useRef<{ id: number; x: number } | null>(null)
+  // No dependency list: navigating swaps the header without changing the toasts.
+  useLayoutEffect(() => {
+    if (toasts.length === 0) return
+    const header = document.querySelector('header')
+    const measure = () => setTop(header ? Math.round(header.getBoundingClientRect().bottom) : null)
+    measure()
+    const watch = header && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    if (header) watch?.observe(header)
+    window.addEventListener('resize', measure)
+    return () => {
+      watch?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  })
   if (toasts.length === 0) return null
   return (
-    <div className="safe-top pointer-events-none fixed inset-x-0 top-0 z-50 flex flex-col items-center gap-2 px-3 pt-2">
+    <div style={{ top: top === null ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : top + 8 }} className="pointer-events-none fixed inset-x-0 z-30 flex flex-col items-center gap-2 px-3" data-testid="toasts">
       {toasts.map((toast) => (
         <button
           key={toast.id}
           type="button"
+          onTouchStart={(e) => void (swipe.current = { id: toast.id, x: e.touches[0]?.clientX ?? 0 })}
+          onTouchEnd={(e) => {
+            const start = swipe.current
+            swipe.current = null
+            if (start?.id === toast.id && Math.abs((e.changedTouches[0]?.clientX ?? 0) - start.x) > SWIPE_PX) dismiss(toast.id)
+          }}
           onClick={() => {
             dismiss(toast.id)
             const route = toast.payload.route ?? '#'
@@ -51,7 +80,7 @@ function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) =>
             }
             navigate(parseRoute(route))
           }}
-          className="pointer-events-auto w-full max-w-md rounded-xl border border-border bg-surface-raised px-4 py-3 text-left shadow-lg animate-slide-in"
+          className="pointer-events-auto min-h-11 w-full max-w-md rounded-xl border border-border bg-surface-raised px-4 py-3 text-left shadow-lg animate-slide-in"
         >
           <div className="truncate text-sm font-semibold">{toast.payload.title}</div>
           <div className="line-clamp-2 text-xs text-muted">{toast.payload.body}</div>
@@ -69,6 +98,9 @@ function Shell({ defaultName }: { defaultName: string }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [askNotify, setAskNotify] = useState(() => !localStorage.getItem(NOTIFY_ASKED_KEY))
   const capabilities = status.desktop?.capabilities ?? []
+  // The toast listener outlives renders: it reads the open screen and the desktop from here.
+  const open = useRef<{ route: Route; desktop: string | undefined }>({ route, desktop: status.desktop?.id })
+  open.current = { route, desktop: status.desktop?.id }
   useAppearance()
   // The service worker words a notification's buttons in the phone's language; it cannot read the page's settings.
   useEffect(() => void kvSet(LOCALE_KEY, locale).catch(() => {}), [locale])
@@ -90,6 +122,8 @@ function Shell({ defaultName }: { defaultName: string }) {
   useEffect(() => {
     let seq = 0
     return client.transport.subscribe<[PushPayload]>('remote:notification', (payload) => {
+      // About the chat already on screen: it would only repeat what the person is looking at.
+      if (isAboutOpenSession(payload.route, payload.desktop, open.current.route, open.current.desktop, payload.kind)) return
       const id = ++seq
       setToasts((all) => [...all.slice(-2), { id, payload }])
       setTimeout(() => setToasts((all) => all.filter((x) => x.id !== id)), 6000)
@@ -178,7 +212,7 @@ class Crash extends Component<{ children: ReactNode }, { error: Error | null }> 
         <code className="text-danger [overflow-wrap:anywhere]">{this.state.error.message}</code>
         <button
           type="button"
-          className="h-10 rounded-xl bg-accent px-4 font-semibold text-accent-fg"
+          className="min-h-11 rounded-xl bg-accent px-4 font-semibold text-accent-fg"
           onClick={() => {
             this.setState({ error: null })
             navigate({ screen: 'home' }, true)

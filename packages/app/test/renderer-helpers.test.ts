@@ -4,7 +4,7 @@ import { recentFolders, usageGroups, type SessionSummary } from '../src/renderer
 import { imageInputFromDataUrl } from '../src/renderer/lib/images'
 import { historyAccounts, historyAgents } from '../src/renderer/screens/HistoryScreen'
 import { formatDuration } from '../src/renderer/screens/sessions/MonitorPanel'
-import { applyEvent, replayItems, withBacklog, withEarlier, withReplay, type SessionData } from '../src/renderer/store'
+import { applyEvent, replayItems, withBacklog, withEarlier, withoutStale, withReplay, type SessionData } from '../src/renderer/store'
 
 const summary = (cwd: string, startedAt: number, extra: Partial<SessionSummary['view']> = {}, planUsage?: SessionSummary['monitor']['planUsage']): SessionSummary => ({
   view: { id: cwd + startedAt, state: 'ready', cwd, startedAt, ...extra },
@@ -165,6 +165,17 @@ describe('a chat opened on a paired device', () => {
     // A reply still streaming starts its own message after the divider.
     s = applyEvent(s, { sessionId: 's', type: 'message', role: 'agent', text: 'more' }, next)
     expect(s.items.at(-1)).toMatchObject({ kind: 'agent', text: 'more' })
+  })
+
+  it('shows nothing of an old chat when the stored conversation is empty, but keeps what was just sent', () => {
+    let s = applyEvent(empty(), { sessionId: 's', type: 'message', role: 'agent', text: 'old chat' }, next)
+    s = applyEvent(s, { sessionId: 's', type: 'permission', requestId: 'r2', title: 'Run?', options: [] }, next)
+    const asked = n
+    s = { ...s, items: [...s.items, { id: next(), at: 0, kind: 'user', text: 'just sent' }] }
+    const kept = withoutStale(s, asked)
+    expect(kept.items.map((i) => (i.kind === 'user' ? i.text : i.kind))).toEqual(['permission', 'just sent'])
+    expect(withoutStale(s, n).items.map((i) => i.kind)).toEqual(['permission'])
+    expect(withoutStale(empty(), n).items).toEqual([])
   })
 
   it('puts an earlier page above what the chat shows', () => {

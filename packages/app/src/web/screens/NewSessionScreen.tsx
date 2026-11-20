@@ -8,7 +8,8 @@ import { cn } from '../../renderer/lib/cn'
 import { useSessions } from '../../renderer/store'
 import { navigate, useClientStatus, useConfig, useProfileId, useRemoteData } from '../app-context'
 import { queueFirstPrompt } from '../first-prompt'
-import { basename, Body, Header, Screen, BigButton } from '../ui'
+import { PathText } from '../path-text'
+import { basename, Body, Header, Screen, BigButton, SELECT_CLASS } from '../ui'
 
 /** Opens a session on the desktop in one of the profile's folders, with an optional first message. */
 export function NewSessionScreen() {
@@ -67,7 +68,7 @@ export function NewSessionScreen() {
         back
         right={
           profiles.length > 1 ? (
-            <select value={profileId ?? ''} onChange={(e) => setProfileId(e.target.value || null)} aria-label={t('web.new.profile')} className="h-9 max-w-36 rounded-full border border-border-strong bg-surface px-3 text-sm text-text">
+            <select value={profileId ?? ''} onChange={(e) => setProfileId(e.target.value || null)} aria-label={t('web.new.profile')} className={cn(SELECT_CLASS, 'max-w-40 rounded-full')}>
               {profiles.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -75,7 +76,7 @@ export function NewSessionScreen() {
               ))}
             </select>
           ) : profile ? (
-            <span className="flex h-9 items-center gap-2 rounded-full border border-border-strong bg-surface px-3 text-sm">
+            <span className="flex min-h-11 items-center gap-2 rounded-full border border-border-strong bg-surface px-3 text-sm">
               {profile.color && <span className="size-2.5 rounded-sm" style={{ background: profile.color }} aria-hidden />}
               {profile.name}
             </span>
@@ -86,7 +87,7 @@ export function NewSessionScreen() {
         <section className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm font-semibold text-muted">{t('web.new.folder')}</h2>
-            <span className="text-2xs text-subtle">{t('web.new.folderHint')}</span>
+            <span className="text-xs text-subtle">{t('web.new.folderHint')}</span>
           </div>
           {folders.loading && !folders.data ? (
             <Spinner className="size-5 self-center" />
@@ -107,11 +108,12 @@ export function NewSessionScreen() {
                     className={cn('flex min-h-12 items-center gap-2.5 rounded-xl border px-3 text-left', on ? 'border-accent bg-accent/8' : 'border-border bg-surface')}
                   >
                     {f.root ? <Star className="size-4 shrink-0 fill-warning text-warning" aria-hidden /> : <Folder className="size-4 shrink-0 text-subtle" aria-hidden />}
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-md font-medium">{f.name || basename(f.path)}</span>
-                      <span className="truncate font-mono text-2xs text-muted">{f.path}</span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-md font-medium [overflow-wrap:anywhere]">{f.name || basename(f.path)}</span>
+                      {/* The end of a path tells folders apart: the middle gives way, the last two folders stay. */}
+                      <PathText path={f.path} keep={2} className="text-xs text-muted" />
                     </span>
-                    {open > 0 && <span className="ml-auto shrink-0 text-2xs text-accent">{open}</span>}
+                    {open > 0 && <span className="shrink-0 text-xs font-medium text-accent">{open}</span>}
                   </button>
                 )
               })}
@@ -127,7 +129,7 @@ export function NewSessionScreen() {
               return (
                 <button key={a.key} type="button" role="radio" aria-checked={on} onClick={() => setAgentKey(a.key)} className={cn('flex min-h-13 flex-col items-start justify-center gap-0.5 rounded-xl border px-3 py-2 text-left', on ? 'border-accent bg-accent/8' : 'border-border bg-surface')}>
                   <span className="text-sm font-semibold">{a.agent.name}</span>
-                  {a.account && <span className="truncate text-2xs text-muted">{a.account.name}</span>}
+                  {a.account && <span className="truncate text-xs text-muted">{a.account.name}</span>}
                 </button>
               )
             })}

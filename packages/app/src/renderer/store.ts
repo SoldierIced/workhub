@@ -402,6 +402,17 @@ export function withBacklog(s: SessionData, messages: HistoryMessage[], next: ()
   return withDerived({ ...s, items: [...replayItems(messages, next), { id: next(), kind: 'replayStart', count: messages.length }, ...open] })
 }
 
+/**
+ * The stored conversation of a chat opened on a paired device is empty: what the chat showed from
+ * before the question was asked (a conversation that is gone, as after a reconnect) is dropped.
+ * Items numbered after `since` (a message just sent from this device, not stored yet) and open
+ * requests stay.
+ */
+export function withoutStale(s: SessionData, since: number): SessionData {
+  const items = s.items.filter((i) => i.id > since || (i.kind === 'permission' && i.answer === undefined))
+  return items.length === s.items.length ? s : withDerived({ ...s, items })
+}
+
 /** An earlier page of the stored conversation, above what the chat shows (a paired device scrolling up). */
 export function withEarlier(s: SessionData, messages: HistoryMessage[], next: () => number): SessionData {
   return { ...s, items: [...replayItems(messages, next), ...s.items] }
@@ -409,6 +420,15 @@ export function withEarlier(s: SessionData, messages: HistoryMessage[], next: ()
 
 export function loadBacklog(id: string, messages: HistoryMessage[]): void {
   patch(id, (s) => withBacklog(s, messages, () => ++seq))
+}
+
+/** The number the next chat item gets: items numbered above it are newer than the moment it was read. */
+export function itemMark(): number {
+  return seq
+}
+
+export function dropStale(id: string, since: number): void {
+  patch(id, (s) => withoutStale(s, since))
 }
 
 export function loadEarlier(id: string, messages: HistoryMessage[]): void {

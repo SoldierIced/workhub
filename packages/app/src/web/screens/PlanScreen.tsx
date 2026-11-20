@@ -6,12 +6,13 @@ import type { MilestoneView, PlannerView } from '../../shared/planner-api'
 import { Badge, Spinner } from '../../renderer/components/atoms'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { cn } from '../../renderer/lib/cn'
-import { briefLabel, eventTimes, isOngoing, PLAN_STATE_COPY } from '../../renderer/lib/plan'
+import { briefLabel, isOngoing, PLAN_STATE_COPY } from '../../renderer/lib/plan'
 import { createsTicket, INBOX_KIND_LABEL, inboxActionLabel, MILESTONE_STATUS_LABEL, MILESTONE_STATUS_TONE, plainPreview } from '../../renderer/lib/planner'
 import { navigate, useClientStatus, useConfig, useProfileId } from '../app-context'
 import { openLink, profileOf, useCriticalities, usePlan, usePlanner } from '../plan-data'
 import { PLAN_TABS, type PlanTab } from '../routes'
-import { Body, Empty, Header, InlineConfirm, Screen, SectionTitle } from '../ui'
+import { shortDay } from '../plan-format'
+import { ACTION_BUTTON, Body, Empty, Header, IconButton, InlineConfirm, Screen, SectionTitle } from '../ui'
 import { ProfilePicker } from './ProfilePicker'
 
 const TAB_LABEL = { today: 'plan.tab.today', inbox: 'planner.tab.inbox', tasks: 'planner.tab.tasks', milestones: 'planner.tab.milestones' } as const
@@ -32,19 +33,19 @@ export function PlanScreen({ tab }: { tab: PlanTab }) {
         right={
           <div className="flex items-center gap-1">
             <ProfilePicker config={config} value={profileId} onChange={setProfileId} />
-            {tab !== 'today' && tab !== 'milestones' && (
-              <button type="button" aria-label={t('planner.inbox.add')} onClick={() => navigate({ screen: 'newItem' })} className="flex size-10 items-center justify-center rounded-lg text-accent active:bg-surface-hover">
+            {tab !== 'milestones' && (
+              <IconButton aria-label={t('planner.inbox.add')} onClick={() => navigate({ screen: 'newItem' })} className="text-accent">
                 <Plus className="size-6" aria-hidden />
-              </button>
+              </IconButton>
             )}
           </div>
         }
       />
-      <div role="tablist" className="flex shrink-0 gap-1 border-b border-border bg-sidebar px-2 pb-2">
+      <div role="tablist" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-sidebar px-2 pb-2">
         {PLAN_TABS.map((id) => (
-          <button key={id} type="button" role="tab" aria-selected={id === tab} onClick={() => navigate({ screen: 'plan', tab: id }, true)} className={cn('flex h-9 flex-1 items-center justify-center gap-1 rounded-lg text-sm font-medium', id === tab ? 'bg-accent-soft text-accent' : 'text-muted active:bg-surface-hover')}>
+          <button key={id} type="button" role="tab" aria-selected={id === tab} onClick={() => navigate({ screen: 'plan', tab: id }, true)} className={cn('flex min-h-11 min-w-fit flex-1 items-center justify-center gap-1 rounded-lg px-3 text-sm font-medium whitespace-nowrap', id === tab ? 'bg-accent-soft text-accent' : 'text-muted active:bg-surface-hover')}>
             {t(TAB_LABEL[id])}
-            {id === 'inbox' && waiting > 0 && <span className="rounded-full bg-accent px-1.5 text-2xs font-semibold text-accent-fg">{waiting}</span>}
+            {id === 'inbox' && waiting > 0 && <span className="rounded-full bg-accent px-1.5 text-xs font-semibold text-accent-fg">{waiting}</span>}
           </button>
         ))}
       </div>
@@ -126,17 +127,20 @@ function TodayTab({ profileId }: { profileId: string | null }) {
 function EventRow({ event, brief, now, busy, canOpenSession, onBrief }: { event: CalendarEvent; brief: PlanBrief | undefined; now: number; busy: boolean; canOpenSession: boolean; onBrief: () => void }) {
   const { t, tn, formatDate } = useI18n()
   const past = !event.allDay && event.end <= now
-  const times = eventTimes(event, (ms) => formatDate(ms, { hour: '2-digit', minute: '2-digit' }))
+  const clock = (ms: number) => formatDate(ms, { hour: '2-digit', minute: '2-digit' })
+  // Start on one line and end on the next: a range in one string wraps wherever the column runs out.
+  const times = event.end > event.start ? [clock(event.start), `– ${clock(event.end)}`] : [clock(event.start)]
   const ready = brief?.phase === 'ready' || brief?.phase === 'closed'
   return (
-    <li className={cn('flex flex-col gap-2 px-4 py-3', past && 'opacity-60')}>
-      <div className="flex items-start gap-3">
-        <div className="w-14 shrink-0 text-xs text-muted">
-          {event.allDay ? t('plan.allDay') : times}
-          {isOngoing(event, now) && <div className="font-semibold text-accent">{t('plan.now')}</div>}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-md font-medium">{event.title || t('plan.untitled')}</div>
+    <li className="flex items-start gap-3 px-4 py-3">
+      <div className="min-w-[5.25rem] shrink-0 text-xs whitespace-nowrap text-muted">
+        {event.allDay ? t('plan.allDay') : times.map((time, i) => <div key={i}>{time}</div>)}
+        {isOngoing(event, now) && <div className="font-semibold text-accent">{t('plan.now')}</div>}
+        {past && <div className="font-semibold">{t('web.plan.ended')}</div>}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div>
+          <div className={cn('text-md font-medium break-words', past && 'text-muted')}>{event.title || t('plan.untitled')}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
             {event.attendees.length > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -144,29 +148,29 @@ function EventRow({ event, brief, now, busy, canOpenSession, onBrief }: { event:
                 {tn('plan.attendees', event.attendees.length)}
               </span>
             )}
-            {event.location && <span className="truncate">{event.location}</span>}
+            {event.location && <span className="min-w-0 break-words">{event.location}</span>}
           </div>
         </div>
-      </div>
-      {!past && (
-        <div className="flex flex-wrap gap-2 pl-[4.25rem]">
-          {event.meetingUrl && (
-            <button type="button" onClick={() => openLink(event.meetingUrl!)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-accent-fg">
-              <Video className="size-4" aria-hidden />
-              {t('plan.join')}
+        {!past && (
+          <div className="flex flex-wrap gap-2">
+            {event.meetingUrl && (
+              <button type="button" onClick={() => openLink(event.meetingUrl!)} className="inline-flex min-h-11 min-w-11 items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-accent-fg">
+                <Video className="size-4" aria-hidden />
+                {t('plan.join')}
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={busy || brief?.phase === 'preparing' || (ready && !canOpenSession)}
+              onClick={() => (ready && brief?.sessionId ? navigate({ screen: 'session', id: brief.sessionId }) : onBrief())}
+              className={ACTION_BUTTON}
+            >
+              {busy || brief?.phase === 'preparing' ? <Spinner className="size-3.5" /> : null}
+              {ready ? t('web.plan.openBrief') : t(briefLabel(brief))}
             </button>
-          )}
-          <button
-            type="button"
-            disabled={busy || brief?.phase === 'preparing' || (ready && !canOpenSession)}
-            onClick={() => (ready && brief?.sessionId ? navigate({ screen: 'session', id: brief.sessionId }) : onBrief())}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-strong px-3 text-sm disabled:opacity-50"
-          >
-            {busy || brief?.phase === 'preparing' ? <Spinner className="size-3.5" /> : null}
-            {ready ? t('web.plan.openBrief') : t(briefLabel(brief))}
-          </button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </li>
   )
 }
@@ -213,9 +217,9 @@ function ItemRow({ item, today, right }: { item: InboxItem; today: string; right
     <li className="flex items-center gap-2 px-4 py-3">
       <button type="button" onClick={() => navigate({ screen: 'planItem', id: item.id })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
             <KindBadge item={item} />
-            <span className="truncate text-md font-medium">{item.title}</span>
+            <span className="line-clamp-2 min-w-0 text-md font-medium break-words">{item.title}</span>
           </div>
           {preview && <div className="mt-0.5 line-clamp-1 text-xs text-muted">{preview}</div>}
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
@@ -238,7 +242,7 @@ function ItemRow({ item, today, right }: { item: InboxItem; today: string; right
 
 function QuickAction({ label, busy, primary, onClick }: { label: string; busy: boolean; primary?: boolean; onClick: () => void }) {
   return (
-    <button type="button" disabled={busy} onClick={onClick} className={cn('inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-3 text-sm disabled:opacity-50', primary ? 'bg-accent font-medium text-accent-fg' : 'border border-border-strong')}>
+    <button type="button" disabled={busy} onClick={onClick} className={cn(primary ? 'inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-accent-fg disabled:opacity-45' : cn(ACTION_BUTTON, 'shrink-0'))}>
       {busy ? <Spinner className="size-3.5" /> : primary ? <Check className="size-4" aria-hidden /> : null}
       {label}
     </button>
@@ -353,7 +357,7 @@ function TasksTab({ profileId, view, reload }: { profileId: string; view: Planne
       {error && <p className="px-4 pt-3 text-sm text-danger">{error}</p>}
       {open === 0 && <Empty title={t('planner.tasks.empty')} hint={t('planner.tasks.emptyHint')} />}
       {groups.pending.length > 0 && (
-        <button type="button" onClick={() => navigate({ screen: 'plan', tab: 'inbox' }, true)} className="mx-4 mt-3 w-[calc(100%-2rem)] rounded-lg bg-accent-soft px-3 py-2 text-left text-sm text-accent">
+        <button type="button" onClick={() => navigate({ screen: 'plan', tab: 'inbox' }, true)} className="mx-4 mt-3 min-h-11 w-[calc(100%-2rem)] rounded-lg bg-accent-soft px-3 py-2 text-left text-sm text-accent">
           {tn('web.plan.waitingInInbox', groups.pending.length)}
         </button>
       )}
@@ -381,7 +385,8 @@ export function ProgressBar({ name, progress, elapsed, status }: { name: string;
 }
 
 function MilestonesTab({ profileId, view, reload }: { profileId: string; view: PlannerView; reload: () => void }) {
-  const { t } = useI18n()
+  const { t, formatDate } = useI18n()
+  const now = Date.now()
   const [refreshing, setRefreshing] = useState(false)
   const refresh = async () => {
     setRefreshing(true)
@@ -396,8 +401,8 @@ function MilestonesTab({ profileId, view, reload }: { profileId: string; view: P
     <div className="pb-6">
       <SectionTitle
         right={
-          <button type="button" disabled={refreshing} onClick={() => void refresh()} className="inline-flex items-center gap-1 text-xs text-accent disabled:opacity-50">
-            <RefreshCw className={cn('size-3', refreshing && 'animate-spin')} aria-hidden />
+          <button type="button" disabled={refreshing} onClick={() => void refresh()} className="-my-2.5 inline-flex min-h-11 min-w-11 items-center justify-end gap-1.5 text-sm text-accent disabled:opacity-45">
+            <RefreshCw className={cn('size-3.5', refreshing && 'animate-spin')} aria-hidden />
             {t('planner.milestones.refresh')}
           </button>
         }
@@ -411,15 +416,15 @@ function MilestonesTab({ profileId, view, reload }: { profileId: string; view: P
           {view.milestones.map((m) => (
             <li key={m.milestone.id}>
               <button type="button" onClick={() => navigate({ screen: 'milestone', id: m.milestone.id })} className="flex w-full flex-col gap-2 px-4 py-3 text-left active:bg-surface-hover">
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-md font-medium">{m.milestone.name}</span>
+                <div className="flex items-start gap-2">
+                  <span className="line-clamp-2 min-w-0 flex-1 text-md font-medium break-words">{m.milestone.name}</span>
                   <Badge tone={MILESTONE_STATUS_TONE[m.status]}>{t(MILESTONE_STATUS_LABEL[m.status])}</Badge>
                 </div>
                 <ProgressBar name={m.milestone.name} progress={m.progress} elapsed={m.elapsed} status={m.status} />
-                <div className="flex justify-between text-xs text-muted">
+                <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 text-xs text-muted">
                   <span>{t('planner.milestone.progressOf', { progress: m.progress, elapsed: m.elapsed })}</span>
-                  <span>
-                    {m.milestone.start} → {m.milestone.end}
+                  <span className="shrink-0 text-end">
+                    <span className="whitespace-nowrap">{shortDay(m.milestone.start, now, formatDate)}</span> – <span className="whitespace-nowrap">{shortDay(m.milestone.end, now, formatDate)}</span>
                   </span>
                 </div>
               </button>

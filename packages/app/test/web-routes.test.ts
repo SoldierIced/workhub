@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseRoute, routeFromNotification, routeHash, splitDesktop } from '../src/web/routes'
+import { isAboutOpenSession, navTabsFor, parseRoute, routeFromNotification, routeHash, splitDesktop, tabOf } from '../src/web/routes'
 
 describe('web routes', () => {
   it('parses every screen and round-trips its hash', () => {
@@ -12,9 +12,9 @@ describe('web routes', () => {
     expect(parseRoute('#settings')).toEqual({ screen: 'settings' })
     expect(parseRoute('#session/abc%2F1')).toEqual({ screen: 'session', id: 'abc/1' })
     expect(parseRoute('#pair=eyJ2IjoxfQ')).toEqual({ screen: 'pair' })
-    expect(parseRoute('#plan')).toEqual({ screen: 'plan', tab: 'tasks' })
+    expect(parseRoute('#plan')).toEqual({ screen: 'plan', tab: 'today' })
     expect(parseRoute('#plan/today')).toEqual({ screen: 'plan', tab: 'today' })
-    expect(parseRoute('#plan/nope')).toEqual({ screen: 'plan', tab: 'tasks' })
+    expect(parseRoute('#plan/nope')).toEqual({ screen: 'plan', tab: 'today' })
     expect(parseRoute('#item/new')).toEqual({ screen: 'newItem' })
     expect(parseRoute('#item/i%2F1')).toEqual({ screen: 'planItem', id: 'i/1' })
     expect(parseRoute('#milestone/m1')).toEqual({ screen: 'milestone', id: 'm1' })
@@ -47,5 +47,38 @@ describe('web routes', () => {
     expect(parseRoute('#item/%')).toEqual({ screen: 'home' })
     expect(parseRoute('#milestone/%E0%A4%A')).toEqual({ screen: 'home' })
     expect(parseRoute('#session/a%20b')).toEqual({ screen: 'session', id: 'a b' })
+  })
+
+  it('keeps five tabs at most, with Automations reached from Settings', () => {
+    const all = ['sessions', 'pullRequests', 'automations', 'health', 'plan']
+    expect(navTabsFor(all)).toEqual(['home', 'pullRequests', 'plan', 'alerts', 'settings'])
+    expect(navTabsFor(all)).toHaveLength(5)
+    expect(navTabsFor([])).toEqual(['settings'])
+    expect(navTabsFor(['plan', 'automations'])).toEqual(['plan', 'settings'])
+    // The Automations route still works, and lights the Settings tab it is reached from.
+    expect(parseRoute('#automations')).toEqual({ screen: 'automations' })
+    expect(tabOf({ screen: 'automations' })).toBe('settings')
+    expect(tabOf({ screen: 'session', id: 's' })).toBe('home')
+    expect(tabOf({ screen: 'milestone', id: 'm' })).toBe('plan')
+    expect(tabOf({ screen: 'pair' })).toBeNull()
+  })
+
+  it('knows when a notification is about the session already open', () => {
+    const open = { screen: 'session', id: 's/1' } as const
+    expect(isAboutOpenSession('#session/s%2F1', undefined, open, undefined)).toBe(true)
+    expect(isAboutOpenSession('#session/s%2F2', undefined, open, undefined)).toBe(false)
+    // Its changes and its sub-agents are the same session, on either side.
+    expect(isAboutOpenSession('#session/s%2F1/changes', undefined, open, undefined)).toBe(true)
+    expect(isAboutOpenSession('#session/s%2F1', undefined, { screen: 'changes', sessionId: 's/1' }, undefined)).toBe(true)
+    expect(isAboutOpenSession('#session/s%2F1', undefined, { screen: 'subagent', sessionId: 's/1', id: 'a' }, undefined)).toBe(true)
+    // A request for an answer is shown only by the session's own screen: Changes and sub-agents keep the toast.
+    expect(isAboutOpenSession('#session/s%2F1', undefined, { screen: 'changes', sessionId: 's/1' }, undefined, 'needsAnswer')).toBe(false)
+    expect(isAboutOpenSession('#session/s%2F1', undefined, { screen: 'subagent', sessionId: 's/1', id: 'a' }, undefined, 'needsAnswer')).toBe(false)
+    expect(isAboutOpenSession('#session/s%2F1', undefined, open, undefined, 'needsAnswer')).toBe(true)
+    // No session open, no route, or another computer's session with the same id.
+    expect(isAboutOpenSession('#session/s%2F1', undefined, { screen: 'home' }, undefined)).toBe(false)
+    expect(isAboutOpenSession(undefined, undefined, open, undefined)).toBe(false)
+    expect(isAboutOpenSession('#session/s%2F1', 'b'.repeat(32), open, 'a'.repeat(32))).toBe(false)
+    expect(isAboutOpenSession('#session/s%2F1', 'a'.repeat(32), open, 'a'.repeat(32))).toBe(true)
   })
 })

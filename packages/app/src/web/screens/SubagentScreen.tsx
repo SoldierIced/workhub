@@ -56,7 +56,7 @@ function Step({ entry, sessionId }: { entry: ConversationEntry; sessionId: strin
     case 'user':
       return (
         <div className="ml-auto max-w-[85%]">
-          <div className="mb-0.5 text-right text-2xs text-subtle">{t('subagent.toParent')}</div>
+          <div className="mb-0.5 text-right text-xs text-subtle">{t('subagent.toParent')}</div>
           <div className="rounded-2xl rounded-br-sm bg-accent-soft px-3.5 py-2.5 text-chat-sm whitespace-pre-wrap [overflow-wrap:anywhere]">{entry.text}</div>
         </div>
       )
@@ -91,7 +91,7 @@ export function SubagentLink({ sessionId, id }: { sessionId: string; id: string 
     <button
       type="button"
       onClick={() => navigate({ screen: 'subagent', sessionId, id })}
-      className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs font-medium text-accent active:bg-surface-hover"
+      className="mt-1.5 flex min-h-11 items-center gap-1.5 rounded-lg border border-border bg-bg px-3 py-1 text-xs font-medium text-accent active:bg-surface-hover"
     >
       <Bot className="size-3.5" aria-hidden />
       {t('web.session.openSubagent')}
@@ -129,20 +129,20 @@ export function SubagentScreen({ sessionId, id }: { sessionId: string; id: strin
         {load.state === 'missing' && <p className="py-10 text-center text-sm text-subtle">{t('subagent.missing')}</p>}
         {c?.prompt && (
           <section className="rounded-2xl border border-border bg-surface px-3.5 py-2.5">
-            <div className="mb-1 text-2xs font-semibold tracking-wide text-subtle uppercase">{t('subagent.prompt')}</div>
+            <div className="mb-1 text-xs font-semibold tracking-wide text-subtle uppercase">{t('subagent.prompt')}</div>
             <div className="max-h-64 overflow-y-auto text-chat-sm">
               <Markdown text={c.prompt} />
             </div>
           </section>
         )}
-        {c?.omitted ? <p className="text-center text-2xs text-subtle">{tn('subagent.omitted', c.omitted)}</p> : null}
+        {c?.omitted ? <p className="text-center text-xs text-subtle">{tn('subagent.omitted', c.omitted)}</p> : null}
         {c?.entries.map((e) => (
           <Step key={e.id} entry={e} sessionId={sessionId} />
         ))}
         {c && !c.entries.length && !c.result && <p className="text-center text-sm text-subtle">{t('subagent.empty')}</p>}
         {c?.result && (
           <section className="rounded-2xl border border-success/40 bg-success-soft/40 px-3.5 py-2.5">
-            <div className="mb-1 flex items-center gap-1.5 text-2xs font-semibold tracking-wide text-success uppercase">
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-success uppercase">
               <CircleCheck className="size-3.5" aria-hidden />
               {t('subagent.result')}
             </div>

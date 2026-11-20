@@ -15,7 +15,7 @@ import { STATE_TONE, StateDot } from '../../renderer/components/atoms/StateDot'
 import { StatusGlyph } from '../../renderer/components/atoms/StatusGlyph'
 import { awaitingAnswer, useSessions, type SessionData } from '../../renderer/store'
 import { navigate, useClientStatus, useConfig, useProfileId } from '../app-context'
-import { Body, DesktopPicker, Empty, Header, InlineConfirm, Screen } from '../ui'
+import { Body, DesktopPicker, Empty, Header, IconButton, InlineConfirm, Screen } from '../ui'
 
 /** As the desktop sidebar colours a row's state in its subtitle. */
 const STATUS_TEXT: Record<StatusLevel, string> = { error: 'text-danger', needsAnswer: 'text-warning', readyToReview: 'text-success', working: 'text-info' }
@@ -36,18 +36,18 @@ function SubagentRow({ sessionId, subagent: s, depth }: { sessionId: string; sub
         data-testid="subagent-row"
         onClick={() => navigate({ screen: 'subagent', sessionId, id: s.id })}
         aria-label={t('subagent.open', { name })}
-        className="flex w-full min-w-0 items-center gap-2 py-2 pr-4 text-left text-sm text-muted active:bg-surface-hover"
+        className="flex min-h-11 w-full min-w-0 items-center gap-2 py-2 pr-4 text-left text-sm text-muted active:bg-surface-hover"
         style={{ paddingLeft: 48 + depth * 14 }}
       >
         <Bot className="size-4 shrink-0 text-subtle" aria-hidden />
         <StateDot tone={tone} pulse={running} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate">
+          <span className="line-clamp-2">
             {s.type && <span className="font-medium text-text">{s.type}</span>}
             {s.type && s.description ? ' ' : ''}
             {s.description ?? (s.type ? '' : name)}
           </span>
-          {s.lastStep && <span className="block truncate text-xs text-subtle">{s.lastStep}</span>}
+          {s.lastStep && <span className="line-clamp-2 text-xs text-subtle">{s.lastStep}</span>}
         </span>
       </button>
     </li>
@@ -177,7 +177,7 @@ export function HomeScreen() {
     }
     return (
       <li key={member.key}>
-        <div className={cn('relative flex items-center active:bg-surface-hover', (closed || stopped) && 'opacity-60')} data-testid={closed ? 'closed-member' : 'session-row'}>
+        <div className="relative flex items-center active:bg-surface-hover" data-testid={closed ? 'closed-member' : 'session-row'}>
           {profileTint && <span aria-hidden style={{ backgroundColor: profileTint }} className="absolute inset-y-1.5 w-1 rounded-full" />}
           <button
             type="button"
@@ -208,8 +208,8 @@ export function HomeScreen() {
               )}
             </span>
             <span className="min-w-0 flex-1">
-              <span className={cn('block truncate text-md', data?.unseen ? 'font-semibold text-text' : 'text-text')}>{title}</span>
-              <span className="block truncate text-xs text-subtle">
+              <span className={cn('line-clamp-2 text-md [overflow-wrap:anywhere]', data?.unseen ? 'font-semibold text-text' : closed || stopped ? 'text-muted' : 'text-text')}>{title}</span>
+              <span className="line-clamp-2 text-xs text-subtle [overflow-wrap:anywhere]">
                 {accountName && (
                   <>
                     <span className="font-medium" style={accountTint ? { color: accountTint } : undefined}>
@@ -230,7 +230,7 @@ export function HomeScreen() {
               aria-expanded={subagentsOpen}
               aria-label={tn(subagentsOpen ? 'sidebar.subagents.hide' : 'sidebar.subagents.show', subagents.length)}
               onClick={() => toggleSubagents(member.key)}
-              className="flex h-9 shrink-0 items-center gap-0.5 rounded-lg px-1.5 text-xs text-subtle tabular-nums active:bg-surface-hover"
+              className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-0.5 rounded-lg px-1.5 text-xs text-subtle tabular-nums active:bg-surface-hover"
             >
               <ChevronRight className={cn('size-3.5 transition-transform', subagentsOpen && 'rotate-90')} aria-hidden />
               <Bot className="size-3.5" aria-hidden />
@@ -238,14 +238,9 @@ export function HomeScreen() {
             </button>
           )}
           {data && (
-            <button
-              type="button"
-              aria-label={t('web.close')}
-              onClick={() => setClosing(data.view.id)}
-              className="mr-2 flex size-9 shrink-0 items-center justify-center rounded-lg text-subtle active:bg-surface-hover"
-            >
+            <IconButton aria-label={t('web.home.closeSession', { name: title })} onClick={() => setClosing(data.view.id)} className="mr-1 text-subtle">
               <X className="size-4" aria-hidden />
-            </button>
+            </IconButton>
           )}
         </div>
         {data && subagentsOpen && subagents.length > 0 && (
@@ -299,10 +294,10 @@ export function HomeScreen() {
         subtitle={status.desktops.length > 1 ? <DesktopPicker /> : status.state === 'online' ? t('web.state.online', { desktop }) : t('web.home.offlineCache')}
         right={
           <>
-            <button type="button" aria-label={t('web.history.open')} onClick={() => navigate({ screen: 'history' })} className="flex size-9 items-center justify-center rounded-full text-muted active:bg-surface-hover" data-testid="web-history-open">
+            <IconButton aria-label={t('web.history.open')} onClick={() => navigate({ screen: 'history' })} data-testid="web-history-open">
               <Search className="size-5" aria-hidden />
-            </button>
-            <button type="button" onClick={() => navigate({ screen: 'new' })} className="flex h-9 items-center gap-1 rounded-full bg-accent pr-3.5 pl-2.5 text-sm font-semibold text-accent-fg">
+            </IconButton>
+            <button type="button" onClick={() => navigate({ screen: 'new' })} className="flex min-h-11 shrink-0 items-center gap-1 rounded-full bg-accent pr-4 pl-3 text-sm font-semibold text-accent-fg active:opacity-90" data-testid="web-new-session">
               <Plus className="size-4" aria-hidden />
               {t('web.home.new')}
             </button>

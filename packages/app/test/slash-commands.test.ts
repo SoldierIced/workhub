@@ -273,6 +273,8 @@ describe('session names and commands', () => {
 
   it('names a row by the user\'s name, else the agent\'s title, else the first real prompt', () => {
     expect(sessionNameInfo({ view: view({ name: 'Mine', agentTitle: 'Fix the login' }), items: items('hello') }).title).toBe('Mine')
+    // A paired device has no chat items for a session it has not opened: the prompt the computer sent names it.
+    expect(sessionNameInfo({ view: view({ firstPrompt: 'Refactor billing' }), items: [] })).toEqual({ title: 'Refactor billing', titled: true })
     expect(sessionNameInfo({ view: view({ agentTitle: 'Fix the login' }), items: items('hello') }).title).toBe('Fix the login')
     // A bare command says nothing about the session.
     expect(sessionNameInfo({ view: view(), items: items('/clear', 'fix the build') }).title).toBe('fix the build')

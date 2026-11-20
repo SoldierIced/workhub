@@ -26,3 +26,33 @@ body {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
+/*
+ * Light theme, phone only: the renderer's teal and status colours are tuned for large desktop
+ * controls. On a phone in daylight they carry small text, so they get darker values that reach
+ * 4.5:1 on white, on the page background and on their own tinted chips. Dark is untouched.
+ */
+html:root[data-theme='light'] {
+  --wh-text-subtle: #626a7a;
+  --wh-accent: #0c6862;
+  --wh-accent-strong: #0b4f4b;
+  --wh-accent-soft: rgb(12 104 98 / 0.1);
+  --wh-focus: #0c6862;
+  --wh-success: #02654a;
+  --wh-warning: #92400e;
+  --wh-danger: #b91c1c;
+  --wh-info: #1d4ed8;
+  --wh-success-soft: rgb(2 101 74 / 0.1);
+  --wh-warning-soft: rgb(146 64 14 / 0.1);
+  --wh-danger-soft: rgb(185 28 28 / 0.08);
+  --wh-info-soft: rgb(29 78 216 / 0.08);
+}
+/* Bottom tab labels: one line, never under 12 px, and capped so five of them fit at the largest text size. */
+.tab-label {
+  font-size: clamp(12px, var(--text-xs), 14px);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}

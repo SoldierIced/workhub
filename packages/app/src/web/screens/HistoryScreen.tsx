@@ -77,7 +77,7 @@ export function HistoryScreen() {
     <Screen>
       <Header title={t('web.history.title')} back />
       <div className="border-b border-border px-3 py-2">
-        <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-surface px-3">
+        <label className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-3">
           <Search className="size-4 shrink-0 text-subtle" aria-hidden />
           <input
             type="search"
@@ -85,7 +85,7 @@ export function HistoryScreen() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('web.history.search')}
             aria-label={t('web.history.search')}
-            className="min-w-0 flex-1 bg-transparent text-md outline-none"
+            className="min-h-11 min-w-0 flex-1 bg-transparent text-md outline-none"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
@@ -95,13 +95,15 @@ export function HistoryScreen() {
         <HistoryIndexingNote progress={data?.progress} className="mt-1.5" />
       </div>
       <Body>
-        <HistorySearchBody settled={settled} data={data} error={error} loadingMore={more} onMore={() => void loadMore()} />
+        <HistorySearchBody profileName={config?.config.profiles.find((p) => p.id === profileId)?.name} settled={settled} data={data} error={error} loadingMore={more} onMore={() => void loadMore()} />
       </Body>
     </Screen>
   )
 }
 
 export interface HistorySearchBodyProps {
+  /** The profile whose folders are searched, named in the empty state. */
+  profileName?: string | undefined
   /** The search text once typing paused; empty before any. */
   settled: string
   data: { entries: HistoryMatch[]; nextCursor?: string } | null
@@ -111,7 +113,7 @@ export interface HistorySearchBodyProps {
 }
 
 /** What the search shows under its box: the hint, a spinner, the error, no match, or the matches with "Load more". */
-export function HistorySearchBody({ settled, data, error, loadingMore, onMore }: HistorySearchBodyProps) {
+export function HistorySearchBody({ settled, data, error, loadingMore, onMore, profileName }: HistorySearchBodyProps) {
   const { t, formatDate } = useI18n()
   return (
     <>
@@ -122,7 +124,7 @@ export function HistorySearchBody({ settled, data, error, loadingMore, onMore }:
       )}
       {!settled && <Empty title={t('web.history.search')} hint={t('web.history.hint')} />}
       {settled && !data && !error && <Spinner className="mx-auto mt-16 size-6" />}
-      {settled && data && data.entries.length === 0 && <Empty title={t('web.history.empty')} />}
+      {settled && data && data.entries.length === 0 && <Empty title={t('web.history.empty')} hint={profileName ? t('web.history.emptyHint', { profile: profileName }) : undefined} />}
       {settled && data && data.entries.length > 0 && (
         <>
           <ul className="divide-y divide-border" data-testid="web-history-results">
@@ -142,7 +144,7 @@ export function HistorySearchBody({ settled, data, error, loadingMore, onMore }:
             ))}
           </ul>
           {data.nextCursor && (
-            <button type="button" disabled={loadingMore} onClick={onMore} className="mx-auto my-4 flex h-10 items-center gap-2 rounded-xl border border-border-strong px-4 text-sm font-medium" data-testid="web-history-more">
+            <button type="button" disabled={loadingMore} onClick={onMore} className="mx-auto my-4 flex min-h-11 items-center gap-2 rounded-xl border border-border-strong px-4 text-sm font-medium" data-testid="web-history-more">
               {loadingMore && <Spinner className="size-4" />}
               {t('web.history.loadMore')}
             </button>
