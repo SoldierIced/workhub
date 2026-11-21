@@ -424,6 +424,7 @@ export const es: Record<keyof typeof en, string> = {
   'chat.attached': 'Imágenes adjuntas',
   'chat.placeholderQueue': 'El agente está trabajando… un mensaje enviado ahora espera a que termine su turno',
   'chat.placeholderInject': 'El agente está trabajando… un mensaje enviado ahora se suma a su turno',
+  'chat.promptNotReceived': 'El agente no recibió este mensaje. El texto volvió al cuadro de texto: envialo de nuevo.',
   'chat.queued': 'En cola: se envía cuando el agente termine',
   'chat.queuedList': 'Mensajes en cola',
   'chat.idleContext.body': 'Inactivo hace {time}: la caché del prompt probablemente venció, así que tu próximo mensaje vuelve a enviar todo el contexto (unos {tokens} tokens) a precio completo.',

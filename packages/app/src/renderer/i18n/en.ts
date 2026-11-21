@@ -425,6 +425,7 @@ export const en = {
   'chat.attached': 'Attached images',
   'chat.placeholderQueue': 'The agent is working… a message sent now waits for its turn to end',
   'chat.placeholderInject': 'The agent is working… a message sent now joins its turn',
+  'chat.promptNotReceived': 'The agent did not receive this message. Its text is back in the composer: send it again.',
   'chat.queued': 'Queued: sent when the agent finishes',
   'chat.queuedList': 'Queued messages',
   'chat.idleContext.body': 'Idle for {time}: the prompt cache has likely expired, so your next message sends the whole context again (about {tokens} tokens) at full price.',

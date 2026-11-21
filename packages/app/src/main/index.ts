@@ -564,7 +564,7 @@ const extraPath = app.isPackaged
   ? [join(bridgeDir, 'node_modules', '.bin')]
   : [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
 const runtimes = {
-  native: new ClaudeNativeRuntime({ bridgeDir, path: sessionPath }),
+  native: new ClaudeNativeRuntime({ bridgeDir, path: sessionPath, log: (m) => diagnostics.log.warn(m) }),
   acp: new AcpRuntime({
     clientName: 'workhub',
     clientVersion: app.getVersion(),

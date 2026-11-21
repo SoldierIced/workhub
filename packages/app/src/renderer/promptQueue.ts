@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { ImageInput, SessionState } from '@workhub/core'
+import { PROMPT_NOT_RECEIVED, type ImageInput, type SessionState } from '@workhub/core'
 import { PROMPT_WITHDRAWN } from '@shared/api'
 import { imageInputFromDataUrl } from './lib/images'
 import { PromptQueues, type QueuedPrompt, type SubmitOutcome } from './lib/prompt-queue'
@@ -11,10 +11,13 @@ const listeners = new Set<() => void>()
 
 /** Messages the user sent that were never sent to the agent because the session was interrupted. */
 export type RecoveredPrompt = { text: string; images: string[] }
-const recoveredListeners = new Set<(sessionId: string, prompts: RecoveredPrompt[]) => void>()
+/** Why messages came back: the session was interrupted, or the agent never took the message. */
+export type RecoveredReason = 'interrupted' | 'notReceived'
+type RecoveredListener = (sessionId: string, prompts: RecoveredPrompt[], reason: RecoveredReason) => void
+const recoveredListeners = new Set<RecoveredListener>()
 
-function recover(sessionId: string, prompts: RecoveredPrompt[]): void {
-  if (prompts.length) for (const l of recoveredListeners) l(sessionId, prompts)
+function recover(sessionId: string, prompts: RecoveredPrompt[], reason: RecoveredReason = 'interrupted'): void {
+  if (prompts.length) for (const l of recoveredListeners) l(sessionId, prompts, reason)
 }
 
 /** Prompts handed to main that wait to hear they went out, by session and token. */
@@ -65,7 +68,11 @@ async function deliver(sessionId: string, prompt: QueuedPrompt, started: () => v
       return
     }
     show()
-    pushItem(sessionId, 'error', message)
+    // The agent never took it: say so (the chat words the marker) and hand the text back to send again.
+    if (message.includes(PROMPT_NOT_RECEIVED)) {
+      pushItem(sessionId, 'error', PROMPT_NOT_RECEIVED)
+      recover(sessionId, [{ text: prompt.text, images: prompt.images }], 'notReceived')
+    } else pushItem(sessionId, 'error', message)
     // Main sends the notice for a failed prompt too: take it, so it is not kept.
     void afterSettled(key)
   } finally {
@@ -108,7 +115,7 @@ export function interruptSession(sessionId: string): Promise<void> {
 }
 
 /** Messages handed back after an interrupt (queued, or dropped before they were sent). */
-export function onRecoveredPrompts(cb: (sessionId: string, prompts: RecoveredPrompt[]) => void): () => void {
+export function onRecoveredPrompts(cb: RecoveredListener): () => void {
   recoveredListeners.add(cb)
   return () => recoveredListeners.delete(cb)
 }
