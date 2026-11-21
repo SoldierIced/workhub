@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowRightLeft, ArrowUp, Brain, ChevronRight, FoldVertical, CircleAlert, Clock, History, ImagePlus, Info, LoaderCircle, Pause, Play, Square, TriangleAlert, Volume2, Webhook, X, type LucideIcon } from 'lucide-react'
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { appOptions, filterSlashCommands, gatePrompt, insertMention, isApiWindow, mentionTrigger, rankFiles, sessionIdentity, setApiCeiling, setCeiling, setSessionCeiling, slashQuery, type SlashCommandInfo, type SubagentSummary } from '@workhub/core'
+import { appOptions, filterSlashCommands, gatePrompt, insertMention, isApiWindow, mentionTrigger, PROMPT_NOT_RECEIVED, rankFiles, sessionIdentity, setApiCeiling, setCeiling, setSessionCeiling, slashQuery, type SlashCommandInfo, type SubagentSummary } from '@workhub/core'
 import { Button, IconButton } from '../../components/atoms'
 import { CopyButton, Markdown, type MarkdownActions } from '../../components/molecules'
 import { useToast } from '../../components/molecules/Toast'
@@ -336,7 +336,7 @@ const ChatBlock = memo(function ChatBlock({ item, onAnswer, sessionId, cwd, hasS
         <div>
           <div role="alert" className="flex items-start gap-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger">
             <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{item.text}</span>
+            <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{item.text === PROMPT_NOT_RECEIVED ? t('chat.promptNotReceived') : item.text}</span>
           </div>
           <SentAt at={item.at} align="left" />
         </div>
@@ -427,13 +427,14 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
   draft.current = { text, images }
   useEffect(
     () =>
-      onRecoveredPrompts((id, prompts) => {
+      onRecoveredPrompts((id, prompts, reason) => {
         if (id !== v.id) return
         const next = restoreComposer(draft.current, prompts)
         draft.current = next
         setText(next.text)
         setImages(next.images)
-        setRestored((n) => n + prompts.length)
+        // A message the agent never took says so in the chat itself.
+        if (reason === 'interrupted') setRestored((n) => n + prompts.length)
       }),
     [v.id]
   )

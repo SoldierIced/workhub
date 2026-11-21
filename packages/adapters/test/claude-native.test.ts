@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BUILTIN_AGENTS, type AgentEvent } from '@workhub/core'
+import { BUILTIN_AGENTS, PROMPT_NOT_RECEIVED, type AgentEvent } from '@workhub/core'
 import {
   accessToken,
   claudeSlashCommands,
@@ -50,8 +50,10 @@ const agentText = (events: AgentEvent[]) => events.flatMap((e) => (e.type === 'm
 describe('ClaudeNativeRuntime over the bridge protocol', () => {
   let rt: ClaudeNativeRuntime
   const events: AgentEvent[] = []
-  const start = async (id: string, extra: Partial<Parameters<ClaudeNativeRuntime['start']>[0]> = {}) => {
-    rt = new ClaudeNativeRuntime({ bridgeDir: fakeBridge, stopTimeoutMs: 2000 })
+  const logs: string[] = []
+  const start = async (id: string, extra: Partial<Parameters<ClaudeNativeRuntime['start']>[0]> = {}, promptAckTimeoutMs?: number) => {
+    logs.length = 0
+    rt = new ClaudeNativeRuntime({ bridgeDir: fakeBridge, stopTimeoutMs: 2000, log: (m) => logs.push(m), ...(promptAckTimeoutMs ? { promptAckTimeoutMs } : {}) })
     events.length = 0
     rt.subscribe((e) => events.push(e))
     return rt.start({ sessionId: id, agent: claude, account: null, cwd: fixtures, env: {}, ...extra })
@@ -200,6 +202,44 @@ describe('ClaudeNativeRuntime over the bridge protocol', () => {
     expect(await late).toEqual({ stopReason: 'end_turn' })
     expect(agentText(events)).toBe('next turn next')
     expect(states()).toEqual(['busy', 'busy', 'ready'])
+  })
+
+  it('drops a prompt Claude Code never acknowledges, logs where it stopped and frees the session', async () => {
+    await start('n-lost', {}, 300)
+    expect(await rt.prompt('n-lost', 'ping')).toEqual({ stopReason: 'end_turn' })
+    events.length = 0
+    await expect(rt.prompt('n-lost', 'lose')).rejects.toThrow(new RegExp(PROMPT_NOT_RECEIVED))
+    expect(events.filter((e) => e.type === 'state').map((e) => e.type === 'state' && e.state)).toEqual(['busy', 'ready'])
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toMatch(/session n-lost: prompt \S+ not received after 0 s: the SDK took it but Claude Code never acknowledged it \(sent while idle, bridge running/)
+    expect(logs[0]).toContain('acknowledged prompts before: yes')
+    // Never the prompt's text.
+    expect(logs[0]).not.toContain('lose')
+    // The session still works.
+    expect(await rt.prompt('n-lost', 'ping')).toEqual({ stopReason: 'end_turn' })
+  })
+
+  it('keeps an acknowledged prompt however long its turn runs', async () => {
+    await start('n-ack', {}, 150)
+    const first = rt.prompt('n-ack', 'hold')
+    await new Promise((r) => setTimeout(r, 400))
+    const folded = rt.prompt('n-ack', 'fold')
+    expect(await first).toEqual({ stopReason: 'end_turn' })
+    expect(await folded).toEqual({ stopReason: 'end_turn' })
+    expect(logs).toEqual([])
+  })
+
+  it('with an older Claude Code that acknowledges nothing, a turn that starts counts and a prompt during a turn is not dropped', async () => {
+    await start('n-old', { env: { FAKE_BRIDGE_NO_LIFECYCLE: '1' } }, 150)
+    expect(await rt.prompt('n-old', 'ping')).toEqual({ stopReason: 'end_turn' })
+    const first = rt.prompt('n-old', 'hold')
+    const late = rt.prompt('n-old', 'fold')
+    await new Promise((r) => setTimeout(r, 400))
+    expect(await first).toEqual({ stopReason: 'end_turn' })
+    expect(await late).toEqual({ stopReason: 'end_turn' })
+    // An idle prompt that starts nothing is still dropped.
+    await expect(rt.prompt('n-old', 'lose')).rejects.toThrow(new RegExp(PROMPT_NOT_RECEIVED))
+    expect(logs[0]).toContain('acknowledged prompts before: no')
   })
 
   it('stops by closing the bridge input and reports the session stopped', async () => {

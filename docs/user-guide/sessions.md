@@ -83,6 +83,10 @@ terminal's output to the screen in batches of about one frame, so a command that
   turn ends (**Queued: sent when the agent finishes**). With Claude Code the message joins the turn
   in progress instead. If you interrupt, queued messages come back into the composer, unsent. Each
   queued message has a **Remove queued message** button.
+- **Messages the agent did not receive**: Claude Code confirms each message it receives. When it
+  does not confirm one within 30 seconds, the chat says **The agent did not receive this message**,
+  its text comes back into the composer to send again, and the session stops waiting on it. The
+  main log (Help → Reveal Logs) records where the message got stuck, never its text.
 - **Pasted images**: paste or drag images into the composer (agents that accept images only: PNG,
   JPEG, GIF or WebP, up to 3.75 MB each). They show as thumbnails you can remove, and
   appear in the conversation, where **Click to view** opens them in the file viewer.

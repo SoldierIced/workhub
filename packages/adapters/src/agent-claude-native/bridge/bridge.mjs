@@ -25,6 +25,9 @@
 //   {"type":"mcp_error","name","message"}
 //   {"type":"permission_request","id","toolName","input","suggestions"}
 //   {"type":"permission_cancelled","id"} {"type":"error","message"} {"type":"closed"}
+//   {"type":"received","uuid"} {"type":"handed","uuid"}: a user message read from stdin, then
+//     handed to the SDK, so the app can tell where a prompt Claude never took got stuck
+//   Claude Code's own stderr goes to the bridge's stderr.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -76,7 +79,9 @@ async function* prompts() {
       if (inputClosed) return;
       await new Promise((resolve) => (wakeReader = resolve));
     }
-    yield queued.shift();
+    const next = queued.shift();
+    if (typeof next.uuid === "string") send({ type: "handed", uuid: next.uuid });
+    yield next;
   }
 }
 
@@ -124,6 +129,8 @@ async function start(config) {
     thinking: { type: "adaptive", display: "summarized" },
     // The predicted next prompt after each turn, offered under the composer as in the terminal.
     promptSuggestions: true,
+    // Claude Code's stderr, kept by the app with the session's last lines (shown when it fails).
+    stderr: (data) => process.stderr.write(data),
   };
   if (config.resume) options.resume = config.resume;
   else if (config.sessionId) options.sessionId = config.sessionId;
@@ -245,6 +252,7 @@ lines.on("line", (line) => {
       if (!session) start(message);
       break;
     case "user":
+      if (typeof message.uuid === "string") send({ type: "received", uuid: message.uuid });
       enqueue({
         type: "user",
         message: { role: "user", content: message.content ?? message.text },
