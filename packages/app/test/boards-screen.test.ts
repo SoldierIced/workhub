@@ -216,7 +216,7 @@ describe('the board view', () => {
     expect(out).toContain('&lt;i&gt;Col&lt;/i&gt;')
     expect(out).toContain('&lt;script&gt;')
     expect(out).toContain('&lt;u&gt;who&lt;/u&gt;')
-    expect(out).not.toMatch(/<(b|i|u|script)>/)
+    for (const tag of ['b', 'i', 'u', 'script']) expect(out.toLowerCase()).not.toContain(`<${tag}>`)
     expect(out).toContain('whitespace-pre-wrap')
   })
 

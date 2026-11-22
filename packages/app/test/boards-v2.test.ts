@@ -195,7 +195,7 @@ describe('the examples tools read', () => {
     const { readFileSync } = await import('node:fs')
     const { parseBoard } = await import('@workhub/core')
     const text = readFileSync(new URL('../../../skills/workhub-board/SKILL.md', import.meta.url), 'utf8')
-    const examples = [...text.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => JSON.parse(m[1]!) as unknown)
+    const examples = [...text.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((m) => JSON.parse(m[1]!) as unknown)
     expect(examples.length).toBeGreaterThan(1)
     for (const doc of examples) expect(parseBoard(doc)).toMatchObject({ ok: true })
   })
