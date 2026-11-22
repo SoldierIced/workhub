@@ -9,6 +9,7 @@ import { sessionMonitorEs } from './sessionMonitor.es'
 import { healthEs } from './health.es'
 import { metricAlertsEs } from './metricAlerts.es'
 import { flowMapsEs } from './flowMaps.es'
+import { boardsEs } from './boards.es'
 import { healthPromptsEs } from './healthPrompts.es'
 import { prEventsEs } from './prEvents.es'
 import { slackEs } from './slack.es'
@@ -486,6 +487,7 @@ export const es: Record<keyof typeof en, string> = {
   ...healthEs,
   ...metricAlertsEs,
   ...flowMapsEs,
+  ...boardsEs,
   ...healthPromptsEs,
   ...prEventsEs,
   ...linksEs,

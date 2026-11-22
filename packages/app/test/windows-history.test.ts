@@ -106,6 +106,8 @@ describe('application menu', () => {
     click(view.find((i) => i.accelerator === 'CmdOrCtrl+6'))
     click(view.find((i) => i.accelerator === 'CmdOrCtrl+Alt+2'))
     expect(ran).toEqual([{ kind: 'navigate', route: 'history' }, { kind: 'showMode', mode: 'console' }])
+    // Live boards has no screen, so no menu item: boards show in their chat.
+    expect(view.some((i) => i.label === 'nav.boards')).toBe(false)
     expect(view.some((i) => i.role === 'toggleDevTools')).toBe(false)
     expect(items(byLabel(menu({ developer: true }).template, 'menu.view')).some((i) => i.role === 'toggleDevTools')).toBe(true)
   })

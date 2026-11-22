@@ -41,7 +41,7 @@ export const PROFILE_TABS: readonly { id: ProfileTab; label: MessageKey }[] = [
 export const isProfileTab = (tab: string | undefined): tab is ProfileTab => PROFILE_TABS.some((x) => x.id === tab)
 
 /** The rows of a profile's Screens tab, by the key their row (and a `#anchor` pointing at it) uses. */
-export const PROFILE_SCREENS = ['pullRequests', 'tickets', 'slack', 'automations', 'health', 'flowMaps', 'plan', 'aiReview'] as const
+export const PROFILE_SCREENS = ['pullRequests', 'tickets', 'slack', 'automations', 'health', 'flowMaps', 'plan', 'boards', 'aiReview'] as const
 export type ProfileScreen = (typeof PROFILE_SCREENS)[number]
 
 /** The title of each screen's row (and of its place in a search result). */
@@ -53,6 +53,7 @@ export const PROFILE_SCREEN_LABEL: Readonly<Record<ProfileScreen, MessageKey>> =
   health: 'module.health',
   flowMaps: 'module.flowMaps',
   plan: 'module.planner',
+  boards: 'module.boards',
   aiReview: 'settingsV2.screens.aiReview'
 }
 
@@ -85,6 +86,7 @@ export const LEGACY_TABS: Readonly<Record<string, SettingsTarget>> = {
   health: { section: 'profiles', profile: { tab: 'screens' }, group: 'health' },
   flowMaps: { section: 'profiles', profile: { tab: 'screens' }, group: 'flowMaps' },
   plan: { section: 'profiles', profile: { tab: 'screens' }, group: 'plan' },
+  boards: { section: 'profiles', profile: { tab: 'screens' }, group: 'boards' },
   slack: { section: 'profiles', profile: { tab: 'screens' }, group: 'slack' },
   aiReview: { section: 'profiles', profile: { tab: 'screens' }, group: 'aiReview' },
   storage: { section: 'advanced', group: 'data' },

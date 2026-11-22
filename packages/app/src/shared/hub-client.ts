@@ -195,6 +195,12 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       ask: (draft, folder) => send('flowMaps:ask', draft, folder),
       onAsk: (cb) => subscribe<[string, string | undefined]>('flowMaps:askInMain', cb)
     },
+    boards: {
+      list: (profileId) => invoke('boards:list', profileId),
+      get: (profileId, key) => invoke('boards:get', profileId, key),
+      remove: (profileId, key) => invoke('boards:remove', profileId, key),
+      onChanged: (cb) => subscribe<[string, string]>('boards:changed', cb)
+    },
     plan: {
       get: (profileId, force) => invoke('plan:get', profileId, force),
       test: (connection, secret) => invoke('plan:test', connection, secret),
@@ -339,8 +345,8 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
     },
     agentTools: {
       status: () => invoke('agentTools:status'),
-      installSkills: (accountId) => invoke('agentTools:installSkills', accountId),
-      removeSkills: (accountId) => invoke('agentTools:removeSkills', accountId),
+      installSkills: (targetId, skills) => invoke('agentTools:installSkills', targetId, skills),
+      removeSkills: (targetId, skills) => invoke('agentTools:removeSkills', targetId, skills),
       installGlobalMcp: (accountId) => invoke('agentTools:installGlobalMcp', accountId),
       removeGlobalMcp: (accountId) => invoke('agentTools:removeGlobalMcp', accountId)
     },

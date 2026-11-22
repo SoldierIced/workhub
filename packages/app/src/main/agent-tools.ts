@@ -5,8 +5,10 @@
  * - **MCP**: Workhub's MCP server (`workhub-mcp.mjs`, with the bridge scripts) handed to every
  *   session that reaches the endpoint (`workhubMcpLaunch`), and optionally installed in Claude
  *   Code's user settings for sessions outside Workhub (`claude mcp add-json`).
- * - **Skills**: the `workhub-*` skills copied into each Claude config folder's `skills/`. Each
- *   copy carries a `.workhub-skill` marker, so only copies Workhub made are updated or removed.
+ * - **Skills**: the `workhub-*` skills copied into each Claude config folder's `skills/`, and into
+ *   the skills folder of the other agents that read the same `SKILL.md` format (Codex, OpenCode,
+ *   Gemini CLI, Kiro). Each copy carries a `.workhub-skill` marker, so only copies Workhub made are
+ *   updated or removed.
  */
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -87,6 +89,32 @@ export function removeSkills(skillsDir: string, skills: readonly { name: string 
   return removed
 }
 
+/**
+ * The other agents that read `SKILL.md` skills from a folder of their own. Only agents whose home
+ * folder exists are offered: the agent has run on this computer.
+ */
+export const SKILL_AGENTS: readonly { agentId: string; name: string; home: (home: string, env: NodeJS.ProcessEnv) => string }[] = [
+  { agentId: 'codex', name: 'Codex', home: (home, env) => env['CODEX_HOME'] || join(home, '.codex') },
+  { agentId: 'opencode', name: 'OpenCode', home: (home, env) => join(env['XDG_CONFIG_HOME'] || join(home, '.config'), 'opencode') },
+  { agentId: 'gemini', name: 'Gemini CLI', home: (home) => join(home, '.gemini') },
+  { agentId: 'kiro', name: 'Kiro', home: (home) => join(home, '.kiro') }
+]
+
+/** The skills folders of the other agents installed here, as install targets (`agent:<id>`). */
+export function agentSkillFolders(home: string, env: NodeJS.ProcessEnv, exists: (path: string) => boolean = existsSync): { id: string; agentId: string; name: string; dir: string }[] {
+  return SKILL_AGENTS.map((a) => ({ agentId: a.agentId, name: a.name, root: resolve(a.home(home, env)) }))
+    .filter((a) => exists(a.root))
+    .map((a) => ({ id: `agent:${a.agentId}`, agentId: a.agentId, name: a.name, dir: join(a.root, 'skills') }))
+}
+
+/** The bundled skills named in `only` (all when it is absent); an unknown name is refused. */
+export function pickSkills<T extends { name: string }>(skills: readonly T[], only?: readonly string[]): T[] {
+  if (!only) return [...skills]
+  const unknown = only.filter((n) => !skills.some((s) => s.name === n))
+  if (unknown.length) throw new Error(`unknown skill: ${unknown.join(', ')}`)
+  return skills.filter((s) => only.includes(s.name))
+}
+
 /** The `claude mcp add-json` value of Workhub's server for agents outside Workhub (its socket named in the args). */
 export function globalMcpJson(where: { node: string; script: string; socket: string }): string {
   return JSON.stringify({ type: 'stdio', command: where.node, args: [where.script, '--socket', where.socket], env: { ELECTRON_RUN_AS_NODE: '1' } })
@@ -146,7 +174,14 @@ export class AgentToolsService {
         }
       })
     )
-    return { skills: skills.map((s) => s.name), accounts, globalMcpAvailable: socket !== null }
+    const agents = agentSkillFolders(this.deps.home, this.deps.env()).map((a) => ({
+      id: a.id,
+      agentId: a.agentId,
+      name: a.name,
+      dir: a.dir,
+      skills: Object.fromEntries(skills.map((s) => [s.name, skillState(a.dir, s)]))
+    }))
+    return { skills: skills.map((s) => s.name), accounts, agents, globalMcpAvailable: socket !== null }
   }
 
   /** How many Claude folders have every skill (Workhub's current copy or the user's own), and how many an older copy. */
@@ -161,16 +196,25 @@ export class AgentToolsService {
     }
   }
 
-  async installSkills(accountId: string): Promise<string[]> {
-    const f = (await folders(this.deps)).find((x) => x.id === accountId)
+  /** The skills folder of a target: a Claude account id, or `agent:<id>` for another agent. */
+  private async skillsDirOf(targetId: string): Promise<string> {
+    if (targetId.startsWith('agent:')) {
+      const a = agentSkillFolders(this.deps.home, this.deps.env()).find((x) => x.id === targetId)
+      if (!a) throw new Error('unknown agent')
+      return a.dir
+    }
+    const f = (await folders(this.deps)).find((x) => x.id === targetId)
     if (!f) throw new Error('unknown account')
-    return installSkills(join(f.dir, 'skills'), bundledSkills(this.deps.skillsDir))
+    return join(f.dir, 'skills')
   }
 
-  async removeSkills(accountId: string): Promise<string[]> {
-    const f = (await folders(this.deps)).find((x) => x.id === accountId)
-    if (!f) throw new Error('unknown account')
-    return removeSkills(join(f.dir, 'skills'), bundledSkills(this.deps.skillsDir))
+  /** Copies the skills (those named in `only`, or all) into the target's skills folder. */
+  async installSkills(targetId: string, only?: readonly string[]): Promise<string[]> {
+    return installSkills(await this.skillsDirOf(targetId), pickSkills(bundledSkills(this.deps.skillsDir), only))
+  }
+
+  async removeSkills(targetId: string, only?: readonly string[]): Promise<string[]> {
+    return removeSkills(await this.skillsDirOf(targetId), pickSkills(bundledSkills(this.deps.skillsDir), only))
   }
 
   /** Adds (or replaces) Workhub's server in the account's Claude Code user settings. */
@@ -197,10 +241,16 @@ const accountArg = (v: unknown): string => {
   return v
 }
 
+const skillsArg = (v: unknown): string[] | undefined => {
+  if (v === undefined || v === null) return undefined
+  if (!Array.isArray(v) || v.length > 50 || !v.every((n) => typeof n === 'string' && SKILL_NAME.test(n))) throw new Error('bad skills')
+  return v as string[]
+}
+
 export function registerAgentToolsIpc(ipc: IpcRegistrar, service: AgentToolsService): void {
   ipc.handle('agentTools:status', () => service.status())
-  ipc.handle('agentTools:installSkills', (_e, id: unknown) => service.installSkills(accountArg(id)))
-  ipc.handle('agentTools:removeSkills', (_e, id: unknown) => service.removeSkills(accountArg(id)))
+  ipc.handle('agentTools:installSkills', (_e, id: unknown, skills: unknown) => service.installSkills(accountArg(id), skillsArg(skills)))
+  ipc.handle('agentTools:removeSkills', (_e, id: unknown, skills: unknown) => service.removeSkills(accountArg(id), skillsArg(skills)))
   ipc.handle('agentTools:installGlobalMcp', (_e, id: unknown) => service.installGlobalMcp(accountArg(id)))
   ipc.handle('agentTools:removeGlobalMcp', (_e, id: unknown) => service.removeGlobalMcp(accountArg(id)))
 }

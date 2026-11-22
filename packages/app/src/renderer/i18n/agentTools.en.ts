@@ -12,6 +12,7 @@ export const agentToolsEn = {
   'agentTools.skills.missing': 'Not installed',
   'agentTools.skills.current': 'Installed',
   'agentTools.skills.outdated': 'Update available',
+  'agentTools.skills.some': '{count} of {total} installed',
   'agentTools.skills.own': 'Your own copy',
   'agentTools.install': 'Install',
   'agentTools.update': 'Update',
@@ -22,6 +23,13 @@ export const agentToolsEn = {
   'agentTools.globalMcp.missing': 'Not installed',
   'agentTools.globalMcp.noClaude': 'Claude Code not found',
   'agentTools.globalMcp.unavailable': 'Not available here',
+  'agentTools.agentSkillsHint': 'Copies the workhub-* skills into {dir}. Folders you made with the same name are left alone.',
+  'agentTools.kiroHint': 'Kiro reads skills an agent lists in its resources: add skill://~/.kiro/skills/*/SKILL.md to the agent you use.',
+  'agentTools.ask.title': '{screen}: which agents should learn it?',
+  'agentTools.ask.description': 'The {skill} skill teaches an agent to use this screen from its sessions. It is copied now, apart from saving the profile; you can remove it later in Settings → Agents → Workhub tools.',
+  'agentTools.ask.loading': 'Looking for the agents on this computer…',
+  'agentTools.ask.skip': 'Not now',
+  'agentTools.ask.none': 'No agent that reads skills was found on this computer.',
   'agentTools.done': 'Done',
   'agentTools.failed': 'It did not work: {error}'
 } as const

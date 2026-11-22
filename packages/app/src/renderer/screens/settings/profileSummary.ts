@@ -22,6 +22,7 @@ export const SCREEN_ROWS: readonly ScreenRow[] = [
   { key: 'health', label: PROFILE_SCREEN_LABEL.health, hint: 'health.settings.moduleHint', module: 'health', kind: 'health', settings: true },
   { key: 'flowMaps', label: PROFILE_SCREEN_LABEL.flowMaps, hint: 'flowMaps.settings.moduleHint', module: 'flowMaps', settings: true },
   { key: 'plan', label: PROFILE_SCREEN_LABEL.plan, hint: 'plan.settings.moduleHint', module: 'planner', settings: true },
+  { key: 'boards', label: PROFILE_SCREEN_LABEL.boards, hint: 'boards.settings.moduleHint', module: 'boards' },
   { key: 'aiReview', label: PROFILE_SCREEN_LABEL.aiReview, hint: 'aiReview.settings.hint', settings: true }
 ]
 

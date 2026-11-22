@@ -24,6 +24,12 @@
  *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/flow-maps \
  *     -H 'content-type: application/json' --data-binary @checkout.flow-map.json
  *
+ * A tool that follows a job done by several agents sends it to the panel of its chat as one JSON
+ * board document (the whole board each time; `boards.ts`). 413 over 256 KB, 409 when Live boards is off:
+ *
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/boards \
+ *     -H 'content-type: application/json' --data-binary @release.board.json
+ *
  * And it takes proposals for Plan's inbox (pending items the user approves, keeps or discards):
  *
  *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/inbox \
@@ -83,6 +89,7 @@ import type { PlanControl } from './plan-control'
 import type { SessionControl } from './session-control'
 
 const MAX_BODY = 256 * 1024
+const BOARD_TOO_LARGE = 'the board is over 256 KB: shorten the log or the tables'
 const MAX_REPOS = 20
 
 export interface ReviewRequestRepo {
@@ -105,6 +112,8 @@ export interface ControlDeps {
   openReview(sessionId: string, repos: ReviewRequestRepo[]): ControlResult | Promise<ControlResult>
   /** Validates and stores a flow map (the Flow maps screen); errors name the fields. `file` is a display name (`<id>.json`): maps live in the database. */
   saveFlowMap?(map: unknown, caller?: ControlCaller): { ok: true; file: string; id: string; note?: string } | { ok: false; errors: string[] }
+  /** Validates and stores a Live boards document for the caller's profile (`boards.ts`); refusals carry their HTTP status. Not journaled: a board is display only. */
+  saveBoard?(board: unknown, caller: NonNullable<ControlCaller>): Promise<{ ok: true; id: string; dropped: string[] } | { ok: false; status: number; error: string; errors?: string[] }>
   /** Adds the items of a body to a profile's inbox as pending (`parseInboxProposals` checks it). */
   addInboxItems?(body: unknown): Promise<{ ok: true; added: string[]; duplicates: string[] } | { ok: false; status: number; error: string }>
   /** Plan for agents: today's meetings, reading and updating the inbox, milestones, people. */
@@ -254,7 +263,34 @@ const isDirectory = (path: string) => {
   }
 }
 
+/**
+ * Requests whose upload went past `DISCARD_CAP` with more still coming. Only these have their connection closed
+ * once the answer is out; any other request, oversized or not, leaves its connection alone.
+ */
+const oversized = new WeakSet<IncomingMessage>()
+/** How long the socket of such a request may outlive its answer. */
+const CLOSE_GRACE_MS = 1000
+/** The most one request may make the app read and throw away after going over `MAX_BODY`. */
+const DISCARD_CAP = 8 * 1024 * 1024
+
 function send(res: ServerResponse, status: number, body: unknown): void {
+  if (oversized.has(res.req)) {
+    // The upload went past `DISCARD_CAP` and is still coming: the app stopped reading it. The answer goes out
+    // with no `Connection: close` header (Node would then destroy the socket the moment the answer is flushed,
+    // resetting it with the upload unread). Once the answer is flushed the server ends its side (FIN) and
+    // destroys the socket when the client hangs up or after `CLOSE_GRACE_MS`, whichever comes first, so a
+    // client still sending cannot hold the connection. This client may see a reset instead of the answer.
+    const socket = res.socket // taken now: `res` lets go of it once the answer is flushed
+    res.writeHead(status, { 'content-type': 'application/json' })
+    res.end(JSON.stringify(body), () => {
+      if (!socket || socket.destroyed) return
+      const timer = setTimeout(() => socket.destroy(), CLOSE_GRACE_MS)
+      timer.unref()
+      socket.once('close', () => clearTimeout(timer))
+      socket.end()
+    })
+    return
+  }
   res.writeHead(status, { 'content-type': 'application/json' })
   res.end(JSON.stringify(body))
 }
@@ -266,25 +302,44 @@ function reply(res: ServerResponse, r: ControlReply): void {
 /** The read-only Plan endpoints and the handler of each. */
 const PLAN_READS: Record<string, 'today' | 'milestones' | 'people'> = { '/v1/plan/today': 'today', '/v1/milestones': 'milestones', '/v1/people': 'people' }
 
+/** A body over `MAX_BODY`: `readBody` hands it on as such, so one route can answer 413 while the rest keep 400. */
+export class BodyTooLargeError extends Error {
+  constructor() {
+    super('body too large')
+    this.name = 'BodyTooLargeError'
+  }
+}
+
 async function readJson(req: IncomingMessage): Promise<unknown> {
   let size = 0
   const chunks: Buffer[] = []
-  for await (const chunk of req) {
+  // `destroyOnReturn: false`: leaving the loop must not destroy the request before the caller has its answer.
+  // Chunks are kept only up to `MAX_BODY`. Past it the request is still read, and thrown away, until it ends or
+  // `DISCARD_CAP` bytes have gone by. If it ends inside the cap, `BodyTooLargeError` is thrown with the request
+  // fully read, so the answer goes out like any other and the connection stays usable. If the cap is passed
+  // with the upload still coming, the request is marked in `oversized` and `send` closes the connection after
+  // its answer.
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     size += (chunk as Buffer).length
-    if (size > MAX_BODY) throw new Error('body too large')
-    chunks.push(chunk as Buffer)
+    if (size > DISCARD_CAP) {
+      oversized.add(req)
+      throw new BodyTooLargeError()
+    }
+    if (size <= MAX_BODY) chunks.push(chunk as Buffer)
+    else chunks.length = 0 // over the limit: nothing more is kept, what was kept is dropped
   }
+  if (size > MAX_BODY) throw new BodyTooLargeError()
   const text = Buffer.concat(chunks).toString('utf8').trim()
   return text ? JSON.parse(text) : undefined
 }
 
 /** The JSON body bound to the caller's session (`bindBody`), or the answer that refuses it. */
-async function readBody(req: IncomingMessage, caller: ControlCaller): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }> {
+async function readBody(req: IncomingMessage, caller: ControlCaller): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string; tooLarge?: true }> {
   let body: unknown
   try {
     body = await readJson(req)
   } catch (e) {
-    return { ok: false, status: 400, error: e instanceof Error ? e.message : 'bad body' }
+    return { ok: false, status: 400, error: e instanceof Error ? e.message : 'bad body', ...(e instanceof BodyTooLargeError ? { tooLarge: true as const } : {}) }
   }
   return bindBody(body, caller)
 }
@@ -305,6 +360,16 @@ export async function handleControl(deps: ControlDeps, req: IncomingMessage, res
     const body = read.body
     const saved = deps.saveFlowMap(body, caller)
     return saved.ok ? send(res, 200, saved) : send(res, 400, { ok: false, error: saved.errors.join('; '), errors: saved.errors })
+  }
+  if (url.pathname === '/v1/boards') {
+    if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'use POST' })
+    if (!deps.saveBoard) return send(res, 404, { ok: false, error: 'live boards are not available' })
+    if (!caller) return send(res, 401, { ok: false, error: 'this needs the session token: send X-Workhub-Token: $WORKHUB_SESSION_TOKEN' })
+    // The board itself is the body (no session bound into it: the strict parser would refuse it); the session is the caller's.
+    const read = await readBody(req, null)
+    if (!read.ok) return send(res, read.tooLarge ? 413 : read.status, { ok: false, error: read.tooLarge ? BOARD_TOO_LARGE : read.error })
+    const saved = await deps.saveBoard(read.body, caller)
+    return saved.ok ? send(res, 200, saved) : send(res, saved.status, { ok: false, error: saved.error, ...(saved.errors ? { errors: saved.errors } : {}) })
   }
   if (url.pathname === '/v1/inbox') {
     if (req.method === 'GET') return deps.plan ? reply(res, await deps.plan.inbox(url.searchParams)) : send(res, 404, { ok: false, error: 'the inbox is not available' })

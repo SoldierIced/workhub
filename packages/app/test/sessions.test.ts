@@ -143,7 +143,7 @@ describe('SessionManager', () => {
   })
 
   it('puts a session in the profile that owns its folder, whatever profile was active', async () => {
-    const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+    const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }
     const config: WorkhubConfig = {
       ...emptyConfig(),
       profiles: [
@@ -481,7 +481,7 @@ describe('session helpers', () => {
   it('resolves an account key the profile does not offer from the config', () => {
     const profiled: WorkhubConfig = {
       ...config,
-      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }],
+      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false } }],
       activeProfileId: 'p'
     }
     expect(resolveChoice(profiled, 'p', 'claude:work')).toMatchObject({ account: { id: 'work' }, label: 'Claude Code · Work' })
@@ -799,7 +799,7 @@ describe('SessionManager prompt gate', () => {
 describe('SessionManager worktrees', () => {
   // Paths are joined with the platform's separator (`\\` on Windows).
   const wt = (name: string) => join('/w/_worktrees', name)
-  const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+  const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }
   const config = (): WorkhubConfig => ({
     ...emptyConfig(),
     profiles: [

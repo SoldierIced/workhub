@@ -8,6 +8,7 @@ import { sessionMonitorEn } from './sessionMonitor.en'
 import { healthEn } from './health.en'
 import { metricAlertsEn } from './metricAlerts.en'
 import { flowMapsEn } from './flowMaps.en'
+import { boardsEn } from './boards.en'
 import { healthPromptsEn } from './healthPrompts.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
@@ -487,6 +488,7 @@ export const en = {
   ...healthEn,
   ...metricAlertsEn,
   ...flowMapsEn,
+  ...boardsEn,
   ...healthPromptsEn,
   ...prEventsEn,
   ...linksEn,

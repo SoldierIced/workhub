@@ -411,7 +411,7 @@ describe('planner config', () => {
       { id: 'cal', kind: 'calendar', provider: 'ics', secretRef: 'connection/cal', settings: { ownerEmail: 'me@example.com' } },
       { id: 'jira', kind: 'tracker', provider: 'jira', endpoint: 'https://acme.example.com', secretRef: 'connection/jira', settings: {} }
     ],
-    profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: true }, planner: { ...plannerSettings(undefined), calendarIds: ['cal'] } }]
+    profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: true, boards: false }, planner: { ...plannerSettings(undefined), calendarIds: ['cal'] } }]
   })
 
   it('fills defaults and clamps hand-edited values', () => {

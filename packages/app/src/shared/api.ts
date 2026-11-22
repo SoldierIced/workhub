@@ -49,6 +49,7 @@ import type { SessionRequestsApi } from './session-requests-api'
 import type { AgentChangesApi } from './agent-changes-api'
 import type { HealthApi } from './health-api'
 import type { FlowMapsApi } from './flow-maps-api'
+import type { BoardsApi } from './boards-api'
 import type { PlanApi } from './plan-api'
 import type { PlannerApi } from './planner-api'
 import type { MetricAlertsApi } from './metric-alerts-api'
@@ -605,6 +606,7 @@ export interface HubApi {
   quit: QuitApi
   health: HealthApi
   flowMaps: FlowMapsApi
+  boards: BoardsApi
   plan: PlanApi
   planner: PlannerApi
   metricAlerts: MetricAlertsApi

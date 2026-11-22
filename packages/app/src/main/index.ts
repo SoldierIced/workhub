@@ -43,6 +43,7 @@ import {
   validateConfig,
   quietNow,
   moduleScreens,
+  type BoardsState,
   type CreditSpend,
   type Result,
   sessionIdentity,
@@ -105,6 +106,8 @@ import { registerSessionRequestsIpc, SessionRequests } from './session-control'
 import { FlowHistoryStore } from './flow-history'
 import { saveFlowMap } from './flow-maps'
 import { registerFlowMapsIpc } from './flow-maps-ipc'
+import { boardsOn, createBoards, createBoardSaver } from './boards'
+import { registerBoardsIpc } from './boards-ipc'
 import { DemoMetricSource, HealthMetricSource, MetricAlertService, ProductMetricSource, type MetricAlertsState } from './metric-alerts'
 import { registerMetricAlertsIpc } from './metric-alerts-ipc'
 import { registerFileViewerIpc } from './file-viewer'
@@ -390,6 +393,11 @@ const prEvents = new PrEventService({
 const flowHistory = new FlowHistoryStore(db, Date.now, (m) => diagnostics.log.warn(m))
 if (firstInstance) flowHistory.prune()
 const flowMaps = new SqliteFlowMaps(db)
+// Live boards: one row of the database per profile; announced to windows only (never to a paired device).
+const boards = createBoards({
+  stateFor: (profileId) => db.state<BoardsState>('boards:' + profileId, 5000),
+  changed: (profileId, boardId) => broadcast.toWindows('boards:changed', profileId, boardId)
+})
 const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1', flowMaps, flowHistory })
 // WORKHUB_DEMO_TICKETS=1 serves synthetic tickets, so the UI can be shown without credentials.
 const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1', undefined, scenario ?? undefined)
@@ -1366,6 +1374,10 @@ function registerIpc(): void {
   registerAnalyticsIpc(ipc, { db, records: sessionRecords, scan: () => tokenSpend.scanNow(), reports: (r) => usageReports.report(r), exportCsv: createUsageCsvExporter({ window: windows.liveMain }) })
   registerSessionRequestsIpc(ipc, sessionRequests)
   registerAgentChangesIpc(ipc, agentChanges, agentChangesWindow((hash, title) => createAuxWindow(hash, title, { width: 780, height: 820, minWidth: 480, minHeight: 400 })))
+  registerBoardsIpc(ipc, {
+    boards,
+    enabled: (profileId) => boardsOn({ modules: boardModules }, profileId)
+  })
   registerFlowMapsIpc(ipc, {
     maps: flowMaps,
     pickFiles: async () => {
@@ -1597,6 +1609,7 @@ const controlProfiles = {
   },
   folderProfile: async (path: string) => owningProfile(path, (await configuration.current()).profiles, homedir())?.id
 }
+const boardModules = async (profileId: string) => (await configuration.current()).profiles.find((p) => p.id === profileId)?.modules
 void app.whenReady().then(async () => {
   // A second launch only hands over to the running app (its 'second-instance'): it must not touch
   // the socket, the config or any other file the running app owns.
@@ -1625,6 +1638,16 @@ void app.whenReady().then(async () => {
       return { ok: true }
     },
     saveFlowMap: (map) => saveFlowMap(flowMaps, map, { keepAlerts: true }),
+    // Not a change an agent made: journalControl copies this dep as it is and records nothing for it.
+    saveBoard: createBoardSaver({
+      ...controlProfiles,
+      boards,
+      modules: boardModules,
+      chatOf: (id) => {
+        const view = sessions.list().find((s) => s.id === id)
+        return view ? sessionIdentity(view) : undefined
+      }
+    }),
     addInboxItems: async (body) => {
       // A reviewer cannot propose items; the session in the body is the caller's (bound by its token).
       const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>
@@ -1672,7 +1695,9 @@ void app.whenReady().then(async () => {
   }
   if (scenario && !loadError) {
     try {
-      if (await seedScenarioConfig(configuration, dataDir)) diagnostics.log.info(`demo scenario "${scenario}" seeded in ${dataDir}`)
+      if (await seedScenarioConfig(configuration, dataDir)) {
+        diagnostics.log.info(`demo scenario "${scenario}" seeded in ${dataDir}`)
+      }
     } catch (err) {
       loadError = err instanceof Error ? err.message : String(err)
       diagnostics.log.error(loadError)

@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { BUILTIN_AGENTS, consoleCommand, emptyConfig } from '@workhub/core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AgentToolsService, bundledSkills, globalMcpJson, installSkills, removeSkills, skillState, workhubMcpLaunch } from '../src/main/agent-tools'
+import { AgentToolsService, agentSkillFolders, bundledSkills, globalMcpJson, installSkills, pickSkills, removeSkills, skillState, workhubMcpLaunch } from '../src/main/agent-tools'
+import { MODULE_SKILL, needsSkill, skillTargets } from '../src/renderer/screens/settings/InstallSkillDialog'
 import { consoleMcpConfig } from '../src/main/session-manager'
 
 const dirs: string[] = []
@@ -49,7 +50,7 @@ describe("Workhub's MCP server for a session", () => {
 describe('Workhub skills in a Claude folder', () => {
   it('ships the repo skills', () => {
     const names = bundledSkills(resolve(__dirname, '../../../skills')).map((s) => s.name)
-    expect(names).toEqual(expect.arrayContaining(['workhub-analytics', 'workhub-automations', 'workhub-flow-map', 'workhub-plan', 'workhub-sessions']))
+    expect(names).toEqual(expect.arrayContaining(['workhub-analytics', 'workhub-automations', 'workhub-board', 'workhub-flow-map', 'workhub-plan', 'workhub-sessions']))
   })
 
   it('installs, updates and removes only its own copies', () => {
@@ -120,5 +121,67 @@ describe('the claude commands of the Workhub tools', () => {
     const status = await service.status()
     expect(status.accounts.map((a) => a.id)).toEqual(['main'])
     expect(seen).toEqual([resolve('/tmp/acme-home/.claude')])
+  })
+})
+
+describe('Workhub skills for the other agents', () => {
+  it('offers only the agents whose home folder exists, where each one reads skills', () => {
+    const home = '/tmp/acme-home'
+    const all = agentSkillFolders(home, { CODEX_HOME: '/tmp/acme-codex' }, () => true)
+    expect(all.map((a) => [a.id, a.dir])).toEqual([
+      ['agent:codex', resolve('/tmp/acme-codex/skills')],
+      ['agent:opencode', resolve('/tmp/acme-home/.config/opencode/skills')],
+      ['agent:gemini', resolve('/tmp/acme-home/.gemini/skills')],
+      ['agent:kiro', resolve('/tmp/acme-home/.kiro/skills')]
+    ])
+    expect(agentSkillFolders(home, {}, (p) => p.endsWith('.gemini')).map((a) => a.id)).toEqual(['agent:gemini'])
+    expect(agentSkillFolders(home, { XDG_CONFIG_HOME: '/tmp/acme-xdg' }, (p) => p.includes('opencode'))[0]!.dir).toBe(resolve('/tmp/acme-xdg/opencode/skills'))
+  })
+
+  it('picks the named skills and refuses an unknown one', () => {
+    const skills = [{ name: 'workhub-board' }, { name: 'workhub-plan' }]
+    expect(pickSkills(skills)).toEqual(skills)
+    expect(pickSkills(skills, ['workhub-board'])).toEqual([{ name: 'workhub-board' }])
+    expect(() => pickSkills(skills, ['workhub-nope'])).toThrow(/unknown skill/)
+  })
+
+  it('installs one skill into an agent folder and a Claude folder, and lists both', async () => {
+    const home = tmp()
+    mkdirSync(join(home, '.gemini'))
+    const shipped = tmp()
+    for (const name of ['workhub-board', 'workhub-plan']) {
+      mkdirSync(join(shipped, name))
+      writeFileSync(join(shipped, name, 'SKILL.md'), `---\nname: ${name}\n---\n`)
+    }
+    const service = new AgentToolsService({
+      config: async () => emptyConfig(),
+      home,
+      skillsDir: shipped,
+      node: '/app/Workhub',
+      script: '/x.mjs',
+      socket: () => null,
+      run: async () => ({ result: 'failed', output: '' }),
+      env: () => ({})
+    })
+    expect(await service.installSkills('agent:gemini', ['workhub-board'])).toEqual(['workhub-board'])
+    expect(await service.installSkills('default', ['workhub-board'])).toEqual(['workhub-board'])
+    const status = await service.status()
+    expect(status.agents).toEqual([{ id: 'agent:gemini', agentId: 'gemini', name: 'Gemini CLI', dir: resolve(home, '.gemini/skills'), skills: { 'workhub-board': 'current', 'workhub-plan': 'missing' } }])
+    expect(status.accounts[0]!.skills).toEqual({ 'workhub-board': 'current', 'workhub-plan': 'missing' })
+    await expect(service.installSkills('agent:codex')).rejects.toThrow(/unknown agent/)
+    expect(await service.removeSkills('agent:gemini')).toEqual(['workhub-board'])
+
+    // The dialog asked when a screen is turned on: every target, the ones lacking the skill first checked.
+    const targets = skillTargets(await service.status(), MODULE_SKILL.boards!, (n) => (n ? `Claude Code · ${n}` : 'Claude Code'))
+    expect(targets.map((x) => [x.id, x.label, x.state])).toEqual([
+      ['default', 'Claude Code', 'current'],
+      ['agent:gemini', 'Gemini CLI', 'missing']
+    ])
+    expect(targets.filter((x) => needsSkill(x.state)).map((x) => x.id)).toEqual(['agent:gemini'])
+  })
+
+  it('names a shipped skill for every screen that has one', () => {
+    const names = bundledSkills(resolve(__dirname, '../../../skills')).map((s) => s.name)
+    for (const skill of Object.values(MODULE_SKILL)) expect(names).toContain(skill)
   })
 })

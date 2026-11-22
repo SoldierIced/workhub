@@ -93,7 +93,7 @@ export function newWorkspace(name: string, folder: string, agent: WelcomeAgent |
     name,
     connections: {},
     accountIds: [],
-    modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false },
+    modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false },
     folders: [folder],
     ...(agent ? { preferredAgents: [agent] } : {})
   }

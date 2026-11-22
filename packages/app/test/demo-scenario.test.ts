@@ -44,7 +44,7 @@ describe('seedScenarioConfig', () => {
     const parsed = configSchema.parse(stored)
     expect(validateConfig(parsed)).toEqual([])
     expect(parsed.activeProfileId).toBe(PRODUCT_PROFILE_ID)
-    expect(parsed.profiles[0]).toMatchObject({ name: 'Team lead (demo)', defaultFolder: dir, modules: { planner: true, health: true, automations: true } })
+    expect(parsed.profiles[0]).toMatchObject({ name: 'Team lead (demo)', defaultFolder: dir, modules: { planner: true, health: true, automations: true, boards: true } })
     expect(parsed.options?.welcomeDone).toBe(true)
     expect([...secrets.values.values()]).toEqual([PRODUCT_TRACKER_SECRET])
   })

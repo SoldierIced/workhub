@@ -485,7 +485,7 @@ const profile = z.object({
   accountIds: z.array(id).default([]),
   agentIds: z.array(id).optional(),
   preferredAgents: z.array(z.string().min(1)).optional(),
-  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }),
+  modules: modules.default({ flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }),
   folders: z.array(z.string().min(1)).optional(),
   defaultFolder: z.string().trim().min(1).optional(),
   folderOptions: z.record(z.string().min(1), folderOptions).optional(),
