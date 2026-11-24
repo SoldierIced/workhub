@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { automationsForProfile, configSchema, filterPullRequests, githubScopeFromFilter, hasPullRequestFilter, matchesRepoPattern, normalizePullRequestFilter } from '../src'
+import { githubRepoScopeBatches, automationsForProfile, configSchema, filterPullRequests, githubScopeFromFilter, hasPullRequestFilter, matchesRepoPattern, normalizePullRequestFilter } from '../src'
 
 const item = (owner: string, repo: string) => ({ pr: { owner, repo } })
 
 describe('pull request filter per profile', () => {
   it('cleans the lists: trims, drops blanks, invalid entries, a leading @ and duplicates', () => {
-    expect(normalizePullRequestFilter({ owners: [' acme ', '', '@ana', 'ACME', 'bad name'], excludeRepos: ['acme/api', 'nope', 'acme/API', 'acme/legacy-*'] })).toEqual({ owners: ['acme', 'ana'], excludeRepos: ['acme/api', 'acme/legacy-*'] })
+    expect(normalizePullRequestFilter({ owners: [' acme ', '', '@ana', 'ACME', 'bad name'], excludeRepos: ['acme/api', 'nope', 'acme/API', 'acme/legacy-*'] })).toEqual({ owners: ['acme', 'ana'], excludeRepos: ['acme/api', 'acme/legacy-*'], repos: [] })
     expect(hasPullRequestFilter(undefined)).toBe(false)
     expect(hasPullRequestFilter({ owners: [' '] })).toBe(false)
     expect(hasPullRequestFilter({ excludeRepos: ['acme/api'] })).toBe(true)
@@ -50,5 +50,23 @@ describe('automations per profile', () => {
     expect(automationsForProfile(list, 'work', false).map((a) => a.id)).toEqual(['a', 'c'])
     expect(automationsForProfile(list, 'work', true).map((a) => a.id)).toEqual(['a', 'b', 'c'])
     expect(automationsForProfile(list, undefined, false)).toHaveLength(3)
+  })
+})
+
+describe('repositories allowlist', () => {
+  const items = [item('acme', 'api'), item('acme', 'web'), item('other', 'api')]
+  it('keeps only the allowed repositories, whatever the owners, and excludes win', () => {
+    expect(hasPullRequestFilter({ repos: ['acme/api'] })).toBe(true)
+    expect(filterPullRequests(items, { owners: ['other'], repos: ['acme/api', 'acme/web'] }).map((i) => i.pr.repo)).toEqual(['api', 'web'])
+    expect(filterPullRequests(items, { repos: ['acme/api', 'acme/web'], excludeRepos: ['acme/web'] })).toHaveLength(1)
+  })
+  it('searches with repo: qualifiers only and splits long lists', () => {
+    expect(githubScopeFromFilter({ owners: ['acme'], repos: ['acme/api', 'acme/web'], excludeRepos: ['acme/web'] })).toBe('repo:acme/api')
+    const repos = Array.from({ length: 50 }, (_, i) => `acme/service-number-${i}`)
+    const batches = githubRepoScopeBatches({ repos })
+    expect(batches.length).toBeGreaterThan(1)
+    expect(batches.every((b) => b.length <= 200)).toBe(true)
+    expect(batches.join(' ').split(' ')).toHaveLength(50)
+    expect(githubRepoScopeBatches({ owners: ['acme'] })).toEqual([])
   })
 })

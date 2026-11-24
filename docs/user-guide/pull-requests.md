@@ -21,9 +21,11 @@ repositories in another:
 | Field | What it does |
 |---|---|
 | **Organizations or users** | One per line (`acme`, `ana`; a GitLab group such as `acme/team`). Only their repositories are read. |
+| **Only these repositories** | One per line, as `owner/repo` (no `*`). Only these are read, and they win over the organizations above. Up to 50. |
 | **Hidden repositories** | One per line, as `owner/repo`; `*` stands for any name (`acme/legacy-*`, `acme/*`). Never shown, even when an owner above includes them. |
 
-With no owners, the search falls back to the connection's `scope`, then to the repositories of the
+With only some repositories set, the search reads just those (in a few searches at once when the
+list is long). With no owners, the search falls back to the connection's `scope`, then to the repositories of the
 profile's folders, then to everything your login sees. Hidden repositories apply in every case.
 
 ## The list
@@ -56,10 +58,17 @@ chosen for the profile; see [Profiles](profiles.md#opening-links).
 | Tab | Contents |
 |---|---|
 | **Conversation** | Description, reviewers and their state, comments, labels, linked tickets. |
-| **Files** | The changed files with their diff, review threads inline, and **Reply** on a thread. Long diffs show the first lines with **Show all**. |
+| **Files** | The changed files with their diff, review threads inline, and **Reply** on a thread. Long diffs show the first lines with **Show all**. The diff loads after the rest of the pull request, so the other tabs are ready first; the tab says **Loading files…** meanwhile, and an error here has its own **Retry**. |
 | **Commits** | The commits of the pull request. |
 | **Checks** | CI checks and their state. |
 | **Slack** | **Followed threads** and **Messages that link it**, with **Track a Slack link**. See [Slack](slack.md). |
+
+A pull request you already opened shows again at once from what Workhub kept, and is read again in
+the background (up to 30 are kept per profile; switching profiles forgets the others). If that
+read fails, the last copy stays with a quiet line that says how old it is. **Refresh** always asks
+the code host again. Workhub checks who you are signed in as once and again every 10 minutes, not
+before every read; before approving, sending back or closing it asks again, so switching accounts
+in `gh` counts at once.
 
 Actions on the toolbar:
 
@@ -92,6 +101,12 @@ Actions on the toolbar:
   pull request's branch are offered to close with their worktree removed; nothing happens until
   you click, and a worktree with uncommitted or unpushed work is kept.
 - **Copy link**.
+
+When the code host confirms an action, the dialog closes at once and the screen shows the result
+before the next read: an approved, sent-back or reviewed pull request leaves **To review**, a merged
+one shows **Merged** and a closed one **Closed**. That holds for up to two minutes, or until the
+code host reports a newer change to the pull request; a failed read never undoes it. Both the
+pull request and the list are then read again in the background, in every open window.
 
 ## Create a pull request from a session
 

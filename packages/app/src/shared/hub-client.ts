@@ -152,6 +152,8 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
     codeHost: {
       lists: (profileId, force) => invoke('codeHost:lists', profileId, force),
       view: (profileId, url) => invoke('codeHost:view', profileId, url),
+      detail: (profileId, url, fresh) => invoke('codeHost:detail', profileId, url, fresh === true),
+      diff: (profileId, url) => invoke('codeHost:diff', profileId, url),
       pullRequest: (profileId, url) => invoke('codeHost:pullRequest', profileId, url),
       review: (profileId, url, action, body) => invoke('codeHost:review', profileId, url, action, body),
       comment: (profileId, url, body) => invoke('codeHost:comment', profileId, url, body),
@@ -165,7 +167,8 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       showInWorkhub: (profileId, url) => invoke('codeHost:showInWorkhub', profileId, url),
       onFocus: (cb) => subscribe<[string, string | null]>('codeHost:focus', cb),
       openExternal: (profileId, url) => invoke('codeHost:openExternal', profileId, url),
-      onShowTab: (cb) => subscribe<[PullRequestWindowTab]>('codeHost:showTab', cb)
+      onShowTab: (cb) => subscribe<[PullRequestWindowTab]>('codeHost:showTab', cb),
+      onChanged: (cb) => subscribe<[string, string | null]>('codeHost:changed', cb)
     },
     links: {
       request: (intent) => send('links:request', intent),

@@ -8,10 +8,12 @@ import {
   appOptions,
   CodeHostError,
   filterPullRequests,
+  githubRepoScopeBatches,
   githubScopeFromFilter,
   githubScopeFromRemotes,
   loadMyPullRequests,
   loadPullRequestView,
+  mergeRefusal,
   loadReviewQueue,
   normalizePullRequestFilter,
   closePullRequest,
@@ -27,6 +29,8 @@ import {
   type NewPullRequest,
   type Profile,
   type PullRequest,
+  type PullRequestDetail,
+  type PullRequestRef,
   type PullRequestFilterSettings,
   type PullRequestItem,
   type ReviewAction,
@@ -40,6 +44,8 @@ import {
   type CreatePullRequestResult,
   type MergeMethodsResult,
   type MergeResult,
+  type PullRequestDetailResult,
+  type PullRequestDiffResult,
   type PullRequestViewResult,
   type PullRequestWindowTab
 } from '../shared/codehost-api'
@@ -49,14 +55,29 @@ const LIST_TTL_MS = 30_000
 /** How long a pull request read by URL for the session monitor is kept. */
 const ITEM_TTL_MS = 180_000
 
+/** How long a login read stays valid. */
+const LOGIN_TTL_MS = 10 * 60_000
+/** How long a detail read is served without asking the host again. */
+const DETAIL_TTL_MS = 60_000
+const DETAIL_MAX = 100
+const AUTHORS_MAX = 5_000
+/** How long a repository's allowed merge methods are kept. */
+const METHODS_TTL_MS = 10 * 60_000
+
 interface Resolved {
   host: CodeHost
   key: string
+  /** The connection (host) the profile reads through: logins, details and merge methods are kept per host. */
+  hostKey: string
   scope: string
   cli: string
   folders: string[]
   filter?: PullRequestFilterSettings
 }
+
+/** One pull request on one host, as a cache key. */
+const prKey = (hostKey: string, ref: Pick<PullRequestRef, 'owner' | 'repo' | 'number'>): string => `${hostKey}\n${repoOf(ref)}#${ref.number}`.toLowerCase()
+const repoOf = (ref: Pick<PullRequestRef, 'owner' | 'repo'>): string => (ref.repo.includes('/') ? ref.repo : `${ref.owner}/${ref.repo}`)
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e))
 /** The error of a failed write for the renderer, with the host's reason when it gave one. */
@@ -82,18 +103,40 @@ export class CodeHostService {
   private readonly run: CliRunner
   private readonly hosts = new Map<string, CodeHost>()
   private readonly cache = new Map<string, { at: number; value: CodeHostLists }>()
-  private readonly logins = new Map<string, string>()
+  /** The signed-in login per host (connection), read on demand and re-checked after `LOGIN_TTL_MS`, a signed-out error or a connection change. */
+  private readonly logins = new Map<string, { login: string; at: number }>()
+  private readonly loginReads = new Map<string, Promise<string | undefined>>()
   private readonly demoHost: CodeHost | null
-  /** Reads under way, so concurrent callers of `lists` share one. */
-  private readonly inflight = new Map<string, Promise<CodeHostLists>>()
+  /** Reads of the lists under way: the one running and, for forced callers, the one that follows it. */
+  private readonly flights = new Map<string, { running: Promise<CodeHostLists>; queued?: Promise<CodeHostLists> }>()
   private readonly onListsChanged: (() => void) | undefined
+  private readonly onChanged: ((url: string, profileId: string | null) => void) | undefined
+  /** Detail reads by pull request (LRU, `DETAIL_MAX` entries). Never holds a value read before a write to that PR. */
+  private readonly details = new Map<string, { at: number; value: PullRequestDetail }>()
+  private readonly detailFlights = new Map<string, { gen: number; promise: Promise<PullRequestDetail> }>()
+  /** The author of each pull request seen: it never changes, so "is it mine" needs no read once known. */
+  private readonly authors = new Map<string, string>()
+  private readonly methods = new Map<string, { at: number; value: MergeMethod[] }>()
+  /** Per key, how many writes happened: a read that started under another number never stores its result. */
+  private readonly generations = new Map<string, number>()
 
   constructor(
     private readonly loadConfig: () => Promise<WorkhubConfig>,
-    options: { demo: boolean; /** Called when a read stored lists that differ from the cached ones (the tray shows the cached lists and never reads). */ onListsChanged?: () => void; /** Demo only: the step the synthetic pull requests are at (see the GitHub demo). */ demoStep?: () => number }
+    options: {
+      demo: boolean
+      /** Called when a read stored lists that differ from the cached ones (the tray shows the cached lists and never reads). */
+      onListsChanged?: () => void
+      /** Demo only: the step the synthetic pull requests are at (see the GitHub demo). */
+      demoStep?: () => number
+      /** Called after a write on a pull request succeeded, so every window drops what it holds of it. */
+      onChanged?: (url: string, profileId: string | null) => void
+      /** The command runner of the real hosts (tests count the calls through it). */
+      run?: CliRunner
+    }
   ) {
-    this.run = createCliRunner()
+    this.run = options.run ?? createCliRunner()
     this.onListsChanged = options.onListsChanged
+    this.onChanged = options.onChanged
     this.demoHost = options.demo ? new GitHubCodeHost({ run: createDemoRunner(Date.now(), options.demoStep) }) : null
   }
 
@@ -126,7 +169,7 @@ export class CodeHostService {
   }
 
   private async resolve(profileId: string | null): Promise<Resolved | null> {
-    if (this.demoHost) return { host: this.demoHost, key: 'demo', scope: '', cli: 'gh', folders: [] }
+    if (this.demoHost) return { host: this.demoHost, key: 'demo', hostKey: 'demo', scope: '', cli: 'gh', folders: [] }
     const config = await this.loadConfig()
     const profile: Profile | undefined = config.profiles.find((p) => p.id === (profileId ?? config.activeProfileId))
     const connection = config.connections.find((c) => c.id === profile?.connections.codeHost)
@@ -138,6 +181,7 @@ export class CodeHostService {
     return {
       host: made.host,
       key: `${profile.id}|${connection.id}|${connection.endpoint ?? ''}|${configured}|${(profile.folders ?? []).join(',')}|${JSON.stringify(filter)}`,
+      hostKey: `${connection.id}|${connection.provider}|${connection.endpoint ?? ''}`,
       scope: configured,
       cli: made.cli,
       folders: profile.folders ?? [],
@@ -145,32 +189,90 @@ export class CodeHostService {
     }
   }
 
+  private generation(key: string): number {
+    return this.generations.get(key) ?? 0
+  }
+
+  private bump(key: string): void {
+    this.generations.set(key, this.generation(key) + 1)
+  }
+
   /**
-   * The search scope: the profile's owners (GitHub), else the connection's `scope` setting, else
-   * (GitHub) the repos behind the profile's folders, else everything. The profile's filter is also
-   * applied to the results (`filterPullRequests`), which is all it does on GitLab.
+   * The search queries, one per scope: the profile's repositories (GitHub: `repo:` qualifiers, split
+   * into batches the search accepts; none left means nothing to read), else its owners, else the
+   * connection's `scope` setting, else (GitHub) the repos behind the profile's folders, else
+   * everything. The profile's filter is also applied to the results (`filterPullRequests`), which is
+   * all it does on GitLab.
    */
-  private async scopeOf(r: Resolved): Promise<string> {
-    if (r.host.provider === 'github' && r.filter?.owners?.length) return githubScopeFromFilter(r.filter)
-    if (r.scope || r.host.provider !== 'github' || r.folders.length === 0) return r.scope
-    return githubScopeFromRemotes(await this.remotesOf(r.folders))
+  private async scopesOf(r: Resolved): Promise<string[]> {
+    if (r.host.provider === 'github' && r.filter?.repos?.length) return githubRepoScopeBatches(r.filter)
+    if (r.host.provider === 'github' && r.filter?.owners?.length) return [githubScopeFromFilter(r.filter)]
+    if (r.scope || r.host.provider !== 'github' || r.folders.length === 0) return [r.scope]
+    return [githubScopeFromRemotes(await this.remotesOf(r.folders))]
+  }
+
+  /**
+   * The signed-in login of the resolved host: kept for `LOGIN_TTL_MS`, read once when several callers ask together.
+   * `fresh` asks the host again (a write that depends on whose PR it is: after `gh auth switch` the kept login is
+   * another account's; the GitHub host answers from a local `gh auth token` while the token is the same). Undefined
+   * when it cannot be known.
+   */
+  private async loginOf(r: Resolved, fresh = false): Promise<string | undefined> {
+    const hit = this.logins.get(r.hostKey)
+    if (hit && !fresh && Date.now() - hit.at < LOGIN_TTL_MS) return hit.login
+    const running = this.loginReads.get(r.hostKey)
+    if (running) return running
+    const read = r.host
+      .status()
+      .then((status) => {
+        if (status.state === 'ready') {
+          this.logins.set(r.hostKey, { login: status.login, at: Date.now() })
+          return status.login
+        }
+        this.logins.delete(r.hostKey)
+        return undefined
+      })
+      .catch(() => undefined)
+      .finally(() => this.loginReads.delete(r.hostKey))
+    this.loginReads.set(r.hostKey, read)
+    return read
+  }
+
+  /** A failure that says the login is gone makes the next read ask the host who is signed in. */
+  private noteFailure(r: Resolved, e: unknown): void {
+    if (e instanceof CodeHostError && e.kind === 'signedOut') this.logins.delete(r.hostKey)
   }
 
   async lists(profileId: string | null, force = false): Promise<CodeHostLists> {
-    const empty = { mine: [], toReview: [] }
     const resolved = await this.resolve(profileId)
-    if (!resolved) return { state: 'notConnected', ...empty }
+    if (!resolved) return { state: 'notConnected', mine: [], toReview: [] }
     const cached = this.cache.get(resolved.key)
     if (cached && !force && Date.now() - cached.at < LIST_TTL_MS) return cached.value
-    const running = this.inflight.get(resolved.key)
-    if (running) return running
-    const read = this.read(resolved, cached?.value)
-    this.inflight.set(resolved.key, read)
-    try {
-      return await read
-    } finally {
-      if (this.inflight.get(resolved.key) === read) this.inflight.delete(resolved.key)
+    const flight = this.flights.get(resolved.key)
+    if (flight) {
+      // A caller that does not insist shares the read under way; a forced one gets a read that starts after it, so it sees what changed meanwhile.
+      if (!force) return flight.running
+      flight.queued ??= flight.running.then(
+        () => undefined,
+        () => undefined
+      ).then(() => this.launch(resolved, true))
+      return flight.queued
     }
+    return this.launch(resolved, force)
+  }
+
+  private launch(resolved: Resolved, force: boolean): Promise<CodeHostLists> {
+    const key = resolved.key
+    const flight: { running: Promise<CodeHostLists>; queued?: Promise<CodeHostLists> } = { running: undefined as never }
+    const read = this.read(resolved, this.cache.get(key)?.value, force)
+    flight.running = read
+    this.flights.set(key, flight)
+    const done = () => {
+      // With a read queued behind this one, its `launch` replaces the entry.
+      if (this.flights.get(key) === flight && !flight.queued) this.flights.delete(key)
+    }
+    read.then(done, done)
+    return read
   }
 
   /** The lists this service already holds for the profile, whatever their age; null when none. Never reads the host. */
@@ -179,29 +281,42 @@ export class CodeHostService {
     return (resolved && this.cache.get(resolved.key)?.value) || null
   }
 
-  private async read(resolved: Resolved, previous: CodeHostLists | undefined): Promise<CodeHostLists> {
+  private async read(resolved: Resolved, previous: CodeHostLists | undefined, force: boolean): Promise<CodeHostLists> {
     const empty = { mine: [], toReview: [] }
     const { host, cli } = resolved
     const demo = this.demoHost !== null
-    const status = await host.status()
-    if (status.state !== 'ready') {
-      const base = { provider: host.provider, cli, ...empty, demo }
-      if (status.state === 'error') {
-        // A transient failure (right after wake, a VPN drop) keeps the last good lists, so the screen keeps its content and shows the error line. Not cached: the next call asks again.
-        const last = previous
-        return { ...base, mine: last?.mine ?? [], toReview: last?.toReview ?? [], login: last?.login, updatedAt: last?.updatedAt, state: 'error', message: status.message }
+    const generation = this.generation(`list|${resolved.key}`)
+    // The sign-in check is skipped while the login is known; a forced read asks again (the host answers from its own cache unless the token changed).
+    const known = this.logins.get(resolved.hostKey)
+    let login = !force && known && Date.now() - known.at < LOGIN_TTL_MS ? known.login : undefined
+    if (!login) {
+      const status = await host.status()
+      if (status.state !== 'ready') {
+        this.logins.delete(resolved.hostKey)
+        const base = { provider: host.provider, cli, ...empty, demo }
+        if (status.state === 'error') {
+          // A transient failure (right after wake, a VPN drop) keeps the last good lists, so the screen keeps its content and shows the error line. Not cached: the next call asks again.
+          const last = previous
+          return { ...base, mine: last?.mine ?? [], toReview: last?.toReview ?? [], login: last?.login, updatedAt: last?.updatedAt, state: 'error', message: status.message }
+        }
+        return { ...base, state: status.state }
       }
-      return { ...base, state: status.state }
+      login = status.login
+      this.logins.set(resolved.hostKey, { login, at: Date.now() })
     }
-    this.logins.set(resolved.key, status.login)
-    const query = { scope: await this.scopeOf(resolved) }
-    const [mine, toReview] = await Promise.allSettled([loadMyPullRequests(host, query), loadReviewQueue(host, query)])
+    const scopes = await this.scopesOf(resolved)
+    const [mine, toReview] = await Promise.allSettled([this.loadAll(scopes, (query) => loadMyPullRequests(host, query)), this.loadAll(scopes, (query) => loadReviewQueue(host, query))])
+    const signedOut = [mine, toReview].find((r) => r.status === 'rejected' && r.reason instanceof CodeHostError && r.reason.kind === 'signedOut')
+    if (signedOut) {
+      this.logins.delete(resolved.hostKey)
+      return { state: 'signedOut', provider: host.provider, cli, ...empty, demo }
+    }
     const failures = [mine, toReview].flatMap((r) => (r.status === 'rejected' ? [messageOf(r.reason)] : []))
     const value: CodeHostLists = {
       state: mine.status === 'rejected' && toReview.status === 'rejected' ? 'error' : 'ready',
       provider: host.provider,
       cli,
-      login: status.login,
+      login,
       // A list that failed keeps what the last read found, like Workhub 1.
       mine: mine.status === 'fulfilled' ? filterPullRequests(mine.value, resolved.filter) : (previous?.mine ?? []),
       toReview: toReview.status === 'fulfilled' ? filterPullRequests(toReview.value, resolved.filter) : (previous?.toReview ?? []),
@@ -209,9 +324,76 @@ export class CodeHostService {
       updatedAt: failures.length < 2 ? Date.now() : previous?.updatedAt,
       demo
     }
+    for (const i of [...value.mine, ...value.toReview]) this.authors.set(prKey(resolved.hostKey, i.pr), i.pr.author)
+    if (this.authors.size > AUTHORS_MAX) this.authors.clear()
+    // A write finished while this read ran: what it found may predate it, so it is handed out but not kept.
+    if (generation !== this.generation(`list|${resolved.key}`)) return value
     this.cache.set(resolved.key, { at: Date.now(), value })
     if (!previous || JSON.stringify({ ...previous, updatedAt: 0 }) !== JSON.stringify({ ...value, updatedAt: 0 })) this.onListsChanged?.()
     return value
+  }
+
+  /** One list read per scope, in parallel, merged without duplicates and newest first. */
+  private async loadAll(scopes: string[], load: (query: { scope: string }) => Promise<PullRequestItem[]>): Promise<PullRequestItem[]> {
+    if (scopes.length === 0) return []
+    if (scopes.length === 1) return load({ scope: scopes[0]! })
+    const seen = new Set<string>()
+    const merged = (await Promise.all(scopes.map((scope) => load({ scope })))).flat().filter((i) => !seen.has(i.pr.url) && Boolean(seen.add(i.pr.url)))
+    return merged.sort((a, b) => (b.pr.updatedAt ?? 0) - (a.pr.updatedAt ?? 0))
+  }
+
+  /**
+   * A pull request's detail (no diff), kept per PR for `DETAIL_TTL_MS`; `fresh` skips the kept one.
+   * Readers that ask together share one read. A read that started before a write to the PR is
+   * handed to its callers but never kept.
+   */
+  private readDetail(r: Resolved, ref: PullRequestRef, fresh = false): Promise<PullRequestDetail> {
+    const key = prKey(r.hostKey, ref)
+    const hit = this.details.get(key)
+    if (hit && !fresh && Date.now() - hit.at < DETAIL_TTL_MS) {
+      this.details.delete(key)
+      this.details.set(key, hit)
+      return Promise.resolve(hit.value)
+    }
+    const generation = this.generation(`detail|${key}`)
+    const running = this.detailFlights.get(key)
+    if (running && running.gen === generation) return running.promise
+    const promise = r.host.detail(ref).then(
+      (value) => {
+        this.authors.set(key, value.author)
+        if (generation === this.generation(`detail|${key}`)) {
+          this.details.delete(key)
+          this.details.set(key, { at: Date.now(), value })
+          while (this.details.size > DETAIL_MAX) this.details.delete(this.details.keys().next().value!)
+        }
+        return value
+      },
+      (e) => {
+        this.noteFailure(r, e)
+        throw e
+      }
+    )
+    const flight = { gen: generation, promise }
+    this.detailFlights.set(key, flight)
+    const done = () => {
+      if (this.detailFlights.get(key) === flight) this.detailFlights.delete(key)
+    }
+    promise.then(done, done)
+    return promise
+  }
+
+  /** The kept detail of a PR that is fresh enough, without reading. */
+  private peekDetail(r: Resolved, ref: PullRequestRef): PullRequestDetail | undefined {
+    const hit = this.details.get(prKey(r.hostKey, ref))
+    return hit && Date.now() - hit.at < DETAIL_TTL_MS ? hit.value : undefined
+  }
+
+  /** Whether the signed-in user wrote the PR: 'unknown' when the author or the login cannot be told, which is never taken as "not mine". */
+  private async ownership(r: Resolved, ref: PullRequestRef): Promise<'mine' | 'notMine' | 'unknown'> {
+    const key = prKey(r.hostKey, ref)
+    const [author, login] = await Promise.all([this.authors.get(key) ?? this.readDetail(r, ref).then((d) => d.author), this.loginOf(r, true)])
+    if (!login || !author) return 'unknown'
+    return login.toLowerCase() === author.toLowerCase() ? 'mine' : 'notMine'
   }
 
   async view(profileId: string | null, url: string): Promise<PullRequestViewResult> {
@@ -220,12 +402,53 @@ export class CodeHostService {
     const ref = resolved.host.parseUrl(url)
     if (!ref) return { ok: false, error: 'This is not a pull request of the connected code host' }
     try {
-      const view = await loadPullRequestView(resolved.host, ref)
-      const login = this.logins.get(resolved.key)
+      const [view, login] = await Promise.all([loadPullRequestView(resolved.host, ref), this.loginOf(resolved)])
       const isMine = Boolean(login) && login!.toLowerCase() === view.detail.author.toLowerCase()
       return { ok: true, view, capabilities: resolved.host.capabilities, provider: resolved.host.provider, isMine }
     } catch (e) {
+      this.noteFailure(resolved, e)
       return { ok: false, error: messageOf(e) }
+    }
+  }
+
+  /** The PR without its diff: one `pr view`, kept for a minute; `fresh` (Refresh) reads the host even when a copy is kept. */
+  async detail(profileId: string | null, url: string, fresh = false): Promise<PullRequestDetailResult> {
+    const resolved = await this.resolve(profileId)
+    if (!resolved) return { ok: false, error: 'No code host is connected to this profile' }
+    const ref = resolved.host.parseUrl(url)
+    if (!ref) return { ok: false, error: 'This is not a pull request of the connected code host' }
+    try {
+      const [detail, login] = await Promise.all([this.readDetail(resolved, ref, fresh), this.loginOf(resolved)])
+      const isMine = Boolean(login) && login!.toLowerCase() === detail.author.toLowerCase()
+      return { ok: true, detail, capabilities: resolved.host.capabilities, provider: resolved.host.provider, isMine }
+    } catch (e) {
+      return { ok: false, error: messageOf(e) }
+    }
+  }
+
+  /** The PR's changed files on their own. */
+  async diff(profileId: string | null, url: string): Promise<PullRequestDiffResult> {
+    const resolved = await this.resolve(profileId)
+    if (!resolved) return { ok: false, error: 'No code host is connected to this profile' }
+    const ref = resolved.host.parseUrl(url)
+    if (!ref) return { ok: false, error: 'This is not a pull request of the connected code host' }
+    try {
+      return { ok: true, files: await resolved.host.diff(ref) }
+    } catch (e) {
+      this.noteFailure(resolved, e)
+      return { ok: false, error: messageOf(e) }
+    }
+  }
+
+  /** The state of a PR by URL on the light detail read (kept for a minute); undefined when it cannot be read. */
+  async prState(profileId: string | null, url: string): Promise<PullRequest['state'] | undefined> {
+    const resolved = await this.resolve(profileId)
+    const ref = resolved?.host.parseUrl(url)
+    if (!resolved || !ref) return undefined
+    try {
+      return (await this.readDetail(resolved, ref)).state
+    } catch {
+      return undefined
     }
   }
 
@@ -259,24 +482,35 @@ export class CodeHostService {
     }
   }
 
-  private async act(profileId: string | null, url: string, fn: (host: CodeHost, ref: NonNullable<ReturnType<CodeHost['parseUrl']>>, resolvedKey: string) => Promise<void>): Promise<CodeHostActionResult> {
+  private async act(profileId: string | null, url: string, fn: (resolved: Resolved, ref: PullRequestRef) => Promise<void>): Promise<CodeHostActionResult> {
     const resolved = await this.resolve(profileId)
     if (!resolved) return { ok: false, error: 'No code host is connected to this profile' }
     const ref = resolved.host.parseUrl(url)
     if (!ref) return { ok: false, error: 'This is not a pull request of the connected code host' }
     try {
-      await fn(resolved.host, ref, resolved.key)
-      this.cache.delete(resolved.key)
+      await fn(resolved, ref)
+      this.forget(resolved, ref)
+      this.onChanged?.(ref.url, profileId)
       return { ok: true }
     } catch (e) {
+      this.noteFailure(resolved, e)
       return failureOf(e)
     }
   }
 
-  /** Forgets what is known of one PR, so the lists and the session monitor read it again. */
-  private forget(key: string, url: string): void {
-    this.cache.delete(key)
-    for (const k of this.items.keys()) if (k.endsWith(`\n${url}`)) this.items.delete(k)
+  /** Forgets what is known of one PR (its lists, detail and its repository's merge methods), so every read after a write asks the host again; reads still running never store. */
+  private forget(r: Resolved, ref: PullRequestRef): void {
+    const key = prKey(r.hostKey, ref)
+    const methodsKey = `${r.hostKey}\n${repoOf(ref)}`
+    this.bump(`list|${r.key}`)
+    this.bump(`detail|${key}`)
+    this.bump(`methods|${methodsKey}`)
+    // The lists are kept as expired, not dropped: the next read asks the host, and if it fails the last good lists stay.
+    const lists = this.cache.get(r.key)
+    if (lists) this.cache.set(r.key, { at: 0, value: lists.value })
+    this.details.delete(key)
+    this.methods.delete(methodsKey)
+    for (const k of this.items.keys()) if (k.endsWith(`\n${ref.url}`)) this.items.delete(k)
   }
 
   /** Whether the profile has a code host Workhub can use. */
@@ -290,11 +524,24 @@ export class CodeHostService {
     if (!resolved) return { ok: false, error: 'No code host is connected to this profile' }
     try {
       const ref = await createPullRequest(resolved.host, input)
-      this.forget(resolved.key, ref.url)
+      this.forget(resolved, ref)
       return { ok: true, url: ref.url }
     } catch (e) {
+      this.noteFailure(resolved, e)
       return failureOf(e)
     }
+  }
+
+  /** The merge methods a repository allows, kept for `METHODS_TTL_MS`. */
+  private methodsOf(r: Resolved, ref: PullRequestRef): Promise<MergeMethod[]> {
+    const key = `${r.hostKey}\n${repoOf(ref)}`
+    const hit = this.methods.get(key)
+    if (hit && Date.now() - hit.at < METHODS_TTL_MS) return Promise.resolve(hit.value)
+    const generation = this.generation(`methods|${key}`)
+    return r.host.mergeMethods(ref).then((value) => {
+      if (generation === this.generation(`methods|${key}`)) this.methods.set(key, { at: Date.now(), value })
+      return value
+    })
   }
 
   async mergeMethods(profileId: string | null, url: string): Promise<MergeMethodsResult> {
@@ -302,8 +549,9 @@ export class CodeHostService {
     const ref = resolved?.host.parseUrl(url)
     if (!resolved || !ref) return { ok: false, error: 'This is not a pull request of the connected code host' }
     try {
-      return { ok: true, methods: await resolved.host.mergeMethods(ref) }
+      return { ok: true, methods: await this.methodsOf(resolved, ref) }
     } catch (e) {
+      this.noteFailure(resolved, e)
       return { ok: false, error: messageOf(e) }
     }
   }
@@ -314,48 +562,58 @@ export class CodeHostService {
     const ref = resolved?.host.parseUrl(url)
     if (!resolved || !ref) return { ok: false, error: 'This is not a pull request of the connected code host' }
     const { host } = resolved
+    let merged = false
     try {
-      const [pr, allowed] = await Promise.all([host.detail(ref), host.mergeMethods(ref)])
+      // The kept detail is used only when it says the PR can be merged; any other answer is read again.
+      const kept = this.peekDetail(resolved, ref)
+      const usable = kept && mergeRefusal(kept) === null ? kept : undefined
+      const [pr, allowed] = await Promise.all([usable ?? this.readDetail(resolved, ref, true), this.methodsOf(resolved, ref)])
       const protectedBranches = appOptions(await this.loadConfig()).protectedBranches
       const { branchDeleted } = await mergePullRequest(host, ref, pr, { method, deleteBranch, allowed, protectedBranches })
+      merged = true
       return { ok: true, branchDeleted }
     } catch (e) {
+      this.noteFailure(resolved, e)
       // A failure after the merge itself (deleting the branch) still leaves a merged PR.
       const after = await host.detail(ref).catch(() => null)
-      return after?.state === 'merged' ? { ok: true, branchDeleted: false, warning: messageOf(e) } : failureOf(e)
+      if (after?.state === 'merged') {
+        merged = true
+        return { ok: true, branchDeleted: false, warning: messageOf(e) }
+      }
+      return failureOf(e)
     } finally {
-      this.forget(resolved.key, ref.url)
+      this.forget(resolved, ref)
+      if (merged) this.onChanged?.(ref.url, profileId)
     }
   }
 
   async review(profileId: string | null, url: string, action: ReviewAction, body: string): Promise<CodeHostActionResult> {
-    return this.act(profileId, url, async (host, ref, key) => {
-      const view = await host.detail(ref)
-      const login = this.logins.get(key)
-      const isMine = Boolean(login) && login!.toLowerCase() === view.author.toLowerCase()
-      await submitReview(host, ref, action, body, isMine)
+    return this.act(profileId, url, async (r, ref) => {
+      // A plain comment review is allowed on one's own PR, so it needs no author; the others are refused when it is not known whose PR this is.
+      const owner = action === 'comment' ? 'notMine' : await this.ownership(r, ref)
+      if (owner === 'unknown') throw new CodeHostError('Could not tell whether this is your own pull request', 'failed')
+      await submitReview(r.host, ref, action, body, owner === 'mine')
     })
   }
 
   comment(profileId: string | null, url: string, body: string): Promise<CodeHostActionResult> {
-    return this.act(profileId, url, (host, ref) => postComment(host, ref, body))
+    return this.act(profileId, url, (r, ref) => postComment(r.host, ref, body))
   }
 
   /** Closes the user's own open PR without merging; the head branch is deleted only when asked and not long-lived. */
   close(profileId: string | null, url: string, comment: string, deleteBranch: boolean): Promise<CodeHostActionResult> {
-    return this.act(profileId, url, async (host, ref, key) => {
-      const pr = await host.detail(ref)
-      const login = this.logins.get(key)
-      const isMine = Boolean(login) && login!.toLowerCase() === pr.author.toLowerCase()
+    return this.act(profileId, url, async (r, ref) => {
+      const [pr, owner] = await Promise.all([this.readDetail(r, ref, true), this.ownership(r, ref)])
+      if (owner === 'unknown') throw new CodeHostError('Could not tell whether this is your own pull request', 'failed')
       const protectedBranches = appOptions(await this.loadConfig()).protectedBranches
-      await closePullRequest(host, ref, pr, isMine, { comment, deleteBranch, protectedBranches })
+      await closePullRequest(r.host, ref, pr, owner === 'mine', { comment, deleteBranch, protectedBranches })
     })
   }
 
   reply(profileId: string | null, url: string, threadId: string, body: string): Promise<CodeHostActionResult> {
-    return this.act(profileId, url, async (host, ref) => {
+    return this.act(profileId, url, async (r, ref) => {
       if (body.trim() === '') throw new CodeHostError('reply refused: bodyRequired', 'unsupported')
-      await host.replyToThread(ref, threadId, body.trim())
+      await r.host.replyToThread(ref, threadId, body.trim())
     })
   }
 
@@ -377,6 +635,8 @@ export interface CodeHostIpcOptions {
 export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, showInWorkhub, openExternal }: CodeHostIpcOptions): void {
   ipc.handle('codeHost:lists', (_e, profileId: string | null, force?: boolean) => service.lists(profileId, force === true))
   ipc.handle('codeHost:view', (_e, profileId: string | null, url: string) => service.view(profileId, url))
+  ipc.handle('codeHost:detail', (_e, profileId: string | null, url: string, fresh?: boolean) => service.detail(profileId, url, fresh === true))
+  ipc.handle('codeHost:diff', (_e, profileId: string | null, url: string) => service.diff(profileId, url))
   ipc.handle('codeHost:pullRequest', (_e, profileId: string | null, url: string) => service.pullRequest(profileId, url))
   ipc.handle('codeHost:review', (_e, profileId: string | null, url: string, action: ReviewAction, body: string) =>
     service.review(profileId, url, action, body)

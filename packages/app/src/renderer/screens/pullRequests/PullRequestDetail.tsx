@@ -15,7 +15,7 @@ import {
   Timer,
   X
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import {
   closeRefusal,
   historyForPullRequest,
@@ -30,7 +30,7 @@ import {
   type ReviewAction,
   type ReviewerState
 } from '@workhub/core'
-import type { PullRequestViewResult, PullRequestWindowTab } from '@shared/codehost-api'
+import type { PullRequestWindowTab } from '@shared/codehost-api'
 import type { PullRequestTarget } from '@shared/links-api'
 import type { TicketsStatus } from '@shared/tickets-api'
 import { Avatar, Badge, Button, IconButton, Spinner, Textarea } from '../../components/atoms'
@@ -43,7 +43,10 @@ import { conversationTimeline, relativeTime, type TimelineEntry } from '../../li
 import { usePullRequestSlack } from '../../lib/slackLinks'
 import { keyProviders } from '../../lib/tickets'
 import { usePastSessions } from '../../lib/usePastSessions'
-import { refreshPullRequests } from '../../pullRequestsStore'
+import { loadDiff, usePullRequestDetail } from '../../lib/prDetailCache'
+import { initialPanelUi, panelUiFor, type PanelUi } from '../../lib/prPanelState'
+import { patchDetail, patchFor, patchesVersion, subscribePatches } from '../../lib/prPatches'
+import { afterPullRequestWrite } from '../../lib/prWrites'
 import { ClosePullRequestDialog } from './ClosePullRequestDialog'
 import { MergePullRequestDialog } from './MergePullRequestDialog'
 import { DiffView, ThreadBox } from './DiffView'
@@ -282,29 +285,24 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
   const { t, tn, locale, formatNumber } = useI18n()
   const platform = usePlatform()
   const notify = useToast()
-  const [result, setResult] = useState<PullRequestViewResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<string>(initialTab ?? 'conversation')
-  const [action, setAction] = useState<ReviewAction | null>(null)
-  const [closing, setClosing] = useState(false)
-  const [merging, setMerging] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setResult(await window.hub.codeHost.view(profileId, url))
-    setLoading(false)
-  }, [profileId, url])
-
-  useEffect(() => {
-    setResult(null)
-    void load()
-  }, [load])
+  // Everything the panel keeps about a PR belongs to its URL: moving to another PR starts it over, so a dialog
+  // opened on one can never be submitted on the next. The panel itself stays mounted and shows the cache at once.
+  const [uiState, setUiState] = useState<PanelUi>(() => initialPanelUi(url, initialTab))
+  const ui = panelUiFor(uiState, url, initialTab)
+  const patchUi = (change: Partial<PanelUi>) => setUiState((prev) => ({ ...panelUiFor(prev, url, initialTab), ...change }))
+  const { tab, action, closing, merging } = ui
+  const setTab = (next: string) => patchUi({ tab: next })
+  const slot = usePullRequestDetail(profileId, url)
+  const loading = slot.refreshing
 
   // An open window asked to show a tab (the Slack badge of a row).
-  useEffect(() => (standalone ? window.hub.codeHost.onShowTab((next) => setTab(next)) : undefined), [standalone])
+  useEffect(() => (standalone ? window.hub.codeHost.onShowTab((next) => setUiState((prev) => ({ ...panelUiFor(prev, url, initialTab), tab: next }))) : undefined), [standalone, url, initialTab])
 
-  const view = result?.ok ? result.view : null
-  const detail = view?.detail
+  // What the user just did stays on screen until the host shows it (a merged PR reads merged at once).
+  const patchVersion = useSyncExternalStore(subscribePatches, patchesVersion)
+  const data = slot.data
+  const detail = useMemo(() => (data ? patchDetail(data.detail, patchFor(url)) : undefined), [data, url, patchVersion])
+  const diff = slot.diff
   const head: PullRequest | undefined = detail ?? seed
 
   useEffect(() => {
@@ -323,29 +321,26 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
   const tickets = useMemo(() => (head ? ticketKeysOfPullRequest(head, providers.length > 0 ? providers : undefined) : []), [head, providers])
   const slack = usePullRequestSlack(head?.url ?? url)
 
-  const afterWrite = async () => {
-    await load()
-    void refreshPullRequests(profileId, true)
-  }
+  // The host confirmed: the dialog is already closed, the screens are patched, the reads follow in the background.
   const submit = async (a: ReviewAction, body: string): Promise<string | null> => {
     const r = await window.hub.codeHost.review(profileId, url, a, body)
     if (!r.ok) return r.error
     notify(t(`pr.action.done.${a}`))
-    await afterWrite()
+    afterPullRequestWrite(profileId, url, { reviewed: true })
     return null
   }
   const comment = async (body: string): Promise<string | null> => {
     const r = await window.hub.codeHost.comment(profileId, url, body)
     if (!r.ok) return r.error
     notify(t('pr.action.done.comment'))
-    await afterWrite()
+    afterPullRequestWrite(profileId, url)
     return null
   }
   const reply = async (threadId: string, body: string): Promise<string | null> => {
     const r = await window.hub.codeHost.reply(profileId, url, threadId, body)
     if (!r.ok) return r.error
     notify(t('pr.action.done.comment'))
-    await afterWrite()
+    afterPullRequestWrite(profileId, url)
     return null
   }
   const copyLink = () => void navigator.clipboard.writeText(head?.url ?? url).then(() => notify(t('pr.detail.linkCopied')))
@@ -357,8 +352,8 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
     return (
       <div className="flex h-full flex-col">
         <div className={titleBar} />
-        {result && !result.ok ? (
-          <EmptyState title={t('pr.detail.error')} description={result.error} action={<Button onClick={() => void load()}>{t('pr.retry')}</Button>} />
+        {slot.error ? (
+          <EmptyState title={t('pr.detail.error')} description={slot.error} action={<Button onClick={() => void slot.reload()}>{t('pr.retry')}</Button>} />
         ) : (
           <div className="flex flex-1 items-center justify-center gap-2 text-muted">
             <Spinner /> {t('pr.detail.loading')}
@@ -368,8 +363,8 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
     )
   }
 
-  const capabilities = result?.ok ? result.capabilities : null
-  const isMine = result?.ok ? result.isMine : false
+  const capabilities = data?.capabilities ?? null
+  const isMine = data?.isMine ?? false
   const open = head.state === 'open'
   const reviewers = detail ? reviewerStates(detail) : []
   const target: PullRequestTarget = { provider: head.provider, owner: head.owner, repo: head.repo, number: head.number, url: head.url, title: head.title, branch: head.branch, base: head.base, author: head.author }
@@ -392,15 +387,15 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
           .filter((a) => !isMine || a.action === 'comment')
           .map((a): PrToolbarAction => {
             const Icon = a.icon
-            return { key: a.action, side: 'end', fold: a.action === 'comment' ? 3 : a.action === 'requestChanges' ? 4 : undefined, variant: a.variant, icon: <Icon className="size-3.5" aria-hidden />, label: t(a.label), disabled: reviewRefusal(capabilities, a.action, 'x', isMine) !== null, onSelect: () => setAction(a.action) }
+            return { key: a.action, side: 'end', fold: a.action === 'comment' ? 3 : a.action === 'requestChanges' ? 4 : undefined, variant: a.variant, icon: <Icon className="size-3.5" aria-hidden />, label: t(a.label), disabled: reviewRefusal(capabilities, a.action, 'x', isMine) !== null, onSelect: () => patchUi({ action: a.action }) }
           })
       : []),
-    ...(result?.ok && closeRefusal(head, isMine) === null
-      ? [{ key: 'close', side: 'end', fold: 'menu', variant: 'danger', icon: <GitPullRequestClosed className="size-3.5" aria-hidden />, label: t('pr.close.open'), title: t('pr.close.openHint'), onSelect: () => setClosing(true) } satisfies PrToolbarAction]
+    ...(data && closeRefusal(head, isMine) === null
+      ? [{ key: 'close', side: 'end', fold: 'menu', variant: 'danger', icon: <GitPullRequestClosed className="size-3.5" aria-hidden />, label: t('pr.close.open'), title: t('pr.close.openHint'), onSelect: () => patchUi({ closing: true }) } satisfies PrToolbarAction]
       : []),
     // Enabled only when the host reports the PR mergeable; the host still checks the rest.
     ...(detail && open
-      ? [{ key: 'merge', side: 'end', fold: 5, variant: 'primary', icon: <GitMerge className="size-3.5" aria-hidden />, label: t('pr.merge.open'), title: t(mergeRefusal(detail) ? 'pr.merge.disabledHint' : 'pr.merge.openHint'), disabled: mergeRefusal(detail) !== null, onSelect: () => setMerging(true) } satisfies PrToolbarAction]
+      ? [{ key: 'merge', side: 'end', fold: 5, variant: 'primary', icon: <GitMerge className="size-3.5" aria-hidden />, label: t('pr.merge.open'), title: t(mergeRefusal(detail) ? 'pr.merge.disabledHint' : 'pr.merge.openHint'), disabled: mergeRefusal(detail) !== null, onSelect: () => patchUi({ merging: true }) } satisfies PrToolbarAction]
       : [])
   ]
 
@@ -416,7 +411,7 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
             <IconButton size="sm" label={t('pr.detail.openBrowser')} icon={<ExternalLink className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.openExternal(profileId, url)} />
             {standalone && <IconButton size="sm" label={t('pr.detail.showInWorkhub')} icon={<PanelLeft className="size-4" aria-hidden />} onClick={() => void window.hub.codeHost.showInWorkhub(profileId, url)} />}
             {onOpenWindow && <IconButton size="sm" label={t('pr.detail.openWindow')} icon={<AppWindow className="size-4" aria-hidden />} onClick={onOpenWindow} />}
-            <RefreshButton label={t('pr.refresh')} iconClassName="size-4" loading={loading} onRefresh={afterWrite} />
+            <RefreshButton label={t('pr.refresh')} iconClassName="size-4" loading={loading} onRefresh={slot.reload} />
           </div>
         </div>
         <div className="flex flex-col gap-2 px-5 pb-3">
@@ -477,9 +472,9 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
         <PrActionsToolbar label={t('pr.detail.toolbar')} actions={toolbarActions} />
       </header>
 
-      {result && !result.ok && (
-        <p role="alert" className="px-5 py-3 text-sm text-danger">
-          {result.error}
+      {data && slot.error && (
+        <p role="status" className="px-5 py-1.5 text-xs text-warning">
+          {t('pr.detail.refreshFailed', { time: relativeTime(slot.fetchedAt ?? Date.now(), Date.now(), locale), message: slot.error })}
         </p>
       )}
       {detail ? (
@@ -497,6 +492,7 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
               content: (
                 <div className={scroll}>
                   <Conversation
+                    key={url}
                     detail={detail}
                     profileId={profileId}
                     tickets={tickets}
@@ -511,14 +507,23 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
             },
             {
               value: 'files',
-              label: count(t('pr.detail.tab.files'), view?.files ? view.files.length : head.changedFiles || null),
-              content: view?.files ? (
+              label: count(t('pr.detail.tab.files'), diff?.files ? diff.files.length : head.changedFiles || null),
+              content: diff?.files ? (
                 <div className="h-full px-5 py-4">
-                  <DiffView files={view.files} threads={detail.threads} canReply={Boolean(capabilities?.replyToThread) && open} onReply={reply} />
+                  <DiffView key={url} files={diff.files} threads={detail.threads} canReply={Boolean(capabilities?.replyToThread) && open} onReply={reply} />
+                </div>
+              ) : diff?.error ? (
+                <div className="flex flex-col items-start gap-2 px-5 py-4">
+                  <p role="alert" className="text-sm text-danger">
+                    {t('pr.files.error', { message: diff.error })}
+                  </p>
+                  <Button size="sm" onClick={() => void loadDiff(profileId, url, true)}>
+                    {t('pr.retry')}
+                  </Button>
                 </div>
               ) : (
-                <p role="alert" className="px-5 py-4 text-sm text-danger">
-                  {t('pr.files.error', { message: view?.filesError ?? '' })}
+                <p className="flex items-center gap-2 px-5 py-4 text-sm text-muted">
+                  <Spinner className="size-3.5" /> {t('pr.files.loading')}
                 </p>
               )
             },
@@ -587,15 +592,24 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
           ]}
         />
       ) : (
-        !result && (
+        slot.error ? (
+          <div className="flex flex-col items-start gap-2 px-5 py-3">
+            <p role="alert" className="text-sm text-danger">
+              {slot.error}
+            </p>
+            <Button size="sm" onClick={() => void slot.reload()}>
+              {t('pr.retry')}
+            </Button>
+          </div>
+        ) : (
           <div className="flex flex-1 items-center justify-center gap-2 text-muted">
             <Spinner /> {t('pr.detail.loading')}
           </div>
         )
       )}
-      <ReviewDialog action={action} subject={`${prName(head, head.provider)} ${head.title}`} onClose={() => setAction(null)} onSubmit={submit} />
-      <ClosePullRequestDialog profileId={profileId} pr={closing ? head : null} onClose={() => setClosing(false)} onClosed={() => void afterWrite()} />
-      {merging && <MergePullRequestDialog profileId={profileId} pr={head} onClose={() => setMerging(false)} onMerged={() => void afterWrite()} />}
+      <ReviewDialog action={action} subject={`${prName(head, head.provider)} ${head.title}`} onClose={() => patchUi({ action: null })} onSubmit={submit} />
+      <ClosePullRequestDialog profileId={profileId} pr={closing ? head : null} onClose={() => patchUi({ closing: false })} onClosed={() => afterPullRequestWrite(profileId, url, { state: 'closed' })} />
+      {merging && <MergePullRequestDialog profileId={profileId} pr={head} onClose={() => patchUi({ merging: false })} onMerged={() => afterPullRequestWrite(profileId, url, { state: 'merged' })} />}
     </div>
   )
 }

@@ -10,7 +10,9 @@ import { cn } from '../lib/cn'
 import { defaultFilter, findItem, focusFilter, initials, installUrl, loginCommand, relativeTime } from '../lib/pullRequests'
 import { applyNarrowing, NO_NARROWING, type PrNarrowing } from '../lib/prNarrowing'
 import { usePullRequestSlack } from '../lib/slackLinks'
-import { refreshPullRequests, usePullRequestLists } from '../pullRequestsStore'
+import { keepDetailsOf } from '../lib/prDetailCache'
+import { afterPullRequestWrite } from '../lib/prWrites'
+import { usePullRequestLists } from '../pullRequestsStore'
 import { ClosePullRequestDialog } from './pullRequests/ClosePullRequestDialog'
 import { NarrowingBar } from './pullRequests/NarrowingBar'
 import { StatusBadge } from './pullRequests/PrBadges'
@@ -165,6 +167,9 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
   const [narrowing, setNarrowing] = useState<PrNarrowing>(NO_NARROWING)
   const [closing, setClosing] = useState<PullRequest | null>(null)
 
+  // The detail cache holds one profile at a time.
+  useEffect(() => keepDetailsOf(profileId), [profileId])
+
   // The first read decides the starting filter unless the user already picked one.
   useEffect(() => {
     if (lists && !chosenFilter) setFilter(defaultFilter(lists))
@@ -272,12 +277,12 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
       </section>
       <section aria-label={t('pr.detail.tabs')} className="min-h-0 overflow-hidden">
         {selected ? (
-          <PullRequestDetail key={selected.pr.url} profileId={profileId} url={selected.pr.url} seed={selected.pr} onOpenWindow={() => void window.hub.codeHost.openWindow(profileId, selected.pr.url)} />
+          <PullRequestDetail profileId={profileId} url={selected.pr.url} seed={selected.pr} onOpenWindow={() => void window.hub.codeHost.openWindow(profileId, selected.pr.url)} />
         ) : (
           <EmptyState icon={<GitPullRequest className="size-6" aria-hidden />} title={t('pr.selectOne')} />
         )}
       </section>
-      <ClosePullRequestDialog profileId={profileId} pr={closing} onClose={() => setClosing(null)} onClosed={() => void refreshPullRequests(profileId, true)} />
+      <ClosePullRequestDialog profileId={profileId} pr={closing} onClose={() => setClosing(null)} onClosed={() => closing && afterPullRequestWrite(profileId, closing.url, { state: 'closed' })} />
     </div>
   )
 }

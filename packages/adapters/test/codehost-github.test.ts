@@ -260,3 +260,37 @@ describe('shared CLI helpers', () => {
     expect(parseJsonPages('')).toEqual([])
   })
 })
+
+describe('GitHubCodeHost sign-in', () => {
+  const runner = (user: () => string, token = () => 'token-1') => {
+    const calls: string[][] = []
+    const run: CliRunner = async (_c, args) => {
+      calls.push(args)
+      if (args[0] === 'auth') return { code: 0, stdout: token(), stderr: '' }
+      return { code: 0, stdout: user(), stderr: '' }
+    }
+    return { run, calls }
+  }
+  const userCalls = (calls: string[][]) => calls.filter((c) => c[0] === 'api').length
+
+  it('asks who is signed in once per token and again when the token changes', async () => {
+    let token = 'token-1'
+    let login = 'ana'
+    const { run, calls } = runner(() => login, () => token)
+    const h = new GitHubCodeHost({ run })
+    expect(await h.status()).toEqual({ state: 'ready', login: 'ana' })
+    expect(await h.status()).toEqual({ state: 'ready', login: 'ana' })
+    expect(userCalls(calls)).toBe(1)
+    token = 'token-2'
+    login = 'bo'
+    expect(await h.status()).toEqual({ state: 'ready', login: 'bo' })
+    expect(userCalls(calls)).toBe(2)
+  })
+
+  it('classifies gh auth failures as signed out', async () => {
+    const run: CliRunner = async () => ({ code: 1, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' })
+    await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toMatchObject({ kind: 'signedOut' })
+    const http: CliRunner = async () => ({ code: 1, stdout: '', stderr: 'gh: Bad credentials (HTTP 401)' })
+    await expect(new GitHubCodeHost({ run: http }).diff({ provider: 'github', owner: 'a', repo: 'b', number: 1, url: 'https://github.com/a/b/pull/1' })).rejects.toMatchObject({ kind: 'signedOut' })
+  })
+})

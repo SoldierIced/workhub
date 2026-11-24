@@ -378,7 +378,7 @@ let sessionsWanted = false
 // WORKHUB_DEMO_CODEHOST=1 reads synthetic pull requests instead of a real host (screenshots, demos).
 // The demo moves on one step at a time (`prEvents.demoAdvance`) so pull request events can be seen.
 let demoPrStep = 0
-const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1', demoStep: () => demoPrStep, onListsChanged: () => scheduleTray() })
+const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1', demoStep: () => demoPrStep, onListsChanged: () => scheduleTray(), onChanged: (url, profileId) => broadcast.toWindows('codeHost:changed', url, profileId) })
 const prEvents = new PrEventService({
   source: codeHost,
   store: new SqlitePrEventStore(db),
@@ -899,8 +899,7 @@ const slack = new SlackWatcherService({
     return new Set(lists.mine.map((i) => canonicalUrl(i.pr.url)))
   },
   prState: async (url) => {
-    const r = await codeHost.view((await configuration.current()).activeProfileId ?? null, url)
-    return r.ok ? r.view.detail.state : undefined
+    return codeHost.prState((await configuration.current()).activeProfileId ?? null, url)
   },
   emit: (snap) => {
     tray.setSlack(snap)

@@ -90,6 +90,8 @@ export const prEn = {
   'pr.detail.noChecks': 'No checks reported.',
 
   'pr.files.error': 'Could not read the diff: {message}',
+  'pr.files.loading': 'Loading files…',
+  'pr.detail.refreshFailed': 'Could not refresh; showing the copy from {time}. {message}',
   'pr.files.none': 'No changes to show.',
   'pr.files.list': 'Changed files',
   'pr.files.binary': 'Binary file or no textual changes.',
@@ -184,6 +186,8 @@ export const prEn = {
   'prFilter.intro': 'Which pull requests this profile shows. Another profile can use the same login with other owners.',
   'prFilter.owners': 'Organizations or users',
   'prFilter.ownersHint': 'One per line. Only their repositories are read. Empty: the connection\'s scope, else the repositories of the profile\'s folders, else everything your login sees.',
+  'prFilter.repos': 'Only these repositories',
+  'prFilter.reposHint': 'One per line, as owner/repo (no *). Only these are read, and they win over the organizations above. Empty: no limit.',
   'prFilter.exclude': 'Hidden repositories',
   'prFilter.excludeHint': 'One per line, as owner/repo. Use * for any name: owner/legacy-* or owner/*.',
   'prFilter.invalid': 'Ignored (not valid): {list}',

@@ -92,6 +92,8 @@ export const prEs: Record<keyof typeof prEn, string> = {
   'pr.detail.noChecks': 'No hay checks reportados.',
 
   'pr.files.error': 'No se pudo leer el diff: {message}',
+  'pr.files.loading': 'Cargando archivos…',
+  'pr.detail.refreshFailed': 'No se pudo actualizar; se muestra la copia de {time}. {message}',
   'pr.files.none': 'No hay cambios para mostrar.',
   'pr.files.list': 'Archivos modificados',
   'pr.files.binary': 'Archivo binario o sin cambios de texto.',
@@ -186,6 +188,8 @@ export const prEs: Record<keyof typeof prEn, string> = {
   'prFilter.intro': 'Qué pull requests muestra este perfil. Otro perfil puede usar la misma sesión con otros dueños.',
   'prFilter.owners': 'Organizaciones o usuarios',
   'prFilter.ownersHint': 'Uno por línea. Solo se leen sus repositorios. Vacío: el alcance de la conexión, si no los repositorios de las carpetas del perfil, si no todo lo que ve tu sesión.',
+  'prFilter.repos': 'Solo estos repositorios',
+  'prFilter.reposHint': 'Uno por línea, como dueño/repo (sin *). Solo se leen estos y tienen prioridad sobre las organizaciones de arriba. Vacío: sin límite.',
   'prFilter.exclude': 'Repositorios ocultos',
   'prFilter.excludeHint': 'Uno por línea, como dueño/repo. Usa * para cualquier nombre: dueño/legacy-* o dueño/*.',
   'prFilter.invalid': 'Ignorados (no válidos): {list}',

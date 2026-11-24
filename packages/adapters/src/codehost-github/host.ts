@@ -43,6 +43,12 @@ const REVIEW_FLAG: Record<ReviewAction, string> = { approve: '--approve', reques
 const MERGE_FLAG: Record<MergeMethod, string> = { merge: '--merge', squash: '--squash', rebase: '--rebase' }
 const MERGE_ALLOWED: Record<MergeMethod, string> = { merge: 'mergeCommitAllowed', squash: 'squashMergeAllowed', rebase: 'rebaseMergeAllowed' }
 
+/** What `gh` says when its login is missing, expired or revoked. */
+const SIGNED_OUT = /gh auth login|not logged in|requires authentication|authentication (?:required|failed)|bad credentials|HTTP 401/i
+
+/** How long a login read stays valid while the token is the same. */
+const LOGIN_TTL_MS = 10 * 60_000
+
 export interface GitHubCodeHostOptions {
   run: CliRunner
   /** Web host; set for GitHub Enterprise Server. Defaults to github.com. */
@@ -56,6 +62,8 @@ export class GitHubCodeHost implements CodeHost {
   private readonly run: CliRunner
   private readonly host: string
   private readonly recognizer
+  /** The login behind the last token seen, so a status check costs one local `gh auth token` and no request. A new token (`gh auth switch`) reads the login again. */
+  private login: { token: string; value: string; at: number } | null = null
 
   constructor(options: GitHubCodeHostOptions) {
     this.run = options.run
@@ -83,7 +91,10 @@ export class GitHubCodeHost implements CodeHost {
       if (e instanceof CliNotFoundError) throw new CodeHostError('The GitHub CLI (gh) is not installed', 'missingCli')
       throw e
     }
-    if (result.code !== 0) throw new CodeHostError(failureText(result, fallback))
+    if (result.code !== 0) {
+      const text = failureText(result, fallback)
+      throw new CodeHostError(text, SIGNED_OUT.test(text) ? 'signedOut' : 'failed')
+    }
     return result
   }
 
@@ -106,10 +117,20 @@ export class GitHubCodeHost implements CodeHost {
     try {
       // `auth token` is read locally: being offline does not look like being signed out.
       const token = await this.run('gh', ['auth', 'token', ...this.hostArgs])
-      if (token.code !== 0) return { state: 'signedOut', cli: 'gh' }
+      if (token.code !== 0) {
+        this.login = null
+        return { state: 'signedOut', cli: 'gh' }
+      }
+      const known = this.login
+      if (known && known.token === token.stdout && Date.now() - known.at < LOGIN_TTL_MS) return { state: 'ready', login: known.value }
       const user = await this.run('gh', ['api', ...this.hostArgs, 'user', '--jq', '.login'])
-      if (user.code !== 0) return { state: 'error', message: failureText(user, 'Could not read the GitHub login') }
-      return { state: 'ready', login: user.stdout.trim() }
+      if (user.code !== 0) {
+        this.login = null
+        const text = failureText(user, 'Could not read the GitHub login')
+        return SIGNED_OUT.test(text) ? { state: 'signedOut', cli: 'gh' } : { state: 'error', message: text }
+      }
+      this.login = { token: token.stdout, value: user.stdout.trim(), at: Date.now() }
+      return { state: 'ready', login: this.login.value }
     } catch (e) {
       if (e instanceof CliNotFoundError) return { state: 'missingCli', cli: 'gh' }
       return { state: 'error', message: e instanceof Error ? e.message : String(e) }

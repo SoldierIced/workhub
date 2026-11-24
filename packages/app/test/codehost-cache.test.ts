@@ -10,11 +10,16 @@ function demoService(onListsChanged?: () => void) {
 }
 
 describe('code host lists', () => {
-  it('shares one read among concurrent callers', async () => {
+  it('shares one read among concurrent plain callers; a forced one gets the read after it', async () => {
     const { service, status } = demoService()
-    const [a, b] = await Promise.all([service.lists(null), service.lists(null, true)])
+    const [a, b] = await Promise.all([service.lists(null), service.lists(null)])
     expect(status).toHaveBeenCalledTimes(1)
     expect(b).toBe(a)
+    // A forced read asked while one runs is not dropped: it reads again once that one ends (its caller must see what changed meanwhile).
+    status.mockClear()
+    const [first, second] = await Promise.all([service.lists(null, true), service.lists(null, true)])
+    expect(second).not.toBe(first)
+    expect(status).toHaveBeenCalledTimes(2)
   })
 
   it('hands out the cached lists without reading the host, and null when there are none', async () => {
