@@ -92,6 +92,10 @@ jobs:
             cp "$f" "../release-files/$stable"
             (cd ../release-files && if command -v shasum >/dev/null; then shasum -a 256 "$stable" > "$stable.sha256"; else sha256sum "$stable" > "$stable.sha256"; fi)
           done
+          # What changed, for the people who use the app (release-notes.json, CONTRIBUTING.md): the
+          # update prompt reads it from the release. Once, from the Linux runner; a tag from before
+          # the file existed has none.
+          if [ "$RUNNER_OS" = "Linux" ] && [ -f ../release-notes.json ]; then cp ../release-notes.json ../release-files/; fi
           ls -l ../release-files
       # electron-updater reads latest*.yml (latest-mac.yml, latest.yml, latest-linux.yml): every OS
       # writes its own name, so the three artifacts never overwrite each other.
@@ -206,8 +210,13 @@ jobs:
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Workhub 2 ${TAG#v}" --generate-notes --prerelease=false
           fi
           shopt -s nullglob
-          files=(*)
+          files=()
+          for f in *; do [ "$f" = release-notes.json ] || files+=("$f"); done
           [ "${#files[@]}" -gt 0 ] || { echo "no release files were built" >&2; exit 1; }
+          # The notes first, and only once (they are left out of the list above): the app only
+          # offers a release that has its update manifest, so by then the notes it shows next to
+          # it are already there.
+          if [ -f release-notes.json ]; then gh release upload "$TAG" release-notes.json --clobber --repo "$GITHUB_REPOSITORY"; fi
           printf 'uploading: %s\n' "${files[@]}"
           gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest

@@ -1,0 +1,32 @@
+{
+  "releases": [
+    {
+      "version": "2.0.0-alpha.44",
+      "date": "2026-11-22",
+      "items": [
+        {
+          "kind": "new",
+          "title": {
+            "en": "Live boards beside the chat",
+            "es": "Tableros en vivo junto al chat"
+          },
+          "body": {
+            "en": "When a job is split among several agents, the chat can show a board with its stages, who is doing what and what was decided, while it happens.",
+            "es": "Cuando un trabajo se reparte entre varios agentes, el chat puede mostrar un tablero con sus etapas, quién hace qué y qué se decidió, mientras ocurre."
+          }
+        },
+        {
+          "kind": "new",
+          "title": {
+            "en": "Workhub skills for Codex, OpenCode, Gemini CLI and Kiro",
+            "es": "Skills de Workhub para Codex, OpenCode, Gemini CLI y Kiro"
+          },
+          "body": {
+            "en": "Settings > Agents installs them for every agent you have, not only Claude Code, and turning on a screen asks which agents should get its skill.",
+            "es": "Ajustes > Agentes los instala para cada agente que tengas, no solo Claude Code, y al encender una pantalla pregunta qué agentes reciben su skill."
+          }
+        }
+      ]
+    }
+  ]
+}

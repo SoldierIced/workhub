@@ -942,7 +942,9 @@ const quitGuard = createQuitGuard({
   publish: (pending) => send('quit:pending', pending),
   showMain: () => showMain()
 })
-const updates = new UpdateService((s) => send('updates:changed', s), (url) => openLink(null, url))
+// WORKHUB_DEMO_UPDATE=1 (a run that is not packaged): a sample update with notes, to see the prompt.
+const demoUpdate = !app.isPackaged && process.env['WORKHUB_DEMO_UPDATE'] === '1'
+const updates = new UpdateService((s) => send('updates:changed', s), (url) => openLink(null, url), undefined, undefined, { demo: demoUpdate })
 // "A new version is available": after an automatic check, at most once a day, never for a skipped version.
 const updatePromptFile = db.state<UpdatePromptState>('update-prompt', 0)
 const saveUpdatePrompt = (patch: UpdatePromptState) => {
@@ -951,6 +953,8 @@ const saveUpdatePrompt = (patch: UpdatePromptState) => {
 }
 /** While the app stays open (menu bar), the automatic check runs again this often. */
 const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000
+/** Long enough for the window to be listening. */
+const DEMO_UPDATE_PROMPT_MS = 4_000
 async function automaticUpdateCheck(): Promise<void> {
   if (!appOptions(await configuration.current()).checkForUpdates) return
   const status = await updates.check()
@@ -1881,6 +1885,11 @@ void app.whenReady().then(async () => {
       if (app.isPackaged) {
         setTimeout(() => void automaticUpdateCheck(), 10_000)
         setInterval(() => void automaticUpdateCheck(), UPDATE_RECHECK_MS)
+      } else if (demoUpdate) {
+        // The sample prompt, on every start: it neither reads nor writes the once-a-day state.
+        setTimeout(() => {
+          if (windows.liveMain()) send('updates:prompt', updates.status())
+        }, DEMO_UPDATE_PROMPT_MS)
       }
     },
     prEvents: () => prEvents.start(),

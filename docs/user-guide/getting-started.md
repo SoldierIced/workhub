@@ -254,6 +254,13 @@ version** (never asks for that one again; a newer one does). **Check now** in Se
 **Check for updates…** in the menu bar icon checks at once and opens Settings on this group,
 highlighted for a moment, where the result shows.
 
+Both the question and Settings say what changed, so you can decide: for every version after yours,
+newest first, a short list of what is **New**, **Improved** and **Fixed**, in the app's language.
+Several versions behind, the two newest are open and **Show N earlier versions** opens the rest (up
+to 10 versions in all). **See all the changes on GitHub** opens the list of releases, where every
+version has its complete list of changes. A release published without notes shows only that link;
+when the notes could not be loaded, it says so above the link.
+
 ## Menu bar and tray
 
 Closing the window can keep Workhub running in the menu bar (macOS), the notification area
