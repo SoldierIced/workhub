@@ -5,6 +5,7 @@ import {
   type DiffFile,
   type DiffFileStatus,
   type Mergeability,
+  type MergedPullRequest,
   type PullRequest,
   type PullRequestCheck,
   type PullRequestComment,
@@ -110,6 +111,30 @@ export function mapMergeRequestList(pages: readonly unknown[], parse: (url: stri
     const mr = obj(page)
     const ref = parse(str(mr['web_url']))
     if (ref) out.push(mapMergeRequest(mr, ref))
+  }
+  return out
+}
+
+/**
+ * Merged merge requests of a list answer. GitLab's list has no line counts, so those stay undefined
+ * (not zero); entries without a merge time or whose URL is not a merge request are skipped.
+ */
+export function mapMergedList(pages: readonly unknown[], parse: (url: string) => PullRequestRef | null): MergedPullRequest[] {
+  const out: MergedPullRequest[] = []
+  for (const page of pages) {
+    const mr = obj(page)
+    const ref = parse(str(mr['web_url']))
+    const mergedAt = epoch(mr['merged_at'])
+    if (!ref || mergedAt === undefined) continue
+    out.push({
+      ...ref,
+      title: str(mr['title']),
+      author: username(mr['author']),
+      branch: str(mr['source_branch']),
+      base: str(mr['target_branch']),
+      mergedAt,
+      createdAt: epoch(mr['created_at'])
+    })
   }
   return out
 }

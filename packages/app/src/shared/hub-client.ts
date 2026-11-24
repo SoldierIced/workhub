@@ -151,6 +151,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
     },
     codeHost: {
       lists: (profileId, force) => invoke('codeHost:lists', profileId, force),
+      merged: (profileId, request, force) => invoke('codeHost:merged', profileId, request, force === true),
       view: (profileId, url) => invoke('codeHost:view', profileId, url),
       detail: (profileId, url, fresh) => invoke('codeHost:detail', profileId, url, fresh === true),
       diff: (profileId, url) => invoke('codeHost:diff', profileId, url),

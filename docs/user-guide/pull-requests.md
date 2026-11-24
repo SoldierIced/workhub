@@ -36,6 +36,7 @@ profile's folders, then to everything your login sees. Hidden repositories apply
 | **Mine** | Your open pull requests. |
 | **Stale** | Yours that have been idle for 30 days. |
 | **All** | Mine and the ones waiting for you. |
+| **Merged** | What was merged in a period, with a summary; see [Merged](#merged). |
 
 Search by title, author, branch or ticket. The **Filters** button under it opens a panel that
 filters by **Status**, **Into** (base branch), **Repo**, **Author** and **Ticket** (**With ticket** /
@@ -48,6 +49,36 @@ list** sorts by newest update, oldest update or repository. Each row shows its s
 **Awaiting review**, **Approved**, **Changes requested**, **CI running**, **CI failing**,
 **Conflicts**, **Merged** or **Closed**. Tickets in titles and branch names link to the
 [Tickets](tickets.md) screen when a tracker is connected.
+
+## Merged
+
+**Merged** lists the pull requests merged in a period and, beside them, a summary of that period.
+Nothing is read until you open it; then it reads the last 30 days and keeps the answer for 10
+minutes (**Refresh** at the bottom reads again, and a merge made in Workhub makes it read again; GitHub's search can take a minute to list a
+new merge). A preset period ends today: coming back on another day moves it.
+
+- **Everyone / Mine**: everyone's pull requests in the profile's scope, or only yours. **Everyone**
+  needs a scope: set **Only these repositories** or **Organizations or users** for the profile (or a
+  `scope` on the connection, or, on GitHub, folders); without one, only **Mine** is offered, so Workhub never
+  reads every merge your login can see.
+- **7 days / 30 days / 90 days / Custom…**: the period, up to 366 days; days are local days and weeks
+  start on Monday.
+- The list groups the pull requests by day, newest first. Each row shows the branch it was merged
+  into (**→ develop**), the lines added and removed, and the author. **Filters** narrows the list
+  and the summary together: **Into** lists each target branch on its own (`main` and `master` apart),
+  plus **release/\*** for every release branch; **Repo**; **Author**. These filters are separate from
+  the other lists' and start empty.
+- Select a pull request to read it as usual; **Back to summary** or Esc returns to the summary.
+
+The summary shows how many were merged (and the change against the previous period of the same
+length), lines added and removed, files changed, and the median time from opening to merge; a chart
+per day or week, stacked by target branch (**main**, **master**, **release/\***, **develop**, **Other**),
+with **Table** for the same numbers; and tables by target branch and by repository.
+
+GitHub answers at most 1,000 results per search, so Workhub splits long periods into smaller
+searches and stops at the newest 3,000 merges; the summary says so when it stopped there, and the
+comparison with the previous period is then left out. GitLab does not report lines or files in its
+lists, so those show as not reported. Merged is not on the phone.
 
 ## The pull request window
 

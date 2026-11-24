@@ -9,6 +9,9 @@ import {
   type CodeHost,
   type CodeHostCapabilities,
   type CodeHostStatus,
+  type MergedList,
+  type MergedPullRequest,
+  type MergedQuery,
   type DiffFile,
   type MergeMethod,
   type NewPullRequest,
@@ -19,7 +22,7 @@ import {
   type ReviewAction
 } from '@workhub/core'
 import { CliNotFoundError, failureText, parseJsonPages, type CliResult, type CliRunner } from '../shared/cli'
-import { mapDetail, mapSearchResponse, searchNextCursor } from './mapping'
+import { mapDetail, mapMergedPage, mapSearchResponse, searchNextCursor } from './mapping'
 
 /** At most this many pull requests per list, read in at most `SEARCH_PAGES` pages of 50. */
 const SEARCH_CAP = 500
@@ -31,6 +34,28 @@ const SEARCH_QUERY = `query($q: String!, $after: String) { search(query: $q, typ
   comments { totalCount } reviewThreads { totalCount }
   commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
 } } } }`
+
+/** GitHub answers at most 1,000 results per search; a window that reports this many is split. */
+const SEARCH_LIMIT = 1000
+/** At most this many merged pull requests are returned (the newest). */
+export const MERGED_CAP = 3000
+/** Merged searches run at most this many at once, across every call on the host. */
+const MERGED_PARALLEL = 4
+/** A window this short is not split any more: it is read as it is and the result is marked truncated. */
+const MIN_WINDOW_MS = 3_600_000
+
+const MERGED_QUERY = `query($q: String!, $after: String) { search(query: $q, type: ISSUE, first: 100, after: $after) { issueCount pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
+  number title url mergedAt createdAt headRefName baseRefName additions deletions changedFiles author { login } repository { name owner { login } }
+} } } }`
+
+/** A search date-time: UTC, whole seconds. */
+const stamp = (ms: number): string => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+/** A merged search over `[from, to)`: the qualifier's end is inclusive, so it names the last whole second before `to`. */
+export function mergedSearchQuery(scope: string | undefined, from: number, to: number, mine: boolean): string {
+  const lastSecond = Math.ceil(to / 1000) * 1000 - 1000
+  return `is:pr is:merged archived:false merged:${stamp(Math.floor(from / 1000) * 1000)}..${stamp(Math.max(lastSecond, Math.floor(from / 1000) * 1000))} ${scope ?? ''}${mine ? ' author:@me' : ''}`.replace(/\s+/g, ' ').trim()
+}
 
 const VIEW_FIELDS = [
   'number', 'title', 'body', 'url', 'author', 'state', 'isDraft', 'baseRefName', 'headRefName', 'headRefOid',
@@ -64,6 +89,9 @@ export class GitHubCodeHost implements CodeHost {
   private readonly recognizer
   /** The login behind the last token seen, so a status check costs one local `gh auth token` and no request. A new token (`gh auth switch`) reads the login again. */
   private login: { token: string; value: string; at: number } | null = null
+  /** Merged searches under way and waiting, across every `listMerged` call. */
+  private mergedActive = 0
+  private readonly mergedWaiting: Array<() => void> = []
 
   constructor(options: GitHubCodeHostOptions) {
     this.run = options.run
@@ -155,6 +183,104 @@ export class GitHubCodeHost implements CodeHost {
       if (!after) break
     }
     return out.slice(0, SEARCH_CAP)
+  }
+
+  private async mergedSlot<T>(task: () => Promise<T>): Promise<T> {
+    if (this.mergedActive >= MERGED_PARALLEL) await new Promise<void>((resolve) => this.mergedWaiting.push(resolve))
+    else this.mergedActive++
+    try {
+      return await task()
+    } finally {
+      // The slot passes straight to the next waiter.
+      const next = this.mergedWaiting.shift()
+      if (next) next()
+      else this.mergedActive--
+    }
+  }
+
+  /**
+   * Merged pull requests of `[since, until)`. One search is capped at 1,000 results, so the period is
+   * read as windows: a window that reports 1,000 or more is halved (down to an hour) and its halves
+   * are read newest first, at most four searches at once. Windows are dropped from the end once the
+   * newest `MERGED_CAP` are certain; then, and when a window could not be split, the list is `truncated`.
+   */
+  async listMerged(query: MergedQuery): Promise<MergedList> {
+    const found = new Map<string, MergedPullRequest>()
+    const pending: Array<{ from: number; to: number }> = query.until > query.since ? [{ from: query.since, to: query.until }] : []
+    let truncated = false
+    let active = 0
+    let failed = false
+
+    const newerThan = (cutoff: number): number => {
+      let n = 0
+      for (const p of found.values()) if (p.mergedAt >= cutoff && p.mergedAt >= query.since && p.mergedAt < query.until) n++
+      return n
+    }
+
+    const readWindow = async (w: { from: number; to: number }): Promise<void> => {
+      const q = mergedSearchQuery(query.scope, w.from, w.to, query.mine)
+      let after: string | null = null
+      const items: MergedPullRequest[] = []
+      for (let page = 0; page < SEARCH_LIMIT / 100; page++) {
+        const result = await this.mergedSlot(() =>
+          this.gh(['api', ...this.hostArgs, 'graphql', '-f', `query=${MERGED_QUERY}`, '-f', `q=${q}`, ...(after ? ['-f', `after=${after}`] : [])], 'GitHub search failed')
+        )
+        let parsed: ReturnType<typeof mapMergedPage>
+        try {
+          parsed = mapMergedPage(result.stdout)
+        } catch {
+          throw new CodeHostError('GitHub returned an answer Workhub could not read')
+        }
+        if (page === 0 && parsed.issueCount >= SEARCH_LIMIT) {
+          if (w.to - w.from > MIN_WINDOW_MS) {
+            const mid = Math.floor((w.from + w.to) / 2000) * 1000
+            if (mid > w.from && mid < w.to) {
+              pending.push({ from: mid, to: w.to }, { from: w.from, to: mid })
+              pending.sort((a, b) => b.to - a.to)
+              return
+            }
+          }
+          // Cannot be split further: what the search returns is all there is.
+          truncated = true
+        }
+        items.push(...parsed.items)
+        after = parsed.next
+        if (!after) break
+      }
+      for (const p of items) found.set(p.url, p)
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const pump = (): void => {
+        if (failed) return
+        // Every window still waiting is older than the ones being read; once the newest CAP are known from newer windows, the rest cannot matter.
+        while (active < MERGED_PARALLEL && pending.length > 0) {
+          if (newerThan(pending[0]!.to) >= MERGED_CAP) {
+            truncated = true
+            pending.length = 0
+            break
+          }
+          const w = pending.shift()!
+          active++
+          readWindow(w).then(
+            () => {
+              active--
+              pump()
+            },
+            (e: unknown) => {
+              failed = true
+              reject(e)
+            }
+          )
+        }
+        if (active === 0 && pending.length === 0) resolve()
+      }
+      pump()
+    })
+
+    const items = [...found.values()].filter((p) => p.mergedAt >= query.since && p.mergedAt < query.until).sort((a, b) => b.mergedAt - a.mergedAt || b.number - a.number)
+    if (items.length > MERGED_CAP) return { items: items.slice(0, MERGED_CAP), truncated: true }
+    return { items, truncated }
   }
 
   listAuthored(query: PullRequestQuery): Promise<PullRequest[]> {

@@ -22,6 +22,26 @@ export interface PullRequestRef {
   url: string
 }
 
+/**
+ * A merged pull request, as the Merged view counts it. Lines and files are undefined when the host's
+ * list does not report them (GitLab), which is not the same as zero.
+ */
+export interface MergedPullRequest extends PullRequestRef {
+  title: string
+  author: string
+  /** Head (source) branch. */
+  branch: string
+  /** Base (target) branch, as the host names it (`main`, `master`, `release/2.4`). */
+  base: string
+  /** Epoch milliseconds. */
+  mergedAt: number
+  /** Epoch milliseconds; undefined when the host did not say. */
+  createdAt?: number
+  additions?: number
+  deletions?: number
+  changedFiles?: number
+}
+
 export interface PullRequest extends PullRequestRef {
   title: string
   author: string

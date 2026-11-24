@@ -2,6 +2,7 @@ import type {
   CodeHostCapabilities,
   CodeHostStatus,
   DiffFile,
+  MergedPullRequest,
   MergeMethod,
   NewPullRequest,
   PullRequest,
@@ -16,6 +17,25 @@ export interface PullRequestQuery {
    * `repo:acme/api`), a GitLab group path (`group:acme/team`). Empty: everything the login can see.
    */
   scope?: string
+}
+
+/** Merged pull requests read for the Merged view. */
+export interface MergedQuery {
+  /** As in `PullRequestQuery`. */
+  scope?: string
+  /** Merged at or after (epoch milliseconds). */
+  since: number
+  /** Merged before (epoch milliseconds). */
+  until: number
+  /** Only the signed-in user's pull requests. */
+  mine: boolean
+}
+
+export interface MergedList {
+  /** Newest merge first. */
+  items: MergedPullRequest[]
+  /** The host's search limit was reached: there are more merges than `items`. */
+  truncated: boolean
 }
 
 /**
@@ -34,6 +54,8 @@ export interface CodeHost {
   listAuthored(query: PullRequestQuery): Promise<PullRequest[]>
   /** Open PRs waiting for the user's review. */
   listReviewRequested(query: PullRequestQuery): Promise<PullRequest[]>
+  /** Pull requests merged in a period, in the scope (all authors unless `mine`). Absent: the host cannot list them. */
+  listMerged?(query: MergedQuery): Promise<MergedList>
   detail(ref: PullRequestRef): Promise<PullRequestDetail>
   diff(ref: PullRequestRef): Promise<DiffFile[]>
   /** Submits a review; `body` may be empty for an approval. */

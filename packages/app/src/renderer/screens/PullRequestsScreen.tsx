@@ -1,23 +1,28 @@
-import { AppWindow, ExternalLink, GitPullRequest, GitPullRequestClosed, Link, Search, TriangleAlert } from 'lucide-react'
+import { AppWindow, ExternalLink, GitPullRequest, GitPullRequestClosed, Link, Search } from 'lucide-react'
 import { ContextMenu } from 'radix-ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { itemsForFilter, PULL_REQUEST_FILTERS, prName, searchPullRequests, STALE_DAYS, type PullRequest, type PullRequestFilter, type PullRequestItem, type Profile } from '@workhub/core'
-import type { CodeHostLists } from '@shared/codehost-api'
 import { Badge, Button, Input, Spinner } from '../components/atoms'
 import { EmptyState, SlackBadge, useToast, RefreshButton } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
-import { defaultFilter, findItem, focusFilter, initials, installUrl, loginCommand, relativeTime } from '../lib/pullRequests'
+import { defaultFilter, findItem, focusFilter, initials, relativeTime } from '../lib/pullRequests'
+import { mergedSeed } from '../lib/mergedStats'
 import { applyNarrowing, NO_NARROWING, type PrNarrowing } from '../lib/prNarrowing'
 import { usePullRequestSlack } from '../lib/slackLinks'
 import { keepDetailsOf } from '../lib/prDetailCache'
 import { afterPullRequestWrite } from '../lib/prWrites'
 import { usePullRequestLists } from '../pullRequestsStore'
 import { ClosePullRequestDialog } from './pullRequests/ClosePullRequestDialog'
+import { MergedNarrowingBar } from './pullRequests/MergedFilters'
+import { MergedRows } from './pullRequests/MergedRows'
+import { MergedSummary } from './pullRequests/MergedSummary'
 import { NarrowingBar } from './pullRequests/NarrowingBar'
 import { StatusBadge } from './pullRequests/PrBadges'
 import { PullRequestDetail } from './pullRequests/PullRequestDetail'
 import { TicketChip } from './pullRequests/TicketChip'
+import { Unavailable } from './pullRequests/Unavailable'
+import { useMergedView } from './pullRequests/useMergedView'
 
 export interface PullRequestsScreenProps {
   profile: Profile | undefined
@@ -26,34 +31,6 @@ export interface PullRequestsScreenProps {
   onOpenSettings: (tab?: string) => void
   /** Whether the screen is on screen: a kept-mounted, hidden screen does not poll the code host. */
   visible?: boolean
-}
-
-/** Why there is nothing to list: no connection, a missing CLI, no login, or a failed read. */
-function Unavailable({ lists, onOpenSettings, onRetry }: { lists: CodeHostLists; onOpenSettings: PullRequestsScreenProps['onOpenSettings']; onRetry: () => unknown }) {
-  const { t } = useI18n()
-  const cli = lists.cli ?? 'gh'
-  const host = lists.provider === 'gitlab' ? t('pr.host.gitlab') : t('pr.host.github')
-  const retry = (
-    <RefreshButton variant="button" size="md" iconClassName="size-4" label={t('pr.retry')} onRefresh={onRetry} />
-  )
-  const icon = <TriangleAlert className="size-6" aria-hidden />
-  switch (lists.state) {
-    case 'notConnected':
-      return (
-        <EmptyState
-          icon={<GitPullRequest className="size-6" aria-hidden />}
-          title={t('pr.notConnected.title')}
-          description={t('pr.notConnected.description')}
-          action={<Button variant="primary" onClick={() => onOpenSettings('connections')}>{t('pr.openSettings')}</Button>}
-        />
-      )
-    case 'missingCli':
-      return <EmptyState icon={icon} title={t('pr.missingCli.title', { cli })} description={t('pr.missingCli.description', { cli, url: installUrl(cli) })} action={retry} />
-    case 'signedOut':
-      return <EmptyState icon={icon} title={t('pr.signedOut.title', { host })} description={t('pr.signedOut.description', { command: loginCommand(cli) })} action={retry} />
-    default:
-      return <EmptyState icon={icon} title={t('pr.error.title')} description={lists.message} action={retry} />
-  }
 }
 
 interface RowProps {
@@ -155,17 +132,25 @@ function Row({ item, profileId, selected, showAuthor, mine, onSelect, onOpenWind
   )
 }
 
-/** Pull requests (⌘2): mine and waiting for my review, with a detail view beside the list. */
+/** The screen's choices: core's four lists and, here only, the merged statistics. */
+type Choice = PullRequestFilter | 'merged'
+const CHOICES: readonly Choice[] = [...PULL_REQUEST_FILTERS, 'merged']
+
+/** Pull requests (⌘2): mine and waiting for my review, with a detail view beside the list; Merged: what was merged and into which branch. */
 export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: shown = true }: PullRequestsScreenProps) {
   const { t, tn, locale } = useI18n()
   const profileId = profile?.id ?? null
   const { lists, loading, refresh } = usePullRequestLists(profileId, shown)
   const [filter, setFilter] = useState<PullRequestFilter>('toReview')
   const [chosenFilter, setChosenFilter] = useState(false)
+  const [showMerged, setShowMerged] = useState(false)
+  // The first visit to Merged starts its read; before that nothing is asked of the host.
+  const [mergedRequested, setMergedRequested] = useState(false)
   const [query, setQuery] = useState('')
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null)
   const [narrowing, setNarrowing] = useState<PrNarrowing>(NO_NARROWING)
   const [closing, setClosing] = useState<PullRequest | null>(null)
+  const merged = useMergedView(profileId, mergedRequested, showMerged && shown, query)
 
   // The detail cache holds one profile at a time.
   useEffect(() => keepDetailsOf(profileId), [profileId])
@@ -185,6 +170,7 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
     appliedFocus.current = focus
     setFilter(target)
     setChosenFilter(true)
+    setShowMerged(false)
     setQuery('')
     setSelectedUrl(focus.url)
   }, [lists, focus])
@@ -194,62 +180,117 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
   const visible = useMemo(() => applyNarrowing(searchPullRequests(scoped, query), narrowing), [scoped, query, narrowing])
   const selected = findItem(lists ?? undefined, selectedUrl ?? '') ?? null
 
-  // Keep a PR open: the first of the list when nothing (or something filtered out) is selected.
+  // Keep a PR open: the first of the list when nothing (or something filtered out) is selected. Merged opens on its summary instead.
   useEffect(() => {
-    if (visible.length === 0) return
+    if (showMerged || visible.length === 0) return
     if (!selectedUrl || !visible.some((i) => i.pr.url === selectedUrl)) setSelectedUrl(visible[0]!.pr.url)
-  }, [visible, selectedUrl])
+  }, [visible, selectedUrl, showMerged])
+
+  // Escape takes a merged PR back to the summary (unless something on top of the screen wants the key).
+  const openMerged = showMerged && shown && merged.selected !== null
+  const { select: selectMerged } = merged
+  useEffect(() => {
+    if (!openMerged) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      const target = e.target instanceof HTMLElement ? e.target : null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (document.querySelector('[role="dialog"], [role="menu"], [data-radix-popper-content-wrapper]')) return
+      selectMerged(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openMerged, selectMerged])
 
   const countOf = (f: PullRequestFilter) => (lists ? itemsForFilter(lists, f).length : 0)
+  const choose = (c: Choice) => {
+    if (c === 'merged') {
+      setShowMerged(true)
+      setMergedRequested(true)
+      return
+    }
+    setShowMerged(false)
+    setFilter(c)
+    setChosenFilter(true)
+  }
 
-  if (!lists) {
+  const radios = (
+    <div role="radiogroup" aria-label={t('pr.filterLabel')} className="flex gap-1 rounded-md bg-surface-hover p-0.5">
+      {CHOICES.map((c) => {
+        const on = c === 'merged' ? showMerged : !showMerged && filter === c
+        const count = c === 'merged' ? (merged.hasData ? merged.visible.length : null) : countOf(c)
+        return (
+          <button
+            key={c}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => choose(c)}
+            className={cn('h-7 flex-auto whitespace-nowrap rounded-sm px-1 text-sm transition-colors duration-150', on ? 'bg-surface-raised font-semibold text-text shadow-sm' : 'text-muted hover:text-text')}
+          >
+            {t(`pr.filter.${c}`)}
+            {count !== null && <span className="ml-1 text-xs tabular-nums text-subtle">{count}</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  if (!showMerged && !lists) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 text-muted">
-        <Spinner /> {t('pr.loading')}
+      <div className="flex h-full flex-col">
+        <div className="border-b border-border p-3">{radios}</div>
+        <div className="flex flex-1 items-center justify-center gap-2 text-muted">
+          <Spinner /> {t('pr.loading')}
+        </div>
       </div>
     )
   }
-  if (!ready) return <div className="h-full overflow-y-auto"><Unavailable lists={lists} onOpenSettings={onOpenSettings} onRetry={refresh} /></div>
+  if (!showMerged && !ready && lists) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="border-b border-border p-3">{radios}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto"><Unavailable state={lists.state} message={lists.message} provider={lists.provider} cli={lists.cli} onOpenSettings={onOpenSettings} onRetry={refresh} /></div>
+      </div>
+    )
+  }
 
   return (
     <div className="grid h-full grid-cols-[clamp(20rem,40%,26rem)_minmax(0,1fr)]">
       <section aria-label={t('nav.pullRequests')} className="flex min-h-0 flex-col border-r border-border">
         <div className="flex flex-col gap-2.5 border-b border-border p-3">
-          <div role="radiogroup" aria-label={t('pr.filterLabel')} className="flex gap-1 rounded-md bg-surface-hover p-0.5">
-            {PULL_REQUEST_FILTERS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                role="radio"
-                aria-checked={filter === f}
-                onClick={() => {
-                  setFilter(f)
-                  setChosenFilter(true)
-                }}
-                className={cn('h-7 flex-auto whitespace-nowrap rounded-sm px-1 text-sm transition-colors duration-150', filter === f ? 'bg-surface-raised font-semibold text-text shadow-sm' : 'text-muted hover:text-text')}
-              >
-                {t(`pr.filter.${f}`)}
-                <span className="ml-1 text-xs tabular-nums text-subtle">{countOf(f)}</span>
-              </button>
-            ))}
-          </div>
+          {radios}
           <div className="relative">
             <Search className="pointer-events-none absolute top-2 left-2.5 size-4 text-subtle" aria-hidden />
-            <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('pr.search')} aria-label={t('pr.search')} className="pl-8" />
+            <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={showMerged ? t('pr.merged.search') : t('pr.search')} aria-label={showMerged ? t('pr.merged.search') : t('pr.search')} className="pl-8" />
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle">
-            <span className="whitespace-nowrap">{tn('pr.count', visible.length)}</span>
-            {lists.demo && <Badge tone="warning">{t('pr.demo')}</Badge>}
-            <span className="ml-auto flex items-center gap-2">
-              <span className="whitespace-nowrap">{lists.updatedAt ? t('pr.updated', { time: relativeTime(lists.updatedAt, Date.now(), locale) }) : ''}</span>
-              <RefreshButton label={t('pr.refresh')} loading={loading} onRefresh={refresh} />
-            </span>
-          </div>
-          <NarrowingBar items={scoped} shown={visible.length} value={narrowing} onChange={setNarrowing} />
-          {lists.message && <p className="text-xs text-warning">{t('pr.partialError', { message: lists.message })}</p>}
+          {showMerged ? (
+            <>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle">
+                <span className="whitespace-nowrap">{merged.hasData ? tn('pr.merged.count', merged.visible.length) : ''}</span>
+                {merged.demo && <Badge tone="warning">{t('pr.demo')}</Badge>}
+              </div>
+              <MergedNarrowingBar items={merged.searched} shown={merged.visible.length} value={merged.ui.narrowing} onChange={merged.setNarrowing} />
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle">
+                <span className="whitespace-nowrap">{tn('pr.count', visible.length)}</span>
+                {lists?.demo && <Badge tone="warning">{t('pr.demo')}</Badge>}
+                <span className="ml-auto flex items-center gap-2">
+                  <span className="whitespace-nowrap">{lists?.updatedAt ? t('pr.updated', { time: relativeTime(lists.updatedAt, Date.now(), locale) }) : ''}</span>
+                  <RefreshButton label={t('pr.refresh')} loading={loading} onRefresh={refresh} />
+                </span>
+              </div>
+              <NarrowingBar items={scoped} shown={visible.length} value={narrowing} onChange={setNarrowing} />
+              {lists?.message && <p className="text-xs text-warning">{t('pr.partialError', { message: lists.message })}</p>}
+            </>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {visible.length === 0 ? (
+          {showMerged ? (
+            <MergedRows view={merged} profileId={profileId} query={query} onClearSearch={() => setQuery('')} />
+          ) : visible.length === 0 ? (
             <EmptyState
               compact
               title={query ? t('pr.empty.filtered.title') : t(`pr.empty.${filter}.title`)}
@@ -265,7 +306,7 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
                   profileId={profileId}
                   selected={item.pr.url === selectedUrl}
                   showAuthor={filter === 'toReview' || filter === 'all'}
-                  mine={lists.mine.some((m) => m.pr.url === item.pr.url)}
+                  mine={lists!.mine.some((m) => m.pr.url === item.pr.url)}
                   onSelect={() => setSelectedUrl(item.pr.url)}
                   onOpenWindow={() => void window.hub.codeHost.openWindow(profileId, item.pr.url)}
                   onClose={() => setClosing(item.pr)}
@@ -276,7 +317,13 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
         </div>
       </section>
       <section aria-label={t('pr.detail.tabs')} className="min-h-0 overflow-hidden">
-        {selected ? (
+        {showMerged ? (
+          merged.selected ? (
+            <PullRequestDetail profileId={profileId} url={merged.selected.url} seed={mergedSeed(merged.selected)} onOpenWindow={() => void window.hub.codeHost.openWindow(profileId, merged.selected!.url)} onBack={() => merged.select(null)} />
+          ) : (
+            <MergedSummary view={merged} host={{ provider: lists?.provider, cli: lists?.cli }} onOpenSettings={onOpenSettings} />
+          )
+        ) : selected ? (
           <PullRequestDetail profileId={profileId} url={selected.pr.url} seed={selected.pr} onOpenWindow={() => void window.hub.codeHost.openWindow(profileId, selected.pr.url)} />
         ) : (
           <EmptyState icon={<GitPullRequest className="size-6" aria-hidden />} title={t('pr.selectOne')} />

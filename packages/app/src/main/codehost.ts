@@ -15,6 +15,7 @@ import {
   loadPullRequestView,
   mergeRefusal,
   loadReviewQueue,
+  allowedRepos,
   normalizePullRequestFilter,
   closePullRequest,
   createPullRequest,
@@ -25,6 +26,8 @@ import {
   toItem,
   type CodeHost,
   type Connection,
+  type MergedList,
+  type MergedPullRequest,
   type MergeMethod,
   type NewPullRequest,
   type Profile,
@@ -44,6 +47,9 @@ import {
   type CreatePullRequestResult,
   type MergeMethodsResult,
   type MergeResult,
+  type MergedPullRequestsResult,
+  type MergedRequest,
+  type MergedScope,
   type PullRequestDetailResult,
   type PullRequestDiffResult,
   type PullRequestViewResult,
@@ -63,6 +69,45 @@ const DETAIL_MAX = 100
 const AUTHORS_MAX = 5_000
 /** How long a repository's allowed merge methods are kept. */
 const METHODS_TTL_MS = 10 * 60_000
+/** How long a merged read is kept per profile and request, and how many are kept. */
+const MERGED_TTL_MS = 10 * 60_000
+const MERGED_ENTRIES = 20
+/** The most merged pull requests a read returns (the newest); more is `truncated`. */
+const MERGED_CAP = 3000
+/** Merged reads of one call in parallel (repository batches, GitLab projects). */
+const MERGED_SCOPES_PARALLEL = 4
+/** The longest scope a merged GitHub search takes: its other qualifiers (`is:pr is:merged archived:false merged:A..B author:@me`) use about 100 of the 256 characters. */
+const MERGED_SCOPE_MAX = 150
+/** The longest period (with the previous one) a merged read accepts. */
+const MERGED_MAX_SPAN_MS = 800 * 86_400_000
+/** The demo's owner, shown as the scope of its merged read. */
+const DEMO_OWNER = 'acme-demo'
+
+type MergedOk = Extract<MergedPullRequestsResult, { ok: true }>
+
+/** A merged request from the renderer, or null when it is not one: finite times, `since < until`, at most 800 days, `mine` a boolean. */
+export function validMergedRequest(value: unknown): MergedRequest | null {
+  if (!value || typeof value !== 'object') return null
+  const { since, until, mine } = value as Record<string, unknown>
+  if (typeof since !== 'number' || typeof until !== 'number' || typeof mine !== 'boolean') return null
+  if (!Number.isFinite(since) || !Number.isFinite(until) || since < 0 || since >= until || until - since > MERGED_MAX_SPAN_MS) return null
+  return { since, until, mine }
+}
+
+/** Search qualifiers joined into queries of at most `max` characters. */
+function chunkTokens(tokens: readonly string[], max: number): string[] {
+  const out: string[] = []
+  let current = ''
+  for (const t of tokens) {
+    if (current && current.length + 1 + t.length > max) {
+      out.push(current)
+      current = ''
+    }
+    current = current ? `${current} ${t}` : t
+  }
+  if (current) out.push(current)
+  return out
+}
 
 interface Resolved {
   host: CodeHost
@@ -117,6 +162,9 @@ export class CodeHostService {
   /** The author of each pull request seen: it never changes, so "is it mine" needs no read once known. */
   private readonly authors = new Map<string, string>()
   private readonly methods = new Map<string, { at: number; value: MergeMethod[] }>()
+  /** Merged reads kept per profile and request (LRU, `MERGED_ENTRIES`), and the ones under way. */
+  private readonly mergedCache = new Map<string, { at: number; value: MergedOk }>()
+  private readonly mergedFlights = new Map<string, { running: Promise<MergedPullRequestsResult>; queued?: Promise<MergedPullRequestsResult> }>()
   /** Per key, how many writes happened: a read that started under another number never stores its result. */
   private readonly generations = new Map<string, number>()
 
@@ -209,6 +257,35 @@ export class CodeHostService {
     if (r.host.provider === 'github' && r.filter?.owners?.length) return [githubScopeFromFilter(r.filter)]
     if (r.scope || r.host.provider !== 'github' || r.folders.length === 0) return [r.scope]
     return [githubScopeFromRemotes(await this.remotesOf(r.folders))]
+  }
+
+  /**
+   * The searches of a merged read and what they were narrowed to. Like `scopesOf`, but sized for the
+   * merged query's longer prefix, and on GitLab one project (or group) path per search. `none`: the
+   * profile limits nothing, so only the user's own merges may be read.
+   */
+  private async mergedScopesOf(r: Resolved): Promise<{ scopes: string[]; scope: MergedScope }> {
+    if (this.demoHost) return { scopes: [''], scope: { kind: 'owners', values: [DEMO_OWNER] } }
+    const github = r.host.provider === 'github'
+    const f = r.filter
+    if (f?.repos?.length) {
+      const repos = allowedRepos(f)
+      return { scopes: github ? githubRepoScopeBatches(f, MERGED_SCOPE_MAX) : repos.map((p) => `project:${p}`), scope: { kind: 'repos', values: repos } }
+    }
+    if (f?.owners?.length) {
+      // Owners only: excluded repositories are left to the profile filter afterwards, so no search is ever left
+      // with exclusions alone (that would read every merge on the host).
+      const users = f.owners.filter((o) => !o.includes('/')).map((o) => `user:${o}`)
+      if (github && users.length === 0) return { scopes: [''], scope: { kind: 'none', values: [] } }
+      const scopes = github ? chunkTokens(users, MERGED_SCOPE_MAX) : f.owners.map((o) => `group:${o}`)
+      return { scopes, scope: { kind: 'owners', values: [...f.owners] } }
+    }
+    if (r.scope) return { scopes: [r.scope], scope: { kind: 'connection', values: [r.scope] } }
+    if (github && r.folders.length > 0) {
+      const tokens = githubScopeFromRemotes(await this.remotesOf(r.folders)).split(' ').filter(Boolean)
+      if (tokens.length > 0) return { scopes: chunkTokens(tokens, MERGED_SCOPE_MAX), scope: { kind: 'folders', values: tokens.map((t) => t.replace(/^repo:/, '')) } }
+    }
+    return { scopes: [''], scope: { kind: 'none', values: [] } }
   }
 
   /**
@@ -340,6 +417,108 @@ export class CodeHostService {
     const seen = new Set<string>()
     const merged = (await Promise.all(scopes.map((scope) => load({ scope })))).flat().filter((i) => !seen.has(i.pr.url) && Boolean(seen.add(i.pr.url)))
     return merged.sort((a, b) => (b.pr.updatedAt ?? 0) - (a.pr.updatedAt ?? 0))
+  }
+
+  /**
+   * The pull requests merged in a period, in the profile's scope. Kept per profile and request for
+   * `MERGED_TTL_MS`; callers that ask together share one read; `force` reads again (after the one
+   * under way, like a forced list). Failures come back as data, never kept.
+   */
+  async merged(profileId: string | null, request: MergedRequest, force = false): Promise<MergedPullRequestsResult> {
+    const resolved = await this.resolve(profileId)
+    if (!resolved) return { ok: false, state: 'notConnected', error: 'No code host is connected to this profile' }
+    if (!resolved.host.listMerged) return { ok: false, state: 'unsupported', error: `${resolved.host.provider} cannot list merged pull requests` }
+    const key = `${resolved.key}\n${request.since}|${request.until}|${request.mine}`
+    const hit = this.mergedCache.get(key)
+    if (hit && !force && Date.now() - hit.at < MERGED_TTL_MS) {
+      this.mergedCache.delete(key)
+      this.mergedCache.set(key, hit)
+      return hit.value
+    }
+    const flight = this.mergedFlights.get(key)
+    if (flight) {
+      if (!force) return flight.running
+      flight.queued ??= flight.running.then(() => undefined, () => undefined).then(() => this.launchMerged(resolved, request, key))
+      return flight.queued
+    }
+    return this.launchMerged(resolved, request, key)
+  }
+
+  private launchMerged(resolved: Resolved, request: MergedRequest, key: string): Promise<MergedPullRequestsResult> {
+    const flight: { running: Promise<MergedPullRequestsResult>; queued?: Promise<MergedPullRequestsResult> } = { running: undefined as never }
+    const read = this.readMerged(resolved, request, key)
+    flight.running = read
+    this.mergedFlights.set(key, flight)
+    const done = () => {
+      if (this.mergedFlights.get(key) === flight && !flight.queued) this.mergedFlights.delete(key)
+    }
+    read.then(done, done)
+    return read
+  }
+
+  private async readMerged(resolved: Resolved, request: MergedRequest, key: string): Promise<MergedPullRequestsResult> {
+    const { host } = resolved
+    const listMerged = host.listMerged!.bind(host)
+    const generation = this.generation(`merged|${resolved.key}`)
+    try {
+      const { scopes, scope } = await this.mergedScopesOf(resolved)
+      // Reading everyone's merges of a whole host is never what the profile meant.
+      if (scope.kind === 'none' && !request.mine) return { ok: false, state: 'noScope', error: 'Choose repositories or organizations for this profile first' }
+      const known = this.logins.get(resolved.hostKey)
+      if (!(known && Date.now() - known.at < LOGIN_TTL_MS)) {
+        const status = await host.status()
+        if (status.state !== 'ready') {
+          this.logins.delete(resolved.hostKey)
+          if (status.state === 'error') return { ok: false, state: 'error', error: status.message }
+          return {
+            ok: false,
+            state: status.state,
+            error: status.state === 'missingCli' ? `The ${status.cli} CLI is not installed` : `Not signed in: run ${status.cli} auth login`
+          }
+        }
+        this.logins.set(resolved.hostKey, { login: status.login, at: Date.now() })
+      }
+      const lists = await this.inPool(scopes, MERGED_SCOPES_PARALLEL, (s) => listMerged({ scope: s, since: request.since, until: request.until, mine: request.mine }))
+      const seen = new Set<string>()
+      const all: MergedPullRequest[] = lists.flatMap((l: MergedList) => l.items).filter((p) => !seen.has(p.url) && Boolean(seen.add(p.url)))
+      all.sort((a, b) => b.mergedAt - a.mergedAt || b.number - a.number)
+      // The profile's filter (hidden repositories win) applies to what was read.
+      const visible = filterPullRequests(all.map((m) => ({ pr: m, m })), resolved.filter).map((x) => x.m)
+      const value: MergedOk = {
+        ok: true,
+        items: visible.slice(0, MERGED_CAP),
+        truncated: lists.some((l: MergedList) => l.truncated) || visible.length > MERGED_CAP,
+        provider: host.provider,
+        fetchedAt: Date.now(),
+        scope,
+        ...(this.demoHost ? { demo: true } : {})
+      }
+      // A write finished while this read ran: it is handed out but not kept.
+      if (generation === this.generation(`merged|${resolved.key}`)) {
+        this.mergedCache.delete(key)
+        this.mergedCache.set(key, { at: Date.now(), value })
+        while (this.mergedCache.size > MERGED_ENTRIES) this.mergedCache.delete(this.mergedCache.keys().next().value!)
+      }
+      return value
+    } catch (e) {
+      this.noteFailure(resolved, e)
+      if (e instanceof CodeHostError && (e.kind === 'signedOut' || e.kind === 'missingCli')) return { ok: false, state: e.kind, error: e.message }
+      return { ok: false, state: 'error', error: messageOf(e) }
+    }
+  }
+
+  /** `fn` over `items`, at most `limit` at a time; the first failure rejects. */
+  private async inPool<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const out: R[] = new Array<R>(items.length)
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < items.length) {
+        const i = next++
+        out[i] = await fn(items[i]!)
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+    return out
   }
 
   /**
@@ -510,6 +689,10 @@ export class CodeHostService {
     if (lists) this.cache.set(r.key, { at: 0, value: lists.value })
     this.details.delete(key)
     this.methods.delete(methodsKey)
+    // Every merged read of the profile is stale after a write: drop them, and let the next caller start a read of its own.
+    this.bump(`merged|${r.key}`)
+    for (const k of [...this.mergedCache.keys()]) if (k.startsWith(`${r.key}\n`)) this.mergedCache.delete(k)
+    for (const k of [...this.mergedFlights.keys()]) if (k.startsWith(`${r.key}\n`)) this.mergedFlights.delete(k)
     for (const k of this.items.keys()) if (k.endsWith(`\n${ref.url}`)) this.items.delete(k)
   }
 
@@ -634,6 +817,10 @@ export interface CodeHostIpcOptions {
 
 export function registerCodeHostIpc(ipc: IpcRegistrar, { service, openWindow, showInWorkhub, openExternal }: CodeHostIpcOptions): void {
   ipc.handle('codeHost:lists', (_e, profileId: string | null, force?: boolean) => service.lists(profileId, force === true))
+  ipc.handle('codeHost:merged', (_e, profileId: string | null, request: unknown, force?: boolean) => {
+    const valid = validMergedRequest(request)
+    return valid ? service.merged(profileId, valid, force === true) : { ok: false, state: 'error', error: 'Invalid request' }
+  })
   ipc.handle('codeHost:view', (_e, profileId: string | null, url: string) => service.view(profileId, url))
   ipc.handle('codeHost:detail', (_e, profileId: string | null, url: string, fresh?: boolean) => service.detail(profileId, url, fresh === true))
   ipc.handle('codeHost:diff', (_e, profileId: string | null, url: string) => service.diff(profileId, url))

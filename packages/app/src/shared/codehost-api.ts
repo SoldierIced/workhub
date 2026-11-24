@@ -1,5 +1,5 @@
 // Types of the pull request bridge (window.hub.codeHost), shared by main, preload and renderer.
-import type { CodeHostCapabilities, CodeHostErrorKind, DiffFile, MergeMethod, PullRequestDetail, PullRequestItem, PullRequestView, RepositoryRef, ReviewAction } from '@workhub/core'
+import type { CodeHostCapabilities, CodeHostErrorKind, DiffFile, MergedPullRequest, MergeMethod, PullRequestDetail, PullRequestItem, PullRequestView, RepositoryRef, ReviewAction } from '@workhub/core'
 
 /** Why the lists are empty: nothing is connected, a CLI is missing or logged out, or a read failed. */
 export type CodeHostState = 'ready' | 'notConnected' | 'missingCli' | 'signedOut' | 'error'
@@ -28,6 +28,30 @@ export type PullRequestViewResult =
 export type PullRequestDetailResult =
   | { ok: true; detail: PullRequestDetail; capabilities: CodeHostCapabilities; provider: string; isMine: boolean }
   | { ok: false; error: string }
+
+/** What the Merged view asks: a period (epoch milliseconds, `until` excluded) and whose pull requests. */
+export interface MergedRequest {
+  since: number
+  until: number
+  mine: boolean
+}
+
+/**
+ * The merged pull requests of a period in the profile's scope (its repositories, owners and hidden
+ * repositories apply). `state` is the lists' meaning when not `ready`; `unsupported`: the host cannot list merges.
+ */
+/**
+ * What the merged search was narrowed to, for the header: the profile's repositories, its owners,
+ * the connection's scope text, the repositories behind its folders, or nothing (only `mine` is allowed then).
+ */
+export interface MergedScope {
+  kind: 'repos' | 'owners' | 'connection' | 'folders' | 'none'
+  values: string[]
+}
+
+export type MergedPullRequestsResult =
+  | { ok: true; items: MergedPullRequest[]; truncated: boolean; provider: string; fetchedAt: number; scope: MergedScope; demo?: boolean }
+  | { ok: false; state: CodeHostState | 'unsupported' | 'noScope'; error: string }
 
 /** The files changed by a pull request, read on their own (the diff is the slowest read). */
 export type PullRequestDiffResult = { ok: true; files: DiffFile[] } | { ok: false; error: string }
@@ -72,6 +96,8 @@ export interface CodeHostApi {
   view(profileId: string | null, url: string): Promise<PullRequestViewResult>
   /** The PR without its diff (conversation, checks, reviews): faster than `view`. Main keeps it a minute; `fresh` reads the host again. */
   detail(profileId: string | null, url: string, fresh?: boolean): Promise<PullRequestDetailResult>
+  /** Merged pull requests of a period; kept a few minutes per profile and request unless `force`. */
+  merged(profileId: string | null, request: MergedRequest, force?: boolean): Promise<MergedPullRequestsResult>
   /** The PR's changed files on their own. */
   diff(profileId: string | null, url: string): Promise<PullRequestDiffResult>
   /** One pull request by URL, as the lists show it (title, state, size); null when it cannot be read. Kept for a few minutes. */

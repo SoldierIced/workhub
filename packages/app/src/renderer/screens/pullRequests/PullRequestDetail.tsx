@@ -1,5 +1,6 @@
 import {
   AppWindow,
+  ArrowLeft,
   Check,
   CircleCheck,
   CircleDashed,
@@ -71,6 +72,8 @@ export interface PullRequestDetailProps {
   standalone?: boolean
   /** The tab to open on (the Slack badge opens Slack). */
   initialTab?: PullRequestWindowTab
+  /** The Merged view: a button in the header takes the panel back to the summary. */
+  onBack?: () => void
 }
 
 const REVIEWER_LABEL: Record<ReviewerState['state'], MessageKey> = {
@@ -281,7 +284,7 @@ function Conversation({ detail, profileId, tickets, canComment, canReply, onComm
  * "author wants to merge head into base", size, state chips, tickets, reviewers), the actions in a
  * toolbar, then tabs with counts that fill the rest of the space, each scrolling on its own.
  */
-export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalone, initialTab }: PullRequestDetailProps) {
+export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalone, initialTab, onBack }: PullRequestDetailProps) {
   const { t, tn, locale, formatNumber } = useI18n()
   const platform = usePlatform()
   const notify = useToast()
@@ -404,6 +407,11 @@ export function PullRequestDetail({ profileId, url, seed, onOpenWindow, standalo
       <header className="shrink-0 border-b border-border">
         {/* The name and the quick links share the first row (the title bar in its own window); the title gets the full width below. */}
         <div className={titleBar}>
+          {onBack && (
+            <Button size="sm" variant="ghost" icon={<ArrowLeft className="size-4" aria-hidden />} onClick={onBack} data-testid="merged-back">
+              {t('pr.merged.back')}
+            </Button>
+          )}
           <span className="min-w-0 truncate font-mono text-sm font-semibold text-accent">{prName(head, head.provider)}</span>
           <SlackBadge summary={slack.summary} onOpen={() => setTab('slack')} />
           <div className="ml-auto flex shrink-0 items-center gap-0.5">
