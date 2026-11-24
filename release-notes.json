@@ -1,6 +1,67 @@
 {
   "releases": [
     {
+      "version": "2.0.0-alpha.45",
+      "date": "2026-11-24",
+      "items": [
+        {
+          "kind": "new",
+          "title": {
+            "en": "See what changed before you update",
+            "es": "Mira qué cambió antes de actualizar"
+          },
+          "body": {
+            "en": "The update prompt and Settings > General > Updates list what is new, improved and fixed in every version you have not installed yet.",
+            "es": "El aviso de actualización y Ajustes > General > Actualizaciones muestran lo nuevo, lo mejorado y lo corregido de cada versión que todavía no instalaste."
+          }
+        },
+        {
+          "kind": "new",
+          "title": {
+            "en": "Run sessions inside WSL from the Windows app",
+            "es": "Sesiones dentro de WSL desde la app de Windows"
+          },
+          "body": {
+            "en": "A profile can name a WSL distribution: its sessions run there, with their chat, history and changes, while the app stays on Windows.",
+            "es": "Un perfil puede indicar una distribución de WSL: sus sesiones corren ahí, con su chat, su historial y sus cambios, mientras la app sigue en Windows."
+          }
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Workhub tells you when Claude Code never received a message",
+            "es": "Workhub avisa cuando Claude Code nunca recibió un mensaje"
+          },
+          "body": {
+            "en": "The session used to stay Working with no end. Now it says so and gives the message back so you can send it again.",
+            "es": "Antes la sesión quedaba Trabajando sin terminar. Ahora lo dice y te devuelve el mensaje para que lo envíes otra vez."
+          }
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "A chat from another profile or account reopens where it was",
+            "es": "Un chat de otro perfil o cuenta se reabre donde estaba"
+          },
+          "body": {
+            "en": "Clicking a closed chat that had been continued in another account started a new, unrelated chat.",
+            "es": "Al hacer clic en un chat cerrado que se había continuado en otra cuenta, empezaba un chat nuevo sin relación."
+          }
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Review changes lists only the repositories the session changed",
+            "es": "Revisar cambios muestra solo los repositorios que cambió la sesión"
+          },
+          "body": {
+            "en": "In a folder with several repositories it showed every one with uncommitted changes, whoever made them.",
+            "es": "En una carpeta con varios repositorios mostraba todos los que tenían cambios sin confirmar, sin importar quién los hizo."
+          }
+        }
+      ]
+    },
+    {
       "version": "2.0.0-alpha.44",
       "date": "2026-11-22",
       "items": [
