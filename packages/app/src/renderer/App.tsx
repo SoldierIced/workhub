@@ -290,7 +290,7 @@ function Shell() {
       const { profile: p, agents: list, home: h, activeProfileId: profileId } = quick.current
       const plan = quickSessionPlan(p, list, h, agentKey)
       const agent = list.find((a) => a.key === plan?.agentKey)
-      const installed = agent ? await window.hub.agents.availability().then((m) => m[agent.agent.id] !== false, () => true) : false
+      const installed = agent ? await window.hub.agents.availability(profileId ?? null).then((m) => m[agent.agent.id] !== false && m[agent.agent.id] !== 'unsupported', () => true) : false
       if (!plan || !installed) return newSession(null, agentKey)
       try {
         // The profile (or the folder) may start sessions in a worktree; a folder outside a repository starts as is.

@@ -14,6 +14,7 @@ import { HealthSettings } from '../HealthSettings'
 import { PlanSettings } from '../PlanSettings'
 import { SlackArchiveField, SlackSettings, SlackWakeFromField } from '../SlackSettings'
 import { TrackerSettings } from '../TrackerSettings'
+import { InstallSkillDialog, MODULE_SKILL } from './InstallSkillDialog'
 import { SCREEN_ROWS, type ScreenRow } from './profileSummary'
 import { PullRequestsFilterFields } from './PullRequestsFilter'
 import type { ProfileScreen } from './sections'
@@ -49,6 +50,8 @@ export function ProfileScreensTab({ snap, run, profileId, openScreen, focusHealt
   const profile = snap.config.profiles.find((p) => p.id === profileId)
   const [form, setForm] = useState<Picks | null>(() => (profile ? picksOf(profile) : null))
   const [baseline, setBaseline] = useState<Picks | null>(form)
+  // A screen with a skill was just turned on: ask which agents get it.
+  const [askSkill, setAskSkill] = useState<{ skill: string; screen: string } | null>(null)
   const [open, setOpen] = useState<ReadonlySet<ProfileScreen>>(() => new Set(openScreen ? [openScreen.key] : []))
   useEffect(() => {
     if (openScreen) setOpen((s) => new Set([...s, openScreen.key]))
@@ -159,7 +162,11 @@ export function ProfileScreensTab({ snap, run, profileId, openScreen, focusHealt
           aria-label={t(row.label)}
           checked={form.modules[row.module]}
           disabled={!editable}
-          onChange={(on) => setForm({ ...form, modules: { ...form.modules, [row.module!]: on } })}
+          onChange={(on) => {
+            setForm({ ...form, modules: { ...form.modules, [row.module!]: on } })
+            const skill = MODULE_SKILL[row.module!]
+            if (on && skill) setAskSkill({ skill, screen: t(row.label) })
+          }}
         />
       )}
     </>
@@ -196,6 +203,7 @@ export function ProfileScreensTab({ snap, run, profileId, openScreen, focusHealt
           {row.key === 'flowMaps' && form.modules.flowMaps && !form.modules.health && <p className="px-1 pt-1 text-xs text-warning">{t('flowMaps.settings.needsHealth')}</p>}
         </section>
       ))}
+      <InstallSkillDialog skill={askSkill?.skill ?? null} screen={askSkill?.screen ?? ''} onClose={() => setAskSkill(null)} />
     </div>
   )
 }

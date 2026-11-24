@@ -83,7 +83,7 @@ export function productProfile(folder: string): Profile {
     name: 'Team lead (demo)',
     connections: { tracker: PRODUCT_TRACKER_ID },
     accountIds: [],
-    modules: { ...NO_MODULES, planner: true, health: true, automations: true },
+    modules: { ...NO_MODULES, planner: true, health: true, automations: true, boards: true },
     folders: [folder],
     defaultFolder: folder,
     color: '#3b82f6',

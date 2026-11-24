@@ -8,6 +8,7 @@ import { sessionMonitorEn } from './sessionMonitor.en'
 import { healthEn } from './health.en'
 import { metricAlertsEn } from './metricAlerts.en'
 import { flowMapsEn } from './flowMaps.en'
+import { boardsEn } from './boards.en'
 import { healthPromptsEn } from './healthPrompts.en'
 import { prEventsEn } from './prEvents.en'
 import { slackEn } from './slack.en'
@@ -48,6 +49,7 @@ import { settingsV2En } from './settingsV2.en'
 import { settingsAccountsEn } from './settingsAccounts.en'
 import { notificationsAlertsEn } from './notificationsAlerts.en'
 import { profileAgentsEn } from './profileAgents.en'
+import { profileHostEn } from './profileHost.en'
 import { settingsAgentsEn } from './settingsAgents.en'
 import { settingsConnectionsEn } from './settingsConnections.en'
 /**
@@ -175,6 +177,9 @@ export const en = {
   'newSession.browse': 'Choose a folder',
   'newSession.start': 'Start session',
   'newSession.notInstalled': 'not installed',
+  'newSession.notInWsl': 'not available in WSL yet',
+  'newSession.hostPending': 'starting in WSL',
+  'newSession.notInWslHint': 'Sessions in WSL ({distro}) run Claude Code only for now. Pick Claude Code, or a profile that runs on this computer.',
   'agent.install.generic': 'The command "{command}" was not found on your PATH. Install it, or fix its path in the agent definition.',
   'agent.install.kiro': 'Install the Kiro CLI (kiro.dev/cli) and sign in with "kiro-cli login".',
   'agent.install.opencode': 'Install OpenCode (opencode.ai), for example with "npm i -g opencode-ai", and sign in with "opencode auth login".',
@@ -487,6 +492,7 @@ export const en = {
   ...healthEn,
   ...metricAlertsEn,
   ...flowMapsEn,
+  ...boardsEn,
   ...healthPromptsEn,
   ...prEventsEn,
   ...linksEn,
@@ -521,6 +527,7 @@ export const en = {
   ...settingsAccountsEn,
   ...notificationsAlertsEn,
   ...profileAgentsEn,
+  ...profileHostEn,
   ...settingsAgentsEn,
   ...settingsConnectionsEn,
   ...remoteEn,

@@ -19,7 +19,7 @@ const profile = (id = 'work', on = true): Profile => ({
   name: id,
   connections: {},
   accountIds: [],
-  modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: on },
+  modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: on, boards: false },
   planner: { ...DEFAULT_PLANNER_SETTINGS, people: [{ id: 'ana', name: 'Ana Costa', emails: ['ana@example.com'], handles: { github: 'ana-gh' }, notes: 'Owns checkout; private notes' }] }
 })
 

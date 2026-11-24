@@ -4,6 +4,13 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.44](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.43...v2.0.0-alpha.44) (2026-11-22)
+
+
+### Features
+
+* **app:** live boards in the chat panel and per-agent skill install ([#166](https://github.com/SoldierIced/workhub/issues/166)) ([c35f784](https://github.com/SoldierIced/workhub/commit/c35f784c636479f413adae47f3f35e10392be78a))
+
 ## [2.0.0-alpha.43](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.42...v2.0.0-alpha.43) (2026-11-20)
 
 

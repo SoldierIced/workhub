@@ -142,6 +142,7 @@ export const localReviewEs: Record<keyof typeof localReviewEn, string> = {
   'localReview.revert.error.unsupported': 'Este cambio no se puede revertir desde acá.',
   'localReview.revert.error.scope': 'Solo se pueden revertir cambios sin commitear. Cambiá a Solo sin commit.',
   'localReview.revert.error.notReviewed': 'Este archivo ya no es parte de la revisión. Volvé a leer los cambios.',
+  'localReview.revert.error.otherHost': 'Revertir todavía no está disponible para sesiones en WSL.',
   'localReview.revert.error.unknownSession': 'La sesión ya no existe.',
   'localReview.revert.error.failed': 'No se pudo revertir: {detail}',
   'files.folder': 'Esta ruta es una carpeta',

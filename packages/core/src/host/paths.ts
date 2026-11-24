@@ -62,7 +62,8 @@ export function basenameFlavorPath(flavor: PathFlavor, p: string): string {
 }
 
 const DISTRO = /^[A-Za-z0-9._-]+$/
-const isDistroName = (d: string): boolean => DISTRO.test(d) && d !== '.' && d !== '..'
+/** Whether a string can name a WSL distribution here: letters, digits, `.`, `_` and `-`, never `.` or `..`. */
+export const isWslDistroName = (d: string): boolean => DISTRO.test(d) && d !== '.' && d !== '..'
 
 /**
  * `\\wsl.localhost\<distro>\a\b` or `\\wsl$\<distro>\a\b` (either separator, any case) as the
@@ -70,7 +71,7 @@ const isDistroName = (d: string): boolean => DISTRO.test(d) && d !== '.' && d !=
  */
 export function wslUncToPosix(p: string): { distro: string; path: string } | null {
   const m = /^[\\/]{2}(?:wsl\.localhost|wsl\$)[\\/]+([^\\/]+)(?:[\\/](.*))?$/i.exec(p)
-  if (!m || !isDistroName(m[1]!)) return null
+  if (!m || !isWslDistroName(m[1]!)) return null
   const parts = (m[2] ?? '').split(/[\\/]+/)
   if (parts.includes('..')) return null
   return { distro: m[1]!, path: normalizeFlavorPath('posix', '/' + parts.join('/')) }
@@ -78,7 +79,7 @@ export function wslUncToPosix(p: string): { distro: string; path: string } | nul
 
 /** The Windows UNC path of an absolute POSIX path inside a distro. */
 export function posixToWslUnc(distro: string, posixPath: string): string {
-  if (!isDistroName(distro)) throw new Error(`not a WSL distro name: ${JSON.stringify(distro)}`)
+  if (!isWslDistroName(distro)) throw new Error(`not a WSL distro name: ${JSON.stringify(distro)}`)
   if (!posixPath.startsWith('/')) throw new Error(`not an absolute POSIX path: ${JSON.stringify(posixPath)}`)
   const rest = normalizeFlavorPath('posix', posixPath).slice(1)
   return `\\\\wsl.localhost\\${distro}\\${rest.split('/').join('\\')}`

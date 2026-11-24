@@ -66,7 +66,7 @@ describe('parseConfig', () => {
       name: 'Acme',
       connections: {},
       accountIds: [],
-      modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+      modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }
     })
   })
 

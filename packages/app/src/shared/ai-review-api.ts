@@ -30,7 +30,8 @@ export type AiReviewNotice =
   | { kind: 'held'; devSessionId?: string; budget: BudgetStatus }
 
 /** Why "Review before PR" did not start a round. */
-export type AiReviewStartBlocker = 'disabled' | 'notRepo' | 'detached' | 'noBase' | 'noCommits' | 'running' | 'noReviewer' | 'budget' | 'unknownSession' | 'reviewerSession'
+/** `otherHost`: the session runs on another host (a WSL distribution), whose branch cannot be checked out for a reviewer yet. */
+export type AiReviewStartBlocker = 'disabled' | 'notRepo' | 'detached' | 'noBase' | 'noCommits' | 'running' | 'noReviewer' | 'budget' | 'unknownSession' | 'reviewerSession' | 'otherHost'
 
 export type AiReviewStartResult = { ok: true; reviewId: string } | { ok: false; reason: AiReviewStartBlocker; detail?: string }
 

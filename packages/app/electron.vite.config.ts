@@ -20,8 +20,16 @@ export default defineConfig(async () => {
     main: {
       build: {
         externalizeDeps: { exclude: bundled },
-        // The analytics and transcript workers run in their own utility processes (out/main/analytics-worker.js, transcript-worker.js).
-        rollupOptions: { input: { index: resolve('src/main/index.ts'), 'analytics-worker': resolve('src/main/analytics-worker.ts'), 'transcript-worker': resolve('src/main/transcript-worker.ts') } }
+        // The analytics and transcript workers run in their own utility processes (out/main/analytics-worker.js, transcript-worker.js);
+        // the workhub host (out/main/host.js) runs as a child process on Node (WORKHUB_HOST=child).
+        rollupOptions: {
+          input: {
+            index: resolve('src/main/index.ts'),
+            'analytics-worker': resolve('src/main/analytics-worker.ts'),
+            'transcript-worker': resolve('src/main/transcript-worker.ts'),
+            host: resolve('src/main/host-entry.ts')
+          }
+        }
       },
       define: { __WORKHUB_RELEASE_REPO__: JSON.stringify(`${BRAND.repo.owner}/${BRAND.repo.name}`), __WORKHUB_DEFAULT_RELAY__: JSON.stringify(BRAND.relay), __WORKHUB_APP_ID__: JSON.stringify(BRAND.appId) }
     },

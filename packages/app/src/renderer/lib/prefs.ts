@@ -33,6 +33,8 @@ export interface Prefs {
   sidebarWidth: number
   /** Width of the service detail sheet of the Health board in px. */
   healthDetailWidth: number
+  /** Width of a chat's live board panel (beside the chat) in px. */
+  boardPanelWidth: number
   /** Monitor sections the user folded (section ids). */
   monitorCollapsed: string[]
   /** Whether the left sidebar is folded away (Workhub 1's sidebar toggle). */
@@ -70,10 +72,18 @@ export interface Prefs {
   trayPopoverUsageExpanded: boolean
   /** The menu bar panel's "Recent" left open (true) or closed, per context (lib/trayPopover `recentExpanded`). */
   trayPopoverRecent: { busy?: boolean; quiet?: boolean }
+  /**
+   * Live boards: where the person moved graph boxes, per graph (`boardLayoutKey`), newest last. Only the
+   * drawing on this computer changes; nothing goes back to the tool.
+   */
+  boardLayouts: Array<{ key: string; boxes: Record<string, { x: number; y: number }> }>
 }
 
+/** How many graphs keep their moved boxes; the one moved longest ago is forgotten first. */
+export const BOARD_LAYOUTS_MAX = 40
+
 /** Ranges of the size preferences, as Workhub 1 offered them. */
-export const SIZE_RANGES = { terminalFontSize: [10, 24], terminalScrollback: [1000, 100_000], chatFontSize: [11, 20], textSize: [11, 20], monitorWidth: [240, 560], sidebarWidth: [200, 420], healthDetailWidth: [380, 900] } as const
+export const SIZE_RANGES = { terminalFontSize: [10, 24], terminalScrollback: [1000, 100_000], chatFontSize: [11, 20], textSize: [11, 20], monitorWidth: [240, 560], sidebarWidth: [200, 420], healthDetailWidth: [380, 900], boardPanelWidth: [360, 1200] } as const
 /** The app's base text size (styles.css `--text-base`). */
 export const BASE_TEXT_SIZE = 13
 
@@ -92,6 +102,7 @@ export const DEFAULT_PREFS: Prefs = {
   textSize: BASE_TEXT_SIZE,
   monitorWidth: 320,
   healthDetailWidth: 520,
+  boardPanelWidth: 620,
   sidebarWidth: 256,
   monitorCollapsed: [],
   sidebarHidden: false,
@@ -109,7 +120,8 @@ export const DEFAULT_PREFS: Prefs = {
   alertsLayout: 'cards',
   automationsShowAll: false,
   trayPopoverUsageExpanded: false,
-  trayPopoverRecent: {}
+  trayPopoverRecent: {},
+  boardLayouts: []
 }
 
 /** A size clamped into its range, rounded; the default for anything that is not a number. */
@@ -139,6 +151,7 @@ export function parsePrefs(raw: string | null): Prefs {
       textSize: clampSize('textSize', v.textSize),
       monitorWidth: clampSize('monitorWidth', v.monitorWidth),
       healthDetailWidth: clampSize('healthDetailWidth', v.healthDetailWidth),
+      boardPanelWidth: clampSize('boardPanelWidth', v.boardPanelWidth),
       sidebarWidth: clampSize('sidebarWidth', v.sidebarWidth),
       monitorCollapsed: Array.isArray(v.monitorCollapsed) ? v.monitorCollapsed.filter((x): x is string => typeof x === 'string').slice(0, 40) : [],
       sidebarHidden: v.sidebarHidden === true,
@@ -156,7 +169,8 @@ export function parsePrefs(raw: string | null): Prefs {
       alertsLayout: v.alertsLayout === 'list' ? 'list' : 'cards',
       automationsShowAll: v.automationsShowAll === true,
       trayPopoverUsageExpanded: v.trayPopoverUsageExpanded === true,
-      trayPopoverRecent: recentMemory(v.trayPopoverRecent)
+      trayPopoverRecent: recentMemory(v.trayPopoverRecent),
+      boardLayouts: boardLayouts(v.boardLayouts)
     }
   } catch {
     return DEFAULT_PREFS
@@ -166,6 +180,24 @@ export function parsePrefs(raw: string | null): Prefs {
 /** A list of folder paths or ids: strings only, no empty or repeated ones, each and the list kept short. */
 function pathList(raw: unknown, max: number): string[] {
   return Array.isArray(raw) ? [...new Set(raw.filter((f): f is string => typeof f === 'string' && f !== '').map((f) => f.slice(0, 1024)))].slice(0, max) : []
+}
+
+const BOX_MAX = 100_000
+function boardLayouts(raw: unknown): Prefs['boardLayouts'] {
+  if (!Array.isArray(raw)) return []
+  const out: Prefs['boardLayouts'] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const { key, boxes } = item as { key?: unknown; boxes?: unknown }
+    if (typeof key !== 'string' || !key || key.length > 600 || !boxes || typeof boxes !== 'object' || Array.isArray(boxes)) continue
+    const kept: Record<string, { x: number; y: number }> = {}
+    for (const [id, p] of Object.entries(boxes).slice(0, 60)) {
+      const { x, y } = (p ?? {}) as { x?: unknown; y?: unknown }
+      if (typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) kept[id.slice(0, 60)] = { x: Math.min(BOX_MAX, Math.max(0, x)), y: Math.min(BOX_MAX, Math.max(0, y)) }
+    }
+    if (Object.keys(kept).length > 0 && !out.some((l) => l.key === key)) out.push({ key, boxes: kept })
+  }
+  return out.slice(-BOARD_LAYOUTS_MAX)
 }
 
 function recentMemory(raw: unknown): Prefs['trayPopoverRecent'] {
@@ -223,6 +255,8 @@ export function usePrefs(): Prefs {
       listeners.add(l)
       return () => listeners.delete(l)
     },
+    () => prefs,
+    // Rendered outside a window (the tests' static markup): the same snapshot.
     () => prefs
   )
 }

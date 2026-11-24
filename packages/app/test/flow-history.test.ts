@@ -14,7 +14,7 @@ const H = 3_600_000
 
 const elastic: Connection = { id: 'es', kind: 'health', provider: 'elastic-apm', endpoint: 'https://es.example.test:9200', secretRef: 'connection/es', settings: {} }
 const env: HealthEnvironment = { id: 'dev', name: 'Develop', apmEnvironments: ['dev'], k8sIndexSuffix: '', hasKubeState: false, apm: { errors: 'errors-*', traces: 'traces-*', metrics: 'metrics-*' }, kibanaUrl: '', thresholds: { ...DEFAULT_HEALTH_THRESHOLDS } }
-const profile: Profile = { id: 'work', name: 'Work', connections: { health: 'es' }, accountIds: [], modules: { flows: false, health: true, chatWatcher: false, automations: false, flowMaps: true, planner: false }, health: { refreshMinutes: 15, environments: [env] } }
+const profile: Profile = { id: 'work', name: 'Work', connections: { health: 'es' }, accountIds: [], modules: { flows: false, health: true, chatWatcher: false, automations: false, flowMaps: true, planner: false, boards: false }, health: { refreshMinutes: 15, environments: [env] } }
 
 /** Two maps sharing the BFF transaction; the second also measures the hop to orders. */
 const maps = [

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SubagentSummary } from '@workhub/core'
-import { profileWorkspaces } from '../src/main/workspaces'
+import { folderIo, profileWorkspaces } from '../src/main/workspaces'
 import { folderSections, newSessionProfile, RECENT_FOLDERS, toggleFavorite, type FolderSessionInfo } from '../src/renderer/lib/folders'
 import { parsePrefs } from '../src/renderer/lib/prefs'
 import { SUBAGENT_RETENTION_MS, visibleSubagents } from '../src/renderer/lib/subagentView'
@@ -80,6 +80,31 @@ describe('the folders of a profile (main)', () => {
     writeFileSync(join(home, 'work', 'repo9', '.git'), 'gitdir: elsewhere')
     const list = await profileWorkspaces({ folders: ['~/work'], folderOptions: { '~/work': { onlyGitRepos: true } } }, home)
     expect(list.map((f) => f.name)).toEqual(['work', 'a-repo', 'repo9'])
+  })
+})
+
+describe('the folders of a WSL profile', () => {
+  it('reads them on Windows through \\\\wsl.localhost and keeps their Linux paths', async () => {
+    const seen: string[] = []
+    const dir = (name: string) => ({ name, isDirectory: () => true })
+    const io = folderIo({ kind: 'wsl', distro: 'Ubuntu' }, 'win32', {
+      readdir: async (p) => (seen.push(p), [dir('api'), dir('web'), dir('.cache')]),
+      exists: async (p) => (seen.push(p), p.endsWith('\\api\\.git'))
+    })
+    const list = await profileWorkspaces({ folders: ['/srv/acme'], folderOptions: { '/srv/acme': { onlyGitRepos: true } } }, 'C:\\Users\\ana', io)
+    expect(list.map((f) => [f.path, f.root])).toEqual([
+      ['/srv/acme', true],
+      ['/srv/acme/api', false]
+    ])
+    expect(seen).toEqual(['\\\\wsl.localhost\\Ubuntu\\srv\\acme', '\\\\wsl.localhost\\Ubuntu\\srv\\acme\\api\\.git', '\\\\wsl.localhost\\Ubuntu\\srv\\acme\\web\\.git'])
+  })
+
+  it('reads them as they are off Windows, and a profile on this computer as before', async () => {
+    const seen: string[] = []
+    const fs = { readdir: async (p: string) => (seen.push(p), []), exists: async () => false }
+    await profileWorkspaces({ folders: ['/srv/acme'] }, '/home/ana', folderIo({ kind: 'wsl', distro: 'Ubuntu' }, 'linux', fs))
+    await profileWorkspaces({ folders: ['/srv/acme'] }, '/home/ana', folderIo(undefined, 'win32', fs))
+    expect(seen).toEqual(['/srv/acme', '/srv/acme'])
   })
 })
 

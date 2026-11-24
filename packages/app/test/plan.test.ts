@@ -50,7 +50,7 @@ const profile = (planner: Partial<PlannerSettings> = {}, on = true): Profile => 
   name: 'Work',
   connections: {},
   accountIds: [],
-  modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: on },
+  modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: on, boards: false },
   planner: { ...DEFAULT_PLANNER_SETTINGS, calendarIds: ['cal'], ...planner }
 })
 

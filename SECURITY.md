@@ -22,7 +22,7 @@ folder. It holds:
 - `workhub.db` (a SQLite database with owner-only file permissions on macOS and Linux) and its
   daily copies in `backups/`: open sessions, session names and windows, token spend,
   usage and budget ledgers, Slack and automation state, pull request events, alert state, Plan
-  state (milestones, inbox, fired reminders and meeting briefs), flow maps and their history, and
+  state (milestones, inbox, fired reminders and meeting briefs), flow maps and their history, live boards, and
   History's search index (the text of past Claude Code conversations: what you typed and the
   agent's answers, plus every session's title, first prompt, folder and branch). The
   `ai-review/` folder holds the AI review checkouts. These can contain session titles, repository

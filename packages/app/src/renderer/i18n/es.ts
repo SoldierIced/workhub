@@ -9,6 +9,7 @@ import { sessionMonitorEs } from './sessionMonitor.es'
 import { healthEs } from './health.es'
 import { metricAlertsEs } from './metricAlerts.es'
 import { flowMapsEs } from './flowMaps.es'
+import { boardsEs } from './boards.es'
 import { healthPromptsEs } from './healthPrompts.es'
 import { prEventsEs } from './prEvents.es'
 import { slackEs } from './slack.es'
@@ -49,6 +50,7 @@ import { settingsV2Es } from './settingsV2.es'
 import { settingsAccountsEs } from './settingsAccounts.es'
 import { notificationsAlertsEs } from './notificationsAlerts.es'
 import { profileAgentsEs } from './profileAgents.es'
+import { profileHostEs } from './profileHost.es'
 import { settingsAgentsEs } from './settingsAgents.es'
 import { settingsConnectionsEs } from './settingsConnections.es'
 
@@ -174,6 +176,9 @@ export const es: Record<keyof typeof en, string> = {
   'newSession.browse': 'Elegir una carpeta',
   'newSession.start': 'Iniciar sesión',
   'newSession.notInstalled': 'no instalado',
+  'newSession.notInWsl': 'aún no disponible en WSL',
+  'newSession.hostPending': 'iniciando en WSL',
+  'newSession.notInWslHint': 'Las sesiones en WSL ({distro}) solo ejecutan Claude Code por ahora. Elige Claude Code, o un perfil que se ejecute en este equipo.',
   'agent.install.generic': 'No se encontró el comando "{command}" en tu PATH. Instálalo o corrige su ruta en la definición del agente.',
   'agent.install.kiro': 'Instala el CLI de Kiro (kiro.dev/cli) e inicia sesión con "kiro-cli login".',
   'agent.install.opencode': 'Instala OpenCode (opencode.ai), por ejemplo con "npm i -g opencode-ai", e inicia sesión con "opencode auth login".',
@@ -486,6 +491,7 @@ export const es: Record<keyof typeof en, string> = {
   ...healthEs,
   ...metricAlertsEs,
   ...flowMapsEs,
+  ...boardsEs,
   ...healthPromptsEs,
   ...prEventsEs,
   ...linksEs,
@@ -520,6 +526,7 @@ export const es: Record<keyof typeof en, string> = {
   ...settingsAccountsEs,
   ...notificationsAlertsEs,
   ...profileAgentsEs,
+  ...profileHostEs,
   ...settingsAgentsEs,
   ...settingsConnectionsEs,
   ...remoteEs,

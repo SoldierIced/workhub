@@ -1,16 +1,18 @@
 import { FolderPlus, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { automaticProfileColor, NO_MODULES, slugId, type Profile } from '@workhub/core'
+import { automaticProfileColor, NO_MODULES, slugId, type Profile, type ProfileHost } from '@workhub/core'
 import { Badge, Button, IconButton, Input } from '../../components/atoms'
 import { Card, CardBody, CardHeader, Field, HelpTip, useToast } from '../../components/molecules'
 import { DeleteButton, useUnsavedForm } from '../../components/organisms/UnsavedChanges'
 import { useI18n } from '../../i18n/I18nProvider'
 import { profileFieldErrors } from '../../lib/configIssues'
 import { addProfileFolder, removeProfileFolder } from '../../lib/profileFolders'
+import { folderForHost, folderPickError, shownFolderError, withProfileHost, type FolderPickError } from '../../lib/profileHost'
 import { abbreviateFolder } from '../../lib/sessionHeader'
 import { isDirty, type SaveOutcome } from '../../lib/unsavedChanges'
 import { ProfileColorField } from '../ProfileColorField'
 import { DefaultFolderField, ProfileExtraFields, prunedFolderOptions, useProfileEnvDraft } from '../ProfileExtraSettings'
+import { ProfileHostField } from './ProfileHostField'
 import type { ProfileTab } from './sections'
 import { saveProfilePatch, type SectionProps } from './shared'
 
@@ -24,6 +26,7 @@ const OWN_FIELDS = [
   'name',
   'color',
   'symbol',
+  'host',
   'folders',
   'defaultFolder',
   'folderOptions',
@@ -36,7 +39,7 @@ const OWN_FIELDS = [
 ] as const satisfies readonly (keyof Profile)[]
 
 /** `next` with the fields this form owns taken from `own` (removed when `own` has none). */
-function withOwnFields(next: Profile, own: Profile): Profile {
+export function withOwnFields(next: Profile, own: Profile): Profile {
   const out: Record<string, unknown> = { ...next }
   for (const key of OWN_FIELDS) {
     if (own[key] === undefined) delete out[key]
@@ -198,7 +201,8 @@ export function ProfileEditor({ snap, run, profileId, copyOf, tab, tabBar, child
       {tab === 'folders' && (
         <Card className="px-4 py-3" data-testid="profile-tab-folders">
           <div className="flex flex-col gap-4">
-            <FoldersField folders={form.folders} onChange={(folders) => setForm(({ folders: _old, ...rest }) => (folders ? { ...rest, folders } : rest))} />
+            <ProfileHostField value={form.host} savedHost={saved?.host} onChange={(host) => setForm((f) => withProfileHost(f, host))} />
+            <FoldersField folders={form.folders} host={form.host} onChange={(folders) => setForm(({ folders: _old, ...rest }) => (folders ? { ...rest, folders } : rest))} />
             <DefaultFolderField form={form} onChange={(folder) => setForm(({ defaultFolder: _old, ...rest }) => (folder ? { ...rest, defaultFolder: folder } : rest))} />
             <ProfileExtraFields form={form} onChange={setForm} env={env} parts={['folderFlags', 'worktrees']} />
           </div>
@@ -219,14 +223,22 @@ export function ProfileEditor({ snap, run, profileId, copyOf, tab, tabBar, child
 /**
  * The profile's folders as a list: each one short with its full path under it, a button to
  * remove it, and "Add folder…" opening the system folder picker (again for every folder). They are
- * folders on this computer, where the sessions run, so there is no typed path.
+ * folders where the sessions run, so there is no typed path: for a WSL profile, a folder picked
+ * under `\\wsl.localhost\<distro>` is kept as its Linux path, and a Windows folder is refused.
  */
-function FoldersField({ folders, onChange }: { folders: string[] | undefined; onChange: (folders: string[] | undefined) => void }) {
+export function FoldersField({ folders, host, onChange }: { folders: string[] | undefined; host?: ProfileHost; onChange: (folders: string[] | undefined) => void }) {
   const { t } = useI18n()
   const list = folders ?? []
+  const [refusal, setRefusal] = useState<FolderPickError | null>(null)
+  // A refusal goes away with the next pick, or once the folders or the host changed (a valid folder added).
+  const error = shownFolderError(refusal, folders, host)
   const add = async () => {
+    setRefusal(null)
     const picked = await window.hub.pickFolder()
-    if (picked) onChange(addProfileFolder(folders, picked))
+    if (!picked) return
+    const folder = folderForHost(host, picked)
+    setRefusal(folder.ok ? null : folderPickError(t(folder.error, folder.params), folders, host))
+    if (folder.ok) onChange(addProfileFolder(folders, folder.path))
   }
   return (
     <div className="flex flex-col gap-1.5" data-settings-row data-testid="profile-folders">
@@ -254,6 +266,11 @@ function FoldersField({ folders, onChange }: { folders: string[] | undefined; on
           {t('settings.folderAdd')}
         </Button>
       </div>
+      {error && (
+        <p role="alert" className="text-xs text-danger" data-testid="profile-folder-error">
+          {error}
+        </p>
+      )}
       <p className="text-xs text-subtle">{t('settings.foldersHint')}</p>
     </div>
   )

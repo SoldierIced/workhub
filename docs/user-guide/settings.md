@@ -38,7 +38,7 @@ sidebar. Its header holds the name, colour and symbol, and **Delete**. Under it,
 | Tab | What it holds |
 |---|---|
 | **Folders** | The profile's folders, the default folder for new sessions, each folder's options, and worktrees ("each new session in its own worktree"). |
-| **Screens** | One row per screen with its switch and the connection it reads on the same row: **Pull requests**, **Tickets**, **Slack**, **Automations**, **Health**, **Flow maps** (reads the Health connection), **Plan** and **Review before the pull request**. Opening a row shows that screen's settings for this profile: trackers ([Tickets](tickets.md)), the Slack archive time and the watcher ([Slack](slack.md)), the Elasticsearch connection, environments, alert kinds, metric rules and quiet hours ([Health](health.md)), importing maps and limits ([Flow maps](flow-maps.md)), calendars, reminders, the brief, people and the inbox ([Plan](plan.md)), and the [review before PR](review-before-pr.md). **None** as the connection turns Pull requests or Tickets off. |
+| **Screens** | One row per screen with its switch and the connection it reads on the same row: **Pull requests**, **Tickets**, **Slack**, **Automations**, **Health**, **Flow maps** (reads the Health connection), **Plan**, **Live boards** and **Review before the pull request**. Opening a row shows that screen's settings for this profile: trackers ([Tickets](tickets.md)), the Slack archive time and the watcher ([Slack](slack.md)), the Elasticsearch connection, environments, alert kinds, metric rules and quiet hours ([Health](health.md)), importing maps and limits ([Flow maps](flow-maps.md)), calendars, reminders, the brief, people and the inbox ([Plan](plan.md)), the [Live boards](live-boards.md) switch (boards show in the chat that sent them; no settings of their own), and the [review before PR](review-before-pr.md). **None** as the connection turns Pull requests or Tickets off. Turning on a screen that has a skill (Live boards, Automations, Flow maps, Plan) asks which agents should get it: every Claude Code folder and every other agent found here, the ones without it already checked. **Install** copies it right away; **Not now** skips it. |
 | **Agents** | **Agents this profile offers, in order** (the first one offered is the default), **If a Claude account reaches its limit** (account failover), and which accounts and agents the profile offers. |
 | **Sessions and links** | **Open links with**, **Use this profile for folders without one**, and the environment variables of its sessions (values stored encrypted). |
 
@@ -83,7 +83,7 @@ active one) on its tab. The arrow keys move between results. Esc clears the sear
 **Settings → Advanced → Data** shows the folder with `config.json` (settings, never secrets) and
 `secrets.json` (tokens, encrypted with the operating system keychain). Everything else Workhub
 remembers between launches (open sessions, names, watcher state, spend, Plan, flow maps and their
-history, History's search index) is in one database file, `workhub.db`, in the same folder; the row shows its path and size.
+history, live boards, History's search index) is in one database file, `workhub.db`, in the same folder; the row shows its path and size.
 A copy `workhub-YYYY-MM-DD.db` is made in `backups/` about 30 seconds after the app starts and once
 a day after that; **Back up now** makes a separate one, `workhub-YYYY-MM-DD-HHmm.db`, and **Show
 backups folder** opens the folder. The newest 7 daily and the newest 7 manual copies are kept.
@@ -153,6 +153,11 @@ Two ways, which can be on together:
   `workhub-*` skills into `<folder>/skills`, **Update** replaces Workhub's older copies, **Remove**
   deletes them. A folder with the same name that you made yourself shows as **Your own copy** and
   is never touched.
+- **Skills for other agents**: one row per agent that reads the same `SKILL.md` skills and has run
+  on this computer (its home folder exists): Codex (`$CODEX_HOME/skills` or `~/.codex/skills`),
+  OpenCode (`~/.config/opencode/skills`), Gemini CLI (`~/.gemini/skills`) and Kiro
+  (`~/.kiro/skills`). Same **Install**, **Update** and **Remove**. Kiro only loads the skills an
+  agent lists in its resources: add `skill://~/.kiro/skills/*/SKILL.md` to the agent you use.
 - **MCP outside Workhub**, per Claude Code folder: adds `workhub` to Claude Code's user settings
   (`claude mcp add-json --scope user`), so `claude` in any terminal reaches this Workhub while it is
   open. Not on Windows, where the endpoint's token changes at each launch.

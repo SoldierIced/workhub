@@ -228,6 +228,9 @@ describe('opening a file of the review', () => {
     expect(opensAsProgram('C:\\r\\index.js', {}, 'win32')).toBe(true)
     expect(opensAsProgram('/r/index.js', { mode: 0o100644 }, 'darwin')).toBe(false)
     expect(opensAsProgram('C:\\r\\notes.txt', { mode: 0o100777 }, 'win32')).toBe(false)
+    // A Linux path on Windows is a file of a WSL host: its mode bits are Linux ones and count.
+    expect(opensAsProgram('/home/ana/repo/tool', { mode: 0o100755 }, 'win32')).toBe(true)
+    expect(opensAsProgram('/home/ana/repo/notes.txt', { mode: 0o100644 }, 'win32')).toBe(false)
   })
 
   it.skipIf(process.platform === 'win32')('shows a risky file in its folder and opens the rest', async () => {
@@ -253,6 +256,31 @@ describe('opening a file of the review', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('opening a reviewed file', () => {
+  it("looks at the file on the session's host before opening it", async () => {
+    const handlers = new Map<string, (...args: any[]) => unknown>()
+    const ipc: IpcRegistrar = { handle: (c, l) => void handlers.set(c, l), on: () => undefined }
+    const service = { filePath: (_s: string, root: string, path: string) => `${root}/${path}` } as unknown as LocalReviewService
+    const opened: string[] = []
+    const shown: string[] = []
+    const asked: [string, string][] = []
+    const hostOf = (sessionId: string) => ({
+      stat: async (path: string) => {
+        asked.push([sessionId, path])
+        return path.endsWith('.md') ? { size: 1, mtimeMs: 1, mode: 0o644, isFile: true, isDirectory: false } : path.endsWith('/tool') ? { size: 1, mtimeMs: 1, mode: 0o755, isFile: true, isDirectory: false } : null
+      }
+    })
+    registerLocalReviewIpc(ipc, service, { openWindow: () => undefined, openPath: async (p) => (opened.push(p), ''), showItemInFolder: (p) => void shown.push(p), hostOf })
+    const open = (path: string) => handlers.get('localReview:openFile')!({}, 's1', '/w/acme', path)
+    expect(await open('notes.md')).toBe(true)
+    expect(await open('tool')).toBe(true)
+    expect(await open('gone.ts')).toBe(false)
+    expect(asked).toEqual([['s1', '/w/acme/notes.md'], ['s1', '/w/acme/tool'], ['s1', '/w/acme/gone.ts']])
+    expect(opened).toEqual(['/w/acme/notes.md'])
+    expect(shown).toEqual(['/w/acme/tool'])
   })
 })
 
@@ -318,7 +346,9 @@ describe('the session split of the review', () => {
     const load = vi.fn(async (_input: LocalReviewInput) => ({
       folder: '/w',
       scope: 'branch' as const,
-      repos: [repo('/w/a', ['f.ts', 'g.ts'])],
+      // With a history, the root as git names it on this system: the session filter compares resolved
+      // paths, and on Windows `/w/a` resolves to a drive path.
+      repos: [repo(opts.history ? resolve('/w/a') : '/w/a', ['f.ts', 'g.ts'])],
       untouched: [other('/w/b')],
       // What the adapter reports: it scanned without the split only when it was asked to and nothing asked resolved.
       ...(opts.adapterWhole ? { wholeFolder: true as const } : {}),

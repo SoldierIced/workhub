@@ -100,7 +100,7 @@ Then follow [Getting started](docs/user-guide/getting-started.md).
   lines and send the comments to the agent), and a file viewer window for files the agent read or
   edited.
 
-**Work around the agent** (Slack, Automations and Health are optional modules, off by default, enabled per profile)
+**Work around the agent** (Slack, Automations, Health and Live boards are optional modules, off by default, enabled per profile)
 - **Pull requests** (GitHub through `gh`, GitLab through `glab`): list, PR window, review state, CI,
   Slack tab, create, merge, close with comment, notifications; send failing checks or review
   comments to the session that works on the pull request.
@@ -120,6 +120,9 @@ Then follow [Getting started](docs/user-guide/getting-started.md).
   their pieces: tickets, local tasks and links); and an inbox
   where items from you, metric alerts and agents wait for approval before becoming tickets, local
   tasks or recorded decisions.
+- **Live boards** (module): follow a job done by several agents while it happens (stages, who asks
+  whom, agents, decisions, a log) in a panel beside the chat whose tool sends the board; see the
+  [guide](docs/user-guide/live-boards.md).
 
 **App**
 - Profiles with folders, a default folder, per-folder options, the browser or Chrome profile (or a
@@ -189,9 +192,10 @@ bundle without quitting).
 
 Sessions reach Workhub's local control endpoint through Workhub's MCP server, which every session
 gets (Settings → Agents → Workhub tools), and through the `skills/workhub-plan`,
-`skills/workhub-flow-map`, `skills/workhub-automations`, `skills/workhub-analytics`, `skills/workhub-sessions` and `skills/workhub-review` skills, which teach when and how to use
-it. **Install** in that same section copies the skills into each Claude Code folder; you can also
-copy or symlink them into `~/.claude/skills/` or a project's `.claude/skills/`. See
+`skills/workhub-flow-map`, `skills/workhub-board`, `skills/workhub-automations`, `skills/workhub-analytics`, `skills/workhub-sessions` and `skills/workhub-review` skills, which teach when and how to use
+it. **Install** in that same section copies the skills into each Claude Code folder and into the
+skills folder of Codex, OpenCode, Gemini CLI and Kiro; turning on a screen with a skill asks which
+agents get it. You can also copy or symlink them into `~/.claude/skills/` or a project's `.claude/skills/`. See
 [Plan](docs/user-guide/plan.md#the-workhub-plan-skill).
 
 ### Updates
@@ -231,7 +235,7 @@ The [user guide](docs/user-guide/README.md) has one page per area:
 | [Monitor](docs/user-guide/monitor.md) | Per-session panel and Home |
 | [Review before PR](docs/user-guide/review-before-pr.md) | Agent-briefs-reviewer loop, review loop, local diff review |
 | [Pull requests](docs/user-guide/pull-requests.md), [Tickets](docs/user-guide/tickets.md) | Code host and tracker |
-| [Slack](docs/user-guide/slack.md), [Health](docs/user-guide/health.md), [Flow maps](docs/user-guide/flow-maps.md), [Plan](docs/user-guide/plan.md), [Automations](docs/user-guide/automations.md) | Optional modules |
+| [Slack](docs/user-guide/slack.md), [Health](docs/user-guide/health.md), [Flow maps](docs/user-guide/flow-maps.md), [Plan](docs/user-guide/plan.md), [Automations](docs/user-guide/automations.md), [Live boards](docs/user-guide/live-boards.md) | Optional modules |
 | [History](docs/user-guide/history.md), [Usage and budgets](docs/user-guide/usage.md) | Past sessions, plan usage, ceilings and budgets |
 | [Remote access](docs/user-guide/remote-access.md) | Workhub Remote: the phone app, pairing, self-hosting the relay |
 | [Settings](docs/user-guide/settings.md), [Keyboard shortcuts](docs/user-guide/keyboard-shortcuts.md) | Reference |
@@ -369,7 +373,7 @@ Elastic, calendars, agents), to GitHub when you turn on update checks, and, when
 Remote access (off by default), to the relay (the project's by default, or one you host) and to the
 web push services that deliver notifications to paired phones. Configuration and state stay on your machine;
 `config.json` holds only `secretRef` keys, never secrets, and the app's state (sessions, watcher memory, spend, Plan,
-flow maps) is in a local SQLite file, `workhub.db`, with daily copies in `backups/`; neither holds credentials. Earlier versions' JSON state files are imported once and kept as `*.migrated`. Agents run with their own configuration
+flow maps, live boards) is in a local SQLite file, `workhub.db`, with daily copies in `backups/`; neither holds credentials. Earlier versions' JSON state files are imported once and kept as `*.migrated`. Agents run with their own configuration
 (MCP servers, hooks, permission defaults). See [SECURITY.md](SECURITY.md) for what is stored where.
 
 ## Contributing

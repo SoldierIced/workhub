@@ -502,9 +502,10 @@ status, a ticket linked to a pending item) is refused with the reason. Every cha
 `skills/workhub-plan/SKILL.md` in the Workhub repository teaches an agent these endpoints and a
 few rules: propose items to the inbox instead of creating tickets, offer at the end of a task to
 log follow-ups and decisions, mark the local task it finished as done, keep payloads short and
-never put secrets in them. Workhub does not install skills by itself: copy the folder into your
-agent's skills folder (for Claude Code, `~/.claude/skills/` or a project's `.claude/skills/`), as
-with the `workhub-flow-map` skill. It triggers on requests like "what's on today", "my tasks",
+never put secrets in them. Turning Plan on asks which agents get it, and Settings → Agents →
+Workhub tools installs it into each Claude Code folder and the other agents' skills folders; you can
+also copy the folder yourself (for Claude Code, `~/.claude/skills/` or a project's
+`.claude/skills/`), as with the `workhub-flow-map` skill. It triggers on requests like "what's on today", "my tasks",
 "add to my inbox", "log this decision", "milestone status" or "prepare for my next meeting".
 
 ## Demo

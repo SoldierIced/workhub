@@ -6,10 +6,13 @@ export function expandEnvValue(value: string, vars: { folder: string; profileRoo
 }
 
 /** The variables a profile adds to the sessions it starts (values from the secret store). */
-export async function profileSessionEnv(profile: Profile | undefined, cwd: string, secrets: Pick<SecretStore, 'get'>, home: string): Promise<Record<string, string>> {
+export async function profileSessionEnv(profile: Profile | undefined, cwd: string, secrets: Pick<SecretStore, 'get'>, home: string, hostHome?: string | null): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   if (!profile) return out
-  const vars = { folder: cwd, profileRoot: profileRootFor(cwd, profile, home) ?? cwd }
+  // A session on another host: `~` in the profile's folders is that host's home when it is known
+  // (they are expanded as if there), else they stay as written; never this computer's home.
+  const root = typeof hostHome === 'string' ? profileRootFor(cwd, { folders: profile.folders }, hostHome) : profileRootFor(cwd, profile, home)
+  const vars = { folder: cwd, profileRoot: root ?? cwd }
   for (const name of profile.envNames ?? []) {
     if (!ENV_NAME.test(name)) continue
     const value = await secrets.get(profileEnvRef(profile.id, name))

@@ -37,7 +37,8 @@ const BLOCKER_TEXT: Record<AiReviewStartBlocker, MessageKey> = {
   noReviewer: 'aiReview.blocked.noReviewer',
   budget: 'aiReview.blocked.budget',
   unknownSession: 'aiReview.blocked.unknownSession',
-  reviewerSession: 'aiReview.blocked.reviewerSession'
+  reviewerSession: 'aiReview.blocked.reviewerSession',
+  otherHost: 'aiReview.blocked.otherHost'
 }
 
 const SEVERITY_TONE: Record<ReviewSeverity, Tone> = { blocker: 'danger', major: 'warning', minor: 'info', nit: 'neutral' }

@@ -359,3 +359,39 @@
   background-color: var(--color-warning);
   color: #000;
 }
+
+/* Live boards: an arrow whose work is moving flows forward; a returning one flows backward. */
+@keyframes board-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+@keyframes board-flow-back {
+  to {
+    stroke-dashoffset: 12;
+  }
+}
+.board-edge-flowing {
+  stroke-dasharray: 6 6;
+  animation: board-flow 0.7s linear infinite;
+}
+.board-edge-returning {
+  stroke-dasharray: 6 6;
+  animation: board-flow-back 0.7s linear infinite;
+}
+/* A box whose agent is working: its dot breathes, as a session's state dot does. */
+@keyframes board-node-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.board-node-pulse {
+  animation: board-node-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-edge-flowing,
+  .board-edge-returning,
+  .board-node-pulse {
+    animation: none;
+  }
+}

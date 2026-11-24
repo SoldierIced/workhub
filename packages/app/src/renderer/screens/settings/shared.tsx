@@ -23,7 +23,8 @@ export const MODULE_LABEL: Record<OfferedModule, MessageKey> = {
   chatWatcher: 'module.chatWatcher',
   automations: 'module.automations',
   flowMaps: 'module.flowMaps',
-  planner: 'module.planner'
+  planner: 'module.planner',
+  boards: 'module.boards'
 }
 
 export interface SectionProps {

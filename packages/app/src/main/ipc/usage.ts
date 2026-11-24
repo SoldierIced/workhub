@@ -1,5 +1,5 @@
 import { agentAvailability } from '@workhub/adapters/agent-acp'
-import { knownAgents, setSessionCeiling, type ConfigurationService, type CreditSpend, type SessionCeilings } from '@workhub/core'
+import { hostAgentAvailability, knownAgents, setSessionCeiling, type AgentAvailability, type ConfigurationService, type CreditSpend, type SessionCeilings, type WorkhubConfig } from '@workhub/core'
 import type { AgentOptionsService } from '../agent-options'
 import type { AgentUsageService } from '../agent-usage'
 import type { ApiSpendService } from '../api-spend'
@@ -21,6 +21,8 @@ export interface UsageIpcDeps {
   extraPath: string[]
   /** The PATH agents start with, plus the bundled Claude Code. */
   agentPath: () => string
+  /** The WSL distribution a profile runs in and whether its host has connected; null on this computer. */
+  wslHost?: (config: WorkhubConfig, profileId: string) => { distro: string; connected: boolean } | null
   agentOptions: AgentOptionsService
   usage: AgentUsageService
   kiroSpend: () => Promise<CreditSpend | null>
@@ -37,12 +39,16 @@ export interface UsageIpcDeps {
 /** Agents' availability and options, plan usage, spend and session ceilings (`agents:*`, `usage:*`). */
 export function registerUsageIpc(ipc: IpcRegistrar, deps: UsageIpcDeps): void {
   const { configuration, agentOptions, usage, sessionBudgets, send } = deps
-  ipc.handle('agents:availability', async () =>
-    agentAvailability(knownAgents(await configuration.current()), {
+  // A profile in WSL offers what runs there (Claude Code, once its host is up), not what this computer has.
+  ipc.handle('agents:availability', async (_e, profileId?: unknown): Promise<Record<string, AgentAvailability>> => {
+    const config = await configuration.current()
+    const wsl = typeof profileId === 'string' ? deps.wslHost?.(config, profileId) : null
+    if (wsl) return hostAgentAvailability(knownAgents(config), wsl.connected)
+    return agentAvailability(knownAgents(config), {
       extraPath: deps.extraPath,
       path: deps.agentPath()
     })
-  )
+  })
   ipc.handle('agents:options', async (_e, agentKey: string, refresh?: boolean) => {
     const config = await configuration.current()
     const choice = typeof agentKey === 'string' ? resolveChoice(config, config.activeProfileId ?? null, agentKey) : null

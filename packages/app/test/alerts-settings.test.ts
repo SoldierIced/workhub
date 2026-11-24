@@ -194,7 +194,7 @@ describe('Settings → Alerts renderer', () => {
     name: 'Work',
     connections: {},
     accountIds: [],
-    modules: { flows: false, health: true, chatWatcher: false, automations: false, flowMaps: true, planner: false },
+    modules: { flows: false, health: true, chatWatcher: false, automations: false, flowMaps: true, planner: false, boards: false },
     health: { refreshMinutes: 15, environments: [], alerts: { podDown: { notify: false } } },
     ...over
   })

@@ -23,14 +23,15 @@ environment variables). Editing a profile never changes the active one. See [Set
 |---|---|
 | Name, Id | The id is a short permanent identifier (lowercase letters, digits, `.`, `_`, `-`). It cannot be changed after saving. |
 | Symbol, Colour | The icon of the profile in the sidebar (default: the first letter of its name) and the colour that marks its sessions down the left edge of their rows. |
-| Folders | A list of folders on this computer: **Add folder…** opens the system folder picker (once per folder, as many times as you need), each row shows the short and the full path, and ✕ removes it. New sessions offer them first, and the pull request search falls back to their repositories. |
+| Where sessions run | Windows only: **This computer**, or a WSL distribution. See [Run sessions inside WSL](#run-sessions-inside-wsl). |
+| Folders | A list of folders where the sessions run (this computer, or a WSL distribution): **Add folder…** opens the system folder picker (once per folder, as many times as you need), each row shows the short and the full path, and ✕ removes it. New sessions offer them first, and the pull request search falls back to their repositories. |
 | Default folder | Where **New session** starts without asking: one of the folders, **Home folder**, or **Another folder…**. Empty means the first folder. |
 | Folder options | Per folder: **Only git repos**, and **Each subfolder is its own project** (**Automatic**, **On** or **Off**). With it on, sessions in a subfolder group under a project named after it; Automatic splits this way unless the folder is itself a git repository. **Worktree for new sessions** (**As the profile**, **On** or **Off**) overrides the profile's worktree setting for sessions in that folder. **Setup command for new worktrees** runs a command you type in each new worktree (see [Worktree per session](#worktree-per-session)). |
 | Accounts | The agent accounts offered when you start a session in this profile. |
 | Agents offered | Which agents appear in the **New session** menu. |
 | Agent order | The first agent is the default, and the one Workhub picks on its own (opening a session from a pull request or ticket, asking Claude to review). |
 | Connections | At most one connection of each kind: code host, ticket tracker, chat, Health. **None** turns that feature off in this profile. Calendars are picked on the **Plan** row of **Screens**, where a profile can read several. Set on the **Screens** tab. |
-| Optional modules | **Health**, **Chat watcher** (the Slack screen), **Automations**, **Flow maps** and **Plan** (meetings, reminders, briefs, people; see [Plan](plan.md)). Off hides their screens. Each row of the **Screens** tab has the screen's switch, the connection it reads, and its settings under it. |
+| Optional modules | **Health**, **Chat watcher** (the Slack screen), **Automations**, **Flow maps**, **Plan** (meetings, reminders, briefs, people; see [Plan](plan.md)) and **Live boards** (the board panel of a chat; see [Live boards](live-boards.md)). Off hides their screens. Each row of the **Screens** tab has the screen's switch, the connection it reads, and its settings under it. |
 | Account failover | **Ask**, **Automatic** or **Off**: what a session does when its Claude account reaches its usage limit or your ceiling. See [Usage and budgets](usage.md). |
 | AI review | Settings for the [review before PR](review-before-pr.md) feature. |
 | Worktrees | Whether new sessions on a git repository start in their own worktree and branch, where the worktrees go, the branch prefix, the branch new ones start from and what closing a session does. See [Worktree per session](#worktree-per-session). |
@@ -133,6 +134,65 @@ and the rest):
 
 Slack message links open in the Slack desktop app when it is installed and the workspace is
 known (macOS); otherwise they follow the choice above. Only web links are opened.
+
+## Run sessions inside WSL
+
+On Windows, a profile can run its sessions inside a WSL distribution instead of on this computer:
+the agent, git and the files are then the Linux ones, as in VS Code's WSL mode. Pick it in
+**Settings → Profiles → a profile → Folders → Where sessions run**: **This computer** (the default)
+or **WSL: <distro>**, one entry per installed distribution, the default one marked. The choice is
+saved with the profile; the control is not shown on macOS or Linux.
+
+- **Requirements:** Windows with WSL 2 and a distribution with glibc 2.35 or newer, for example
+  Ubuntu 22.04 or later. It has been tried on x64 only.
+- **First use:** Workhub downloads its Linux part (about 180 MB, once per version) from the release
+  of the version you run, checks it against its published SHA-256 and installs it into the
+  distribution at `~/.workhub/host/<version>`. The download is kept in the app's data folder
+  (`host-payloads`) and older versions are removed, keeping the previous one. The status line under
+  the choice shows the download, then **Connected** once Workhub runs in the distribution.
+- **Offline or a development build:** set `WORKHUB_HOST_PAYLOAD` to a local
+  `workhub-host-<version>-linux-<arch>.tar.gz` (built by `scripts/stage-host.mjs`) before starting
+  Workhub; its `.sha256` next to it is checked when present.
+- **Folders** of a WSL profile are Linux paths, such as `/home/<you>/work`. **Add folder…** still
+  opens the Windows folder picker: pick the folder under **Linux → <distro>**
+  (`\\wsl.localhost\<distro>\...`) and Workhub keeps its Linux path. A Windows folder is refused
+  for a WSL profile.
+- `~` in a WSL profile's folders is the distribution's home (for example `/home/<you>`), never the
+  Windows one; `${PROFILE_ROOT}` in the session environment uses it too.
+- **Accounts** with their own config folder (**Config folder** in Settings → Agents) cannot be used
+  by a WSL profile yet: that folder is a Windows path. A session started with such an account is
+  refused with a message; use an account without one (the distribution's own sign-in).
+- **Sessions** of the profile run in the distribution. The session's title tooltip and its **More**
+  menu say **WSL: <distro>**.
+- **New session** lists the agents the distribution can run: Claude Code (the one Workhub installs
+  there), tagged **starting in WSL** until Workhub connects; the other agents and shells are tagged
+  **not available in WSL yet** and cannot be started for that profile.
+- **Worktrees** are not available for a WSL profile yet: its worktree settings (**New sessions start
+  in a worktree** and each folder's **Worktree for new sessions**) and **Use a worktree** in **New
+  session** are off and disabled, marked **Not available in WSL yet**. A session of the profile
+  always starts in its folder; a request that explicitly asks for a worktree (through the control
+  endpoint, for example) is refused instead of starting without one.
+- The **setup check** (**Help → Setup Check…**) checks Claude Code, its sign-in and git inside the
+  distribution while the active profile runs in WSL; their rows are named **(WSL: <distro>)** and
+  show **Waiting** until Workhub connects there. It never offers a Windows install for them.
+
+What works so far: Claude Code sessions (chat, the transcript, resuming a session), the changes a
+session made (**Local changes** and **Review changes**, read with the distribution's git, including a
+review a tool asks for through the control endpoint), and Workhub's MCP server and control endpoint
+for those sessions, reached through a socket of the Workhub process inside the distribution. Not
+yet: the History screen does not list sessions from inside WSL, reverting changes (the review window
+says so), the AI review before a pull request (its panel says so), worktrees per session, creating a
+pull request from a repository in WSL, the Terminal and Shell views, agents other than Claude Code,
+and usage scans.
+
+**Troubleshooting.** The profile's sessions never run on this computer in place of the
+distribution (their folders are Linux paths). Until Workhub connects there, a new session waits for
+it (up to five minutes), and the sessions reopened at launch are listed stopped, tagged
+**WSL: <distro>**, and start once it connects when **Settings → General → Start them when Workhub starts** is on. When it
+cannot connect, those sessions show **WSL host <distro> is not available** with the reason. The
+status line says why it failed and offers **Retry**, which tries again without restarting the app. **Help → Reveal Logs** opens the log; the lines that start with
+`host wsl:<distro>:` and `host install:` show each step (the download, the install folder, the
+connection, a missing control endpoint).
 
 ## Session environment
 

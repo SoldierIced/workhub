@@ -32,7 +32,7 @@ const NONE: Probe = { result: 'notFound', output: '' }
 const FAILED: Probe = { result: 'failed', output: '' }
 const TIMEOUT: Probe = { result: 'timeout', output: '' }
 
-const NO_MODULES = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+const NO_MODULES = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }
 const profile = (over: Partial<Profile> = {}): Profile => ({ id: 'acme', name: 'Acme', connections: {}, accountIds: [], modules: NO_MODULES, folders: ['/work/acme'], ...over })
 const github: Connection = { id: 'gh', kind: 'codeHost', provider: 'github', settings: {} }
 const gitlab: Connection = { id: 'gl', kind: 'codeHost', provider: 'gitlab', settings: {} }

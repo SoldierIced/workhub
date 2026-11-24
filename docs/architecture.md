@@ -213,14 +213,14 @@ never breaks the session.
   working for reads while no process can write as, or read the plan of, a session it is not.
   Reviewer sessions are started with the variables empty (`NO_CONTROL_ENV`), so they get no token today; the read-only rule holds for any token a read-only session holds. Bodies are capped at 256 KB and
   checked field by field. Endpoints: `POST /v1/sessions/:id/review` (open the human review),
-  `POST /v1/flow-maps`, and Plan's (`plan-control.ts`): `GET /v1/plan/today`, `GET` and `POST
+  `POST /v1/flow-maps`, `POST /v1/boards` (a Live boards document, `boards.ts`; the profile is the proven session's, refused with 409 while Live boards is off or when the profile's 12 boards are all live, 413 over 256 KB), and Plan's (`plan-control.ts`): `GET /v1/plan/today`, `GET` and `POST
   /v1/inbox`, `PATCH /v1/inbox/:id` (local moves and fields, and linking an existing ticket:
   approving an item to the tracker stays a human action in the UI), `GET /v1/milestones` and `GET /v1/people` (no notes), and the
   agent milestone changes `POST /v1/milestones`, `PATCH /v1/milestones/:id` and `DELETE
   /v1/milestones/:id`. With the profile's `agentMilestones: ask` (the default) they answer 202 with
   `pending: true` and wait as proposals on the Milestones tab; with `allow` they answer 200 with
   `applied: true`. Changes go through the same services as the UI, which push change events to open windows. Agents learn
-  them from the skills in `skills/` (`workhub-flow-map`, `workhub-plan`, `workhub-automations`, `workhub-analytics`, `workhub-sessions`, `workhub-review`).
+  them from the skills in `skills/` (`workhub-flow-map`, `workhub-board`, `workhub-plan`, `workhub-automations`, `workhub-analytics`, `workhub-sessions`, `workhub-review`).
 - Automations and History for agents (`automation-control.ts`): `GET /v1/automations`, `POST
   /v1/automations` and `PATCH /v1/automations/:id` save through the same service as the
   Automations screen, but always leave the automation off (`enabled: true` is refused), so an agent
@@ -268,7 +268,7 @@ never breaks the session.
 - The journal of agents' changes (`agent-changes.ts`): `journalControl` wraps the control handlers
   that change Workhub's own objects (`POST /v1/automations` and `PATCH /v1/automations/:id`,
   `POST /v1/flow-maps`, `POST /v1/inbox` and `PATCH /v1/inbox/:id`, milestone changes applied at
-  once; proposals are not, Plan reviews them), reads the object before and after, and records the
+  once (not `POST /v1/boards`: a board is display only); proposals are not, Plan reviews them), reads the object before and after, and records the
   changed fields, the session (id, name, agent) and the profile in `kv_state` (`agent-changes`).
   Caps (`AGENT_CHANGE_CAPS`): 200 entries (reviewed ones dropped first), 40 fields, 2000 characters
   of JSON per value; a longer value, or one under a secret-like name or with a credential-like
@@ -299,7 +299,10 @@ Agents learn the endpoint two ways (Settings → Agents → Workhub tools, `agen
   Claude's console to `--mcp-config` (not on Windows, where ConPTY breaks the JSON quoting).
   Reviewers get none. The option `workhubMcp` (default on) turns it off.
 - **Skills**: `skills/workhub-*`, shipped in `<resources>/skills` and copied into a Claude config
-  folder's `skills/` with a `.workhub-skill` marker; only marked copies are updated or removed.
+  folder's `skills/`, or the skills folder of another agent that reads `SKILL.md` (Codex, OpenCode,
+  Gemini CLI, Kiro; `SKILL_AGENTS` in `agent-tools.ts`), with a `.workhub-skill` marker; only
+  marked copies are updated or removed. Turning on a screen with a skill (`MODULE_SKILL`) asks which
+  of those targets get it.
 
 Benchmark (`scripts/bench-agent-tools/run.mjs`, Claude Code 2.1 print mode, Sonnet, a synthetic
 endpoint, the same user settings in every mode, 2 runs each, all tasks done right in every mode):
@@ -404,7 +407,7 @@ running app.
 | `secrets.json` | Tokens, encrypted with `safeStorage`. |
 | `control.sock` | The control endpoint's socket (macOS and Linux only; a temp folder when the data folder's path is too long. On Windows the endpoint is a loopback port and has no file). |
 | `logs/` | `main.log` and rotated copies; see [Troubleshooting](troubleshooting.md#logs). |
-| `workhub.db` | The app's state in one SQLite database (`node:sqlite`, a second instance never opens it, WAL mode; `-wal` and `-shm` files sit next to it while the app runs; on quit the analytics worker's process exits first, then the close checkpoints the log with `wal_checkpoint(TRUNCATE)`, so no `-wal` is left behind). `kv_state` holds one JSON value per piece of state, keyed by the name of the file it replaced: open sessions, session names and windows, agent options, token spend, usage alerts and budgets (including per-session), API spend ledger, Slack state, automation state, pull request events, health and flow alerts, metric alerts (daily series, the days each source was read, and alerts per profile), ticket watch, agents' changes waiting for Keep or Revert (`agent-changes`), Plan (`calendar-state`: reminders already fired and meeting briefs started, pruned after a few days; `planner-state`: milestones, their last tracker counts, the last known state of the tickets of milestone pieces and linked inbox items, and the inbox per profile, closed inbox items pruned after 7 days unless a milestone is made of them). `flow_maps` holds the flow maps, `flow_history_measures` and `flow_history_hours` the hourly flow-map aggregates (kept 90 days). Services see the `StateStore` port of `core`; the adapter is `adapters/sqlite-store`, and schema changes are numbered migrations recorded in `schema_migrations`. It can hold session titles, repository names and Slack message text, and no credentials. Only a file SQLite reports as damaged (`SQLITE_CORRUPT`, `SQLITE_NOTADB`) is renamed to `workhub.db.corrupt-<timestamp>`, recorded under `storage/recovered` (shown in Settings → Advanced, in Diagnostics and Data) and replaced with a fresh database; any other failure (locked, full disk, no access) leaves the file alone and the app quits with an error. |
+| `workhub.db` | The app's state in one SQLite database (`node:sqlite`, a second instance never opens it, WAL mode; `-wal` and `-shm` files sit next to it while the app runs; on quit the analytics worker's process exits first, then the close checkpoints the log with `wal_checkpoint(TRUNCATE)`, so no `-wal` is left behind). `kv_state` holds one JSON value per piece of state, keyed by the name of the file it replaced: open sessions, session names and windows, agent options, token spend, usage alerts and budgets (including per-session), API spend ledger, Slack state, automation state, pull request events, health and flow alerts, metric alerts (daily series, the days each source was read, and alerts per profile), ticket watch, agents' changes waiting for Keep or Revert (`agent-changes`), Plan (`calendar-state`: reminders already fired and meeting briefs started, pruned after a few days; `planner-state`: milestones, their last tracker counts, the last known state of the tickets of milestone pieces and linked inbox items, and the inbox per profile, closed inbox items pruned after 7 days unless a milestone is made of them). `boards:<profileId>` holds one profile's live boards (at most 12, written at most every 5 s; a chat's board panel reads them through the `boards:*` channels of windows, never a paired device). `flow_maps` holds the flow maps, `flow_history_measures` and `flow_history_hours` the hourly flow-map aggregates (kept 90 days). Services see the `StateStore` port of `core`; the adapter is `adapters/sqlite-store`, and schema changes are numbered migrations recorded in `schema_migrations`. It can hold session titles, repository names and Slack message text, and no credentials. Only a file SQLite reports as damaged (`SQLITE_CORRUPT`, `SQLITE_NOTADB`) is renamed to `workhub.db.corrupt-<timestamp>`, recorded under `storage/recovered` (shown in Settings → Advanced, in Diagnostics and Data) and replaced with a fresh database; any other failure (locked, full disk, no access) leaves the file alone and the app quits with an error. |
 | `workhub.db` (usage data) | Schema version 2 adds what the usage reports read. `turns`: one row per assistant message with usage (a Codex token report, a Kiro turn): time, model, input/output/cache tokens, list-price `usd` (null when unpriced), the folder it worked in (`cwd`), its `project` (the deepest profile project folder holding it, a worktree counted for its repository, else the repository root, else the folder: Home's roll-up), `turn_ms` (from the prompt or previous reply, capped at 30 minutes) and `sidechain` (sub-agent messages: tokens count, time 0). `TurnIngest` writes them after each token spend scan with the same parsers, keyed by (session, message key), a Claude message id once across sessions (forks), so reading a file again never counts twice; `turn_files` keeps per-file offsets and a hash of the first 4 KB (a rewritten file is read again), the first scan reads every transcript, and demo modes skip it. `sessions`: one row per agent session; the scan owns `work_path`, `project` and `last_model` (from the latest turn) and fills transcript-only rows, and `AnalyticsRecorder` marks the ones run in Workhub (`source = 'workhub'`, agent family, account, profile, title, the first stop time in `ended_at`), moving early rows to the agent's session id once known. `session_links` (pull request URL, ticket key, branch, worktree, from the monitor and the session's worktree) and `session_tags` (`analytics:tags`/`analytics:setTags`; not offered to paired devices). `automation_runs`: every run the engine logs, without its 50-run cap (12 months, see Retention below) (`AutomationRunLog`; `GET /v1/automations` pages it with a cursor). `pr_events` (the sync's events, plus `opened` when one of yours is first seen and `reviewed` when one leaves your review queue) and `ticket_events` (the ticket watcher's changes; a repeat within 10 minutes is dropped). Queries are in `sqlite-store/analytics.ts` (`spendSeries`, `spendTotals`, `sessionsTable`, `weeklySummary`, `filterValues`, `schemaDescription`, `ANALYTICS_TABLES`); `main/analytics-ipc.ts` serves them and the tags to the Usage and reports screen (`analytics:spend`, `:totals`, `:sessions`, `:weekly`, `:filters`, `:tags`, `:setTags`, and `:exportCsv`, which saves the totals table as a CSV file (`main/usage-csv.ts`: the renderer sends the rows as shown and never a path; main checks them, asks where with a save dialog, and writes UTF-8 with a byte-order mark, RFC 4180 quoting, raw numbers), and `:refresh`, which runs the token spend scan and then the turn scan now and waits for it up to about 20 s, since turns otherwise arrive with the 10-minute scan; every argument validated; none in the remote allowlist). The five report channels never query on the main process (a large `turns` table would freeze every window and terminal): after validation they send a named report (`AnalyticsReport`, never SQL) to `AnalyticsQueries.report`, which runs `runAnalyticsReport` (the same functions, imported from `@workhub/adapters/sqlite-store/analytics`, a file with type imports only so the worker loads it as is) in `analytics-worker.ts` on its read-only connection, one at a time. It is a second instance of the agents' worker ("Workhub usage reports"), not a shared one: the screen's five calls never queue behind an agent's 5-second query, and a report that hits its budget kills only its own process. That budget is 30 s (`REPORT_BUDGET_MS`; the SQL is fixed, so it only ends a stuck process); a timeout, a worker error or a dead process rejects the call, which the screen shows as its usual error. Reports do not need SQLite's authorizer, so they run where it is missing. Without `reports` (tests) `analytics-ipc.ts` runs them on the main connection; `:tags`, `:setTags` and `:refresh` always stay on the main process. The demo scenario seeds a few weeks of synthetic rows. Retention (schema version 3, `sqlite-store/retention.ts`, run by `main/storage-maintenance.ts` 5 minutes after start and then every 24 hours): `turns` older than `USAGE_RETENTION_MONTHS` (12, to the local midnight) are summed into `turns_daily`, one row per local day, session, agent, model, `cwd`, `project` and priced or not (`at` is the first turn's time, `turn_ms` leaves sub-agents out, `usd` is null exactly for unpriced rows), and deleted, one day per transaction with the event loop let go between days; `pr_events`, `ticket_events` and `automation_runs` older than 12 months are deleted 500 rows per transaction. `sessions`, `session_links` and `session_tags` are kept, so every report reads `turns` and `turns_daily` together (a `UNION ALL` with the same columns, `n` turns per row; the sessions table's per-session sorts look each table up on its own index) and groups, filters and counts sessions as before: a total over day-aligned spans across the boundary equals what the detail gave. Running the job again changes nothing, and a turn arriving for a summed day is added to its row. The job records `rolledUntil` in `kv_state` (`usage-retention`); `TurnIngest` skips turns older than it, so a transcript read again (a rewritten file, a resumed old session) never counts them twice (a transcript older than 12 months never read before is not counted), and `refreshSessionTotals` adds the summaries' agent time. Settings → Advanced → Data reads rows and approximate size per group (usage detail, usage summaries, History's index, events and automation runs, state) from `storageStats` (`sqlite-store/storage-stats.ts`: `COUNT(*)` and `dbstat`, free pages from `freelist_count`) in the usage report worker, on a second read-only connection without the agents' authorizer (`storage:usage`); **Compact now** (`storage:compact`) runs the job, then `VACUUM` and `wal_checkpoint(TRUNCATE)` on the main connection inside `AnalyticsQueries.exclusive` of both workers: the reports and agents' queries already running finish, the worker processes stop (no reader holds the file), and the ones queued meanwhile start a new process afterwards. |
 | `backups/` | Copies of the database (folder `0700`, files `0600` on macOS and Linux): `workhub-YYYY-MM-DD.db` made about 30 s after start and then every 24 hours (skipped when the day has one), and `workhub-YYYY-MM-DD-HHmm.db` made by **Back up now**. Backups are listed newest first by the time in the name (an automatic copy counts as 00:00 of its day, so that day's manual copies come before it), then by modification time. The newest 7 automatic and the newest 7 manual copies are kept; nothing is pruned while a `workhub.db.corrupt-*` file is next to the database, and the newest copy older than the last move-aside is never pruned. |
 | Legacy state files (`*.json`) | Earlier versions kept the state above in one JSON file each (plus `flow-maps/` and `flow-history/`). The import runs once per data folder (`kv_state` key `storage/import-done`): what the database has nothing for is stored in one transaction, the write-ahead log is checkpointed, and only then are the files renamed, never deleted: `<name>.json.migrated` (imported), `<name>.json.skipped` (key already stored, or not an object), `<name>.json.corrupt` (not JSON); the folders become `flow-maps.migrated/` and `flow-history.migrated/` (a duplicate map id keeps `<id>.json`, the other file is left as `.skipped`). A legacy file that appears later (an older version run on the same folder) is not read and is renamed to `.skipped`. The summary goes to the main log. |
@@ -444,13 +447,47 @@ download, checksum check and unpacking (zip and tar.gz, with path checks) are
 `adapters/src/managed-tools`; the queue behind **Install what is missing** is
 `app/src/main/setup-queue.ts`.
 
-### Workhub host (not wired yet)
+### Workhub host
 
-Groundwork for running sessions inside WSL from the native Windows app. The app stays the UI and
-the orchestrator, and a `workhub host` Node process inside the distro is meant to own what has to
-run next to the code: agent runtimes, transcripts, history, git and file access. The two talk over
-the stdio of the process that starts the host (`wsl.exe`). Nothing in the app starts a host yet; the
-pieces below are used only by their tests.
+The native Windows app can run a profile's sessions inside a WSL distribution (`profile.host`,
+`{kind: 'wsl', distro}`; see [Run sessions inside WSL](user-guide/profiles.md#run-sessions-inside-wsl)).
+The app stays the UI and the orchestrator: sessions, config, secrets, SQLite, paired devices and the
+control endpoint's logic remain in main. A `workhub host` Node process inside the distribution owns
+what has to run next to the code: the agent runtimes, transcript readers, history sources, git and
+file access. The boundary is at the core ports, not at the renderer's IPC.
+
+- **Hosts** (`app/src/main/hosts.ts`): a `HostRegistry` holds `local` (this computer, built in this
+  process) and one `wsl:<distro>` per connected distribution. `hostFor(profileId)` picks the host
+  the profile names, or this computer while that host is not connected; SessionManager asks it once
+  per session start and keeps the services it got, and folder checks (git, exists, stat) go to the
+  same host. A session's view carries its host id (`hostId`).
+- **Process and transport** (`app/src/main/host-process.ts`, `wsl-hosts.ts`): `HostProcess` starts
+  `wsl.exe -d <distro> --cd ~ -e <dir>/node/bin/node <dir>/host.js --stdio`, with `WSLENV` emptied so
+  no Windows variable reaches it, talks newline-delimited JSON over its stdio, and restarts it with
+  backoff when it goes away. On the host side the services are served by `startHost`
+  (`adapters/src/host/main.ts`, bundled as `out/main/host.js`); on the app side the proxies in
+  `adapters/src/host/proxies` give the same ports (`AgentRuntime`, `TranscriptReader`, history, git).
+  `WORKHUB_HOST=child` runs the same host as a child process on this computer, a development switch.
+- **Status** (`app/src/main/host-status.ts`, `ipc/hosts.ts`): each WSL host reports `connecting`,
+  `installing` (download bytes, checksum, unpacking), `connected` (with a warning when it has no
+  control endpoint), `failed` with a reason, or `unavailable` off Windows. `hosts:status` and the
+  `hosts:statusChanged` event carry them to Settings, `hosts:wslDistros` lists the distributions
+  (`wsl.exe -l`, Windows only), and `hosts:retry` starts a failed one again.
+- **Control relay** (`adapters/src/host/control-relay.ts`, `app/src/main/host-control.ts`): the host
+  listens on a Unix socket of its own (mode 0600, in a folder only the user can open) and relays each
+  HTTP request on it to the app as a `control.request` event; main serves it with its own endpoint,
+  which checks the session token as for a local session, and answers with `control.respond`. Sessions
+  on the host get that socket as `WORKHUB_SOCKET` and Workhub's MCP server runs there on the host's
+  Node, so no network path from the distribution to Windows is needed.
+- **Payload and install** (`scripts/stage-host.mjs`, `core/src/host/payload.ts`,
+  `app/src/main/wsl-host-install.ts`): the Linux payload (host.js, its own Node, node-pty and the
+  bridge with the Linux `claude`) is a release asset per architecture, about 180 MB, built on a glibc
+  2.35 system. On first use the app downloads it (or takes `WORKHUB_HOST_PAYLOAD`), checks its
+  SHA-256, keeps it in `<dataDir>/host-payloads/<version>`, streams it into the distribution through
+  `wsl.exe` and unpacks it to `~/.workhub/host/<version>`, marking it ready last so a failed install
+  is never used.
+
+The pieces underneath:
 
 - **Protocol** (`core/src/host/protocol.ts`): newline-delimited JSON, one message per line, at most
   1 MB of UTF-8 per line (`HOST_MAX_LINE_BYTES`). Four messages, told apart by `t`: `hello` (the
@@ -469,6 +506,11 @@ pieces below are used only by their tests.
   side: a map of handlers that run concurrently, and only an error's code and message cross the
   wire. When the channel closes, every pending request fails with `closed` and the abort signal of
   each running handler fires.
+- **Large results** (`adapters/src/host/proxies/chunks.ts`): a past session's messages, a
+  transcript snapshot or a sub-agent conversation can be larger than a line. The host then answers
+  with the first piece of the result's JSON (at most 512 KB once encoded) and a cursor, and the app
+  asks `history.next` or `transcripts.next` for the rest before parsing it; a result that fits is
+  sent whole. The host keeps up to 16 unfinished results for 2 minutes each.
 - **Paths** (`core/src/host/paths.ts`): join, normalize, dirname and basename for an explicit flavor
   (`posix` or `win32`), because the Windows app handles the distro's POSIX paths and `core` cannot
   use `node:path`. Also the translation between `\\wsl.localhost\<distro>\...` (or `\\wsl$\...`) and

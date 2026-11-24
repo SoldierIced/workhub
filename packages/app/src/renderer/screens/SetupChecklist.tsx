@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDashed, CircleX, TriangleAlert } from 'lucide-react'
+import { CircleCheck, CircleDashed, CircleX, Clock, TriangleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { missingInstallers, problemCount, setupGoal, type SetupFix, type SetupGoal, type SetupItem } from '@workhub/core'
 import { Button, Select, Spinner } from '../components/atoms'
@@ -13,6 +13,7 @@ import { fixLabel, itemDetail, itemTitle, type SetupState } from '../lib/setup'
 function StatusIcon({ item }: { item: SetupItem }) {
   if (item.status === 'ok') return <CircleCheck className="size-4 text-success" aria-hidden />
   if (item.status === 'warning') return <TriangleAlert className="size-4 text-warning" aria-hidden />
+  if (item.status === 'pending') return <Clock className="size-4 text-subtle" aria-hidden />
   return item.optional ? <CircleDashed className="size-4 text-subtle" aria-hidden /> : <CircleX className="size-4 text-danger" aria-hidden />
 }
 
@@ -63,7 +64,7 @@ export function FixButton({ fix, name, onInstalled }: { fix: SetupFix; name: str
 export function SetupRow({ item, onInstalled }: { item: SetupItem; onInstalled: () => void }) {
   const { t, tn } = useI18n()
   const fix = item.fix
-  const status = item.status === 'ok' ? t('setup.statusOk') : item.status === 'warning' ? t('setup.statusWarning') : item.optional ? t('setup.statusOptionalMissing') : t('setup.statusMissing')
+  const status = item.status === 'ok' ? t('setup.statusOk') : item.status === 'warning' ? t('setup.statusWarning') : item.status === 'pending' ? t('setup.statusPending') : item.optional ? t('setup.statusOptionalMissing') : t('setup.statusMissing')
   const open = fix && item.status !== 'ok'
   return (
     <li className="flex items-start gap-3 px-4 py-3" data-testid={`setup-row-${item.id}`}>

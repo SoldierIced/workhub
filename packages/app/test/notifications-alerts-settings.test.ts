@@ -30,7 +30,7 @@ const profile = (over: Partial<Profile> = {}): Profile => ({
   name: 'Acme web',
   connections: {},
   accountIds: [],
-  modules: { ...NO_MODULES, health: true, flowMaps: true, planner: true },
+  modules: { ...NO_MODULES, health: true, flowMaps: true, planner: true, boards: false },
   health: { refreshMinutes: 15, environments: [], alerts: { stoppedReporting: { notify: true, threshold: 10 }, errorsWorsening: { notify: true, threshold: 3 }, podDown: { notify: false } } },
   planner: { reminderLeadMinutes: 5 } as Profile['planner'],
   ...over

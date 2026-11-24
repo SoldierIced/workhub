@@ -70,6 +70,10 @@ Windows is built by CI and has not been tested on real machines yet. Please repo
 On Windows, the **Shell** view opens the shell named by the `COMSPEC` environment variable, else
 `powershell.exe`.
 
+To run a profile's sessions inside WSL (Ubuntu 22.04 or later), pick the distribution in
+**Settings → Profiles → Folders → Where sessions run**. See
+[Run sessions inside WSL](profiles.md#run-sessions-inside-wsl).
+
 By hand instead: download `Workhub-2-<version>-win-x64.exe` from the Releases page and run it.
 SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway** (expected
 for every unsigned build). To check the download first:

@@ -1,7 +1,15 @@
-import { accountAgentId, usageAccountKey, type AgentAccount, type AgentDefinition, type PlanUsageWindow } from '@workhub/core'
+import { accountAgentId, usageAccountKey, type AgentAccount, type AgentAvailability, type AgentDefinition, type PlanUsageWindow } from '@workhub/core'
 import type { AccountUsage } from '@shared/api'
 import { en } from '../i18n/en'
 import type { MessageKey } from '../i18n/translate'
+
+/** The tag New session puts after an agent that cannot start as is: not installed, not in WSL yet, or waiting for its WSL host. */
+export function availabilityNote(value: AgentAvailability | undefined): MessageKey | null {
+  if (value === false) return 'newSession.notInstalled'
+  if (value === 'unsupported') return 'newSession.notInWsl'
+  if (value === 'pending') return 'newSession.hostPending'
+  return null
+}
 
 /** The message that tells how to install an agent: one per known agent, else a generic one. */
 export function installHintKey(agentId: string): MessageKey {

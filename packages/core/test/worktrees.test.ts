@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONFIG_VERSION, cleanBranchName, parseConfig, visibleChildren, worktreeBranch, worktreeDefault, worktreeFolderName, worktreeSettings, worktreeSetupCommand, worktreesLocation } from '../src'
+import { CONFIG_VERSION, cleanBranchName, parseConfig, visibleChildren, worktreeBranch, worktreeDefault, worktreesAvailable, worktreeFolderName, worktreeSettings, worktreeSetupCommand, worktreesLocation } from '../src'
 
 describe('worktree settings', () => {
   it('are off with defaults when the profile has none', () => {
@@ -23,6 +23,19 @@ describe('worktree settings', () => {
     expect(worktreeDefault(profile, '/home/u/elsewhere', '/home/u')).toBe(true)
     expect(worktreeDefault({ folderOptions: { '/w': { worktrees: true } } }, '/w/x')).toBe(true)
     expect(worktreeDefault(undefined, '/w/x')).toBe(false)
+  })
+})
+
+describe('worktrees of a profile that runs on another host', () => {
+  it('are not available, and never the default, for a WSL profile', () => {
+    const on = { enabled: true, location: '', branchPrefix: '', baseRef: '', onClose: 'ask' as const }
+    const wsl = { host: { kind: 'wsl' as const, distro: 'Ubuntu' }, worktrees: on, folderOptions: { '/home/ana/acme': { worktrees: true } } }
+    expect(worktreesAvailable(wsl)).toBe(false)
+    expect(worktreeDefault(wsl, '/home/ana/acme/api')).toBe(false)
+    const here = { host: { kind: 'local' as const }, worktrees: on }
+    expect(worktreesAvailable(here)).toBe(true)
+    expect(worktreeDefault(here, '/w/x')).toBe(true)
+    expect(worktreesAvailable(undefined)).toBe(true)
   })
 })
 
