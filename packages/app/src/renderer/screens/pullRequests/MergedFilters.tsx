@@ -58,7 +58,7 @@ function IntoChoice({ label, state, group, child, count, onToggle, title }: { la
   )
 }
 
-/** The panel: Into (every target branch, `release/*` for all releases), Repo and Author, with counts under the other filters. */
+/** The panel: Author, Into (every target branch, `release/*` for all releases) and Repo, with counts under the other filters. */
 export function MergedFilterPanel({ items, shown, value, onChange }: BarProps) {
   const { t, tn } = useI18n()
   const [query, setQuery] = useState('')
@@ -88,6 +88,17 @@ export function MergedFilterPanel({ items, shown, value, onChange }: BarProps) {
         />
       </label>
       {none && <p className="border-t border-border py-3 text-sm text-muted">{t('pr.narrow.noMatch', { query: query.trim() })}</p>}
+      {/* Author first: the filter used most. */}
+      {authorShown.length > 0 && (
+        <div role="group" aria-label={t('pr.narrow.author')} className="border-t border-border py-2.5">
+          <div className="mb-1.5 text-xs text-subtle">{t('pr.narrow.author')}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {authorShown.map((o) => (
+              <FilterOption key={o.value} label={o.value} on={value.authors.includes(o.value)} onToggle={() => onChange(toggleMergedValue(value, 'authors', o.value))} title={tn('pr.count', o.count)} />
+            ))}
+          </div>
+        </div>
+      )}
       {intoShown.length > 0 && (
         <div role="group" aria-label={t('pr.narrow.base')} className="border-t border-border py-2.5">
           <div className="mb-1.5 text-xs text-subtle">{t('pr.narrow.base')}</div>
@@ -108,16 +119,6 @@ export function MergedFilterPanel({ items, shown, value, onChange }: BarProps) {
           <div className="flex flex-wrap gap-1.5">
             {repoShown.map((o) => (
               <FilterOption key={o.value} label={o.value} on={value.repos.includes(o.value)} onToggle={() => onChange(toggleMergedValue(value, 'repos', o.value))} title={tn('pr.count', o.count)} />
-            ))}
-          </div>
-        </div>
-      )}
-      {authorShown.length > 0 && (
-        <div role="group" aria-label={t('pr.narrow.author')} className="border-t border-border py-2.5">
-          <div className="mb-1.5 text-xs text-subtle">{t('pr.narrow.author')}</div>
-          <div className="flex flex-wrap gap-1.5">
-            {authorShown.map((o) => (
-              <FilterOption key={o.value} label={o.value} on={value.authors.includes(o.value)} onToggle={() => onChange(toggleMergedValue(value, 'authors', o.value))} title={tn('pr.count', o.count)} />
             ))}
           </div>
         </div>

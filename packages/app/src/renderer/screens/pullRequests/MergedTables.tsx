@@ -38,6 +38,8 @@ export function BranchTable({ rows, total }: { rows: BranchRow[]; total: number 
   const { t, formatNumber } = useI18n()
   const max = Math.max(0, ...rows.filter((r) => !r.branch).map((r) => r.count))
   const percent = (n: number) => formatNumber(total > 0 ? n / total : 0, { style: 'percent', maximumFractionDigits: 0 })
+  // No row reporting file counts (GitHub's merged search leaves them out): the column is left out.
+  const showFiles = rows.some((r) => r.withFiles > 0)
   return (
     <Frame label={t('pr.merged.byBranch')}>
       <thead>
@@ -45,7 +47,7 @@ export function BranchTable({ rows, total }: { rows: BranchRow[]; total: number 
           <th scope="col" className={TH}>{t('pr.merged.col.into')}</th>
           <th scope="col" className={TH}>{t('pr.merged.col.merged')}</th>
           <th scope="col" className={cn(TH, 'text-right')}>{t('pr.merged.col.lines')}</th>
-          <th scope="col" className={cn(TH, 'text-right')}>{t('pr.merged.col.files')}</th>
+          {showFiles && <th scope="col" className={cn(TH, 'text-right')}>{t('pr.merged.col.files')}</th>}
         </tr>
       </thead>
       <tbody>
@@ -67,7 +69,7 @@ export function BranchTable({ rows, total }: { rows: BranchRow[]; total: number 
             <td className={cn(TD, 'text-right')}>
               <Lines additions={r.additions} deletions={r.deletions} reported={r.withLines} count={r.count} />
             </td>
-            <td className={cn(TD, 'text-right tabular-nums')}>{coverage(r.count, r.withFiles) === 'none' ? <span className="text-subtle">{t('pr.merged.noData')}</span> : formatNumber(r.files)}</td>
+            {showFiles && <td className={cn(TD, 'text-right tabular-nums')}>{coverage(r.count, r.withFiles) === 'none' ? <span className="text-subtle">{t('pr.merged.noData')}</span> : formatNumber(r.files)}</td>}
           </tr>
         ))}
       </tbody>

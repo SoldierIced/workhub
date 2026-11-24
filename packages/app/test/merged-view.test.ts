@@ -18,7 +18,7 @@ import {
   type MergedNarrowing
 } from '../src/renderer/lib/mergedStats'
 import { applyNarrowing, baseGroup, narrowOptions, NO_NARROWING } from '../src/renderer/lib/prNarrowing'
-import { clearMerged, mergedKey, readMerged, watchMerged } from '../src/renderer/mergedStore'
+import { clearMerged, mergedKey, peekMerged, readMerged, watchMerged } from '../src/renderer/mergedStore'
 
 const T = Date.UTC(2026, 10, 20, 12)
 function pr(n: number, base: string, extra: Partial<MergedPullRequest> = {}): MergedPullRequest {
@@ -156,7 +156,7 @@ describe('the other tabs keep their grouping', () => {
 
 describe('the merged read store', () => {
   const req: MergedRequest = { since: 1, until: 2, mine: false }
-  const ok = (n: number): MergedPullRequestsResult => ({ ok: true, items: [pr(n, 'main')], truncated: false, provider: 'github', fetchedAt: n, scope: { kind: 'repos', values: ['acme/api'] } })
+  const ok = (n: number): MergedPullRequestsResult => ({ ok: true, items: [pr(n, 'main')], truncated: false, provider: 'github', fetchedAt: n, scope: { kind: 'repos', values: ['acme/api'] }, sync: { state: 'synced' }, partial: false })
   let changed: ((url: string, profileId: string | null) => void) | undefined
   let merged: ReturnType<typeof vi.fn>
 
@@ -229,6 +229,27 @@ describe('the merged read store', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(merged).toHaveBeenCalledTimes(3)
   })
+
+  it('sends the version it holds and keeps its items when main says they did not change', async () => {
+    const full = { ...ok(1), version: 'v1' } as MergedPullRequestsResult
+    merged.mockResolvedValueOnce(full)
+    await readMerged('p1', req)
+    merged.mockResolvedValueOnce({ ...full, items: [], unchanged: true, fetchedAt: 9 } as MergedPullRequestsResult)
+    await readMerged('p1', req, true)
+    expect(merged).toHaveBeenLastCalledWith('p1', { ...req, known: 'v1' }, true)
+    expect(peekMerged('p1', req).data).toMatchObject({ fetchedAt: 9, items: [{ number: 1 }] })
+  })
+
+  it('keeps the newest answers only, never one on screen', async () => {
+    const { MERGED_KEPT } = await import('../src/renderer/mergedStore')
+    const shown = watchMerged('p1', req)
+    await readMerged('p1', req)
+    for (let i = 0; i < MERGED_KEPT + 3; i++) await readMerged('p1', { ...req, until: 10 + i })
+    expect(peekMerged('p1', req).data).not.toBeNull()
+    expect(peekMerged('p1', { ...req, until: 10 }).data).toBeNull()
+    expect(peekMerged('p1', { ...req, until: 10 + MERGED_KEPT + 2 }).data).not.toBeNull()
+    shown()
+  })
 })
 
 /** Reads an entry without React: the store's snapshot is what the hook returns. */
@@ -236,3 +257,86 @@ async function probe() {
   const store = await import('../src/renderer/mergedStore')
   return { useMergedProbe: (p: string | null, r: MergedRequest) => store.peekMerged(p, r) }
 }
+
+describe('Merged view: all profiles and rate limits', () => {
+  const req: MergedRequest = { since: 1, until: 2, mine: false }
+  const okAnswer: MergedPullRequestsResult = { ok: true, items: [pr(1, 'main')], truncated: false, provider: 'github', fetchedAt: 1, scope: { kind: 'repos', values: ['acme/api'] }, sync: { state: 'synced' }, partial: false }
+  let merged: ReturnType<typeof vi.fn>
+  beforeEach(() => {
+    clearMerged()
+    merged = vi.fn(async () => okAnswer)
+    ;(globalThis as unknown as { window: unknown }).window = { hub: { codeHost: { merged, onChanged: () => () => {} } } }
+  })
+
+  it('keeps This profile and All profiles apart in the key', () => {
+    expect(mergedKey('p1', { ...req, allProfiles: true })).not.toBe(mergedKey('p1', req))
+    expect(mergedKey('p1', { ...req, allProfiles: false })).toBe(mergedKey('p1', req))
+  })
+
+  it('counts the profiles whose code host connection exists', async () => {
+    const { countCodeHostProfiles } = await import('../src/renderer/screens/pullRequests/useMergedView')
+    const connections = [{ id: 'gh1', kind: 'codeHost' }, { id: 'gh2', kind: 'codeHost' }, { id: 'jira', kind: 'tracker' }]
+    expect(countCodeHostProfiles(undefined)).toBe(0)
+    expect(countCodeHostProfiles({ connections, profiles: [{ connections: { codeHost: 'gh1' } }, { connections: {} }, { connections: { codeHost: 'jira' } }] })).toBe(1)
+    expect(countCodeHostProfiles({ connections, profiles: [{ connections: { codeHost: 'gh1' } }, { connections: { codeHost: 'gh2' } }] })).toBe(2)
+  })
+
+  it('reads once more after retryAt while the request is on screen, and not after it leaves', async () => {
+    vi.useFakeTimers()
+    try {
+      const now = Date.now()
+      merged.mockResolvedValueOnce({ ok: false, state: 'rateLimited', error: 'limited', retryAt: now + 5000 })
+      const release = watchMerged('p1', req)
+      await readMerged('p1', req)
+      const { peekMerged } = await import('../src/renderer/mergedStore')
+      expect(peekMerged('p1', req).failure).toMatchObject({ state: 'rateLimited', retryAt: now + 5000 })
+      expect(merged).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(6100)
+      expect(merged).toHaveBeenCalledTimes(2)
+      expect(merged).toHaveBeenLastCalledWith('p1', req, false)
+      release()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels the scheduled read when the request leaves the screen', async () => {
+    vi.useFakeTimers()
+    try {
+      merged.mockResolvedValueOnce({ ok: false, state: 'rateLimited', error: 'limited', retryAt: Date.now() + 5000 })
+      const release = watchMerged('p1', req)
+      await readMerged('p1', req)
+      release()
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(merged).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('Mine taken from Everyone', () => {
+  it('keeps the merges whose author is a signed-in login, whatever its case', async () => {
+    const { mergedByLogins } = await import('../src/renderer/screens/pullRequests/useMergedView')
+    const pr = (n: number, author: string) => ({ provider: 'github', owner: 'acme', repo: 'api', number: n, url: `https://github.com/acme/api/pull/${n}`, title: 't', author, branch: 'b', base: 'main', mergedAt: n })
+    expect(mergedByLogins([pr(1, 'Ana'), pr(2, 'bo'), pr(3, 'ana')], ['ana']).map((p) => p.number)).toEqual([1, 3])
+    expect(mergedByLogins([pr(1, 'ana'), pr(2, 'bo')], ['ana', 'bo']).map((p) => p.number)).toEqual([1, 2])
+  })
+})
+
+describe('the merged list draws its first rows only', () => {
+  it('cuts across day groups and keeps each group full count for its header', async () => {
+    const { firstRows } = await import('../src/renderer/lib/mergedStats')
+    const groups = [
+      { start: 3, items: [1, 2, 3] },
+      { start: 2, items: [4, 5] },
+      { start: 1, items: [6] }
+    ]
+    expect(firstRows(groups, 4)).toEqual([
+      { start: 3, items: [1, 2, 3], total: 3 },
+      { start: 2, items: [4], total: 2 }
+    ])
+    expect(firstRows(groups, 10).map((g) => g.items.length)).toEqual([3, 2, 1])
+    expect(firstRows(groups, 0)).toEqual([])
+  })
+})

@@ -2,6 +2,7 @@ export { DB_FILE, isCorruptionError, RECOVERED_KEY, WorkhubDb, type StorageRecov
 export { KvState } from './kv-state'
 export { MIGRATIONS, type Migration } from './migrations'
 export { SqlitePrEventStore, PR_EVENTS_KEY } from './pr-events'
+export { SqliteMergedStore } from './merged-prs'
 export { SqliteFlowMaps, type FlowMapRow } from './flow-maps'
 export { FLOW_HISTORY_DAYS, SqliteFlowHistory } from './flow-history'
 export { describeImport, flowMapIdFromFileName, IMPORT_DONE_KEY, importLegacyJson, legacyImportDone, LEGACY_FLOW_HISTORY_FOLDER, LEGACY_FLOW_MAPS_FOLDER, LEGACY_STATE_FILES, type ImportSummary } from './import'

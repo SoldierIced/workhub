@@ -37,6 +37,7 @@ describe('StorageMaintenance', () => {
       ['usageSummaries', 0],
       ['historyIndex', 0],
       ['events', 0],
+      ['pullRequests', 0],
       ['state', expect.any(Number)]
     ])
     await m.run()

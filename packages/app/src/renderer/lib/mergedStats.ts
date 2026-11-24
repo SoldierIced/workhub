@@ -499,3 +499,15 @@ export function keepSelection(url: string | null, shown: readonly MergedPullRequ
 export function mergedSeed(m: MergedPullRequest): PullRequest {
   return { ...m, state: 'merged', isDraft: false, reviewDecision: 'none', ci: 'none', mergeable: 'unknown', additions: m.additions ?? 0, deletions: m.deletions ?? 0, changedFiles: m.changedFiles ?? 0, updatedAt: m.mergedAt }
 }
+
+/** The first `limit` rows across the day groups, each group keeping its full count for its header; groups past the limit are left out. */
+export function firstRows<T>(groups: readonly { start: number; items: readonly T[] }[], limit: number): { start: number; items: readonly T[]; total: number }[] {
+  const out: { start: number; items: readonly T[]; total: number }[] = []
+  let left = limit
+  for (const g of groups) {
+    if (left <= 0) break
+    out.push({ start: g.start, items: g.items.slice(0, left), total: g.items.length })
+    left -= g.items.length
+  }
+  return out
+}

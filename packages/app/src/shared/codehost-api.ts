@@ -34,7 +34,19 @@ export interface MergedRequest {
   since: number
   until: number
   mine: boolean
+  /** Every profile's saved merges (each read in its own scope), not only this profile's. */
+  allProfiles?: boolean
+  /** The `version` of the answer the view already holds: an answer with the same items comes back without them (`unchanged`). */
+  known?: string
 }
+
+/**
+ * How the read went against the host. `synced`: what was missing was read; `saved`: answered from what is
+ * saved (it was read moments ago); `failed`: the host could not be read, the items are what was saved.
+ */
+export type MergedSync =
+  | { state: 'synced' | 'saved' }
+  | { state: 'failed'; reason: CodeHostState | 'rateLimited'; error: string; retryAt?: number }
 
 /**
  * The merged pull requests of a period in the profile's scope (its repositories, owners and hidden
@@ -50,8 +62,27 @@ export interface MergedScope {
 }
 
 export type MergedPullRequestsResult =
-  | { ok: true; items: MergedPullRequest[]; truncated: boolean; provider: string; fetchedAt: number; scope: MergedScope; demo?: boolean }
-  | { ok: false; state: CodeHostState | 'unsupported' | 'noScope'; error: string }
+  | {
+      ok: true
+      items: MergedPullRequest[]
+      truncated: boolean
+      provider: string
+      fetchedAt: number
+      scope: MergedScope
+      demo?: boolean
+      sync: MergedSync
+      /** Part of the period was never read completely (a failed or cut read): the numbers miss those days. */
+      partial: boolean
+      /** With `allProfiles`: how many profiles the items come from. */
+      profiles?: number
+      /** The signed-in logins of the profiles read (lowercase): Mine is Everyone's items by these authors. Absent: unknown. */
+      logins?: string[]
+      /** A fingerprint of `items`: the same items, the same version. */
+      version?: string
+      /** The items are the ones of `known`: `items` is sent empty, keep the ones held. */
+      unchanged?: true
+    }
+  | { ok: false; state: CodeHostState | 'unsupported' | 'noScope' | 'rateLimited'; error: string; retryAt?: number }
 
 /** The files changed by a pull request, read on their own (the diff is the slowest read). */
 export type PullRequestDiffResult = { ok: true; files: DiffFile[] } | { ok: false; error: string }

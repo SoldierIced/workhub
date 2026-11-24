@@ -24,11 +24,17 @@ import {
 import { CliNotFoundError, failureText, parseJsonPages, type CliResult, type CliRunner } from '../shared/cli'
 import { mapDetail, mapMergedPage, mapSearchResponse, searchNextCursor } from './mapping'
 
-/** At most this many pull requests per list, read in at most `SEARCH_PAGES` pages of 50. */
+/** At most this many pull requests per list, read in pages of `SEARCH_PAGE` (smaller after a transient failure). */
 const SEARCH_CAP = 500
-const SEARCH_PAGES = 10
+/** Pull requests per page of a list search; halved (down to `MIN_PAGE`) when GitHub runs out of time on its side. */
+const SEARCH_PAGE = 50
+const MIN_PAGE = 10
+/** GitHub's answer when a query ran out of time on its side (a heavy page): read again with a smaller page. */
+const TRANSIENT = /HTTP 50[234]|Bad Gateway|Service Unavailable|Gateway Time-?out|something went wrong while executing your query/i
+/** Smaller pages tried after a transient failure before giving up. */
+const TRANSIENT_RETRIES = 2
 
-const SEARCH_QUERY = `query($q: String!, $after: String) { search(query: $q, type: ISSUE, first: 50, after: $after) { pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
+const SEARCH_QUERY = `query($q: String!, $after: String, $first: Int!) { search(query: $q, type: ISSUE, first: $first, after: $after) { pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
   number title url state isDraft updatedAt headRefName baseRefName additions deletions changedFiles
   reviewDecision mergeable author { login } repository { name owner { login } }
   comments { totalCount } reviewThreads { totalCount }
@@ -39,13 +45,19 @@ const SEARCH_QUERY = `query($q: String!, $after: String) { search(query: $q, typ
 const SEARCH_LIMIT = 1000
 /** At most this many merged pull requests are returned (the newest). */
 export const MERGED_CAP = 3000
-/** Merged searches run at most this many at once, across every call on the host. */
-const MERGED_PARALLEL = 4
+/** Merged searches run at most this many at once, across every call on the host: more trips GitHub's secondary rate limit. */
+const MERGED_PARALLEL = 2
+/** At most this many merged searches (`gh api graphql` calls) in any `MERGED_LIMIT_WINDOW_MS`: a call over it waits for its turn. */
+export const MERGED_LIMIT = 40
+export const MERGED_LIMIT_WINDOW_MS = 60_000
+/** How long the host is left alone after GitHub says it is rate limiting and gives no better time. */
+export const RATE_LIMIT_WAIT_MS = 5 * 60_000
 /** A window this short is not split any more: it is read as it is and the result is marked truncated. */
 const MIN_WINDOW_MS = 3_600_000
 
-const MERGED_QUERY = `query($q: String!, $after: String) { search(query: $q, type: ISSUE, first: 100, after: $after) { issueCount pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
-  number title url mergedAt createdAt headRefName baseRefName additions deletions changedFiles author { login } repository { name owner { login } }
+// No `changedFiles`: GitHub computes it per pull request, which makes a page of 100 take about four times longer.
+const MERGED_QUERY = `query($q: String!, $after: String, $first: Int!) { search(query: $q, type: ISSUE, first: $first, after: $after) { issueCount pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
+  number title url mergedAt createdAt headRefName baseRefName additions deletions author { login } repository { name owner { login } }
 } } } }`
 
 /** A search date-time: UTC, whole seconds. */
@@ -74,10 +86,18 @@ const SIGNED_OUT = /gh auth login|not logged in|requires authentication|authenti
 /** How long a login read stays valid while the token is the same. */
 const LOGIN_TTL_MS = 10 * 60_000
 
+/** GitHub's own wording for a rate limit (secondary, or primary: "API rate limit exceeded"). */
+const RATE_LIMITED = /secondary rate limit|rate limit (?:already )?exceeded/i
+const PRIMARY_LIMIT = /API rate limit (?:already )?exceeded/i
+
 export interface GitHubCodeHostOptions {
   run: CliRunner
   /** Web host; set for GitHub Enterprise Server. Defaults to github.com. */
   host?: string
+  /** The clock (epoch milliseconds) behind the merged-search limit and the rate-limit cooldown; tests inject one. */
+  now?: () => number
+  /** Waits `ms` (the merged-search limit waits with it); tests inject one that moves the fake clock. */
+  sleep?: (ms: number) => Promise<void>
 }
 
 /** GitHub through the `gh` CLI and the user's own `gh auth login`: no token is stored by Workhub. */
@@ -92,10 +112,18 @@ export class GitHubCodeHost implements CodeHost {
   /** Merged searches under way and waiting, across every `listMerged` call. */
   private mergedActive = 0
   private readonly mergedWaiting: Array<() => void> = []
+  /** When each of the merged searches of the last minute started. */
+  private readonly mergedStarts: number[] = []
+  /** After GitHub's rate limit: until when every `gh` call (status excepted) fails at once, without running `gh`. */
+  private cooldown: { until: number; message: string } | null = null
+  private readonly now: () => number
+  private readonly sleep: (ms: number) => Promise<void>
 
   constructor(options: GitHubCodeHostOptions) {
     this.run = options.run
     this.host = options.host ?? 'github.com'
+    this.now = options.now ?? Date.now
+    this.sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
     this.recognizer = githubRecognizer(this.host)
   }
 
@@ -112,6 +140,11 @@ export class GitHubCodeHost implements CodeHost {
   }
 
   private async gh(args: string[], fallback: string): Promise<CliResult> {
+    const cooling = this.cooldown
+    if (cooling) {
+      if (this.now() < cooling.until) throw new CodeHostError(cooling.message, 'rateLimited', cooling.until)
+      this.cooldown = null
+    }
     let result: CliResult
     try {
       result = await this.run('gh', args)
@@ -121,9 +154,39 @@ export class GitHubCodeHost implements CodeHost {
     }
     if (result.code !== 0) {
       const text = failureText(result, fallback)
+      if (RATE_LIMITED.test(text)) {
+        const retryAt = await this.startCooldown(text)
+        throw new CodeHostError(text, 'rateLimited', retryAt)
+      }
       throw new CodeHostError(text, SIGNED_OUT.test(text) ? 'signedOut' : 'failed')
     }
     return result
+  }
+
+  /**
+   * GitHub refused because of its rate limit: no `gh` call runs until the returned time. A secondary limit
+   * waits `RATE_LIMIT_WAIT_MS`; for the primary limit `gh api rate_limit` (which does not count) says when it resets.
+   */
+  private async startCooldown(message: string): Promise<number> {
+    let retryAt = this.now() + RATE_LIMIT_WAIT_MS
+    if (PRIMARY_LIMIT.test(message) && !/secondary rate limit/i.test(message)) retryAt = (await this.primaryReset()) ?? retryAt
+    // Calls that failed together agree on the later time.
+    const until = Math.max(retryAt, this.cooldown?.until ?? 0)
+    this.cooldown = { until, message }
+    return until
+  }
+
+  private async primaryReset(): Promise<number | null> {
+    try {
+      const result = await this.run('gh', ['api', ...this.hostArgs, 'rate_limit'])
+      if (result.code !== 0) return null
+      const resources = (JSON.parse(result.stdout) as { resources?: Record<string, { reset?: unknown } | undefined> }).resources
+      const resets = [resources?.graphql?.reset, resources?.search?.reset].filter((r): r is number => typeof r === 'number' && Number.isFinite(r)).map((r) => r * 1000)
+      const reset = resets.length > 0 ? Math.max(...resets) : null
+      return reset !== null && reset > this.now() ? reset : null
+    } catch {
+      return null
+    }
   }
 
   /** A write whose failure text may say why (not mergeable, checks failing, no permission, already exists). */
@@ -169,11 +232,13 @@ export class GitHubCodeHost implements CodeHost {
     const q = `is:pr is:open archived:false ${qualifier} ${query.scope ?? ''}`.trim()
     const out: PullRequest[] = []
     let after: string | null = null
-    for (let page = 0; page < SEARCH_PAGES && out.length < SEARCH_CAP; page++) {
-      const result = await this.gh(
-        ['api', ...this.hostArgs, 'graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`, ...(after ? ['-f', `after=${after}`] : [])],
-        'GitHub search failed'
-      )
+    // A page that had to be smaller keeps that size for the rest of the list.
+    let size = SEARCH_PAGE
+    // Bounded by the cap: pages are never smaller than MIN_PAGE.
+    for (let page = 0; page < SEARCH_CAP / MIN_PAGE && out.length < SEARCH_CAP; page++) {
+      const read = await this.searchPage(SEARCH_QUERY, q, after, size, (args) => this.gh(args, 'GitHub search failed'))
+      size = read.size
+      const result = read.result
       try {
         out.push(...mapSearchResponse(result.stdout))
         after = searchNextCursor(result.stdout)
@@ -185,10 +250,40 @@ export class GitHubCodeHost implements CodeHost {
     return out.slice(0, SEARCH_CAP)
   }
 
+  /**
+   * One page of a GraphQL search. GitHub answers 502/503/504 when a heavy page runs out of time on its side: the same
+   * page is asked again with half the pull requests (down to `MIN_PAGE`), up to `TRANSIENT_RETRIES` times.
+   */
+  private async searchPage(query: string, q: string, after: string | null, first: number, call: (args: string[]) => Promise<CliResult>): Promise<{ result: CliResult; size: number }> {
+    let size = first
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return { size, result: await call(['api', ...this.hostArgs, 'graphql', '-f', `query=${query}`, '-f', `q=${q}`, '-F', `first=${size}`, ...(after ? ['-f', `after=${after}`] : [])]) }
+      } catch (e) {
+        if (!(e instanceof CodeHostError) || e.kind !== 'failed' || !TRANSIENT.test(e.message) || attempt >= TRANSIENT_RETRIES || size <= MIN_PAGE) throw e
+        size = Math.max(MIN_PAGE, Math.floor(size / 2))
+      }
+    }
+  }
+
+  /** Waits until fewer than `MERGED_LIMIT` merged searches started in the last minute, then counts this one. */
+  private async mergedTurn(): Promise<void> {
+    for (;;) {
+      const now = this.now()
+      while (this.mergedStarts.length > 0 && this.mergedStarts[0]! <= now - MERGED_LIMIT_WINDOW_MS) this.mergedStarts.shift()
+      if (this.mergedStarts.length < MERGED_LIMIT) {
+        this.mergedStarts.push(now)
+        return
+      }
+      await this.sleep(Math.max(1, this.mergedStarts[0]! + MERGED_LIMIT_WINDOW_MS - now))
+    }
+  }
+
   private async mergedSlot<T>(task: () => Promise<T>): Promise<T> {
     if (this.mergedActive >= MERGED_PARALLEL) await new Promise<void>((resolve) => this.mergedWaiting.push(resolve))
     else this.mergedActive++
     try {
+      await this.mergedTurn()
       return await task()
     } finally {
       // The slot passes straight to the next waiter.
@@ -201,7 +296,7 @@ export class GitHubCodeHost implements CodeHost {
   /**
    * Merged pull requests of `[since, until)`. One search is capped at 1,000 results, so the period is
    * read as windows: a window that reports 1,000 or more is halved (down to an hour) and its halves
-   * are read newest first, at most four searches at once. Windows are dropped from the end once the
+   * are read newest first, at most two searches at once. Windows are dropped from the end once the
    * newest `MERGED_CAP` are certain; then, and when a window could not be split, the list is `truncated`.
    */
   async listMerged(query: MergedQuery): Promise<MergedList> {
@@ -210,6 +305,13 @@ export class GitHubCodeHost implements CodeHost {
     let truncated = false
     let active = 0
     let failed = false
+    let completed = 0
+    let interrupted: CodeHostError | null = null
+    /** The `to` of every window whose merges are not all in `found`: the list is certain only after the latest. */
+    let uncertainTo = query.since
+    const uncertain = (to: number): void => {
+      uncertainTo = Math.max(uncertainTo, to)
+    }
 
     const newerThan = (cutoff: number): number => {
       let n = 0
@@ -221,10 +323,13 @@ export class GitHubCodeHost implements CodeHost {
       const q = mergedSearchQuery(query.scope, w.from, w.to, query.mine)
       let after: string | null = null
       const items: MergedPullRequest[] = []
-      for (let page = 0; page < SEARCH_LIMIT / 100; page++) {
-        const result = await this.mergedSlot(() =>
-          this.gh(['api', ...this.hostArgs, 'graphql', '-f', `query=${MERGED_QUERY}`, '-f', `q=${q}`, ...(after ? ['-f', `after=${after}`] : [])], 'GitHub search failed')
-        )
+      let size = 100
+      // Until the search says there is no next page; GitHub never pages past its 1,000th result.
+      for (let page = 0; page < SEARCH_LIMIT / MIN_PAGE; page++) {
+        // Each try takes its own turn (the per-minute limit counts it); a smaller page keeps its size for the window.
+        const read = await this.searchPage(MERGED_QUERY, q, after, size, (args) => this.mergedSlot(() => this.gh(args, 'GitHub search failed')))
+        size = read.size
+        const result = read.result
         let parsed: ReturnType<typeof mapMergedPage>
         try {
           parsed = mapMergedPage(result.stdout)
@@ -242,21 +347,24 @@ export class GitHubCodeHost implements CodeHost {
           }
           // Cannot be split further: what the search returns is all there is.
           truncated = true
+          uncertain(w.to)
         }
         items.push(...parsed.items)
         after = parsed.next
         if (!after) break
       }
       for (const p of items) found.set(p.url, p)
+      completed++
     }
 
     await new Promise<void>((resolve, reject) => {
       const pump = (): void => {
         if (failed) return
         // Every window still waiting is older than the ones being read; once the newest CAP are known from newer windows, the rest cannot matter.
-        while (active < MERGED_PARALLEL && pending.length > 0) {
+        while (!interrupted && active < MERGED_PARALLEL && pending.length > 0) {
           if (newerThan(pending[0]!.to) >= MERGED_CAP) {
             truncated = true
+            uncertain(pending[0]!.to)
             pending.length = 0
             break
           }
@@ -268,19 +376,46 @@ export class GitHubCodeHost implements CodeHost {
               pump()
             },
             (e: unknown) => {
+              if (e instanceof CodeHostError && e.kind === 'rateLimited' && !failed) {
+                // Windows under way finish or fail; nothing new starts.
+                interrupted ??= e
+                uncertain(w.to)
+                active--
+                pump()
+                return
+              }
               failed = true
               reject(e)
             }
           )
         }
-        if (active === 0 && pending.length === 0) resolve()
+        if (active === 0 && (pending.length === 0 || interrupted)) resolve()
       }
       pump()
     })
 
+    if (interrupted) {
+      const stop: CodeHostError = interrupted
+      // Nothing was read: the caller learns it as an error.
+      if (completed === 0) throw stop
+      truncated = true
+      for (const w of pending) uncertain(w.to)
+    }
     const items = [...found.values()].filter((p) => p.mergedAt >= query.since && p.mergedAt < query.until).sort((a, b) => b.mergedAt - a.mergedAt || b.number - a.number)
-    if (items.length > MERGED_CAP) return { items: items.slice(0, MERGED_CAP), truncated: true }
-    return { items, truncated }
+    let kept = items
+    if (items.length > MERGED_CAP) {
+      kept = items.slice(0, MERGED_CAP)
+      truncated = true
+      // Everything newer than the newest dropped merge is in the list.
+      uncertain(items[MERGED_CAP]!.mergedAt + 1)
+    }
+    const list: MergedList = { items: kept, truncated }
+    if (truncated) list.coveredSince = Math.min(query.until, Math.max(query.since, uncertainTo))
+    if (interrupted) {
+      const stop: CodeHostError = interrupted
+      list.interrupted = { kind: 'rateLimited', message: stop.message, retryAt: stop.retryAt ?? this.now() + RATE_LIMIT_WAIT_MS }
+    }
+    return list
   }
 
   listAuthored(query: PullRequestQuery): Promise<PullRequest[]> {

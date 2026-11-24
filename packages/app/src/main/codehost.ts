@@ -27,6 +27,7 @@ import {
   type CodeHost,
   type Connection,
   type MergedList,
+  type MergedStore,
   type MergedPullRequest,
   type MergeMethod,
   type NewPullRequest,
@@ -40,6 +41,7 @@ import {
   type WorkhubConfig
 } from '@workhub/core'
 import type { IpcRegistrar } from './ipc-guard'
+import { MERGED_ANSWER_CAP, MergedSyncer, mergedFailureOf, type MergedFailure, type MergedProfileRead, type MergedTarget } from './merged-sync'
 import {
   isPullRequestWindowTab,
   type CodeHostActionResult,
@@ -85,13 +87,31 @@ const DEMO_OWNER = 'acme-demo'
 
 type MergedOk = Extract<MergedPullRequestsResult, { ok: true }>
 
-/** A merged request from the renderer, or null when it is not one: finite times, `since < until`, at most 800 days, `mine` a boolean. */
+/** A merged request from the renderer, or null when it is not one: finite times, `since < until`, at most 800 days, `mine` a boolean, `allProfiles` an optional boolean. */
 export function validMergedRequest(value: unknown): MergedRequest | null {
   if (!value || typeof value !== 'object') return null
-  const { since, until, mine } = value as Record<string, unknown>
+  const { since, until, mine, allProfiles, known } = value as Record<string, unknown>
   if (typeof since !== 'number' || typeof until !== 'number' || typeof mine !== 'boolean') return null
+  if (allProfiles !== undefined && typeof allProfiles !== 'boolean') return null
+  if (known !== undefined && (typeof known !== 'string' || known.length > 64)) return null
   if (!Number.isFinite(since) || !Number.isFinite(until) || since < 0 || since >= until || until - since > MERGED_MAX_SPAN_MS) return null
-  return { since, until, mine }
+  return { since, until, mine, ...(allProfiles === true ? { allProfiles: true } : {}), ...(typeof known === 'string' ? { known } : {}) }
+}
+
+/** A fingerprint of merged items (FNV-1a over what the view shows of each, and the count): equal items, equal version. */
+export function mergedVersion(items: readonly MergedPullRequest[]): string {
+  // Two 32-bit hashes with different seeds: a false "unchanged" would keep old items on screen.
+  let h = 0x811c9dc5
+  let g = 0x01234567
+  const add = (text: string) => {
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i)
+      h = Math.imul(h ^ c, 0x01000193)
+      g = Math.imul(g ^ c, 0x01000193)
+    }
+  }
+  for (const p of items) add(`${p.url}\u0000${p.mergedAt}\u0000${p.title}\u0000${p.author}\u0000${p.base}\u0000${p.branch}\u0000${p.additions ?? ''}\u0000${p.deletions ?? ''}\u0000${p.changedFiles ?? ''}\u0000${p.createdAt ?? ''}\n`)
+  return `${items.length}:${(h >>> 0).toString(36)}${(g >>> 0).toString(36)}`
 }
 
 /** Search qualifiers joined into queries of at most `max` characters. */
@@ -110,6 +130,7 @@ function chunkTokens(tokens: readonly string[], max: number): string[] {
 }
 
 interface Resolved {
+  profileId: string
   host: CodeHost
   key: string
   /** The connection (host) the profile reads through: logins, details and merge methods are kept per host. */
@@ -164,6 +185,10 @@ export class CodeHostService {
   private readonly methods = new Map<string, { at: number; value: MergeMethod[] }>()
   /** Merged reads kept per profile and request (LRU, `MERGED_ENTRIES`), and the ones under way. */
   private readonly mergedCache = new Map<string, { at: number; value: MergedOk }>()
+  /** Profiles (resolved keys) with a write since their last merged read: the next one reads the newest merges even if it read moments ago. */
+  private readonly mergedDirty = new Set<string>()
+  /** The sync of merged pull requests against the store; null without a store. */
+  private readonly mergedSyncer: MergedSyncer | null
   private readonly mergedFlights = new Map<string, { running: Promise<MergedPullRequestsResult>; queued?: Promise<MergedPullRequestsResult> }>()
   /** Per key, how many writes happened: a read that started under another number never stores its result. */
   private readonly generations = new Map<string, number>()
@@ -180,9 +205,12 @@ export class CodeHostService {
       onChanged?: (url: string, profileId: string | null) => void
       /** The command runner of the real hosts (tests count the calls through it). */
       run?: CliRunner
+      /** Merged pull requests kept between launches. Without one a merged read is kept in memory only. */
+      mergedStore?: MergedStore
     }
   ) {
     this.run = options.run ?? createCliRunner()
+    this.mergedSyncer = options.mergedStore ? new MergedSyncer(options.mergedStore) : null
     this.onListsChanged = options.onListsChanged
     this.onChanged = options.onChanged
     this.demoHost = options.demo ? new GitHubCodeHost({ run: createDemoRunner(Date.now(), options.demoStep) }) : null
@@ -217,7 +245,7 @@ export class CodeHostService {
   }
 
   private async resolve(profileId: string | null): Promise<Resolved | null> {
-    if (this.demoHost) return { host: this.demoHost, key: 'demo', hostKey: 'demo', scope: '', cli: 'gh', folders: [] }
+    if (this.demoHost) return { profileId: 'demo', host: this.demoHost, key: 'demo', hostKey: 'demo', scope: '', cli: 'gh', folders: [] }
     const config = await this.loadConfig()
     const profile: Profile | undefined = config.profiles.find((p) => p.id === (profileId ?? config.activeProfileId))
     const connection = config.connections.find((c) => c.id === profile?.connections.codeHost)
@@ -227,6 +255,7 @@ export class CodeHostService {
     const configured = connection.settings['scope']?.trim() ?? ''
     const filter = normalizePullRequestFilter(profile.pullRequests)
     return {
+      profileId: profile.id,
       host: made.host,
       key: `${profile.id}|${connection.id}|${connection.endpoint ?? ''}|${configured}|${(profile.folders ?? []).join(',')}|${JSON.stringify(filter)}`,
       hostKey: `${connection.id}|${connection.provider}|${connection.endpoint ?? ''}`,
@@ -425,10 +454,22 @@ export class CodeHostService {
    * under way, like a forced list). Failures come back as data, never kept.
    */
   async merged(profileId: string | null, request: MergedRequest, force = false): Promise<MergedPullRequestsResult> {
+    const { known, ...read } = request
+    const result = await this.mergedRead(profileId, read, force)
+    if (!result.ok) return result
+    const version = result.version ?? mergedVersion(result.items)
+    // The view holds these very items: they do not travel again (an answer can be megabytes).
+    if (known !== undefined && known === version) return { ...result, items: [], version, unchanged: true }
+    return result.version ? result : { ...result, version }
+  }
+
+  private async mergedRead(profileId: string | null, request: MergedRequest, force: boolean): Promise<MergedPullRequestsResult> {
     const resolved = await this.resolve(profileId)
     if (!resolved) return { ok: false, state: 'notConnected', error: 'No code host is connected to this profile' }
     if (!resolved.host.listMerged) return { ok: false, state: 'unsupported', error: `${resolved.host.provider} cannot list merged pull requests` }
-    const key = `${resolved.key}\n${request.since}|${request.until}|${request.mine}`
+    // A write since the last read (a merge made in Workhub): the newest merges are read again, even moments after a read.
+    if (this.mergedDirty.delete(resolved.key)) force = true
+    const key = `${resolved.key}\n${request.since}|${request.until}|${request.mine}|${request.allProfiles === true}`
     const hit = this.mergedCache.get(key)
     if (hit && !force && Date.now() - hit.at < MERGED_TTL_MS) {
       this.mergedCache.delete(key)
@@ -438,15 +479,15 @@ export class CodeHostService {
     const flight = this.mergedFlights.get(key)
     if (flight) {
       if (!force) return flight.running
-      flight.queued ??= flight.running.then(() => undefined, () => undefined).then(() => this.launchMerged(resolved, request, key))
+      flight.queued ??= flight.running.then(() => undefined, () => undefined).then(() => this.launchMerged(resolved, request, key, true))
       return flight.queued
     }
-    return this.launchMerged(resolved, request, key)
+    return this.launchMerged(resolved, request, key, force)
   }
 
-  private launchMerged(resolved: Resolved, request: MergedRequest, key: string): Promise<MergedPullRequestsResult> {
+  private launchMerged(resolved: Resolved, request: MergedRequest, key: string, force: boolean): Promise<MergedPullRequestsResult> {
     const flight: { running: Promise<MergedPullRequestsResult>; queued?: Promise<MergedPullRequestsResult> } = { running: undefined as never }
-    const read = this.readMerged(resolved, request, key)
+    const read = this.mergedSyncer && !this.demoHost ? this.readMergedStored(resolved, request, key, force) : this.readMerged(resolved, request, key)
     flight.running = read
     this.mergedFlights.set(key, flight)
     const done = () => {
@@ -491,6 +532,10 @@ export class CodeHostService {
         provider: host.provider,
         fetchedAt: Date.now(),
         scope,
+        sync: { state: 'synced' },
+        partial: false,
+        version: mergedVersion(visible.slice(0, MERGED_CAP)),
+        ...(this.logins.get(resolved.hostKey) ? { logins: [this.logins.get(resolved.hostKey)!.login.toLowerCase()] } : {}),
         ...(this.demoHost ? { demo: true } : {})
       }
       // A write finished while this read ran: it is handed out but not kept.
@@ -504,6 +549,132 @@ export class CodeHostService {
       this.noteFailure(resolved, e)
       if (e instanceof CodeHostError && (e.kind === 'signedOut' || e.kind === 'missingCli')) return { ok: false, state: e.kind, error: e.message }
       return { ok: false, state: 'error', error: messageOf(e) }
+    }
+  }
+
+  /**
+   * The login of the host as a merged read needs it, asked of the host every time: it is part of every search key, and
+   * after `gh auth switch` a kept login would file another account's merges under it (the GitHub host answers from the
+   * local token, and reads the login again only when the token changed).
+   */
+  private async mergedLogin(r: Resolved): Promise<{ login: string } | { failure: MergedFailure; savedLogin?: string }> {
+    // The host could not be asked (offline, a rate limit): the last login known still names what was saved, shown without a read.
+    const lastKnown = (): { savedLogin?: string } => {
+      const known = this.logins.get(r.hostKey)
+      return known ? { savedLogin: known.login } : {}
+    }
+    try {
+      const status = await r.host.status()
+      if (status.state === 'ready') {
+        this.logins.set(r.hostKey, { login: status.login, at: Date.now() })
+        return { login: status.login }
+      }
+      if (status.state === 'error') return { failure: { state: 'error', error: status.message }, ...lastKnown() }
+      this.logins.delete(r.hostKey)
+      return { failure: { state: status.state, error: status.state === 'missingCli' ? `The ${status.cli} CLI is not installed` : `Not signed in: run ${status.cli} auth login` } }
+    } catch (e) {
+      const failure = mergedFailureOf(e)
+      return { failure, ...(failure.state === 'error' || failure.state === 'rateLimited' ? lastKnown() : {}) }
+    }
+  }
+
+  /** What a merged read of one profile needs, or null when its Everyone read has no scope (only Mine may be read then). */
+  private async mergedTarget(r: Resolved, mine: boolean): Promise<{ target: MergedTarget; scope: MergedScope } | null> {
+    const { scopes, scope } = await this.mergedScopesOf(r)
+    if (scope.kind === 'none' && !mine) return null
+    const host = r.host
+    const target: MergedTarget = {
+      profileId: r.profileId,
+      hostKey: r.hostKey,
+      scopes,
+      list: (query) => host.listMerged!(query),
+      login: () => this.mergedLogin(r),
+      filter: (items) => filterPullRequests(items.map((m) => ({ pr: m, m })), r.filter).map((x) => x.m)
+    }
+    return { target, scope }
+  }
+
+  /** The profiles an `allProfiles` read covers: the active one (`first`) and then every other one whose connection can list merges. */
+  private async otherMergedProfiles(first: Resolved): Promise<Resolved[]> {
+    const config = await this.loadConfig()
+    const out: Resolved[] = []
+    for (const p of config.profiles) {
+      if (p.id === first.profileId) continue
+      const r = await this.resolve(p.id)
+      if (r && r.profileId === p.id && r.host.listMerged) out.push(r)
+    }
+    return out
+  }
+
+  /**
+   * A merged read through the store: reads from the host only what is not saved yet (`MergedSyncer`), and
+   * answers from what is saved. A host failure with something saved is an answer with `sync.failed`.
+   */
+  private async readMergedStored(resolved: Resolved, request: MergedRequest, key: string, force: boolean): Promise<MergedPullRequestsResult> {
+    const syncer = this.mergedSyncer!
+    const generation = this.generation(`merged|${resolved.key}`)
+    try {
+      const wanted = request.allProfiles === true
+      const reads: { read: MergedProfileRead; resolved: Resolved }[] = []
+      let activeScope: MergedScope = { kind: 'none', values: [] }
+      const active = await this.mergedTarget(resolved, request.mine)
+      if (active) activeScope = active.scope
+      else if (!wanted) return { ok: false, state: 'noScope', error: 'Choose repositories or organizations for this profile first' }
+      const profiles = [{ r: resolved, t: active?.target ?? null }]
+      if (wanted) {
+        for (const r of await this.otherMergedProfiles(resolved)) {
+          try {
+            profiles.push({ r, t: (await this.mergedTarget(r, request.mine))?.target ?? null })
+          } catch {
+            // A profile whose scope cannot be worked out contributes nothing.
+          }
+        }
+      }
+      for (const [i, { r, t }] of profiles.entries()) {
+        if (!t) continue
+        try {
+          const read = await syncer.read(t, { since: request.since, until: request.until, mine: request.mine }, force)
+          if (read.failure?.state === 'signedOut') this.logins.delete(r.hostKey)
+          reads.push({ read, resolved: r })
+        } catch (e) {
+          // The active profile's failure is the answer's; another profile's contributes nothing.
+          if (i === 0) throw e
+        }
+      }
+      const first = reads[0] && reads[0].resolved === resolved ? reads[0].read : undefined
+      const seen = new Set<string>()
+      const union = reads
+        .flatMap((x) => x.read.items)
+        .filter((p) => !seen.has(p.url) && Boolean(seen.add(p.url)))
+        .sort((a, b) => b.mergedAt - a.mergedAt || b.number - a.number)
+      if (first?.failure && !first.covered && union.length === 0) {
+        return { ok: false, state: first.failure.state, error: first.failure.error, ...(first.failure.retryAt !== undefined ? { retryAt: first.failure.retryAt } : {}) }
+      }
+      if (!first && union.length === 0) return { ok: false, state: 'noScope', error: 'Choose repositories or organizations for this profile first' }
+      const value: MergedOk = {
+        ok: true,
+        items: union.slice(0, MERGED_ANSWER_CAP),
+        version: mergedVersion(union.slice(0, MERGED_ANSWER_CAP)),
+        truncated: reads.some((x) => x.read.truncated) || union.length > MERGED_ANSWER_CAP,
+        provider: resolved.host.provider,
+        fetchedAt: first?.fetchedAt ?? Date.now(),
+        scope: activeScope,
+        sync: first?.sync ?? { state: 'saved' },
+        partial: reads.some((x) => x.read.partial),
+        ...(wanted ? { profiles: reads.filter((x) => x.read.items.length > 0).length } : {}),
+        logins: [...new Set(reads.flatMap((x) => (x.read.login ? [x.read.login] : [])))]
+      }
+      // Only an answer that no complete read backs (a cut GitLab list) is kept in memory; a write that finished meanwhile keeps even that out.
+      if (!reads.some((x) => x.read.covered) && !first?.failure && generation === this.generation(`merged|${resolved.key}`)) {
+        this.mergedCache.delete(key)
+        this.mergedCache.set(key, { at: Date.now(), value })
+        while (this.mergedCache.size > MERGED_ENTRIES) this.mergedCache.delete(this.mergedCache.keys().next().value!)
+      }
+      return value
+    } catch (e) {
+      this.noteFailure(resolved, e)
+      const failure = mergedFailureOf(e)
+      return { ok: false, state: failure.state, error: failure.error, ...(failure.retryAt !== undefined ? { retryAt: failure.retryAt } : {}) }
     }
   }
 
@@ -691,6 +862,7 @@ export class CodeHostService {
     this.methods.delete(methodsKey)
     // Every merged read of the profile is stale after a write: drop them, and let the next caller start a read of its own.
     this.bump(`merged|${r.key}`)
+    this.mergedDirty.add(r.key)
     for (const k of [...this.mergedCache.keys()]) if (k.startsWith(`${r.key}\n`)) this.mergedCache.delete(k)
     for (const k of [...this.mergedFlights.keys()]) if (k.startsWith(`${r.key}\n`)) this.mergedFlights.delete(k)
     for (const k of this.items.keys()) if (k.endsWith(`\n${ref.url}`)) this.items.delete(k)

@@ -1,13 +1,13 @@
 import { AppWindow, ExternalLink, GitPullRequest, Link } from 'lucide-react'
 import { ContextMenu } from 'radix-ui'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { prName, type MergedPullRequest } from '@workhub/core'
 import { Badge, Button } from '../../components/atoms'
 import { EmptyState, SlackBadge, useToast } from '../../components/molecules'
 import { seriesColor } from '../../components/molecules/StackedBarChart'
 import { useI18n } from '../../i18n/I18nProvider'
 import { cn } from '../../lib/cn'
-import { dayStart, groupByDay, groupOf, GROUP_SLOT } from '../../lib/mergedStats'
+import { dayStart, firstRows, groupByDay, groupOf, GROUP_SLOT } from '../../lib/mergedStats'
 import { usePullRequestSlack } from '../../lib/slackLinks'
 import type { MergedView } from './useMergedView'
 
@@ -85,18 +85,34 @@ function MergedRow({ pr, profileId, selected, onSelect }: { pr: MergedPullReques
   )
 }
 
+/** Rows drawn at first, and added per "Show more": thousands of rows (each with its menu and Slack badge) make the list slow. */
+export const MERGED_ROWS_PAGE = 200
+
 /** The merged list: sticky day headers ("Today", "Yesterday", "Thu, Nov 12" and how many merged), or plain rows in repository order. */
 export function MergedRows({ view, profileId, query, onClearSearch }: { view: MergedView; profileId: string | null; query: string; onClearSearch: () => void }) {
-  const { t, tn, formatDate } = useI18n()
+  const { t, tn, formatDate, formatNumber } = useI18n()
   const byRepo = view.ui.narrowing.order === 'repo'
-  const groups = useMemo(() => (byRepo ? [] : groupByDay(view.visible)), [byRepo, view.visible])
+  // A new search, filter, order, period or Who starts again at the first page; a background refresh keeps what was opened.
+  const listKey = `${query}|${JSON.stringify(view.ui.narrowing)}|${view.ui.period}|${view.ui.from}|${view.ui.to}|${view.ui.who}|${view.ui.profiles}`
+  const [page, setPage] = useState({ key: listKey, limit: MERGED_ROWS_PAGE })
+  const limit = page.key === listKey ? page.limit : MERGED_ROWS_PAGE
+  const groups = useMemo(() => (byRepo ? [] : firstRows(groupByDay(view.visible), limit)), [byRepo, view.visible, limit])
+  const left = view.visible.length - limit
+  const more =
+    left > 0 ? (
+      <div className="flex justify-center py-3">
+        <Button size="sm" onClick={() => setPage({ key: listKey, limit: limit + MERGED_ROWS_PAGE })}>
+          {t('pr.merged.showMore', { count: formatNumber(Math.min(left, MERGED_ROWS_PAGE)), total: formatNumber(left) })}
+        </Button>
+      </div>
+    ) : null
   const today = dayStart(Date.now())
   const dayLabel = (start: number) => (start === today ? t('pr.merged.today') : start === dayStart(today - 1) ? t('pr.merged.yesterday') : formatDate(start, { weekday: 'short', month: 'short', day: 'numeric' }))
   const row = (pr: MergedPullRequest) => <MergedRow key={pr.url} pr={pr} profileId={profileId} selected={pr.url === view.selected?.url} onSelect={() => view.select(pr.url)} />
 
   if (view.ui.period === 'custom' && !view.period) return null
   if (!view.hasData && view.failure === null) {
-    return <div className="px-3 py-6 text-center text-sm text-muted" role="status">{t('pr.merged.loading')}</div>
+    return <div className="px-3 py-6 text-center text-sm text-muted" role="status">{t('pr.merged.loading.first')}</div>
   }
   if (view.visible.length === 0) {
     const narrowed = query.trim() !== '' || view.current.length > 0
@@ -117,20 +133,24 @@ export function MergedRows({ view, profileId, query, onClearSearch }: { view: Me
     )
   }
   return byRepo ? (
-    <ul aria-label={t('pr.merged.list')} className="flex flex-col gap-0.5">
-      {view.visible.map(row)}
-    </ul>
+    <>
+      <ul aria-label={t('pr.merged.list')} className="flex flex-col gap-0.5">
+        {view.visible.slice(0, limit).map(row)}
+      </ul>
+      {more}
+    </>
   ) : (
     <div aria-label={t('pr.merged.list')} role="group">
       {groups.map((g) => (
         <section key={g.start} aria-label={dayLabel(g.start)}>
           <h3 className="sticky top-0 z-10 flex items-baseline justify-between bg-bg px-1.5 pt-3 pb-1.5 text-xs font-semibold text-subtle">
             <span>{dayLabel(g.start)}</span>
-            <span className="font-normal tabular-nums">{tn('pr.merged.dayCount', g.items.length)}</span>
+            <span className="font-normal tabular-nums">{tn('pr.merged.dayCount', g.total)}</span>
           </h3>
           <ul className="flex flex-col gap-0.5">{g.items.map(row)}</ul>
         </section>
       ))}
+      {more}
     </div>
   )
 }

@@ -198,13 +198,16 @@ export type CodeHostStatus =
  */
 export type CodeHostFailure = 'notMergeable' | 'checksFailing' | 'forbidden' | 'exists'
 
-export type CodeHostErrorKind = 'missingCli' | 'signedOut' | 'failed' | 'unsupported' | CodeHostFailure
+/** `rateLimited`: the host refused because of its rate limit (`CodeHostError.retryAt` says until when Workhub waits). */
+export type CodeHostErrorKind = 'missingCli' | 'signedOut' | 'failed' | 'unsupported' | 'rateLimited' | CodeHostFailure
 
 /** An error from the host with a message fit for the user (the CLI's own text). */
 export class CodeHostError extends Error {
   constructor(
     message: string,
-    readonly kind: CodeHostErrorKind = 'failed'
+    readonly kind: CodeHostErrorKind = 'failed',
+    /** For `rateLimited`: epoch milliseconds before which the host is not asked again. */
+    readonly retryAt?: number
   ) {
     super(message)
     this.name = 'CodeHostError'

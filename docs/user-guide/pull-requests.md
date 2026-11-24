@@ -53,17 +53,29 @@ list** sorts by newest update, oldest update or repository. Each row shows its s
 ## Merged
 
 **Merged** lists the pull requests merged in a period and, beside them, a summary of that period.
-Nothing is read until you open it; then it reads the last 30 days and keeps the answer for 10
-minutes (**Refresh** at the bottom reads again, and a merge made in Workhub makes it read again; GitHub's search can take a minute to list a
-new merge). A preset period ends today: coming back on another day moves it.
+Nothing is read until you open it; then it reads the last 30 days. Merged pull requests are saved in
+Workhub's database (a merge does not change), so later visits, other periods and a restart read only
+what is new: the days since the last read, and any day of the period never read before. Within 5 minutes
+of a read nothing is asked again; **Refresh** at the bottom, and the next read after a merge made in
+Workhub, read what is new at once. The last 15 minutes are always read again, since GitHub's search can take a while to list
+a new merge. The first visit of a large organization can take a few minutes. Reads are kept per
+account and scope: after `gh auth switch`, or a change of the profile's repositories or organizations,
+Workhub reads the period again. A repository you gain access to later under the same account and scope
+is not read for days already read. A search no visit used for 90 days (an old scope or account) is
+forgotten by the daily upkeep, with the merges only it had found. A
+preset period ends today: coming back on another day moves it.
 
 - **Everyone / Mine**: everyone's pull requests in the profile's scope, or only yours. **Everyone**
   needs a scope: set **Only these repositories** or **Organizations or users** for the profile (or a
   `scope` on the connection, or, on GitHub, folders); without one, only **Mine** is offered, so Workhub never
   reads every merge your login can see.
+- **This profile / All profiles** (shown when more than one profile has a code host): the merges of
+  this profile, or of every profile, each read in its own scope and with its own sign-in, without
+  repeats. The summary says how many profiles they come from.
 - **7 days / 30 days / 90 days / Custom…**: the period, up to 366 days; days are local days and weeks
   start on Monday.
-- The list groups the pull requests by day, newest first. Each row shows the branch it was merged
+- The list groups the pull requests by day, newest first, and draws the first 200; **Show more** adds
+  200 at a time (a day's header always counts all of its merges). Each row shows the branch it was merged
   into (**→ develop**), the lines added and removed, and the author. **Filters** narrows the list
   and the summary together: **Into** lists each target branch on its own (`main` and `master` apart),
   plus **release/\*** for every release branch; **Repo**; **Author**. These filters are separate from
@@ -71,14 +83,19 @@ new merge). A preset period ends today: coming back on another day moves it.
 - Select a pull request to read it as usual; **Back to summary** or Esc returns to the summary.
 
 The summary shows how many were merged (and the change against the previous period of the same
-length), lines added and removed, files changed, and the median time from opening to merge; a chart
+length), lines added and removed, and the median time from opening to merge; a chart
 per day or week, stacked by target branch (**main**, **master**, **release/\***, **develop**, **Other**),
 with **Table** for the same numbers; and tables by target branch and by repository.
 
 GitHub answers at most 1,000 results per search, so Workhub splits long periods into smaller
-searches and stops at the newest 3,000 merges; the summary says so when it stopped there, and the
-comparison with the previous period is then left out. GitLab does not report lines or files in its
-lists, so those show as not reported. Merged is not on the phone.
+searches; it shows at most the newest 10,000 merges of the period and the previous one, and says so
+when it stopped there (the comparison with the previous period is then left out). To stay under
+GitHub's rate limits it runs at most two searches at once and 40 a minute. If GitHub still answers
+with a rate limit, Workhub asks GitHub nothing more for a few minutes (until the time GitHub gives):
+Merged keeps showing what was saved, says until when it waits, and reads again by itself then. A line
+above the summary also says when some days of the period could not be read yet. File counts are not
+read: asking GitHub for them makes each search about four times slower. GitLab does not report lines in its lists, so they show as not reported. Merged is
+not on the phone.
 
 ## The pull request window
 

@@ -20,11 +20,12 @@ import {
 import { STATUS_META } from '../../lib/pullRequests'
 import type { MessageKey } from '../../i18n/translate'
 
+// Author first: the filter used most (the same order as the Merged view's panel).
 const FIELDS: { field: NarrowField; title: MessageKey }[] = [
+  { field: 'authors', title: 'pr.narrow.author' },
   { field: 'statuses', title: 'pr.narrow.status' },
   { field: 'bases', title: 'pr.narrow.base' },
-  { field: 'repos', title: 'pr.narrow.repo' },
-  { field: 'authors', title: 'pr.narrow.author' }
+  { field: 'repos', title: 'pr.narrow.repo' }
 ]
 const TICKET_CHOICES = ['with', 'without'] as const
 

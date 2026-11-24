@@ -19,13 +19,13 @@ interface Fake {
 /** A fake `gh`: sign-in checks, and a merged search over `data` that honors `repo:`, `merged:` and `author:@me` like GitHub (1,000 reachable results per search). */
 function fakeGh(data: Fake[] = []) {
   const calls: string[][] = []
-  const state = { data, signedOut: false, missing: false, searchError: null as string | null, gate: null as Promise<void> | null }
+  const state = { data, signedOut: false, missing: false, searchError: null as string | null, gate: null as Promise<void> | null, login: 'me', userError: null as string | null }
   const run: CliRunner = async (_cmd, args) => {
     calls.push(args)
     if (state.missing) throw new CliNotFoundError('gh')
     const ok = (stdout: string) => ({ code: 0, stdout, stderr: '' })
-    if (args[0] === 'auth' && args[1] === 'token') return state.signedOut ? { code: 1, stdout: '', stderr: 'no token' } : ok('token-1\n')
-    if (args[0] === 'api' && args.includes('user')) return ok('me\n')
+    if (args[0] === 'auth' && args[1] === 'token') return state.signedOut ? { code: 1, stdout: '', stderr: 'no token' } : ok(`token-${state.login}\n`)
+    if (args[0] === 'api' && args.includes('user')) return state.userError ? { code: 1, stdout: '', stderr: state.userError } : ok(`${state.login}\n`)
     if (args[0] === 'api' && args.includes('graphql')) {
       await state.gate
       if (state.searchError) return { code: 1, stdout: '', stderr: state.searchError }
@@ -272,6 +272,9 @@ describe('merged request validation', () => {
   it('accepts a period and rejects what is not one', () => {
     expect(validMergedRequest(REQUEST)).toEqual(REQUEST)
     expect(validMergedRequest({ since: SINCE, until: SINCE + 800 * DAY, mine: true })).not.toBeNull()
+    expect(validMergedRequest({ ...REQUEST, allProfiles: true })).toEqual({ ...REQUEST, allProfiles: true })
+    expect(validMergedRequest({ ...REQUEST, allProfiles: false })).toEqual(REQUEST)
+    expect(validMergedRequest({ ...REQUEST, allProfiles: 'yes' })).toBeNull()
     for (const bad of [
       null,
       'x',
@@ -302,5 +305,103 @@ describe('merged request validation', () => {
     expect(merged).toHaveBeenLastCalledWith('work', REQUEST, false)
     await handler('work', REQUEST, true)
     expect(merged).toHaveBeenLastCalledWith('work', REQUEST, true)
+  })
+})
+
+describe('CodeHostService.merged with the database (SqliteMergedStore)', () => {
+  const withStore = async (data: Fake[]) => {
+    const { WorkhubDb, SqliteMergedStore } = await import('@workhub/adapters/sqlite-store')
+    const db = WorkhubDb.open(':memory:', { log: () => {} })
+    const gh = fakeGh(data)
+    const config = {
+      ...emptyConfig(),
+      activeProfileId: 'work',
+      profiles: [{ id: 'work', name: 'Work', connections: { codeHost: 'gh' }, pullRequests: { repos: ['acme/api'] } }],
+      connections: [{ id: 'gh', provider: 'github', settings: {} }]
+    } as unknown as WorkhubConfig
+    const make = () => new CodeHostService(async () => config, { demo: false, run: gh.run, mergedStore: new SqliteMergedStore(db) })
+    return { gh, make }
+  }
+
+  it('reads a past period from GitHub once; a later visit and a restart answer from the database', async () => {
+    const { gh, make } = await withStore([
+      { repo: 'api', number: 1, mergedAt: SINCE + DAY },
+      { repo: 'api', number: 2, mergedAt: SINCE + 2 * DAY }
+    ])
+    const first = await make().merged('work', REQUEST)
+    expect(first).toMatchObject({ ok: true, sync: { state: 'synced' }, partial: false, logins: ['me'] })
+    expect(first.ok && first.items.map((i) => i.number)).toEqual([2, 1])
+    const searches = gh.searches().length
+    expect(searches).toBeGreaterThan(0)
+
+    const again = await make().merged('work', REQUEST)
+    expect(again).toMatchObject({ ok: true, sync: { state: 'saved' }, partial: false })
+    expect(again.ok && again.items.map((i) => i.number)).toEqual([2, 1])
+    expect(gh.searches()).toHaveLength(searches)
+  })
+
+  it('reads again after gh auth switch: another account may see other repositories', async () => {
+    const { gh, make } = await withStore([{ repo: 'api', number: 1, mergedAt: SINCE + DAY }])
+    const service = make()
+    await service.merged('work', REQUEST)
+    const searches = gh.searches().length
+    gh.state.login = 'other'
+    const after = await service.merged('work', REQUEST)
+    expect(after).toMatchObject({ ok: true, sync: { state: 'synced' } })
+    expect(gh.searches().length).toBeGreaterThan(searches)
+  })
+
+  it('reads the newest merges again after a write in Workhub, even moments after a read', async () => {
+    const { gh, make } = await withStore([{ repo: 'api', number: 1, mergedAt: Date.now() - DAY }])
+    const service = make()
+    const recent = { since: Date.now() - 7 * DAY, until: Date.now() + DAY, mine: false }
+    await service.merged('work', recent)
+    const searches = gh.searches().length
+    expect(await service.merged('work', recent)).toMatchObject({ ok: true, sync: { state: 'saved' } })
+    expect(gh.searches()).toHaveLength(searches)
+    await service.comment('work', 'https://github.com/acme/api/pull/1', 'thanks')
+    expect(await service.merged('work', recent)).toMatchObject({ ok: true, sync: { state: 'synced' } })
+    expect(gh.searches().length).toBeGreaterThan(searches)
+  })
+
+  it('keeps showing what was saved when the login cannot be read (offline), without reading', async () => {
+    const { gh, make } = await withStore([{ repo: 'api', number: 1, mergedAt: SINCE + DAY }])
+    const service = make()
+    await service.merged('work', REQUEST)
+    const searches = gh.searches().length
+    // A new token makes the host ask for the login again, and that fails.
+    gh.state.login = 'me-again'
+    gh.state.userError = 'error connecting to api.github.com'
+    const result = await service.merged('work', REQUEST, true)
+    expect(result).toMatchObject({ ok: true, sync: { state: 'failed', reason: 'error' } })
+    expect(result.ok && result.items.map((i) => i.number)).toEqual([1])
+    expect(gh.searches()).toHaveLength(searches)
+  })
+
+  it('does not send the items again when the view already holds them (same version)', async () => {
+    const { make } = await withStore([{ repo: 'api', number: 1, mergedAt: SINCE + DAY }])
+    const service = make()
+    const first = await service.merged('work', REQUEST)
+    expect(first.ok && first.version).toBeTruthy()
+    const version = first.ok ? first.version! : ''
+    const same = await service.merged('work', { ...REQUEST, known: version })
+    expect(same).toMatchObject({ ok: true, unchanged: true, items: [], version })
+    const other = await service.merged('work', { ...REQUEST, known: 'something-else' })
+    expect(other.ok && other.items.map((i) => i.number)).toEqual([1])
+    expect(other.ok && other.unchanged).toBeFalsy()
+  })
+
+  it('rejects a known version that is not a short string', () => {
+    expect(validMergedRequest({ ...REQUEST, known: 5 })).toBeNull()
+    expect(validMergedRequest({ ...REQUEST, known: 'x'.repeat(65) })).toBeNull()
+    expect(validMergedRequest({ ...REQUEST, known: 'v1' })).toEqual({ ...REQUEST, known: 'v1' })
+  })
+
+  it('answers a rate limit with nothing saved as rateLimited, with the time to ask again', async () => {
+    const { gh, make } = await withStore([{ repo: 'api', number: 1, mergedAt: SINCE + DAY }])
+    gh.state.searchError = 'You have exceeded a secondary rate limit. Please wait a few minutes before you try again.'
+    const result = await make().merged('work', REQUEST)
+    expect(result).toMatchObject({ ok: false, state: 'rateLimited' })
+    expect(!result.ok && result.retryAt).toBeGreaterThan(Date.now())
   })
 })

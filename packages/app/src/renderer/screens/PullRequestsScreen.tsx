@@ -215,10 +215,11 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
   }
 
   const radios = (
-    <div role="radiogroup" aria-label={t('pr.filterLabel')} className="flex gap-1 rounded-md bg-surface-hover p-0.5">
+    <div role="radiogroup" aria-label={t('pr.filterLabel')} className="flex min-w-0 gap-1 rounded-md bg-surface-hover p-0.5">
       {CHOICES.map((c) => {
         const on = c === 'merged' ? showMerged : !showMerged && filter === c
         const count = c === 'merged' ? (merged.hasData ? merged.visible.length : null) : countOf(c)
+        const label = t(`pr.filter.${c}`)
         return (
           <button
             key={c}
@@ -226,10 +227,12 @@ export function PullRequestsScreen({ profile, focus, onOpenSettings, visible: sh
             role="radio"
             aria-checked={on}
             onClick={() => choose(c)}
-            className={cn('h-7 flex-auto whitespace-nowrap rounded-sm px-1 text-sm transition-colors duration-150', on ? 'bg-surface-raised font-semibold text-text shadow-sm' : 'text-muted hover:text-text')}
+            // A long word (a language's "merged") is cut with an ellipsis, never the count: the full name is in the tooltip.
+            title={label}
+            className={cn('flex h-7 min-w-0 flex-auto items-center justify-center whitespace-nowrap rounded-sm px-1 text-sm transition-colors duration-150', on ? 'bg-surface-raised font-semibold text-text shadow-sm' : 'text-muted hover:text-text')}
           >
-            {t(`pr.filter.${c}`)}
-            {count !== null && <span className="ml-1 text-xs tabular-nums text-subtle">{count}</span>}
+            <span className="min-w-0 truncate">{label}</span>
+            {count !== null && <span className="ml-1 shrink-0 text-xs tabular-nums text-subtle">{count}</span>}
           </button>
         )
       })}

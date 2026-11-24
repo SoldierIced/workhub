@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MergedPullRequest } from '@workhub/core'
-import type { MergedScope, MergedRequest } from '@shared/codehost-api'
+import type { MergedScope, MergedRequest, MergedSync } from '@shared/codehost-api'
 import {
   addDays,
   applyMergedNarrowing,
@@ -20,10 +20,12 @@ import {
   type MergedNarrowing,
   type Period
 } from '../../lib/mergedStats'
-import { useMerged } from '../../mergedStore'
+import { useConfig } from '../../configStore'
+import { peekMerged, useMerged } from '../../mergedStore'
 
 export type PeriodChoice = 7 | 30 | 90 | 'custom'
 export type Who = 'all' | 'mine'
+export type Profiles = 'this' | 'all'
 export type Display = 'chart' | 'table'
 
 interface Ui {
@@ -32,6 +34,8 @@ interface Ui {
   from: string
   to: string
   who: Who
+  /** Whose saved merges: this profile's or every profile's. */
+  profiles: Profiles
   gran: Granularity | null
   display: Display
   narrowing: MergedNarrowing
@@ -44,7 +48,18 @@ interface Ui {
 
 const fresh = (profileId: string | null): Ui => {
   const now = Date.now()
-  return { profileId, period: 30, from: localDateValue(addDays(now, -29)), to: localDateValue(now), who: 'all', gran: null, display: 'chart', narrowing: NO_MERGED_NARROWING, selectedUrl: null, noScope: false, anchor: now }
+  return { profileId, period: 30, from: localDateValue(addDays(now, -29)), to: localDateValue(now), who: 'all', profiles: 'this', gran: null, display: 'chart', narrowing: NO_MERGED_NARROWING, selectedUrl: null, noScope: false, anchor: now }
+}
+
+/** The merges whose author is one of `logins` (lowercase, as the read reports them): Mine taken from Everyone. */
+export function mergedByLogins(items: readonly MergedPullRequest[], logins: readonly string[]): MergedPullRequest[] {
+  return items.filter((p) => logins.includes(p.author.toLowerCase()))
+}
+
+/** How many profiles have a code host connection (the config lists it and it exists). */
+export function countCodeHostProfiles(config: { profiles: readonly { connections: { codeHost?: string } }[]; connections: readonly { id: string; kind: string }[] } | undefined): number {
+  if (!config) return 0
+  return config.profiles.filter((p) => config.connections.some((c) => c.id === p.connections.codeHost && c.kind === 'codeHost')).length
 }
 
 export interface MergedView {
@@ -54,6 +69,16 @@ export interface MergedView {
   /** Whether the period's rows are mine only (chosen, or the profile has no scope). */
   mine: boolean
   gran: Granularity
+  /** The control for This profile / All profiles shows: more than one profile has a code host connection. */
+  canChooseProfiles: boolean
+  /** The items come from every profile. */
+  allProfiles: boolean
+  /** How many profiles the items come from (with all profiles). */
+  profileCount: number | null
+  /** How the read went against the host; absent counts as synced. */
+  sync: MergedSync
+  /** Part of the period was not read yet. */
+  partial: boolean
   days: number
   provider: string | null
   scope: MergedScope | null
@@ -63,7 +88,7 @@ export interface MergedView {
   /** Rows read for the whole request (both periods). */
   readCount: number
   loading: boolean
-  failure: { state: string; error: string } | null
+  failure: { state: string; error: string; retryAt?: number } | null
   hasData: boolean
   /** The current period before search and filters. */
   current: MergedPullRequest[]
@@ -77,6 +102,7 @@ export interface MergedView {
   setPeriod: (p: PeriodChoice) => void
   setCustom: (from: string, to: string) => void
   setWho: (w: Who) => void
+  setProfiles: (p: Profiles) => void
   setGran: (g: Granularity) => void
   setDisplay: (d: Display) => void
   setNarrowing: (n: MergedNarrowing) => void
@@ -108,8 +134,17 @@ export function useMergedView(profileId: string | null, requested: boolean, open
   }, [ui.period, anchorDay, custom])
   const rangeError = custom && 'error' in custom ? custom.error : null
   const mine = ui.who === 'mine' || ui.noScope
+  const config = useConfig()
+  const canChooseProfiles = countCodeHostProfiles(config?.config) > 1
+  // The choice only counts while the control shows (a profile lost its connection meanwhile: back to this profile).
+  const allProfiles = canChooseProfiles && ui.profiles === 'all'
 
-  const request = useMemo<MergedRequest | null>(() => (requested && period ? { since: previousSince(period), until: period.until, mine } : null), [requested, period, mine])
+  const ownRequest = useMemo<MergedRequest | null>(() => (requested && period ? { since: previousSince(period), until: period.until, mine, ...(allProfiles ? { allProfiles: true } : {}) } : null), [requested, period, mine, allProfiles])
+  const everyoneRequest = useMemo<MergedRequest | null>(() => (requested && period && !ui.noScope ? { since: previousSince(period), until: period.until, mine: false, ...(allProfiles ? { allProfiles: true } : {}) } : null), [requested, period, ui.noScope, allProfiles])
+  // Mine, once Everyone of the same period was read, is Everyone's merges by the signed-in login(s): shown at once, with no read of its own.
+  const everyoneLogins = ui.who === 'mine' && everyoneRequest ? peekMerged(profileId, everyoneRequest).data?.logins : undefined
+  const fromEveryone = everyoneLogins !== undefined && everyoneLogins.length > 0
+  const request = fromEveryone ? everyoneRequest : ownRequest
   const entry = useMerged(profileId, request, open)
 
   // The read says when Everyone has nothing to search in: remember it and use Mine. Any read that reports a
@@ -127,7 +162,8 @@ export function useMergedView(profileId: string | null, requested: boolean, open
     if (open && presetDay !== null && presetDay !== localDateValue(Date.now())) patch({ anchor: Date.now() })
   }, [open, presetDay, patch])
 
-  const items = entry.data?.items
+  const read = entry.data?.items
+  const items = useMemo(() => (read && fromEveryone ? mergedByLogins(read, everyoneLogins!) : read), [read, fromEveryone, everyoneLogins])
   const parts = useMemo(() => {
     if (!items || !period) return { current: [], previous: [] }
     return splitPeriods(items, period)
@@ -147,6 +183,11 @@ export function useMergedView(profileId: string | null, requested: boolean, open
     rangeError,
     mine,
     gran,
+    canChooseProfiles,
+    allProfiles,
+    profileCount: allProfiles ? (entry.data?.profiles ?? null) : null,
+    sync: entry.data?.sync ?? { state: 'synced' },
+    partial: entry.data?.partial === true,
     days,
     provider: entry.data?.provider ?? null,
     scope: entry.data?.scope ?? null,
@@ -165,6 +206,7 @@ export function useMergedView(profileId: string | null, requested: boolean, open
     setPeriod: (p) => patch({ period: p, gran: null, anchor: Date.now(), selectedUrl: null }),
     setCustom: (from, to) => patch({ period: 'custom', from, to, gran: null, anchor: Date.now(), selectedUrl: null }),
     setWho: (w) => patch({ who: w, selectedUrl: null }),
+    setProfiles: (p) => patch({ profiles: p, selectedUrl: null }),
     setGran: (g) => patch({ gran: g }),
     setDisplay: (d) => patch({ display: d }),
     setNarrowing: (n) => patch({ narrowing: n }),

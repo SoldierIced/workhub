@@ -13,6 +13,7 @@ const GROUP_LABEL: Record<StorageGroupName, MessageKey> = {
   usageSummaries: 'storage.group.usageSummaries',
   historyIndex: 'storage.group.historyIndex',
   events: 'storage.group.events',
+  pullRequests: 'storage.group.pullRequests',
   state: 'storage.group.state'
 }
 

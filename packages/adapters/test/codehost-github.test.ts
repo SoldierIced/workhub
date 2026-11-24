@@ -55,6 +55,34 @@ describe('GitHubCodeHost lists', () => {
     expect(seen[0]!.some((a) => a.startsWith('after='))).toBe(false)
   })
 
+  it('asks the same page again with half the pull requests when GitHub runs out of time (HTTP 502), then gives up', async () => {
+    const node = (n: number) => ({ number: n, url: `https://github.com/acme/app/pull/${n}`, repository: { name: 'app', owner: { login: 'acme' } } })
+    const sizes: string[] = []
+    let failures = 1
+    const run: CliRunner = async (_c, args) => {
+      sizes.push(args.find((a) => a.startsWith('first='))!)
+      if (failures-- > 0) return { code: 1, stdout: '', stderr: 'gh: HTTP 502' }
+      return { code: 0, stdout: JSON.stringify({ data: { search: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node(1)] } } }), stderr: '' }
+    }
+    expect((await new GitHubCodeHost({ run }).listAuthored({})).map((p) => p.number)).toEqual([1])
+    expect(sizes).toEqual(['first=50', 'first=25'])
+
+    sizes.length = 0
+    failures = 10
+    await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toMatchObject({ kind: 'failed', message: 'gh: HTTP 502' })
+    expect(sizes).toEqual(['first=50', 'first=25', 'first=12'])
+  })
+
+  it('does not retry a failure that is not GitHub running out of time', async () => {
+    let calls = 0
+    const run: CliRunner = async () => {
+      calls++
+      return { code: 1, stdout: '', stderr: 'gh: Could not resolve to a Repository (HTTP 404)' }
+    }
+    await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toBeInstanceOf(CodeHostError)
+    expect(calls).toBe(1)
+  })
+
   it('turns an unreadable answer into a CodeHostError', async () => {
     const run: CliRunner = async () => ({ code: 0, stdout: 'not json', stderr: '' })
     await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toBeInstanceOf(CodeHostError)

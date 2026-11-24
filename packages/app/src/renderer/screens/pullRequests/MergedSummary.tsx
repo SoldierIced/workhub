@@ -24,7 +24,7 @@ import { relativeTime } from '../../lib/pullRequests'
 import type { MergedScope } from '@shared/codehost-api'
 import { BranchTable, Lines, RepoTable } from './MergedTables'
 import { Unavailable } from './Unavailable'
-import type { Display, MergedView, PeriodChoice, Who } from './useMergedView'
+import type { Display, MergedView, PeriodChoice, Profiles, Who } from './useMergedView'
 
 export interface MergedSummaryProps {
   view: MergedView
@@ -103,6 +103,17 @@ function Header({ view, onOpenSettings }: { view: MergedView; onOpenSettings: Me
         </p>
       </div>
       <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        {view.canChooseProfiles && (
+          <Toggle<Profiles>
+            label={t('pr.merged.profiles.label')}
+            value={view.allProfiles ? 'all' : 'this'}
+            onChange={view.setProfiles}
+            options={[
+              { value: 'this', label: t('pr.merged.profiles.this') },
+              { value: 'all', label: t('pr.merged.profiles.all') }
+            ]}
+          />
+        )}
         <Toggle<Who>
           label={t('pr.merged.who.label')}
           value={view.mine ? 'mine' : 'all'}
@@ -173,7 +184,7 @@ function Strip({ view }: { view: MergedView }) {
   const days = (n: number) => tn('pr.merged.days', n, { count: formatNumber(n, { maximumFractionDigits: 1 }) })
   const notReported = <span className="text-sm font-normal text-subtle">{t('pr.merged.notReported', { provider })}</span>
   return (
-    <dl className="mx-6 mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border @2xl:grid-cols-4" data-testid="merged-strip">
+    <dl className={cn('mx-6 mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border', files === 'none' ? '@2xl:grid-cols-3' : '@2xl:grid-cols-4')} data-testid="merged-strip">
       <Cell title={t('pr.merged.stat.merged')} value={formatNumber(totals.count)} note={deltaText} />
       <Cell
         title={t('pr.merged.stat.lines')}
@@ -181,12 +192,15 @@ function Strip({ view }: { view: MergedView }) {
         note={lines === 'none' ? null : avg(averagePer(totals.additions + totals.deletions, totals.withLines))}
         notes={lines === 'partial' ? <div className="text-xs text-subtle">{t('pr.merged.withoutLines', { count: formatNumber(totals.count - totals.withLines) })}</div> : null}
       />
-      <Cell
-        title={t('pr.merged.stat.files')}
-        value={files === 'none' ? notReported : formatNumber(totals.files)}
-        note={files === 'none' ? null : avg(averagePer(totals.files, totals.withFiles))}
-        notes={files === 'partial' ? <div className="text-xs text-subtle">{t('pr.merged.withoutFiles', { count: formatNumber(totals.count - totals.withFiles) })}</div> : null}
-      />
+      {/* GitHub's merged search does not ask for file counts (they make it slow): no item reporting them hides the cell. */}
+      {files !== 'none' && (
+        <Cell
+          title={t('pr.merged.stat.files')}
+          value={formatNumber(totals.files)}
+          note={avg(averagePer(totals.files, totals.withFiles))}
+          notes={files === 'partial' ? <div className="text-xs text-subtle">{t('pr.merged.withoutFiles', { count: formatNumber(totals.count - totals.withFiles) })}</div> : null}
+        />
+      )}
       <Cell
         title={t('pr.merged.stat.lead')}
         value={totals.leadMedianDays === null ? <span className="text-subtle">{t('pr.merged.noData')}</span> : <>{days(totals.leadMedianDays)} <span className="text-xs font-normal text-muted">{t('pr.merged.leadMedian')}</span></>}
@@ -275,11 +289,15 @@ function Chart({ view }: { view: MergedView }) {
 }
 
 function Skeleton() {
+  const { t } = useI18n()
   return (
-    <div aria-hidden className="animate-pulse" data-testid="merged-skeleton">
-      <div className="mx-6 mt-4 h-20 rounded-lg border border-border bg-surface" />
-      <div className="mx-6 mt-6 h-6 w-64 rounded bg-surface-hover" />
-      <div className="mx-6 mt-2.5 h-56 rounded-lg border border-border bg-surface" />
+    <div data-testid="merged-skeleton">
+      <p className="mx-6 mt-4 text-sm text-muted" role="status">{t('pr.merged.loading.first')}</p>
+      <div aria-hidden className="animate-pulse">
+        <div className="mx-6 mt-4 h-20 rounded-lg border border-border bg-surface" />
+        <div className="mx-6 mt-6 h-6 w-64 rounded bg-surface-hover" />
+        <div className="mx-6 mt-2.5 h-56 rounded-lg border border-border bg-surface" />
+      </div>
     </div>
   )
 }
@@ -296,7 +314,8 @@ function Banner({ tone, children, action }: { tone: 'warning' | 'info'; children
 
 /** The Merged view's right side when no merged PR is open: the period's numbers, the chart and the two tables. */
 export function MergedSummary({ view, host, onOpenSettings }: MergedSummaryProps) {
-  const { t, locale, formatNumber } = useI18n()
+  const { t, tn, locale, formatNumber, formatDate } = useI18n()
+  const at = (ms: number) => formatDate(ms, { hour: '2-digit', minute: '2-digit' })
   const body = (): ReactNode => {
     if (!view.period) return null
     if (!view.hasData) {
@@ -304,16 +323,23 @@ export function MergedSummary({ view, host, onOpenSettings }: MergedSummaryProps
       if (!f) return <Skeleton />
       if (f.state === 'noScope') return <Skeleton />
       if (f.state === 'unsupported') return <EmptyState icon={<GitPullRequest className="size-6" aria-hidden />} title={t('pr.merged.unsupported.title')} description={t('pr.merged.unsupported.description')} />
-      return <Unavailable state={f.state} message={f.error} provider={host.provider} cli={host.cli} onOpenSettings={onOpenSettings} onRetry={view.refresh} />
+      return <Unavailable state={f.state} message={f.error} retryAt={f.retryAt} provider={host.provider} cli={host.cli} onOpenSettings={onOpenSettings} onRetry={view.refresh} />
     }
     const rows = byBranch(view.visible)
     return (
       <>
-        {view.failure && (
+        {view.sync.state === 'failed' ? (
           <Banner tone="warning" action={<RefreshButton variant="button" size="sm" label={t('pr.retry')} onRefresh={view.refresh} />}>
-            {t('pr.merged.error.kept', { message: view.failure.error })}
+            {view.sync.reason === 'rateLimited' && view.sync.retryAt !== undefined ? t('pr.merged.sync.rateLimited', { time: at(view.sync.retryAt) }) : t('pr.merged.sync.failed', { error: view.sync.error })}
           </Banner>
+        ) : (
+          view.failure && (
+            <Banner tone="warning" action={<RefreshButton variant="button" size="sm" label={t('pr.retry')} onRefresh={view.refresh} />}>
+              {view.failure.state === 'rateLimited' && view.failure.retryAt !== undefined ? t('pr.merged.sync.rateLimited', { time: at(view.failure.retryAt) }) : t('pr.merged.error.kept', { message: view.failure.error })}
+            </Banner>
+          )
         )}
+        {view.partial && view.sync.state !== 'failed' && <Banner tone="info">{t('pr.merged.partial')}</Banner>}
         {view.truncated && <Banner tone="info">{t('pr.merged.truncated', { count: formatNumber(view.readCount) })}</Banner>}
         <Strip view={view} />
         {view.visible.length === 0 ? (
@@ -334,6 +360,7 @@ export function MergedSummary({ view, host, onOpenSettings }: MergedSummaryProps
           </>
         )}
         <footer className="mx-6 mt-4 mb-6 flex items-center gap-2 text-xs text-subtle">
+          {view.allProfiles && view.profileCount !== null && <span>{tn('pr.merged.fromProfiles', view.profileCount)}</span>}
           {view.provider && view.fetchedAt !== null && <span>{t('pr.merged.readFrom', { provider: t(view.provider === 'gitlab' ? 'pr.host.gitlab' : 'pr.host.github'), time: relativeTime(view.fetchedAt, Date.now(), locale) })}</span>}
           {view.demo && <Badge tone="warning">{t('pr.demo')}</Badge>}
           <RefreshButton label={t('pr.refresh')} loading={view.loading} onRefresh={view.refresh} />

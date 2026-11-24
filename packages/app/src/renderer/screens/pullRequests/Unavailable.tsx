@@ -8,6 +8,8 @@ export interface UnavailableProps {
   state: string
   /** The host's own text when the read failed. */
   message?: string
+  /** When a rate limit lifts (ms since the epoch), for the rateLimited state. */
+  retryAt?: number
   provider?: string
   cli?: string
   onOpenSettings: (tab?: string) => void
@@ -15,8 +17,8 @@ export interface UnavailableProps {
 }
 
 /** Why there is nothing to show: no connection, a missing CLI, no login, or a failed read. */
-export function Unavailable({ state, message, provider, cli: cliName, onOpenSettings, onRetry }: UnavailableProps) {
-  const { t } = useI18n()
+export function Unavailable({ state, message, retryAt, provider, cli: cliName, onOpenSettings, onRetry }: UnavailableProps) {
+  const { t, formatDate } = useI18n()
   const cli = cliName ?? 'gh'
   const host = provider === 'gitlab' ? t('pr.host.gitlab') : t('pr.host.github')
   const retry = (
@@ -37,6 +39,15 @@ export function Unavailable({ state, message, provider, cli: cliName, onOpenSett
       return <EmptyState icon={icon} title={t('pr.missingCli.title', { cli })} description={t('pr.missingCli.description', { cli, url: installUrl(cli) })} action={retry} />
     case 'signedOut':
       return <EmptyState icon={icon} title={t('pr.signedOut.title', { host })} description={t('pr.signedOut.description', { command: loginCommand(cli) })} action={retry} />
+    case 'rateLimited':
+      return (
+        <EmptyState
+          icon={icon}
+          title={t('pr.rateLimited.title')}
+          description={retryAt !== undefined ? t('pr.rateLimited.description', { time: formatDate(retryAt, { hour: '2-digit', minute: '2-digit' }) }) : message}
+          action={retry}
+        />
+      )
     default:
       return <EmptyState icon={icon} title={t('pr.error.title')} description={message} action={retry} />
   }
