@@ -111,6 +111,7 @@ export const en = {
   'groups.members.one': '1 session',
   'groups.members.other': '{count} sessions',
   'groups.reopenFailed': 'Could not reopen the session: {message}',
+  'groups.reopenNoAgent': 'Could not reopen the session: {agent} is no longer set up in Workhub. Add it again in Settings → Agents, or start a new session.',
   'attention.error': 'Error',
   'attention.needsAnswer': 'Needs an answer',
   'attention.readyToReview': 'Ready to review',

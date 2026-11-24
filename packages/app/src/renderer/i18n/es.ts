@@ -110,6 +110,7 @@ export const es: Record<keyof typeof en, string> = {
   'groups.members.one': '1 sesión',
   'groups.members.other': '{count} sesiones',
   'groups.reopenFailed': 'No se pudo reabrir la sesión: {message}',
+  'groups.reopenNoAgent': 'No se pudo reabrir la sesión: {agent} ya no está configurado en Workhub. Vuelve a agregarlo en Ajustes → Agentes o empieza una sesión nueva.',
   'attention.error': 'Error',
   'attention.needsAnswer': 'Necesita una respuesta',
   'attention.readyToReview': 'Lista para revisar',

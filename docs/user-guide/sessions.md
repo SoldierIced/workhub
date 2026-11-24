@@ -300,7 +300,9 @@ with "Earlier messages are not shown", and the full conversation stays in Histor
   down** (Alt+↑ and Alt+↓), **Move to group**, **Take out of group**, and for groups **Rename
   group…** and **Delete group** (its open sessions go back to the list; nothing is closed). A
   closed session stays in its group, marked **Closed**; click it to reopen, or **Delete session**
-  to take it out of the sidebar for good. Order within each group is kept.
+  to take it out of the sidebar for good. It reopens in its own profile and account, whichever
+  profile is active (also after it continued in another account); if its agent is no longer set
+  up in Workhub, Workhub says so instead of starting a new conversation. Order within each group is kept.
 - **Sub-groups**: a group's menu (right click, or its **…**) has **New session** (the New session
   dialog with that group picked), **New sub-group…**, **Move into group** and, for a sub-group,
   **Move to the top level**. Sub-groups are listed inside their group, before its sessions, and
