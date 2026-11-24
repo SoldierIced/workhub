@@ -1,5 +1,6 @@
 import { CircleAlert, Plus } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
+import { sessionIdentity } from '@workhub/core'
 import { terminalChannel } from '@shared/api'
 import { Button, Spinner } from '../components/atoms'
 import { ErrorBoundary } from '../components/ErrorBoundary'
@@ -7,10 +8,13 @@ import { EmptyState } from '../components/molecules'
 import { BrandMark } from '../components/organisms'
 import { useI18n } from '../i18n/I18nProvider'
 import { usePrefs } from '../lib/prefs'
+import { useConfig } from '../configStore'
 import { cn } from '../lib/cn'
 import { useSession, type SessionData } from '../store'
 import { AiReviewAside } from './sessions/AiReviewPanel'
 import { ChatPane } from './sessions/ChatPane'
+import { ChatBoardPanel } from './boards/ChatBoards'
+import { useBoardPanelOpen } from '../lib/boardPanel'
 import { MonitorPanel } from './sessions/MonitorPanel'
 import { PendingSwitchBar } from './sessions/PendingSwitchBar'
 import { SessionHeader } from './sessions/SessionHeader'
@@ -75,6 +79,9 @@ export const SessionPane = memo(function SessionPane({ data, visible, theme }: {
   const { t } = useI18n()
   const v = data.view
   const monitorHidden = usePrefs().monitorHidden
+  const boardPanel = useBoardPanelOpen(v.id)
+  const config = useConfig()
+  const profileId = v.profileId ?? config?.config.activeProfileId ?? null
   // A shell, once opened, stays mounted so its scrollback survives switching back and forth.
   const [shellOpened, setShellOpened] = useState(false)
   useEffect(() => {
@@ -118,6 +125,8 @@ export const SessionPane = memo(function SessionPane({ data, visible, theme }: {
             </div>
           )}
         </div>
+        {/* The chat's live board, unfolded with the Board button of its bar. */}
+        {boardPanel && <ChatBoardPanel sessionId={v.id} profileId={profileId} chat={sessionIdentity(v)} visible={visible} />}
         {/* Folded away with the session header's monitor button (⇧⌘M), as Workhub 1's Inspector. */}
         {monitorHidden ? null : v.screens.includes('monitor') ? <MonitorPanel data={data} visible={visible} /> : <AiReviewAside view={v} />}
       </div>

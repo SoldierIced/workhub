@@ -58,6 +58,11 @@ describe('SessionBar', () => {
     expect(out).toContain('Add retries to the orders client\n/work/acme/orders')
   })
 
+  it('names the WSL distribution of a session that runs in one, in the title tooltip', () => {
+    expect(bar(view({ hostId: 'wsl:Ubuntu' }))).toContain('title="Add retries to the orders client\nWSL: Ubuntu\n/work/acme/orders"')
+    expect(bar(view())).toContain('title="Add retries to the orders client\n/work/acme/orders"')
+  })
+
   it('offers Stop in the bar only while the agent works', () => {
     expect(bar(view())).not.toContain('data-testid="session-stop"')
     const working = bar(view({ state: 'busy', stateSince: 8 * 60_000 }))

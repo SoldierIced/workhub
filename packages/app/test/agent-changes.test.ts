@@ -32,7 +32,7 @@ const profile: Profile = {
   name: 'Work',
   connections: {},
   accountIds: [],
-  modules: { flows: false, health: false, chatWatcher: false, automations: true, flowMaps: true, planner: true },
+  modules: { flows: false, health: false, chatWatcher: false, automations: true, flowMaps: true, planner: true, boards: false },
   planner: { ...DEFAULT_PLANNER_SETTINGS, agentMilestones: 'allow' }
 }
 

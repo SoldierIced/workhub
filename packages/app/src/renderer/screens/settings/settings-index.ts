@@ -190,6 +190,7 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     ["module.health", "health.settings.moduleHint", "help.profile.modules"],
     ["module.flowMaps", "flowMaps.settings.moduleHint"],
     ["module.planner", "plan.settings.moduleHint"],
+    ["module.boards", "boards.settings.moduleHint"],
     ["module.chatWatcher", "settings.modules.chatWatcherHint"],
     ["module.automations", "settings.modules.automationsHint"],
     ["nav.tickets", "settings.modules.ticketsHint"],

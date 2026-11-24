@@ -7,7 +7,9 @@
  * On Windows Node cannot serve a Unix socket and curl cannot talk to a named pipe, so it is HTTP on
  * a random loopback port guarded by a token made at each launch: sessions get `WORKHUB_URL` and
  * `WORKHUB_TOKEN` instead, and every request sends `Authorization: Bearer $WORKHUB_TOKEN`. The
- * `workhub-*` skills pick whichever the session has.
+ * `workhub-*` skills pick whichever the session has. A session on another host (a WSL
+ * distribution) gets `WORKHUB_SOCKET` naming a socket of that host, which relays each request to
+ * `serveControl` here over the host channel (`host-control.ts`), even when the app runs on Windows.
  *
  * Reaching the endpoint does not say which session is calling: every session also gets its own
  * token, `WORKHUB_SESSION_TOKEN`, sent as `X-Workhub-Token`, and a request acts as the session of
@@ -23,6 +25,12 @@
  *
  *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/flow-maps \
  *     -H 'content-type: application/json' --data-binary @checkout.flow-map.json
+ *
+ * A tool that follows a job done by several agents sends it to the panel of its chat as one JSON
+ * board document (the whole board each time; `boards.ts`). 413 over 256 KB, 409 when Live boards is off:
+ *
+ *   curl --unix-socket "$WORKHUB_SOCKET" -X POST http://workhub/v1/boards \
+ *     -H 'content-type: application/json' --data-binary @release.board.json
  *
  * And it takes proposals for Plan's inbox (pending items the user approves, keeps or discards):
  *
@@ -73,16 +81,19 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, statSync, unlinkSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import type { Duplex } from 'node:stream'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative } from 'node:path'
+import { isAbsolute, join, posix, relative } from 'node:path'
 import type { AnalyticsControl } from './analytics-control'
 import { authorizeControl, bindBody, type ControlAuth, type ControlCaller } from './control-auth'
 import type { AutomationControl } from './automation-control'
 import type { PlanControl } from './plan-control'
 import type { SessionControl } from './session-control'
 
-const MAX_BODY = 256 * 1024
+/** The largest request body the endpoint reads, in bytes (a host's socket applies the same cap). */
+export const MAX_CONTROL_BODY = 256 * 1024
+const BOARD_TOO_LARGE = 'the board is over 256 KB: shorten the log or the tables'
 const MAX_REPOS = 20
 
 export interface ReviewRequestRepo {
@@ -103,8 +114,15 @@ export interface ControlDeps {
   auth: ControlAuth
   /** Opens the session's "Review changes" window on these repos (plus the ones it finds itself). */
   openReview(sessionId: string, repos: ReviewRequestRepo[]): ControlResult | Promise<ControlResult>
+  /**
+   * Whether a review request's path is a folder where the session's files live (its host: a WSL
+   * distribution, or this computer). Without it, this computer's disk is checked.
+   */
+  isReviewFolder?(sessionId: string, path: string): Promise<boolean>
   /** Validates and stores a flow map (the Flow maps screen); errors name the fields. `file` is a display name (`<id>.json`): maps live in the database. */
   saveFlowMap?(map: unknown, caller?: ControlCaller): { ok: true; file: string; id: string; note?: string } | { ok: false; errors: string[] }
+  /** Validates and stores a Live boards document for the caller's profile (`boards.ts`); refusals carry their HTTP status. Not journaled: a board is display only. */
+  saveBoard?(board: unknown, caller: NonNullable<ControlCaller>): Promise<{ ok: true; id: string; dropped: string[] } | { ok: false; status: number; error: string; errors?: string[] }>
   /** Adds the items of a body to a profile's inbox as pending (`parseInboxProposals` checks it). */
   addInboxItems?(body: unknown): Promise<{ ok: true; added: string[]; duplicates: string[] } | { ok: false; status: number; error: string }>
   /** Plan for agents: today's meetings, reading and updating the inbox, milestones, people. */
@@ -202,7 +220,7 @@ export function hasControlToken(req: Pick<IncomingMessage, 'headers'>, token: st
 }
 
 /** The repos of a review request, checked one by one; a string when the body is not one. */
-export function parseReviewBody(body: unknown, isDir: (path: string) => boolean): ReviewRequestRepo[] | string {
+export async function parseReviewBody(body: unknown, isDir: (path: string) => boolean | Promise<boolean>): Promise<ReviewRequestRepo[] | string> {
   if (body === undefined || body === null) return []
   if (typeof body !== 'object') return 'the body must be a JSON object'
   const repos = (body as { repos?: unknown }).repos
@@ -214,32 +232,37 @@ export function parseReviewBody(body: unknown, isDir: (path: string) => boolean)
     const path = typeof r === 'string' ? r : r && typeof r === 'object' ? (r as { path?: unknown }).path : undefined
     const base = r && typeof r === 'object' ? (r as { base?: unknown }).base : undefined
     if (typeof path !== 'string' || !isAbsolute(path)) return 'every repo needs an absolute "path"'
-    if (!isDir(path)) return `not a folder: ${path}`
+    if (!(await isDir(path))) return `not a folder: ${path}`
     if (base !== undefined && (typeof base !== 'string' || !/^[\w./-]{1,200}$/.test(base))) return `bad "base" for ${path}`
     out.push({ path, ...(typeof base === 'string' && base ? { base } : {}) })
   }
   return out
 }
 
+/** A path with its symlinks resolved on this computer's disk; null when it does not exist. */
+const localRealpath = async (p: string): Promise<string | null> => {
+  try {
+    return realpathSync(p)
+  } catch {
+    return null
+  }
+}
+
 /**
  * The first path of a review request that is not inside one of `roots` (the session's folder or
  * worktree and the folders of its profile), compared by real path so a symlink or `..` cannot
- * leave them; null when all are inside. A root that does not exist is skipped.
+ * leave them; null when all are inside. A root that does not exist is skipped. `real` resolves on
+ * the session's host (this computer's disk by default); POSIX paths are compared as POSIX paths
+ * (a WSL host's, also when this computer is Windows).
  */
-export function reviewPathOutside(repos: readonly ReviewRequestRepo[], roots: readonly string[]): string | null {
-  const real = (p: string): string | null => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return null
-    }
-  }
-  const allowed = roots.map(real).filter((r): r is string => r !== null)
+export async function reviewPathOutside(repos: readonly ReviewRequestRepo[], roots: readonly string[], real: (path: string) => Promise<string | null> = localRealpath): Promise<string | null> {
+  const allowed = (await Promise.all(roots.map(real))).filter((r): r is string => r !== null)
   for (const { path } of repos) {
-    const target = real(path)
+    const target = await real(path)
     const inside = target !== null && allowed.some((root) => {
-      const rel = relative(root, target)
-      return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      const paths = root.startsWith('/') && target.startsWith('/') ? posix : { relative, isAbsolute }
+      const rel = paths.relative(root, target)
+      return rel === '' || (!rel.startsWith('..') && !paths.isAbsolute(rel))
     })
     if (!inside) return path
   }
@@ -254,182 +277,273 @@ const isDirectory = (path: string) => {
   }
 }
 
-function send(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'content-type': 'application/json' })
-  res.end(JSON.stringify(body))
+/**
+ * Requests whose upload went past `DISCARD_CAP` with more still coming. Only these have their connection closed
+ * once the answer is out; any other request, oversized or not, leaves its connection alone.
+ */
+const oversized = new WeakSet<IncomingMessage>()
+/** How long the socket of such a request may outlive its answer. */
+const CLOSE_GRACE_MS = 1000
+/** The most one request may make the app read and throw away after going over `MAX_CONTROL_BODY`. */
+const DISCARD_CAP = 8 * 1024 * 1024
+
+const JSON_HEADERS: Readonly<Record<string, string>> = Object.freeze({ 'content-type': 'application/json' })
+
+/** One request to the endpoint as plain values: an HTTP request, or one a host relays from its socket. */
+export interface ControlRequest {
+  method: string
+  /** The path and query (`/v1/plan/today?session=...`). */
+  url: string
+  headers: Record<string, string | string[] | undefined>
+  /** The body as UTF-8 text; empty or absent when there is none. */
+  body?: string
+  /** The body passed MAX_CONTROL_BODY: a route that reads it answers 400. */
+  bodyTooLarge?: boolean
 }
 
-function reply(res: ServerResponse, r: ControlReply): void {
-  send(res, r.status, r.body)
+/** One answer of the endpoint as plain values. */
+export interface ControlResponse {
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
+const json = (status: number, body: unknown): ControlResponse => ({ status, headers: { ...JSON_HEADERS }, body: JSON.stringify(body) })
+const fromReply = (r: ControlReply): ControlResponse => json(r.status, r.body)
+
+/**
+ * The answer to a request whose route failed: a fixed message (what failed can carry the request's
+ * own text, which is never echoed back); the detail goes to the log.
+ */
+function failed(deps: Pick<ControlDeps, 'log'>, res: ServerResponse, e: unknown): void {
+  deps.log?.(`control endpoint: a request failed: ${e instanceof Error ? e.message : String(e)}`)
+  send(res, json(500, { ok: false, error: 'internal error' }))
+}
+
+function send(res: ServerResponse, r: ControlResponse): void {
+  if (oversized.has(res.req)) {
+    // The upload went past `DISCARD_CAP` and is still coming: the app stopped reading it. The answer goes out
+    // with no `Connection: close` header (Node would then destroy the socket the moment the answer is flushed,
+    // resetting it with the upload unread). Once the answer is flushed the server ends its side (FIN) and
+    // destroys the socket when the client hangs up or after `CLOSE_GRACE_MS`, whichever comes first, so a
+    // client still sending cannot hold the connection. This client may see a reset instead of the answer.
+    const socket = res.socket // taken now: `res` lets go of it once the answer is flushed
+    res.writeHead(r.status, r.headers)
+    res.end(r.body, () => {
+      if (!socket || socket.destroyed) return
+      const timer = setTimeout(() => socket.destroy(), CLOSE_GRACE_MS)
+      timer.unref()
+      socket.once('close', () => clearTimeout(timer))
+      socket.end()
+    })
+    return
+  }
+  res.writeHead(r.status, r.headers)
+  res.end(r.body)
 }
 
 /** The read-only Plan endpoints and the handler of each. */
 const PLAN_READS: Record<string, 'today' | 'milestones' | 'people'> = { '/v1/plan/today': 'today', '/v1/milestones': 'milestones', '/v1/people': 'people' }
 
-async function readJson(req: IncomingMessage): Promise<unknown> {
+/** The body of an HTTP request as text, up to MAX_CONTROL_BODY bytes. */
+async function readText(req: IncomingMessage): Promise<{ body: string } | { tooLarge: true }> {
   let size = 0
   const chunks: Buffer[] = []
-  for await (const chunk of req) {
+  // `destroyOnReturn: false`: leaving the loop must not destroy the request before the caller has its answer.
+  // Chunks are kept only up to `MAX_CONTROL_BODY`. Past it the request is still read, and thrown away, until it
+  // ends or `DISCARD_CAP` bytes have gone by. If it ends inside the cap, it is `tooLarge` with the request fully
+  // read, so the answer goes out like any other and the connection stays usable. If the cap is passed
+  // with the upload still coming, the request is marked in `oversized` and `send` closes the connection after
+  // its answer.
+  for await (const chunk of req.iterator({ destroyOnReturn: false })) {
     size += (chunk as Buffer).length
-    if (size > MAX_BODY) throw new Error('body too large')
-    chunks.push(chunk as Buffer)
+    if (size > DISCARD_CAP) {
+      oversized.add(req)
+      return { tooLarge: true }
+    }
+    if (size <= MAX_CONTROL_BODY) chunks.push(chunk as Buffer)
+    else chunks.length = 0 // over the limit: nothing more is kept, what was kept is dropped
   }
-  const text = Buffer.concat(chunks).toString('utf8').trim()
-  return text ? JSON.parse(text) : undefined
+  if (size > MAX_CONTROL_BODY) return { tooLarge: true }
+  return { body: Buffer.concat(chunks).toString('utf8') }
 }
 
-/** The JSON body bound to the caller's session (`bindBody`), or the answer that refuses it. */
-async function readBody(req: IncomingMessage, caller: ControlCaller): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }> {
+/** The JSON body bound to the caller's session (`bindBody`), or the answer that refuses it; `tooLarge` lets one route answer 413. */
+function readBody(req: ControlRequest, caller: ControlCaller): { ok: true; body: unknown } | { ok: false; status: number; error: string; tooLarge?: true } {
+  if (req.bodyTooLarge) return { ok: false, status: 400, error: 'body too large', tooLarge: true }
+  const text = (req.body ?? '').trim()
   let body: unknown
   try {
-    body = await readJson(req)
-  } catch (e) {
-    return { ok: false, status: 400, error: e instanceof Error ? e.message : 'bad body' }
+    body = text ? JSON.parse(text) : undefined
+  } catch {
+    // The parser's message quotes the body: never sent back.
+    return { ok: false, status: 400, error: 'the body is not valid JSON' }
   }
   return bindBody(body, caller)
 }
 
-/** Handles one request; exported for tests. */
-export async function handleControl(deps: ControlDeps, req: IncomingMessage, res: ServerResponse, isDir: (path: string) => boolean = isDirectory): Promise<void> {
-  const url = new URL(req.url ?? '/', 'http://workhub')
-  if (req.method === 'GET' && url.pathname === '/v1/health') return send(res, 200, { ok: true })
+/**
+ * Serves one request given as plain values: the core of the HTTP endpoints, and of the requests a
+ * host relays from its socket (`host-control.ts`). Authorization happens here, in main, for both.
+ */
+export async function serveControl(deps: ControlDeps, req: ControlRequest, isDir: (path: string) => boolean = isDirectory): Promise<ControlResponse> {
+  const url = new URL(req.url || '/', 'http://workhub')
+  if (req.method === 'GET' && url.pathname === '/v1/health') return json(200, { ok: true })
   const who = authorizeControl(deps.auth, req, url, deps.log)
-  if (!who.ok) return send(res, who.status, { ok: false, error: who.error })
+  if (!who.ok) return json(who.status, { ok: false, error: who.error })
   const caller = who.caller
   if (url.pathname === '/v1/flow-maps') {
-    if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'use POST' })
-    if (!deps.saveFlowMap) return send(res, 404, { ok: false, error: 'flow maps are not available' })
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'use POST' })
+    if (!deps.saveFlowMap) return json(404, { ok: false, error: 'flow maps are not available' })
     // The map itself is the body: no session is bound into it (the caller was checked above).
-    const read = await readBody(req, null)
-    if (!read.ok) return send(res, read.status, { ok: false, error: read.error })
+    const read = readBody(req, null)
+    if (!read.ok) return json(read.status, { ok: false, error: read.error })
     const body = read.body
     const saved = deps.saveFlowMap(body, caller)
-    return saved.ok ? send(res, 200, saved) : send(res, 400, { ok: false, error: saved.errors.join('; '), errors: saved.errors })
+    return saved.ok ? json(200, saved) : json(400, { ok: false, error: saved.errors.join('; '), errors: saved.errors })
+  }
+  if (url.pathname === '/v1/boards') {
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'use POST' })
+    if (!deps.saveBoard) return json(404, { ok: false, error: 'live boards are not available' })
+    if (!caller) return json(401, { ok: false, error: 'this needs the session token: send X-Workhub-Token: $WORKHUB_SESSION_TOKEN' })
+    // The board itself is the body (no session bound into it: the strict parser would refuse it); the session is the caller's.
+    const read = readBody(req, null)
+    if (!read.ok) return json(read.tooLarge ? 413 : read.status, { ok: false, error: read.tooLarge ? BOARD_TOO_LARGE : read.error })
+    const saved = await deps.saveBoard(read.body, caller)
+    return saved.ok ? json(200, saved) : json(saved.status, { ok: false, error: saved.error, ...(saved.errors ? { errors: saved.errors } : {}) })
   }
   if (url.pathname === '/v1/inbox') {
-    if (req.method === 'GET') return deps.plan ? reply(res, await deps.plan.inbox(url.searchParams)) : send(res, 404, { ok: false, error: 'the inbox is not available' })
-    if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'use GET or POST' })
-    if (!deps.addInboxItems) return send(res, 404, { ok: false, error: 'the inbox is not available' })
-    const read = await readBody(req, caller)
-    if (!read.ok) return send(res, read.status, { ok: false, error: read.error })
+    if (req.method === 'GET') return deps.plan ? fromReply(await deps.plan.inbox(url.searchParams)) : json(404, { ok: false, error: 'the inbox is not available' })
+    if (req.method !== 'POST') return json(405, { ok: false, error: 'use GET or POST' })
+    if (!deps.addInboxItems) return json(404, { ok: false, error: 'the inbox is not available' })
+    const read = readBody(req, caller)
+    if (!read.ok) return json(read.status, { ok: false, error: read.error })
     const body = read.body
     const added = await deps.addInboxItems(body)
-    return added.ok ? send(res, 200, added) : send(res, added.status, { ok: false, error: added.error })
+    return added.ok ? json(200, added) : json(added.status, { ok: false, error: added.error })
   }
   const item = /^\/v1\/inbox\/([^/]{1,200})$/.exec(url.pathname)
   if (item) {
-    if (req.method !== 'PATCH') return send(res, 405, { ok: false, error: 'use PATCH' })
-    if (!deps.plan) return send(res, 404, { ok: false, error: 'the inbox is not available' })
-    const read = await readBody(req, caller)
-    if (!read.ok) return send(res, read.status, { ok: false, error: read.error })
+    if (req.method !== 'PATCH') return json(405, { ok: false, error: 'use PATCH' })
+    if (!deps.plan) return json(404, { ok: false, error: 'the inbox is not available' })
+    const read = readBody(req, caller)
+    if (!read.ok) return json(read.status, { ok: false, error: read.error })
     const body = read.body
     let id: string
     try {
       id = decodeURIComponent(item[1]!)
     } catch {
-      return send(res, 400, { ok: false, error: 'bad item id' })
+      return json(400, { ok: false, error: 'bad item id' })
     }
-    return reply(res, await deps.plan.updateItem(id, body, url.searchParams))
+    return fromReply(await deps.plan.updateItem(id, body, url.searchParams))
   }
   const milestone = url.pathname === '/v1/milestones' ? null : /^\/v1\/milestones\/([^/]{1,200})$/.exec(url.pathname)
   if ((url.pathname === '/v1/milestones' && req.method === 'POST') || milestone) {
-    if (!deps.plan) return send(res, 404, { ok: false, error: 'Plan is not available' })
+    if (!deps.plan) return json(404, { ok: false, error: 'Plan is not available' })
     const method = req.method
-    if (milestone ? method !== 'PATCH' && method !== 'DELETE' : method !== 'POST') return send(res, 405, { ok: false, error: milestone ? 'use PATCH or DELETE' : 'use GET or POST' })
-    const read = await readBody(req, caller)
-    if (!read.ok) return send(res, read.status, { ok: false, error: read.error })
+    if (milestone ? method !== 'PATCH' && method !== 'DELETE' : method !== 'POST') return json(405, { ok: false, error: milestone ? 'use PATCH or DELETE' : 'use GET or POST' })
+    const read = readBody(req, caller)
+    if (!read.ok) return json(read.status, { ok: false, error: read.error })
     const body = read.body
     let id: string | null = null
     if (milestone) {
       try {
         id = decodeURIComponent(milestone[1]!)
       } catch {
-        return send(res, 400, { ok: false, error: 'bad milestone id' })
+        return json(400, { ok: false, error: 'bad milestone id' })
       }
     }
-    return reply(res, await deps.plan.changeMilestone(id, method as 'POST' | 'PATCH' | 'DELETE', body, url.searchParams))
+    return fromReply(await deps.plan.changeMilestone(id, method as 'POST' | 'PATCH' | 'DELETE', body, url.searchParams))
   }
   if (url.pathname === '/v1/automations' || url.pathname.startsWith('/v1/automations/')) {
-    if (!deps.automations) return send(res, 404, { ok: false, error: 'automations are not available' })
+    if (!deps.automations) return json(404, { ok: false, error: 'automations are not available' })
     const one = /^\/v1\/automations\/([^/]{1,200})$/.exec(url.pathname)
-    if (!one && url.pathname !== '/v1/automations') return send(res, 404, { ok: false, error: 'unknown endpoint' })
-    if (!one && req.method === 'GET') return reply(res, await deps.automations.list(url.searchParams))
-    if (one ? req.method !== 'PATCH' : req.method !== 'POST') return send(res, 405, { ok: false, error: one ? 'use PATCH' : 'use GET or POST' })
-    const read = await readBody(req, caller)
-    if (!read.ok) return send(res, read.status, { ok: false, error: read.error })
+    if (!one && url.pathname !== '/v1/automations') return json(404, { ok: false, error: 'unknown endpoint' })
+    if (!one && req.method === 'GET') return fromReply(await deps.automations.list(url.searchParams))
+    if (one ? req.method !== 'PATCH' : req.method !== 'POST') return json(405, { ok: false, error: one ? 'use PATCH' : 'use GET or POST' })
+    const read = readBody(req, caller)
+    if (!read.ok) return json(read.status, { ok: false, error: read.error })
     const body = read.body
-    if (!one) return reply(res, await deps.automations.create(body, url.searchParams))
+    if (!one) return fromReply(await deps.automations.create(body, url.searchParams))
     let id: string
     try {
       id = decodeURIComponent(one[1]!)
     } catch {
-      return send(res, 400, { ok: false, error: 'bad automation id' })
+      return json(400, { ok: false, error: 'bad automation id' })
     }
-    return reply(res, await deps.automations.update(id, body, url.searchParams))
+    return fromReply(await deps.automations.update(id, body, url.searchParams))
   }
   if (url.pathname === '/v1/history' || url.pathname.startsWith('/v1/history/')) {
-    if (!deps.automations) return send(res, 404, { ok: false, error: 'the history is not available' })
-    if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'use GET' })
-    if (url.pathname === '/v1/history') return reply(res, await deps.automations.history(url.searchParams))
+    if (!deps.automations) return json(404, { ok: false, error: 'the history is not available' })
+    if (req.method !== 'GET') return json(405, { ok: false, error: 'use GET' })
+    if (url.pathname === '/v1/history') return fromReply(await deps.automations.history(url.searchParams))
     const past = /^\/v1\/history\/([^/]{1,100})\/([^/]{1,200})$/.exec(url.pathname)
-    if (!past) return send(res, 404, { ok: false, error: 'unknown endpoint' })
+    if (!past) return json(404, { ok: false, error: 'unknown endpoint' })
     let ids: [string, string]
     try {
       ids = [decodeURIComponent(past[1]!), decodeURIComponent(past[2]!)]
     } catch {
-      return send(res, 400, { ok: false, error: 'bad agent or session id' })
+      return json(400, { ok: false, error: 'bad agent or session id' })
     }
-    return reply(res, await deps.automations.session(ids[0], ids[1], url.searchParams))
+    return fromReply(await deps.automations.session(ids[0], ids[1], url.searchParams))
   }
   if (url.pathname.startsWith('/v1/analytics/')) {
-    if (!deps.analytics) return send(res, 404, { ok: false, error: 'analytics are not available' })
+    if (!deps.analytics) return json(404, { ok: false, error: 'analytics are not available' })
     if (url.pathname === '/v1/analytics/query') {
-      if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'use POST' })
-      const read = await readBody(req, caller)
-      if (!read.ok) return send(res, read.status, { ok: false, error: read.error })
+      if (req.method !== 'POST') return json(405, { ok: false, error: 'use POST' })
+      const read = readBody(req, caller)
+      if (!read.ok) return json(read.status, { ok: false, error: read.error })
       const body = read.body
-      return reply(res, await deps.analytics.query(body, url.searchParams))
+      return fromReply(await deps.analytics.query(body, url.searchParams))
     }
     const route = url.pathname === '/v1/analytics/schema' ? 'schema' : url.pathname === '/v1/analytics/report' ? 'report' : null
-    if (!route) return send(res, 404, { ok: false, error: 'unknown endpoint' })
-    if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'use GET' })
-    return reply(res, await deps.analytics[route](url.searchParams))
+    if (!route) return json(404, { ok: false, error: 'unknown endpoint' })
+    if (req.method !== 'GET') return json(405, { ok: false, error: 'use GET' })
+    return fromReply(await deps.analytics[route](url.searchParams))
   }
   const message = /^\/v1\/sessions\/([^/]{1,200})\/message$/.exec(url.pathname)
   if (url.pathname === '/v1/sessions' || url.pathname === '/v1/notify' || message) {
-    if (!deps.sessions) return send(res, 404, { ok: false, error: 'sessions are not available' })
+    if (!deps.sessions) return json(404, { ok: false, error: 'sessions are not available' })
     // Only a session, proven by its token, sees or reaches the others (authorizeControl refuses the rest).
-    if (!caller) return send(res, 401, { ok: false, error: 'this needs the session token: send X-Workhub-Token: $WORKHUB_SESSION_TOKEN' })
-    if (url.pathname === '/v1/sessions' && req.method === 'GET') return reply(res, await deps.sessions.list(caller.session))
-    if (req.method !== 'POST') return send(res, 405, { ok: false, error: url.pathname === '/v1/sessions' ? 'use GET or POST' : 'use POST' })
-    const sent = await readBody(req, caller)
-    if (!sent.ok) return send(res, sent.status, { ok: false, error: sent.error })
-    if (url.pathname === '/v1/notify') return reply(res, await deps.sessions.notify(caller.session, sent.body))
-    if (!message) return reply(res, await deps.sessions.propose(caller.session, sent.body))
+    if (!caller) return json(401, { ok: false, error: 'this needs the session token: send X-Workhub-Token: $WORKHUB_SESSION_TOKEN' })
+    if (url.pathname === '/v1/sessions' && req.method === 'GET') return fromReply(await deps.sessions.list(caller.session))
+    if (req.method !== 'POST') return json(405, { ok: false, error: url.pathname === '/v1/sessions' ? 'use GET or POST' : 'use POST' })
+    const sent = readBody(req, caller)
+    if (!sent.ok) return json(sent.status, { ok: false, error: sent.error })
+    if (url.pathname === '/v1/notify') return fromReply(await deps.sessions.notify(caller.session, sent.body))
+    if (!message) return fromReply(await deps.sessions.propose(caller.session, sent.body))
     let target: string
     try {
       target = decodeURIComponent(message[1]!)
     } catch {
-      return send(res, 400, { ok: false, error: 'bad session id' })
+      return json(400, { ok: false, error: 'bad session id' })
     }
-    return reply(res, await deps.sessions.message(caller.session, target, sent.body))
+    return fromReply(await deps.sessions.message(caller.session, target, sent.body))
   }
   const read = Object.hasOwn(PLAN_READS, url.pathname) ? PLAN_READS[url.pathname] : undefined
   if (read) {
-    if (req.method !== 'GET') return send(res, 405, { ok: false, error: 'use GET' })
-    if (!deps.plan) return send(res, 404, { ok: false, error: 'Plan is not available' })
-    return reply(res, await deps.plan[read](url.searchParams))
+    if (req.method !== 'GET') return json(405, { ok: false, error: 'use GET' })
+    if (!deps.plan) return json(404, { ok: false, error: 'Plan is not available' })
+    return fromReply(await deps.plan[read](url.searchParams))
   }
   const review = /^\/v1\/sessions\/([\w-]{1,100})\/review$/.exec(url.pathname)
-  if (!review) return send(res, 404, { ok: false, error: 'unknown endpoint' })
-  if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'use POST' })
-  const sent = await readBody(req, caller)
-  if (!sent.ok) return send(res, sent.status, { ok: false, error: sent.error })
-  const repos = parseReviewBody(sent.body, isDir)
-  if (typeof repos === 'string') return send(res, 400, { ok: false, error: repos })
-  const result = await deps.openReview(review[1]!, repos)
-  if (!result.ok) return send(res, result.status, { ok: false, error: result.error })
-  return send(res, 200, { ok: true })
+  if (!review) return json(404, { ok: false, error: 'unknown endpoint' })
+  if (req.method !== 'POST') return json(405, { ok: false, error: 'use POST' })
+  const sent = readBody(req, caller)
+  if (!sent.ok) return json(sent.status, { ok: false, error: sent.error })
+  const sessionId = review[1]!
+  const repos = await parseReviewBody(sent.body, deps.isReviewFolder ? (path) => deps.isReviewFolder!(sessionId, path) : isDir)
+  if (typeof repos === 'string') return json(400, { ok: false, error: repos })
+  const result = await deps.openReview(sessionId, repos)
+  if (!result.ok) return json(result.status, { ok: false, error: result.error })
+  return json(200, { ok: true })
+}
+
+/** Handles one HTTP request through `serveControl`; exported for tests. */
+export async function handleControl(deps: ControlDeps, req: IncomingMessage, res: ServerResponse, isDir: (path: string) => boolean = isDirectory): Promise<void> {
+  const read = await readText(req)
+  const request: ControlRequest = { method: req.method ?? 'GET', url: req.url ?? '/', headers: req.headers, ...('body' in read ? { body: read.body } : { bodyTooLarge: true }) }
+  send(res, await serveControl(deps, request, isDir))
 }
 
 /**
@@ -469,8 +583,9 @@ export async function startControlServer(socketPath: string, deps: ControlDeps):
     }
   }
   const server = createServer((req, res) => {
-    handleControl(deps, req, res).catch((e: unknown) => send(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }))
+    handleControl(deps, req, res).catch((e: unknown) => failed(deps, res, e))
   })
+  answerBeforeClientError(server)
   return new Promise((resolve) => {
     server.once('error', (e) => {
       deps.log?.(`control endpoint not started: ${e.message}`)
@@ -490,15 +605,34 @@ export async function startControlServer(socketPath: string, deps: ControlDeps):
 }
 
 /**
+ * Bytes after a request that cannot be parsed (a GET that sent a body without a length) end the
+ * connection. A request is answered once its body is read, which is after those bytes arrived: its
+ * answer goes out first, then the connection closes, instead of Node's bare 400 in its place.
+ */
+function answerBeforeClientError(server: Server): void {
+  server.on('clientError', (err: NodeJS.ErrnoException, socket: Duplex) => {
+    const pending = (socket as Duplex & { _httpMessage?: ServerResponse | null })._httpMessage
+    if (err.code !== 'ECONNRESET' && socket.writable && pending && !pending.headersSent) {
+      pending.once('finish', () => socket.end())
+      setTimeout(() => socket.destroy(), CLOSE_GRACE_MS * 30).unref()
+      return
+    }
+    if (err.code !== 'ECONNRESET' && socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
+    else socket.destroy()
+  })
+}
+
+/**
  * Starts the endpoint on a random port of 127.0.0.1, answering only requests with the token
  * (Windows). A request a browser page sends carries an `Origin` and is refused too, so a web page
  * cannot use the port even if it guessed the token. Resolves to null when it cannot listen.
  */
 export function startLoopbackControlServer(token: string, deps: ControlDeps): Promise<{ server: Server; url: string } | null> {
   const server = createServer((req, res) => {
-    if (req.headers.origin !== undefined || !hasControlToken(req, token)) return send(res, 401, { ok: false, error: 'missing or wrong token: send Authorization: Bearer $WORKHUB_TOKEN' })
-    handleControl(deps, req, res).catch((e: unknown) => send(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }))
+    if (req.headers.origin !== undefined || !hasControlToken(req, token)) return send(res, json(401, { ok: false, error: 'missing or wrong token: send Authorization: Bearer $WORKHUB_TOKEN' }))
+    handleControl(deps, req, res).catch((e: unknown) => failed(deps, res, e))
   })
+  answerBeforeClientError(server)
   return new Promise((resolve) => {
     server.once('error', (e) => {
       deps.log?.(`control endpoint not started: ${e.message}`)

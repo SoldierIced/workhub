@@ -22,6 +22,7 @@ Start with [Getting started](user-guide/getting-started.md), or browse the [user
 | [Remote access](user-guide/remote-access.md) | Workhub on your phone: pairing, what it can do, self-hosting the relay |
 | [Flow maps](user-guide/flow-maps.md) | Diagrams of a business flow across services (⌘7), measured from APM, with its real executions; written by you or by an agent (`skills/workhub-flow-map`) |
 | [Plan](user-guide/plan.md) | Today's and tomorrow's meetings from your calendars (⌘9), reminders, agent-prepared meeting briefs, the people you meet, milestones and an inbox; agents read and update it (`skills/workhub-plan`) |
+| [Live boards](user-guide/live-boards.md) | A panel in the chat where a tool running in that session shows a job done by several agents while it happens: stages, who asks whom, agents, decisions, a log; off by default (`skills/workhub-board`) |
 | [Automations](user-guide/automations.md) | Prompts sent to a dedicated session on an event or a schedule; agents can add and edit them, never turn them on (`skills/workhub-automations`) |
 | [History](user-guide/history.md) | Past sessions, resumable; agents can read them (`skills/workhub-automations`) |
 | [Usage and budgets](user-guide/usage.md) | Plan usage, ceilings, per-session limits, project budgets, token spend, how long data is kept; agents can read the usage data, read-only (`skills/workhub-analytics`) |

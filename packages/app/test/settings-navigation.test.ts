@@ -15,7 +15,7 @@ describe('Settings sections', () => {
   })
 
   it('opens the place that now holds what each old tab or section held', () => {
-    const old = ['general', 'appearance', 'notifications', 'alerts', 'agents', 'accounts', 'usage', 'connections', 'trackers', 'profiles', 'profile', 'modules', 'tickets', 'health', 'flowMaps', 'plan', 'slack', 'aiReview', 'storage', 'import']
+    const old = ['general', 'appearance', 'notifications', 'alerts', 'agents', 'accounts', 'usage', 'connections', 'trackers', 'profiles', 'profile', 'modules', 'tickets', 'health', 'flowMaps', 'plan', 'boards', 'slack', 'aiReview', 'storage', 'import']
     expect(Object.fromEntries(old.map((tab) => [tab, settingsTarget(tab)]))).toEqual({
       general: { section: 'general' },
       appearance: { section: 'general', group: 'appearance' },
@@ -33,6 +33,7 @@ describe('Settings sections', () => {
       health: { section: 'profiles', profile: { tab: 'screens' }, group: 'health' },
       flowMaps: { section: 'profiles', profile: { tab: 'screens' }, group: 'flowMaps' },
       plan: { section: 'profiles', profile: { tab: 'screens' }, group: 'plan' },
+      boards: { section: 'profiles', profile: { tab: 'screens' }, group: 'boards' },
       slack: { section: 'profiles', profile: { tab: 'screens' }, group: 'slack' },
       aiReview: { section: 'profiles', profile: { tab: 'screens' }, group: 'aiReview' },
       storage: { section: 'advanced', group: 'data' },
@@ -120,6 +121,12 @@ describe('searchSettings', () => {
   const options = (locale: 'en' | 'es') => ({
     t: (key: MessageKey) => translate(locale, key),
     groupLabel: (g: string) => g
+  })
+
+  it('finds the Live boards switch by its name and by what it does, in both languages', () => {
+    expect(searchSettings(SETTINGS_INDEX, 'live boards', options('en')).map((h) => h.entry.label)).toContain('module.boards')
+    expect(searchSettings(SETTINGS_INDEX, 'tableros', options('es')).map((h) => h.entry.label)).toContain('module.boards')
+    expect(SCREEN_ROWS.find((r) => r.key === 'boards')).toMatchObject({ module: 'boards', hint: 'boards.settings.moduleHint' })
   })
 
   it('folds case and accents', () => {

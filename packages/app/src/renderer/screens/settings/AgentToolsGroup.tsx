@@ -15,9 +15,13 @@ export function skillsSummary(account: Pick<AgentToolsAccount, 'skills'>): Skill
   return 'current'
 }
 
-const SKILL_TONE: Record<SkillState, 'neutral' | 'success' | 'warning'> = { missing: 'neutral', current: 'success', outdated: 'warning', own: 'neutral' }
+export const SKILL_TONE: Record<SkillState, 'neutral' | 'success' | 'warning'> = { missing: 'neutral', current: 'success', outdated: 'warning', own: 'neutral' }
 
-/** Settings → Agents → Workhub tools: the MCP server for sessions, and per Claude folder the skills and the MCP outside Workhub. */
+/**
+ * Settings → Agents → Workhub tools: the MCP server for sessions; per Claude folder the skills and
+ * the MCP outside Workhub; and the skills of the other agents installed here (Codex, OpenCode,
+ * Gemini CLI, Kiro).
+ */
 export function AgentToolsGroup({ snap, run }: { snap: ConfigSnapshot; run: Run }) {
   const { t } = useI18n()
   const toast = useToast()
@@ -41,6 +45,37 @@ export function AgentToolsGroup({ snap, run }: { snap: ConfigSnapshot; run: Run 
       refresh()
     }
   }
+  const skillsRow = (id: string, states: Record<string, SkillState>, hint: string) => {
+    const skills = skillsSummary({ skills: states })
+    const values = Object.values(states)
+    // Some skills only (a screen's skill installed when it was turned on): say how many.
+    const some = values.filter((s) => s !== 'missing').length
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <span className="text-sm">{t('agentTools.skills')}</span>{' '}
+          {skills === 'missing' && some > 0 ? (
+            <Badge tone="neutral">{t('agentTools.skills.some', { count: some, total: values.length })}</Badge>
+          ) : (
+            <Badge tone={SKILL_TONE[skills]}>{t(`agentTools.skills.${skills}`)}</Badge>
+          )}
+          <p className="text-xs text-subtle">{hint}</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {(skills === 'missing' || skills === 'outdated') && (
+            <Button size="sm" disabled={busy !== null} onClick={() => void act(`skills:${id}`, () => window.hub.agentTools.installSkills(id))}>
+              {t(skills === 'outdated' ? 'agentTools.update' : 'agentTools.install')}
+            </Button>
+          )}
+          {Object.values(states).some((s) => s === 'current' || s === 'outdated') && (
+            <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void act(`skills:${id}`, () => window.hub.agentTools.removeSkills(id))}>
+              {t('agentTools.remove')}
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
   return (
     <SettingsGroup title={t('agentTools.title')} help={t('agentTools.help')}>
       <div className="flex items-center justify-between gap-6 py-3" data-setting-id={AGENTS_ROW_IDS.toolsMcp} data-settings-row>
@@ -52,30 +87,12 @@ export function AgentToolsGroup({ snap, run }: { snap: ConfigSnapshot; run: Run 
       </div>
       <div className="flex flex-col divide-y divide-border" data-setting-id={AGENTS_ROW_IDS.tools} data-settings-row>
         {status?.accounts.map((a) => {
-        const skills = skillsSummary(a)
         return (
           <div key={a.id} className="flex flex-col gap-2 py-3" data-testid="agent-tools-account">
             <span className="text-sm text-muted">
               {t('agentTools.account')}: {a.name || t('agentTools.defaultAccount')} <code className="text-xs">{a.dir}</code>
             </span>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <span className="text-sm">{t('agentTools.skills')}</span> <Badge tone={SKILL_TONE[skills]}>{t(`agentTools.skills.${skills}`)}</Badge>
-                <p className="text-xs text-subtle">{t('agentTools.skillsHint', { dir: a.dir })}</p>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                {(skills === 'missing' || skills === 'outdated') && (
-                  <Button size="sm" disabled={busy !== null} onClick={() => void act(`skills:${a.id}`, () => window.hub.agentTools.installSkills(a.id))}>
-                    {t(skills === 'outdated' ? 'agentTools.update' : 'agentTools.install')}
-                  </Button>
-                )}
-                {Object.values(a.skills).some((s) => s === 'current' || s === 'outdated') && (
-                  <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void act(`skills:${a.id}`, () => window.hub.agentTools.removeSkills(a.id))}>
-                    {t('agentTools.remove')}
-                  </Button>
-                )}
-              </div>
-            </div>
+            {skillsRow(a.id, a.skills, t('agentTools.skillsHint', { dir: a.dir }))}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <span className="text-sm">{t('agentTools.globalMcp')}</span> <Badge tone={a.globalMcp === 'installed' ? 'success' : 'neutral'}>{t(`agentTools.globalMcp.${a.globalMcp}`)}</Badge>
@@ -95,6 +112,14 @@ export function AgentToolsGroup({ snap, run }: { snap: ConfigSnapshot; run: Run 
           </div>
         )
         })}
+        {status?.agents.map((a) => (
+          <div key={a.id} className="flex flex-col gap-2 py-3" data-testid="agent-tools-agent">
+            <span className="text-sm text-muted">
+              {a.name} <code className="text-xs">{a.dir}</code>
+            </span>
+            {skillsRow(a.id, a.skills, t(a.agentId === 'kiro' ? 'agentTools.kiroHint' : 'agentTools.agentSkillsHint', { dir: a.dir }))}
+          </div>
+        ))}
       </div>
     </SettingsGroup>
   )

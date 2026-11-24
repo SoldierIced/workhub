@@ -182,6 +182,8 @@ The bar at the top of a session reads, from left to right:
   **Create PR** appears when the branch is pushed, has commits and no open pull request; it opens
   the form in the monitor.
 - **Stop**, only while the agent is working.
+- **Board** (**Boards (n)**), only when the chat sent a live board: it unfolds the board beside the
+  chat. See [Live boards](live-boards.md).
 - **⋯** (More) holds the rest: the account, the agent's mode and the folder, **Files**,
   **Review before PR**, **Continue elsewhere**, **Stop** while the agent is idle, and, on a
   narrow window, whatever did not fit the row (the branch, **Create PR**).
@@ -189,7 +191,7 @@ The bar at the top of a session reads, from left to right:
   brings it back; its icon shows whether the panel is open.
 
 The Slack threads that wake the session show as a small badge with their count next to the state.
-On a narrow window the bar folds level by level (the switch to icons, **Create PR** into **⋯**,
+On a narrow window the bar folds level by level (the switch and **Board** to icons, **Create PR** into **⋯**,
 **Changes** and **Stop** to icons, the branch into **⋯**) and never wraps.
 
 - **No output for …**: a session that is working and whose agent has sent nothing for 10

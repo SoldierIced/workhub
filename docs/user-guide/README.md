@@ -14,13 +14,15 @@ One page per area of Workhub 2. Names in **bold** are labels you see in the app 
 10. [Flow maps](flow-maps.md)
 11. [Plan](plan.md)
 12. [Automations](automations.md)
-13. [History](history.md)
-14. [Usage and budgets](usage.md) (and Usage and reports)
-15. [Remote access](remote-access.md)
-16. [Settings](settings.md)
-17. [Keyboard shortcuts](keyboard-shortcuts.md)
+13. [Live boards](live-boards.md)
+14. [History](history.md)
+15. [Usage and budgets](usage.md) (and Usage and reports)
+16. [Remote access](remote-access.md)
+17. [Settings](settings.md)
+18. [Keyboard shortcuts](keyboard-shortcuts.md)
 
 Back to the [documentation index](../README.md). Problems: [Troubleshooting](../troubleshooting.md).
 
 Screens tied to an optional module (Slack, Automations, Health, Flow maps, Plan) show up only when
-the active profile turns the screen on in **Settings → Profiles → (profile) → Screens**.
+the active profile turns the screen on in **Settings → Profiles → (profile) → Screens**. Live boards
+is switched on there too; it has no screen, it shows in the chat that sent the board.

@@ -3,10 +3,8 @@ import { JiraTracker } from '@workhub/adapters/tracker-jira'
 import { LinearTracker } from '@workhub/adapters/tracker-linear'
 import { GitHubIssuesTracker } from '@workhub/adapters/tracker-github'
 import { createCliRunner, type CliRunner } from '@workhub/adapters/cli'
-import { GIT_HARDENING } from '@workhub/adapters/git-hardening'
+import { runGit, type GitRunner } from '@workhub/adapters/git-review'
 import type { HttpClient } from '@workhub/adapters/http'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import {
   githubSlugFromRemote,
   secretForConnectionTest,
@@ -19,6 +17,7 @@ import {
   type TicketTracker
 } from '@workhub/core'
 import type { TicketsResult, TicketsStatus } from '../shared/tickets-api'
+import { originUrl, type HostFolders, type HostTarget } from './hosts'
 
 const NOT_READY: Record<TicketsStatus['state'], string> = {
   ready: '',
@@ -31,7 +30,6 @@ const NOT_READY: Record<TicketsStatus['state'], string> = {
 /** Settings keys a tracker connection uses (Settings → Trackers writes them). */
 export const TRACKER_SETTINGS = { email: 'email', ignoredStatuses: 'ignoredStatuses', projectKeys: 'projectKeys', repositories: 'repositories', backlogQuery: 'backlogQuery' } as const
 
-const exec = promisify(execFile)
 
 const list = (value: string | undefined) =>
   (value ?? '')
@@ -51,19 +49,17 @@ interface Resolved {
 export interface TrackerContext {
   run?: CliRunner
   folders?: string[]
+  /** Runs git where the folders live; this computer's git when not given. */
+  git?: GitRunner
 }
 
 /** The `owner/repo` behind each folder's `origin` remote; folders that are not GitHub clones are skipped. */
-export async function githubReposOfFolders(folders: readonly string[], host = 'github.com'): Promise<string[]> {
+export async function githubReposOfFolders(folders: readonly string[], host = 'github.com', git: GitRunner = runGit): Promise<string[]> {
   const out: string[] = []
   for (const folder of folders) {
-    try {
-      const url = (await exec('git', [...GIT_HARDENING, '-C', folder, 'remote', 'get-url', 'origin'], { windowsHide: true, timeout: 10_000 })).stdout.trim()
-      const slug = githubSlugFromRemote(url, host)
-      if (slug) out.push(slug)
-    } catch {
-      // Not a git repository, or no origin.
-    }
+    const url = await originUrl(git, folder)
+    const slug = url === null ? null : githubSlugFromRemote(url, host)
+    if (slug) out.push(slug)
   }
   return out
 }
@@ -102,7 +98,7 @@ export function buildTracker(connection: Connection, secret: string | null, http
         run: context.run ?? createCliRunner(),
         host,
         repositories: list(connection.settings[TRACKER_SETTINGS.repositories]),
-        fallbackRepositories: folders.length > 0 ? () => githubReposOfFolders(folders, host) : undefined
+        fallbackRepositories: folders.length > 0 ? () => githubReposOfFolders(folders, host, context.git) : undefined
       })
     }
   }
@@ -121,7 +117,9 @@ export class TicketService {
     /** The demo scenario whose tickets the demo tracker serves (`WORKHUB_DEMO_SCENARIO`). */
     private readonly demoScenario?: string,
     /** The `gh` runner of GitHub Issues (tests); the real one by default. */
-    private readonly run?: CliRunner
+    private readonly run?: CliRunner,
+    /** The host a profile's folders live on (their remotes scope GitHub Issues); this computer when not given. */
+    private readonly hostFor?: (target: HostTarget) => Pick<HostFolders, 'git'>
   ) {}
 
   async resolve(profileId: string | null): Promise<Resolved> {
@@ -142,7 +140,7 @@ export class TicketService {
     }
     if (!connection) return { status: { state: 'noConnection', projectKeys }, ignoredStatuses, backlogQuery }
     const secret = connection.secretRef ? await this.secrets.get(connection.secretRef) : null
-    const built = buildTracker(connection, secret, this.http, { run: this.run, folders: profile?.folders })
+    const built = buildTracker(connection, secret, this.http, { run: this.run, folders: profile?.folders, git: this.hostFor?.({ profileId }).git })
     if ('missing' in built) return { status: { ...base, state: built.missing }, ignoredStatuses, backlogQuery }
     return { status: { ...base, state: 'ready', backlog: backlog(built.tracker) }, tracker: built.tracker, ignoredStatuses, backlogQuery }
   }
@@ -179,7 +177,7 @@ export class TicketService {
       if (!connection) return { error: 'The tracker connection no longer exists' }
       const secret = connection.secretRef ? await this.secrets.get(connection.secretRef) : null
       const folders = (await this.configuration.current()).profiles.find((p) => p.id === profileId)?.folders
-      const built = buildTracker(connection, secret, this.http, { run: this.run, folders })
+      const built = buildTracker(connection, secret, this.http, { run: this.run, folders, git: this.hostFor?.({ profileId }).git })
       return 'missing' in built ? { error: NOT_READY[built.missing] } : { tracker: built.tracker }
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) }

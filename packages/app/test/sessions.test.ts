@@ -143,7 +143,7 @@ describe('SessionManager', () => {
   })
 
   it('puts a session in the profile that owns its folder, whatever profile was active', async () => {
-    const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+    const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }
     const config: WorkhubConfig = {
       ...emptyConfig(),
       profiles: [
@@ -481,7 +481,7 @@ describe('session helpers', () => {
   it('resolves an account key the profile does not offer from the config', () => {
     const profiled: WorkhubConfig = {
       ...config,
-      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }],
+      profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: ['home'], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false } }],
       activeProfileId: 'p'
     }
     expect(resolveChoice(profiled, 'p', 'claude:work')).toMatchObject({ account: { id: 'work' }, label: 'Claude Code · Work' })
@@ -799,7 +799,7 @@ describe('SessionManager prompt gate', () => {
 describe('SessionManager worktrees', () => {
   // Paths are joined with the platform's separator (`\\` on Windows).
   const wt = (name: string) => join('/w/_worktrees', name)
-  const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+  const mods = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }
   const config = (): WorkhubConfig => ({
     ...emptyConfig(),
     profiles: [
@@ -829,6 +829,19 @@ describe('SessionManager worktrees', () => {
     // The subfolder does not exist in the fake worktree, so the session starts at its root.
     expect(view.cwd).toBe(wt('acme-feat-login'))
     expect(view.profileId).toBe('work')
+  })
+
+  it("checks the worktree's folders where the session's host keeps them", async () => {
+    const { worktrees, created } = fake()
+    const exists = vi.fn(async (p: string) => p === join(wt('acme-feat-login'), 'src'))
+    const { manager } = setup(config(), false, { worktrees, exists })
+    const view = await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme/src', worktree: { branch: 'login' } })
+    // The host says the subfolder exists in the new worktree, so the session starts in it.
+    expect(view.cwd).toBe(join(wt('acme-feat-login'), 'src'))
+    expect(exists.mock.calls.map(([p]) => p)).toEqual([wt('acme-feat-login'), join(wt('acme-feat-login'), 'src')])
+    exists.mockImplementation(async () => true)
+    await expect(manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: { branch: 'other' } })).rejects.toThrow('already exists')
+    expect(created).toHaveLength(1)
   })
 
   it('bootstraps a new worktree: the copy, then the folder setup command with the session environment, and reports it', async () => {

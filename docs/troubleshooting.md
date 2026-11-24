@@ -66,7 +66,7 @@ lines of `main.log`. Report security problems privately as described in [SECURIT
 ## The database
 
 Workhub keeps its state (open sessions, names, watcher memory, spend, Plan, flow maps and their
-history) in `workhub.db`, a SQLite file in the data folder; **Settings → Advanced → Data** shows its
+history, live boards) in `workhub.db`, a SQLite file in the data folder; **Settings → Advanced → Data** shows its
 path and size. `config.json` and `secrets.json` stay separate files.
 
 - **Start-up lines**: `main.log` has `database <path> schema=<n>` and the result of the one-time
@@ -214,7 +214,7 @@ agent in `config.json`; a custom agent can also set `startHint` to the text show
 
 ## An agent cannot reach Workhub
 
-Agents talk to Workhub through its local control endpoint (Plan, flow maps, review). Every session
+Agents talk to Workhub through its local control endpoint (Plan, flow maps, live boards, review). Every session
 gets these environment variables:
 
 - `WORKHUB_SESSION`: the session id.

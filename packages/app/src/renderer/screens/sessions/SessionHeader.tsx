@@ -1,4 +1,4 @@
-import { Ear, Folder, GitBranch, GitPullRequestCreate, MessagesSquare, MoreHorizontal, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
+import { Ear, Folder, GitBranch, GitPullRequestCreate, MessagesSquare, MoreHorizontal, Server, Square, SquareTerminal, Terminal as TerminalIcon, UserRound, type LucideIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import { sessionIdentity, type LocalChanges } from '@workhub/core'
 import type { PullRequestDraftResult } from '@shared/codehost-api'
@@ -6,6 +6,8 @@ import type { SessionMode, SessionView } from '@shared/api'
 import { AgentIcon, Badge, Button, IconButton, Spinner, STATE_TONE, StateDot, type Tone } from '../../components/atoms'
 import { PanelToggleButton } from '../../components/molecules/PanelToggleButton'
 import { useSlack } from '../../chatStore'
+import { ChatBoardsButton } from '../boards/ChatBoards'
+import { useBoardPanelOpen } from '../../lib/boardPanel'
 import { useConfig } from '../../configStore'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
@@ -213,6 +215,8 @@ export interface SessionBarProps {
   canCreatePr: boolean
   onCreatePr: () => void
   monitorHidden: boolean
+  /** The chat's live boards button, when it may show one; icon only when the bar is folded. */
+  boards?: (iconOnly: boolean) => ReactNode
 }
 
 /**
@@ -222,23 +226,25 @@ export interface SessionBarProps {
  * folds level by level (switch to icons, Create PR into the menu, Changes and Stop to icons, the
  * branch into the menu) so it never wraps or draws one thing over another.
  */
-export function SessionBar({ data, title, now, slackCount, branch, counts, canCreatePr, onCreatePr, monitorHidden }: SessionBarProps) {
+export function SessionBar({ data, title, now, slackCount, branch, counts, canCreatePr, onCreatePr, monitorHidden, boards }: SessionBarProps) {
   const { t } = useI18n()
   const v = data.view
   const stop = useAsyncAction(() => window.hub.sessions.stop(v.id))
   const [ref, width] = useWidth<HTMLElement>()
   const identityRef = useRef<HTMLDivElement>(null)
+  const controlsRef = useRef<HTMLDivElement>(null)
   // Levels folded past the width's density because the row still overflowed at this width.
   const [fold, setFold] = useState({ width: 0, steps: 0 })
   const steps = fold.width === width ? fold.steps : 0
-  // Chips that render on their own (Slack, the state's time) change the row without rendering the
-  // bar: re-run the overflow check below whenever the identity's content changes.
+  // Chips that render on their own (Slack, the state's time, the boards button) change the row without
+  // rendering the bar: re-run the overflow check below whenever the identity's or the controls' content changes.
   const [, recheck] = useReducer((n: number) => n + 1, 0)
   useLayoutEffect(() => {
     const identity = identityRef.current
     if (!identity || typeof MutationObserver === 'undefined') return
     const observer = new MutationObserver(() => recheck())
     observer.observe(identity, { childList: true, subtree: true, characterData: true })
+    if (controlsRef.current) observer.observe(controlsRef.current, { childList: true, subtree: true, characterData: true })
     return () => observer.disconnect()
   }, [])
   const density: HeaderDensity = foldDensity(headerDensity(width), steps)
@@ -266,13 +272,15 @@ export function SessionBar({ data, title, now, slackCount, branch, counts, canCr
     </HeaderButton>
   )
   const folder = abbreviateFolder(v.cwd)
+  // The WSL distribution the session runs in (`wsl:<distro>`); nothing on this computer.
+  const distro = v.hostId?.startsWith('wsl:') ? v.hostId.slice(4) : null
 
   return (
     <header ref={ref} className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-surface/60 px-4" data-testid="session-header" data-density={density}>
       {/* Clips rather than spills: nothing here is ever drawn under the controls on the right. */}
       <div ref={identityRef} className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-sm" data-testid="session-identity">
         <AgentIcon agentId={v.agentId} adapter={v.adapter} label={v.agentName} className="size-5" />
-        <SessionTitle id={v.id} title={title} name={v.name} tooltip={`${title}\n${v.cwd}`} />
+        <SessionTitle id={v.id} title={title} name={v.name} tooltip={[title, distro && t('profileHost.sessionTag', { distro }), v.cwd].filter(Boolean).join('\n')} />
         <ActivityPill data={data} now={now} />
         {branchInline && (
           <span className="flex min-w-14 shrink items-center gap-1.5 font-mono text-xs text-subtle" title={branch} data-testid="session-branch">
@@ -282,7 +290,7 @@ export function SessionBar({ data, title, now, slackCount, branch, counts, canCr
         )}
         <SlackChip view={v} count={slackCount} />
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div ref={controlsRef} className="flex shrink-0 items-center gap-2">
         {v.modes.length > 1 && <ModeSwitch view={v} iconsOnly={iconsOnly} />}
         <span className="h-[18px] w-px bg-border-strong" aria-hidden />
         {!v.readOnly && <LocalReviewButton sessionId={v.id} compact={tight} counts={counts} />}
@@ -305,6 +313,12 @@ export function SessionBar({ data, title, now, slackCount, branch, counts, canCr
               <span className="flex items-center gap-1.5 font-mono" title={branch}>
                 <GitBranch className="size-3.5 shrink-0" aria-hidden />
                 <span className="truncate">{branch}</span>
+              </span>
+            )}
+            {distro && (
+              <span className="flex items-center gap-1.5" title={t('profileHost.sessionTagHint', { distro })} data-testid="session-host">
+                <Server className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{t('profileHost.sessionTag', { distro })}</span>
               </span>
             )}
             <span className="flex items-center gap-1.5 font-mono" title={v.cwd} data-testid="session-folder">
@@ -339,6 +353,7 @@ export function SessionBar({ data, title, now, slackCount, branch, counts, canCr
             </div>
           )}
         </OverflowMenu>
+        {boards?.(iconsOnly)}
         {/* The side panel (monitor, or the AI review) of every session, folded with ⇧⌘M. */}
         <PanelToggleButton side="right" size="sm" hidden={monitorHidden} shortcut={MONITOR_SHORTCUT} onToggle={() => setPrefs({ monitorHidden: !readPrefs().monitorHidden })} testId="toggle-monitor" />
       </div>
@@ -385,6 +400,7 @@ function useLocalChanges(id: string, visible: boolean, workKey: string): LocalCh
 export function SessionHeader({ data, visible }: { data: SessionData; visible: boolean }) {
   const v = data.view
   const monitorHidden = usePrefs().monitorHidden
+  const boardPanel = useBoardPanelOpen(v.id)
   const config = useConfig()
   const profileId = v.profileId ?? config?.config.activeProfileId ?? null
   const lists = useCachedPullRequestLists(profileId)
@@ -409,6 +425,7 @@ export function SessionHeader({ data, visible }: { data: SessionData; visible: b
       canCreatePr={canCreatePr}
       onCreatePr={() => openCreatePullRequest(v.id)}
       monitorHidden={monitorHidden}
+      boards={(iconOnly) => <ChatBoardsButton sessionId={v.id} profileId={profileId} chat={identity} visible={visible} open={boardPanel} compact={iconOnly} />}
     />
   )
 }

@@ -42,7 +42,8 @@ export function worktreeSettings(profile: Pick<Profile, 'worktrees'> | null | un
  * Whether a new session in `cwd` uses a worktree unless the user says otherwise: the deepest
  * folder option holding `cwd` that sets `worktrees` wins, else the profile setting.
  */
-export function worktreeDefault(profile: Pick<Profile, 'worktrees' | 'folderOptions'> | null | undefined, cwd: string, home?: string): boolean {
+export function worktreeDefault(profile: (Pick<Profile, 'worktrees' | 'folderOptions'> & Partial<Pick<Profile, 'host'>>) | null | undefined, cwd: string, home?: string): boolean {
+  if (!worktreesAvailable(profile)) return false
   const target = normalizeFolder(cwd, home)
   let best: { depth: number; value: boolean } | undefined
   for (const [key, options] of Object.entries(profile?.folderOptions ?? {})) {
@@ -51,6 +52,14 @@ export function worktreeDefault(profile: Pick<Profile, 'worktrees' | 'folderOpti
     if (isInsideFolder(target, folder) && (!best || folder.length > best.depth)) best = { depth: folder.length, value: options.worktrees }
   }
   return best ? best.value : worktreeSettings(profile).enabled
+}
+
+/**
+ * Whether sessions of the profile can get a worktree: not yet for a profile that runs on another
+ * host (a WSL distribution), whose worktrees would be made on this computer.
+ */
+export function worktreesAvailable(profile: Partial<Pick<Profile, 'host'>> | null | undefined): boolean {
+  return !profile?.host || profile.host.kind === 'local'
 }
 
 /**

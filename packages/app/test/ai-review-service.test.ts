@@ -55,7 +55,7 @@ function setup(opts: { budget?: BudgetStatus; reply?: string; modelIgnored?: boo
   const stopped: string[] = []
   const renamed: [string, string | null][] = []
   let head = 'sha1'
-  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }], activeProfileId: 'p' }
+  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false } }], activeProfileId: 'p' }
   // Automatic review is opt-in (off by default); these tests drive the automatic trigger.
   // `reviewerSession` defaults to `same`; most tests check one reviewer per round (`new`) and opt in when they need it.
   config.profiles[0]!.aiReview = { ...aiReviewSettings(null), auto: true, reviewerSession: opts.reviewerSession ?? 'new' }
@@ -169,6 +169,17 @@ describe('AiReviewService', () => {
     t.advance(120_000)
     await t.service.tick()
     expect(t.started).toHaveLength(1)
+  })
+
+  it('never reviews a session in WSL: manual rounds are refused, automatic ones never start', async () => {
+    const t = setup()
+    t.views[0] = { ...t.views[0]!, hostId: 'wsl:Ubuntu' }
+    expect(await t.service.startManual('dev')).toEqual({ ok: false, reason: 'otherHost' })
+    t.change('dev', 'busy')
+    t.change('dev', 'ready')
+    t.advance(61_000)
+    await t.service.tick()
+    expect(t.started).toHaveLength(0)
   })
 
   it('skips automatic rounds for a session whose chat turned auto review off, keeps it across restarts, and still runs manual ones', async () => {

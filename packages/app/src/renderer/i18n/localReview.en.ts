@@ -132,6 +132,7 @@ export const localReviewEn = {
   'localReview.revert.error.unsupported': 'This change cannot be reverted from here.',
   'localReview.revert.error.scope': 'Only uncommitted changes can be reverted. Switch to Uncommitted only.',
   'localReview.revert.error.notReviewed': 'This file is not part of the review any more. Read the changes again.',
+  'localReview.revert.error.otherHost': 'Reverting is not available for sessions in WSL yet.',
   'localReview.revert.error.unknownSession': 'The session is gone.',
   'localReview.revert.error.failed': 'The revert failed: {detail}',
   'files.folder': 'This path is a folder',

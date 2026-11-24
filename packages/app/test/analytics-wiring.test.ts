@@ -145,7 +145,7 @@ describe('timelines', () => {
     let lists = { state: 'ready' as const, mine: [item(pr(1))], toReview: [item(pr(5, { owner: 'acme', repo: 'web', url: 'https://example.com/acme/web/pull/5' }))] }
     let memory: PrEventState = { version: 1, profiles: {} }
     let now = 9000
-    const config: WorkhubConfig = { ...emptyConfig(), profiles: [{ id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }] as WorkhubConfig['profiles'] }
+    const config: WorkhubConfig = { ...emptyConfig(), profiles: [{ id: 'work', name: 'Work', connections: { codeHost: 'gh' }, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false } }] as WorkhubConfig['profiles'] }
     const service = new PrEventService({
       source: { lists: async () => lists as never, stateOf: async () => null },
       store: { load: async () => memory, save: async (s) => void (memory = s) },
@@ -225,7 +225,7 @@ describe('transcript scan setup', () => {
     const outside = join(root, 'other', 'tool')
     mkdirSync(join(outside, '.git'), { recursive: true })
     mkdirSync(join(outside, 'lib'))
-    const config: WorkhubConfig = { ...emptyConfig(), profiles: [{ id: 'p1', name: 'Work', connections: {}, accountIds: [], folders: [work], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false } }] as unknown as WorkhubConfig['profiles'] }
+    const config: WorkhubConfig = { ...emptyConfig(), profiles: [{ id: 'p1', name: 'Work', connections: {}, accountIds: [], folders: [work], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false } }] as unknown as WorkhubConfig['profiles'] }
     const resolve = await turnProjects(config, root)
     expect(await resolve([join(repo, 'api', 'src'), join(wt, 'web'), join(outside, 'lib'), join(root, 'loose')])).toEqual({
       [join(repo, 'api', 'src')]: repo,

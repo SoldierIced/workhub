@@ -57,13 +57,16 @@ npm run demo         # dev build with synthetic data in .demo-data/ (add -- --re
   loopback HTTP with a token on Windows. Every session also gets `WORKHUB_SESSION` and its own
   `WORKHUB_SESSION_TOKEN` (sent as `X-Workhub-Token`; `control-auth.ts` binds a request to it).
 - Agent skills that teach agents those endpoints: `skills/workhub-plan`,
-  `skills/workhub-flow-map`, `skills/workhub-automations` (automations and history,
+  `skills/workhub-flow-map`, `skills/workhub-board` (live boards, `POST /v1/boards`,
+  `packages/app/src/main/boards.ts`), `skills/workhub-automations` (automations and history,
   `packages/app/src/main/automation-control.ts`) and `skills/workhub-analytics` (read-only usage
   data, `packages/app/src/main/analytics-control.ts`; the SQL checks are in
   `packages/adapters/src/sqlite-store/read-query.ts`, queries run in the `analytics-worker.ts` utility process) and
   `skills/workhub-sessions` (other sessions of the profile, proposals and messages the user approves,
   notifications, `packages/app/src/main/session-control.ts`), and
   `skills/workhub-review` (the user's review of the session's changes, `POST /v1/sessions/<id>/review`). Keep a skill in step with the endpoint it describes.
+- Live boards: the chat's board panel, `packages/app/src/renderer/screens/boards/ChatBoards.tsx` (module
+  `boards`, no route of its own); the format and its limits are `packages/core/src/boards/` (`BOARD_LIMITS`, `parseBoard`).
 - Settings screen: `packages/app/src/renderer/screens/SettingsScreen.tsx`, shown in its own window
   (`screens/SettingsWindow.tsx`, `main/settings-window.ts`).
 - Product name, app id and release repository: `scripts/brand.mjs` only.

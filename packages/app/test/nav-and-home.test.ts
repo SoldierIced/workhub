@@ -17,7 +17,7 @@ describe('navigation', () => {
   })
 
   it('keeps Workhub 1 keys and adds Sessions and Settings', () => {
-    const all = allNavItems({ flows: true, health: true, chatWatcher: true, automations: true, flowMaps: false, planner: false })
+    const all = allNavItems({ flows: true, health: true, chatWatcher: true, automations: true, flowMaps: false, planner: false, boards: false })
     expect(all.map((i) => i.shortcut?.key)).toEqual(['1', '2', '3', '4', '5', '6', '8', undefined, '0', ','])
   })
 
@@ -27,8 +27,12 @@ describe('navigation', () => {
   })
 
   it('shows Flow maps on ⌘7, next to Health, only while its module is on', () => {
-    expect(visibleNavItems({ ...NO_MODULES, flowMaps: true, planner: false }).map((i) => [i.route, i.shortcut?.key])).toEqual([['home', '1'], ['pullRequests', '2'], ['tickets', '3'], ['history', '6'], ['flowMaps', '7'], ['usage', undefined]])
+    expect(visibleNavItems({ ...NO_MODULES, flowMaps: true, planner: false, boards: false }).map((i) => [i.route, i.shortcut?.key])).toEqual([['home', '1'], ['pullRequests', '2'], ['tickets', '3'], ['history', '6'], ['flowMaps', '7'], ['usage', undefined]])
     expect(visibleNavItems({ ...NO_MODULES, flowMaps: true, health: true }).map((i) => i.route).slice(-3)).toEqual(['flowMaps', 'health', 'usage'])
+  })
+
+  it('lists no Live boards screen, even with its module on: boards show in their chat', () => {
+    expect(visibleNavItems({ ...NO_MODULES, planner: true, boards: true }).map((i) => [i.route, i.shortcut?.key]).slice(-2)).toEqual([['plan', '9'], ['usage', undefined]])
   })
 })
 

@@ -5,9 +5,10 @@ import type { PlannerSettings } from '../calendar/types'
 import type { WorktreeSettings } from '../worktrees/settings'
 import type { PullRequestFilterSettings } from '../codehost/filters'
 import type { ConnectionKind } from './connection'
+import type { ProfileHost } from '../host/profile-host'
 
 /** Optional modules (PLAN section 4): each one adds its screens only when enabled in a profile. */
-export const OPTIONAL_MODULES = ['flows', 'health', 'chatWatcher', 'automations', 'flowMaps', 'planner'] as const
+export const OPTIONAL_MODULES = ['flows', 'health', 'chatWatcher', 'automations', 'flowMaps', 'planner', 'boards'] as const
 export type OptionalModule = (typeof OPTIONAL_MODULES)[number]
 export type ModuleToggles = Record<OptionalModule, boolean>
 
@@ -20,7 +21,7 @@ export type OfferedModule = Exclude<OptionalModule, (typeof RETIRED_MODULES)[num
 /** The optional modules a profile can turn on today (Settings → Profiles → Modules). */
 export const OFFERED_MODULES: readonly OfferedModule[] = OPTIONAL_MODULES.filter((m): m is OfferedModule => !(RETIRED_MODULES as readonly string[]).includes(m))
 
-export const NO_MODULES: ModuleToggles = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false }
+export const NO_MODULES: ModuleToggles = { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false }
 
 /**
  * A work context: which connection serves each kind, which agent accounts it uses and which
@@ -86,6 +87,8 @@ export interface Profile {
   planner?: PlannerSettings
   /** Alerts across modules (Settings → Alerts): the quiet hours. Unset: none. */
   alerts?: ProfileAlertSettings
+  /** Where the profile's sessions and folders live (see `hostOfProfile`). Unset: this computer. */
+  host?: ProfileHost
 }
 
 /** Colours a profile without one of its own takes, by its place in the list (Workhub 1's accent palette). */

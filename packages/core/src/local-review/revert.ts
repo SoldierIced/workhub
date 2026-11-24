@@ -27,7 +27,8 @@ export interface LocalRevertRequest {
  * `hidden`: the hunk is not fully shown (past the line limit); `notReviewed`: not a file of a repo
  * this session's review loaded.
  */
-export type LocalRevertError = 'unknownSession' | 'notReviewed' | 'scope' | 'changed' | 'unsupported' | 'staged' | 'hidden' | 'failed'
+/** `otherHost`: the session runs on another host (a WSL distribution), where nothing is reverted yet. */
+export type LocalRevertError = 'unknownSession' | 'notReviewed' | 'scope' | 'changed' | 'unsupported' | 'staged' | 'hidden' | 'otherHost' | 'failed'
 
 export type LocalRevertAnswer = { ok: true } | { ok: false; error: LocalRevertError; detail?: string }
 

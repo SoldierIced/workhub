@@ -27,7 +27,9 @@ function mcp(env: Record<string, string>) {
       pending.set(id, done)
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
     })
-  return { rpc, notify: (method: string) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method })}\n`), close: () => child.kill() }
+  const exited = new Promise<string>((done) => child.once('exit', (code, signal) => done(`exited (code ${code}, signal ${signal})`)))
+  const alive = () => child.exitCode === null && child.signalCode === null
+  return { rpc, exited, alive, notify: (method: string) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method })}\n`), close: () => child.kill() }
 }
 
 describe.skipIf(process.platform === 'win32')('workhub MCP server', () => {
@@ -161,6 +163,45 @@ describe.skipIf(process.platform === 'win32')('workhub MCP server', () => {
     }
   })
 
+  it('offers board_save and sends the board as the whole body, with no session key added', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-mcp-'))
+    dirs.push(dir)
+    const socket = controlSocketPath(dir)
+    const seen: unknown[] = []
+    const server = await startControlServer(socket, {
+      auth: { sessionOf: (t) => (t === 'tok-1' ? 'sess-1' : undefined), readOnly: () => false },
+      openReview: () => ({ ok: true }),
+      saveBoard: async (board, caller) => (seen.push({ board, session: caller.session }), { ok: false, status: 409, error: 'Live boards is off for this profile' })
+    })
+    const client = mcp({ WORKHUB_SOCKET: socket, WORKHUB_SESSION: 'sess-1', WORKHUB_SESSION_TOKEN: 'tok-1', WORKHUB_CWD: '/w/acme' })
+    try {
+      const init = (await client.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } }))['result'] as { instructions: string }
+      expect(init.instructions).toMatch(/Live board/)
+      expect(init.instructions).toMatch(/heartbeatSeconds/)
+      const list = (await client.rpc('tools/list'))['result'] as { tools: { name: string; description: string; inputSchema: { required: string[] } }[] }
+      const tool = list.tools.find((t) => t.name === 'board_save')!
+      expect(tool.inputSchema.required).toEqual(['board'])
+      expect(tool.description).toMatch(/whole board/)
+      // The block kinds are the format's own names.
+      expect(tool.description).toContain('(steps, graph, list, table, log and text blocks)')
+      expect(tool.description).toMatch(/heartbeatSeconds/)
+      expect(tool.description).toMatch(/60 s/)
+      expect(tool.description).toMatch(/Workhub session/)
+      expect(tool.description).toMatch(/workhub-board/)
+      // Boards show in the chat that sent them; there is no Live boards screen to point the person to.
+      expect(tool.description).not.toMatch(/Live boards screen/)
+      expect(tool.description).toMatch(/live-boards\.md/)
+      const board = { format: 'workhub.board', version: 1, id: 'b1', title: 'T', status: 'live', blocks: [{ type: 'text', text: 'hi' }] }
+      const r = (await client.rpc('tools/call', { name: 'board_save', arguments: { board } }))['result'] as { isError: boolean; content: { text: string }[] }
+      expect(r).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('off for this profile') }] })
+      // The board is the body as it is: a `session` key beside it would make the strict parser refuse it.
+      expect(seen).toEqual([{ board, session: 'sess-1' }])
+    } finally {
+      client.close()
+      server?.close()
+    }
+  })
+
   it('sends neither session nor folder without a session token (installed outside Workhub)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'wh-mcp-'))
     dirs.push(dir)
@@ -198,6 +239,62 @@ describe.skipIf(process.platform === 'win32')('workhub MCP server', () => {
       expect(r.content[0]!.text).toMatch(/not reachable/)
     } finally {
       client.close()
+    }
+  })
+
+  it('survives an oversized upload: the tool call fails and the bridge answers the next call', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-mcp-'))
+    dirs.push(dir)
+    const socket = controlSocketPath(dir)
+    const seen: string[] = []
+    const server = await startControlServer(socket, {
+      auth: { sessionOf: (t) => (t === 'tok-1' ? 'sess-1' : undefined), readOnly: () => false },
+      openReview: () => ({ ok: true }),
+      saveFlowMap: () => (seen.push('flow-map'), { ok: true, file: 'm.json', id: 'm' }),
+      saveBoard: async () => (seen.push('board'), { ok: true, id: 'b', dropped: [] })
+    })
+    const client = mcp({ WORKHUB_SOCKET: socket, WORKHUB_SESSION: 'sess-1', WORKHUB_SESSION_TOKEN: 'tok-1', WORKHUB_CWD: '/w/acme' })
+    try {
+      const call = async (name: string, args: unknown) => {
+        // A bridge that died would never answer: race it against its exit.
+        const r = await Promise.race([client.rpc('tools/call', { name, arguments: args }), client.exited.then((why) => Promise.reject(new Error(`the bridge ${why}`)))])
+        return r['result'] as { isError: boolean; content: { text: string }[] }
+      }
+      await client.rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
+      // About 600 KB (inside the discard cap) and about 9 MB (past it).
+      for (const size of Array.from({ length: 20 }, (_, i) => (i % 2 ? 9 * 1024 * 1024 : 600 * 1024))) {
+        const r = await call('flow_map_save', { map: { filler: 'x'.repeat(size) } })
+        expect(r.isError).toBe(true)
+        expect(r.content[0]!.text).toMatch(/body too large|could not be reached/)
+        expect(client.alive()).toBe(true)
+        expect((await call('board_save', { board: { format: 'workhub.board', version: 1, id: 'ok', title: 'T', status: 'live', blocks: [] } })).isError).toBe(false)
+      }
+      expect(seen.length).toBe(20)
+    } finally {
+      client.close()
+      server?.close()
+    }
+  }, 30000)
+
+  it('does not send a board over 256 KB: the tool answers with the endpoint text and the server sees no request', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-mcp-'))
+    dirs.push(dir)
+    const socket = controlSocketPath(dir)
+    const seen: string[] = []
+    const server = await startControlServer(socket, {
+      auth: { sessionOf: () => (seen.push('auth'), 'sess-1'), readOnly: () => false },
+      openReview: () => ({ ok: true }),
+      saveBoard: async () => (seen.push('board'), { ok: true, id: 'b', dropped: [] })
+    })
+    const client = mcp({ WORKHUB_SOCKET: socket, WORKHUB_SESSION: 'sess-1', WORKHUB_SESSION_TOKEN: 'tok-1', WORKHUB_CWD: '/w/acme' })
+    try {
+      const board = { format: 'workhub.board', version: 1, id: 'big', title: 'T', status: 'live', blocks: [{ type: 'text', text: 'x'.repeat(300 * 1024) }] }
+      const r = (await client.rpc('tools/call', { name: 'board_save', arguments: { board } }))['result'] as { isError: boolean; content: { text: string }[] }
+      expect(r).toEqual({ isError: true, content: [{ type: 'text', text: 'the board is over 256 KB: shorten the log or the tables' }] })
+      expect(seen).toEqual([])
+    } finally {
+      client.close()
+      server?.close()
     }
   })
 })

@@ -5,12 +5,13 @@
  * queued and retried every few seconds, like the PR events and the Slack wake-ups; it is dropped
  * when the session ends or stays busy past `PENDING_TTL_MS`.
  */
-import { realpath, stat } from 'node:fs/promises'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { realpath } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, join, posix, relative, resolve } from 'node:path'
 import type { LocalChanges, LocalReverter } from '@workhub/adapters/git-review'
 import { onlySessionFiles, validRevertTarget, type HistoryMessage, type LocalRevertAnswer, type LocalRevertRequest, type LocalReviewDelivery, type LocalReviewFiles, type LocalReviewScope, type PullRequestItem, type RepoChanges, type ReviewComment } from '@workhub/core'
 import type { SessionView } from '../shared/api'
 import type { LocalReviewElsewhere, LocalReviewLoad, LocalReviewSession } from '../shared/local-review-api'
+import { localStat, type HostFolders } from './hosts'
 import type { IpcRegistrar } from './ipc-guard'
 
 export const PENDING_TTL_MS = 12 * 3600_000
@@ -31,9 +32,21 @@ export interface LocalReviewDeps {
   emit(sessionId: string, delivery: LocalReviewDelivery): void
   /** The session's conversation, for the files its agent edited; without it every change shows. */
   history?(sessionId: string): Promise<HistoryMessage[]>
+  /**
+   * Where a session's repos are when they are not on this computer (a session in WSL): its host's
+   * git changes and real paths, or null while that host is not connected (nothing is read in its
+   * place). Undefined for a session on this computer.
+   */
+  hostOf?(sessionId: string): LocalReviewHost | null | undefined
   /** Every repo the session changed something in (the session bar's count), wherever it is. */
   touchedRepos?(sessionId: string): Promise<RepoChanges[]>
   now?: () => number
+}
+
+/** The repos of a session on another host: read with that host's git, paths resolved there. */
+export interface LocalReviewHost {
+  changes: Pick<LocalChanges, 'load'>
+  realpath(path: string): Promise<string | null>
 }
 
 /**
@@ -65,11 +78,13 @@ async function realPath(path: string): Promise<string> {
 const isLive = (v: SessionView) => v.state === 'ready' || v.state === 'busy' || v.state === 'starting'
 
 /** Whether `path` (relative to `root`) stays inside `root`. */
-export function insideRoot(root: string, path: string): string | null {
-  if (!path || isAbsolute(path)) return null
-  const full = resolve(root, path)
-  const rel = relative(root, full)
-  return rel && !rel.startsWith('..') && !isAbsolute(rel) ? full : null
+export function insideRoot(root: string, path: string, onHost = false): string | null {
+  // A session on another host (WSL) has POSIX paths, also on Windows; this computer's keep its own.
+  const paths = onHost ? posix : { isAbsolute, resolve, relative }
+  if (!path || isAbsolute(path) || paths.isAbsolute(path)) return null
+  const full = paths.resolve(root, path)
+  const rel = paths.relative(root, full)
+  return rel && !rel.startsWith('..') && !paths.isAbsolute(rel) ? full : null
 }
 
 /** A comment as the renderer sent it, checked field by field; null when it is not one. */
@@ -141,9 +156,13 @@ export class LocalReviewService {
   async load(sessionId: string, scope: LocalReviewScope, asked: LocalReviewFiles = 'repo', chosen = true): Promise<LocalReviewLoad> {
     const v = this.view(sessionId)
     if (!v) return { ok: false, reason: 'unknownSession' }
+    const host = this.deps.hostOf?.(sessionId)
+    if (host === null) return { ok: false, reason: 'failed', detail: "the session's host is not connected" }
+    const changes = host?.changes ?? this.deps.changes
+    const real = host ? async (p: string) => (await host.realpath(p)) ?? p : realPath
     const prs = (await this.deps.myPullRequests?.(v.profileId ?? null).catch(() => [])) ?? []
     try {
-      const review = await this.deps.changes.load({
+      const review = await changes.load({
         folder: v.cwd,
         scope,
         since: v.startedAt,
@@ -155,14 +174,14 @@ export class LocalReviewService {
         }
       })
       this.roots.set(sessionId, new Set([...(this.roots.get(sessionId) ?? []), ...review.repos.map((r) => r.root)]))
-      const elsewhere = await this.changedElsewhere(sessionId, review.repos.map((r) => r.root))
+      const elsewhere = await this.changedElsewhere(sessionId, review.repos.map((r) => r.root), real)
       this.elsewhere.set(sessionId, elsewhere)
       const extra = elsewhere.length ? { elsewhere } : {}
       const files: LocalReviewFiles = !chosen && this.asked.get(sessionId)?.length ? 'repo' : asked
       if (files === 'session' && this.deps.history) {
         const edited = editedPaths(v.cwd, await this.deps.history(sessionId))
-        const real = new Set([...edited, ...(await Promise.all([...edited].map(realPath)))])
-        const only = onlySessionFiles(review, real)
+        const resolved = new Set([...edited, ...(await Promise.all([...edited].map(real)))])
+        const only = onlySessionFiles(review, resolved)
         return { ok: true, session: this.sessionInfo(v), review: only.review, files, hiddenFiles: only.hidden, ...extra }
       }
       return { ok: true, session: this.sessionInfo(v), review, files, ...extra }
@@ -176,13 +195,13 @@ export class LocalReviewService {
    * them, so the window says they are there instead of silently showing less. Paths are compared
    * resolved (`/tmp` is `/private/tmp` on macOS).
    */
-  private async changedElsewhere(sessionId: string, loaded: readonly string[]): Promise<LocalReviewElsewhere[]> {
+  private async changedElsewhere(sessionId: string, loaded: readonly string[], real: (path: string) => Promise<string> = realPath): Promise<LocalReviewElsewhere[]> {
     const touched = ((await this.deps.touchedRepos?.(sessionId).catch(() => [])) ?? []).filter((r) => r.files > 0)
     if (touched.length === 0) return []
-    const seen = new Set([...loaded, ...(await Promise.all(loaded.map(realPath)))])
+    const seen = new Set([...loaded, ...(await Promise.all(loaded.map(real)))])
     const out: LocalReviewElsewhere[] = []
     for (const r of touched) {
-      if (seen.has(r.root) || seen.has(await realPath(r.root))) continue
+      if (seen.has(r.root) || seen.has(await real(r.root))) continue
       out.push({ name: r.name, root: r.root, files: r.files, additions: r.additions, deletions: r.deletions })
     }
     return out
@@ -205,7 +224,7 @@ export class LocalReviewService {
   /** The absolute path of a file in a repo this session's review loaded; null otherwise. */
   filePath(sessionId: string, repoRoot: string, path: string): string | null {
     if (!this.roots.get(sessionId)?.has(repoRoot)) return null
-    return insideRoot(repoRoot, path)
+    return insideRoot(repoRoot, path, this.deps.hostOf?.(sessionId) !== undefined)
   }
 
   /**
@@ -220,6 +239,8 @@ export class LocalReviewService {
     if (!request) return { ok: false, error: 'failed', detail: 'invalid request' }
     if (request.scope !== 'uncommitted') return { ok: false, error: 'scope' }
     if (!this.deps.reverter) return { ok: false, error: 'unsupported' }
+    // Reverting writes files and moves new ones to this computer's trash: not done on another host yet.
+    if (this.deps.hostOf?.(sessionId) !== undefined) return { ok: false, error: 'otherHost' }
     if (!this.filePath(sessionId, request.repoRoot, request.path)) return { ok: false, error: 'notReviewed' }
     const reverter = this.deps.reverter
     const root = request.repoRoot
@@ -333,13 +354,15 @@ const WINDOWS_SCRIPT_EXTENSIONS = new Set(['.js'])
 /**
  * Whether opening this path with the system's default app could run something instead of showing
  * it: a known program, script, bundle or shortcut extension (for files and folders: a macOS bundle
- * is a folder), or a file with an execute bit (not on Windows). Such paths are shown in their folder.
+ * is a folder), or a file with an execute bit (on Windows, only for a WSL host's Linux path). Such paths are shown in their folder.
  */
 export function opensAsProgram(path: string, file: { isDirectory?: boolean; mode?: number }, platform: NodeJS.Platform = process.platform): boolean {
   const ext = extname(path.replace(/[\\/]+$/, '')).toLowerCase()
   if (PROGRAM_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_SCRIPT_EXTENSIONS.has(ext))) return true
   if (file.isDirectory) return false
-  return platform !== 'win32' && file.mode !== undefined && (file.mode & 0o111) !== 0
+  // Windows has no execute bits of its own; a Linux path there is a file of a WSL host, whose bits count.
+  const posixModes = platform !== 'win32' || path.startsWith('/')
+  return posixModes && file.mode !== undefined && (file.mode & 0o111) !== 0
 }
 
 export interface LocalReviewIpcDeps {
@@ -347,6 +370,8 @@ export interface LocalReviewIpcDeps {
   openPath(path: string): Promise<string>
   /** Shows a file in its folder: used instead of `openPath` for anything that could run (`opensAsProgram`). */
   showItemInFolder(path: string): void
+  /** The host a session's folders live on, to look at a file before opening it; this computer when not given. */
+  hostOf?: (sessionId: string) => Pick<HostFolders, 'stat'>
 }
 
 export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewService, deps: LocalReviewIpcDeps): void {
@@ -366,9 +391,10 @@ export function registerLocalReviewIpc(ipc: IpcRegistrar, service: LocalReviewSe
   ipc.handle('localReview:openFile', async (_e, sessionId: string, repoRoot: string, path: string) => {
     const full = service.filePath(String(sessionId), String(repoRoot), String(path))
     if (!full) return false
-    const info = await stat(full).catch(() => null)
+    const host = deps.hostOf?.(String(sessionId))
+    const info = await (host ? host.stat(full) : localStat(full))
     if (!info) return false
-    if (opensAsProgram(full, { isDirectory: info.isDirectory(), mode: info.mode })) {
+    if (opensAsProgram(full, { isDirectory: info.isDirectory, mode: info.mode })) {
       deps.showItemInFolder(full)
       return true
     }

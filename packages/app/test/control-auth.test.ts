@@ -17,7 +17,7 @@ const profile = (id: string): Profile => ({
   name: id,
   connections: {},
   accountIds: [],
-  modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: true },
+  modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: true, boards: false },
   planner: { ...DEFAULT_PLANNER_SETTINGS, people: [] }
 })
 

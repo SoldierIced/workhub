@@ -4,7 +4,11 @@ import {
   expandProfileFolders,
   folderSpend,
   historyInProfile,
+  expandHomePath,
+  normalizeFolder,
   owningProfile,
+  profileDefaultFolder,
+  profileFolderPaths,
   profileRootFor,
   projectChildren,
   spendKey,
@@ -111,5 +115,35 @@ describe('ownership in history and token spend', () => {
     const owns = (id: string) => (path: string) => owningProfile(path, all, HOME)?.id === id
     expect(folderSpend(buckets, ['/home/u/work'], { sinceDay: day, owns: owns('work') }).map((e) => [e.name, e.tokens])).toEqual([['work', 5]])
     expect(folderSpend(buckets, ['/home/u/code'], { sinceDay: day, owns: owns('personal') }).map((e) => [e.name, e.path, e.tokens])).toEqual([['scripts', '/srv/scripts', 4]])
+  })
+})
+
+describe('folders of a profile that runs in WSL', () => {
+  const wsl: FolderProfile = { id: 'linux', folders: ['~/acme', '/home/ana/web'], host: { kind: 'wsl', distro: 'Ubuntu' } }
+  const winHome = 'C:\\Users\\ana'
+
+  it("never expand ~ with this computer's home: the path is the distribution's", () => {
+    expect(profileFolderPaths(wsl, winHome).map((f) => f.path)).toEqual(['~/acme', '/home/ana/web'])
+    expect(profileDefaultFolder({ ...wsl, defaultFolder: '~/acme' }, winHome)).toBe('~/acme')
+    expect(owningProfile('C:\\Users\\ana\\acme\\api', [wsl], winHome)).toBeUndefined()
+    expect(owningProfile('/home/ana/web/app', [wsl], winHome)?.id).toBe('linux')
+    expect(profileRootFor('/home/ana/web/app', wsl, winHome)).toBe('/home/ana/web')
+  })
+
+  it('still expand ~ for a profile on this computer', () => {
+    const here: FolderProfile = { id: 'here', folders: ['~/acme'], host: { kind: 'local' } }
+    expect(profileFolderPaths(here, '/home/u').map((f) => f.path)).toEqual(['/home/u/acme'])
+  })
+})
+
+describe('trailing separators', () => {
+  it('are dropped in linear time, also from a long run of slashes', () => {
+    const run = '/'.repeat(100_000)
+    const started = Date.now()
+    expect(normalizeFolder(`/home/ana/acme${run}x${run}`)).toBe(`/home/ana/acme${run}x`)
+    expect(normalizeFolder(run)).toBe(run)
+    expect(normalizeFolder('C:\\work\\acme\\/')).toBe('C:\\work\\acme')
+    expect(expandHomePath('~/acme', `/home/ana${run}`)).toBe('/home/ana/acme')
+    expect(Date.now() - started).toBeLessThan(1_000)
   })
 })

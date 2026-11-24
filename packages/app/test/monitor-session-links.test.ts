@@ -160,7 +160,7 @@ describe('the monitor hints', () => {
   })
 
   it('say what to turn on when the Slack watcher cannot read, the profile first', () => {
-    const on = { modules: { flows: false, health: false, chatWatcher: true, automations: false, flowMaps: false, planner: false } }
+    const on = { modules: { flows: false, health: false, chatWatcher: true, automations: false, flowMaps: false, planner: false, boards: false } }
     const off = { modules: { ...on.modules, chatWatcher: false } }
     const channels = [{ id: 'C01', name: 'reviews', purpose: '' }]
     expect(slackSetupHint(off, { enabled: true, channels })).toBe('module')

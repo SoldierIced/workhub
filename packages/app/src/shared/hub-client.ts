@@ -18,6 +18,7 @@ import type { MenuCommand } from './windows-api'
 import type { RemoteStatusView } from './remote-api'
 import type { SignInEvent } from './sign-in-api'
 import type { InstallQueueSnapshot } from './setup-api'
+import type { HostStatus } from './hosts-api'
 
 /** What carries `hub` calls to the main process: request/response, one-way, and main's events. */
 export interface HubTransport {
@@ -112,7 +113,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       revealFolder: (path) => invoke('history:revealFolder', path)
     },
     agents: {
-      availability: () => invoke('agents:availability'),
+      availability: (profileId?: string | null) => invoke('agents:availability', profileId ?? null),
       options: (agentKey, refresh) => invoke('agents:options', agentKey, refresh)
     },
     usage: {
@@ -194,6 +195,12 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       copyImage: (dataUrl) => invoke('flowMaps:copyImage', dataUrl),
       ask: (draft, folder) => send('flowMaps:ask', draft, folder),
       onAsk: (cb) => subscribe<[string, string | undefined]>('flowMaps:askInMain', cb)
+    },
+    boards: {
+      list: (profileId) => invoke('boards:list', profileId),
+      get: (profileId, key) => invoke('boards:get', profileId, key),
+      remove: (profileId, key) => invoke('boards:remove', profileId, key),
+      onChanged: (cb) => subscribe<[string, string]>('boards:changed', cb)
     },
     plan: {
       get: (profileId, force) => invoke('plan:get', profileId, force),
@@ -328,6 +335,12 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       completeWelcome: () => invoke('setup:completeWelcome'),
       folders: () => invoke('setup:folders')
     },
+    hosts: {
+      wslDistros: () => invoke('hosts:wslDistros'),
+      status: () => invoke('hosts:status'),
+      retry: (id) => invoke('hosts:retry', id),
+      onStatus: (cb) => subscribe<[HostStatus[]]>('hosts:statusChanged', cb)
+    },
     signIn: (tool, accountId) => invoke('signIn:open', tool, accountId ?? null),
     signInPane: {
       attach: (id) => invoke('signIn:attach', id),
@@ -339,8 +352,8 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
     },
     agentTools: {
       status: () => invoke('agentTools:status'),
-      installSkills: (accountId) => invoke('agentTools:installSkills', accountId),
-      removeSkills: (accountId) => invoke('agentTools:removeSkills', accountId),
+      installSkills: (targetId, skills) => invoke('agentTools:installSkills', targetId, skills),
+      removeSkills: (targetId, skills) => invoke('agentTools:removeSkills', targetId, skills),
       installGlobalMcp: (accountId) => invoke('agentTools:installGlobalMcp', accountId),
       removeGlobalMcp: (accountId) => invoke('agentTools:removeGlobalMcp', accountId)
     },

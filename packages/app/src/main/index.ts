@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs'
 import { stat, writeFile } from 'node:fs/promises'
 import { homedir, hostname } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
-import { AcpRuntime, agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
-import { CLAUDE_PERMISSION_MODES, ClaudeNativeRuntime, ClaudePlanUsageReader, ClaudeSessionHistory, discoverClaudeOptions } from '@workhub/adapters/agent-claude-native'
+import { agentAvailability, discoverKiroOptions } from '@workhub/adapters/agent-acp'
+import { CLAUDE_PERMISSION_MODES, ClaudePlanUsageReader, discoverClaudeOptions } from '@workhub/adapters/agent-claude-native'
 import { DemoChatSource, SlackAgentChatSource, SlackTrackingHook } from '@workhub/adapters/chat-slack'
 import { ListenSummarizer } from '@workhub/adapters/listen-summary'
 import { JsonConfigStore } from '@workhub/adapters/config-json'
@@ -15,13 +15,14 @@ import { augmentedPath, pathKeyOf, refreshLoginPath, utf8LocaleEnv, withFoldersF
 import { ManagedToolsInstaller } from '@workhub/adapters/managed-tools'
 import { readNotificationPermission } from '@workhub/adapters/notification-permission'
 import { ClaudeTranscriptReader, copyClaudeSession, readClaudeHandoffFacts } from '@workhub/adapters/transcript-claude'
-import { CodexPlanUsageReader, CodexSessionHistory, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
-import { KiroPlanUsageReader, KiroSessionHistory, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
+import { CodexPlanUsageReader, CodexTranscriptReader } from '@workhub/adapters/transcript-codex'
+import { KiroPlanUsageReader, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
 import { GitReview, LocalChanges, LocalReverter } from '@workhub/adapters/git-review'
 import { GitWorktrees } from '@workhub/adapters/git-worktree'
 import { AutomationRunLog, BackgroundRuns, BACKUP_FOLDER, backupDatabase, DB_FILE, describeImport, importLegacyJson, listBackups, SessionRecords, SqliteFlowMaps, SqliteHistoryIndex, SqlitePrEventStore, Timelines, TurnIngest, repoProjects, WorkhubDb, type ProjectResolver } from '@workhub/adapters/sqlite-store'
 import { DemoCalendarSource, IcsCalendarSource } from '@workhub/adapters/calendar-ics'
-import { OpenCodeSessionHistory, OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
+import { OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
+import { composeExecutionServices, wslInputRunner, wslRunner } from '@workhub/adapters/host'
 import {
   alertRulesOf,
   appOptions,
@@ -43,10 +44,13 @@ import {
   validateConfig,
   quietNow,
   moduleScreens,
+  type BoardsState,
   type CreditSpend,
   type Result,
   sessionIdentity,
   type SessionCeilings,
+  hostIdOf,
+  type ProfileHost,
   type WorkhubConfig
 } from '@workhub/core'
 import type { AccountUsage, ConfigSnapshot, HistorySearchOptions, HistorySearchResult, UsageAlert } from '../shared/api'
@@ -86,12 +90,19 @@ import { RecentCall } from './recent-call'
 import { PrEventService, registerPrEventsIpc } from './pr-events-service'
 import { OutputCoalescer } from './output-coalescer'
 import { routeSessionEvent } from './terminal-routing'
+import { elsewhere, followHostStatus, HostRegistry, localHost, type SessionHost } from './hosts'
+import { mcpLaunchTarget, sessionEndpoint, type ControlServe } from './host-control'
+import { HostProcess } from './host-process'
+import { WslHosts } from './wsl-hosts'
+import { ensureWslHost } from './wsl-host-install'
+import { HostStatusBoard } from './host-status'
+import { registerHostsIpc } from './ipc/hosts'
 import { SessionDriver } from './session-driver'
 import { OwnerStarts } from './owner-starts'
 import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
 import { LocalReviewService, registerLocalReviewIpc } from './local-review'
-import { CONTROL_ENV_KEYS, controlEnv, controlSocketPath, newControlToken, reviewPathOutside, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
+import { CONTROL_ENV_KEYS, controlEnv, controlSocketPath, newControlToken, reviewPathOutside, serveControl, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
 import { createAnalyticsControl } from './analytics-control'
 import { ControlTokens } from './control-auth'
 import { kiroUsageProbeEnabled } from './kiro-usage-probe'
@@ -105,6 +116,8 @@ import { registerSessionRequestsIpc, SessionRequests } from './session-control'
 import { FlowHistoryStore } from './flow-history'
 import { saveFlowMap } from './flow-maps'
 import { registerFlowMapsIpc } from './flow-maps-ipc'
+import { boardsOn, createBoards, createBoardSaver } from './boards'
+import { registerBoardsIpc } from './boards-ipc'
 import { DemoMetricSource, HealthMetricSource, MetricAlertService, ProductMetricSource, type MetricAlertsState } from './metric-alerts'
 import { registerMetricAlertsIpc } from './metric-alerts-ipc'
 import { registerFileViewerIpc } from './file-viewer'
@@ -118,7 +131,7 @@ import { registerAnalyticsIpc, REPORT_BUDGET_MS } from './analytics-ipc'
 import { ProjectBudgetAlerts, type MonthRow } from './project-budget-alerts'
 import { ApiSpendService, CostLedger, spendAgentId, type CostLedgerState } from './api-spend'
 import { backgroundUsage } from './background-usage'
-import { UpdateService } from './updates'
+import { RELEASE_REPO, UpdateService } from './updates'
 import { readUpdatePromptState, shouldPromptUpdate, type UpdatePromptState } from './update-prompt'
 import { buildAppMenuTemplate, isSessionCommand } from './app-menu'
 import { SessionNames } from './session-names'
@@ -361,6 +374,7 @@ const send = broadcast.send
 /** Tells every window, and every paired device, that the config changed. */
 const configChanged = () => {
   broadcast.toWindowsAndDevices('config:changed')
+  void configuration.current().then(readProfileHosts)
 }
 // Every write tells every window (`config:changed`): a change in the Settings window shows in the main window.
 const configPath = join(dataDir, 'config.json')
@@ -375,7 +389,8 @@ let sessionsWanted = false
 // WORKHUB_DEMO_CODEHOST=1 reads synthetic pull requests instead of a real host (screenshots, demos).
 // The demo moves on one step at a time (`prEvents.demoAdvance`) so pull request events can be seen.
 let demoPrStep = 0
-const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1', demoStep: () => demoPrStep, onListsChanged: () => scheduleTray() })
+// `hosts` is built further down, with the execution services; nothing reads a profile's remotes before then.
+const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1', demoStep: () => demoPrStep, onListsChanged: () => scheduleTray(), hostFor: (target) => hosts.hostFor(target) })
 const prEvents = new PrEventService({
   source: codeHost,
   store: new SqlitePrEventStore(db),
@@ -390,9 +405,14 @@ const prEvents = new PrEventService({
 const flowHistory = new FlowHistoryStore(db, Date.now, (m) => diagnostics.log.warn(m))
 if (firstInstance) flowHistory.prune()
 const flowMaps = new SqliteFlowMaps(db)
+// Live boards: one row of the database per profile; announced to windows only (never to a paired device).
+const boards = createBoards({
+  stateFor: (profileId) => db.state<BoardsState>('boards:' + profileId, 5000),
+  changed: (profileId, boardId) => broadcast.toWindows('boards:changed', profileId, boardId)
+})
 const health = new HealthService({ configuration, secrets, demo: process.env['WORKHUB_DEMO_HEALTH'] === '1', flowMaps, flowHistory })
 // WORKHUB_DEMO_TICKETS=1 serves synthetic tickets, so the UI can be shown without credentials.
-const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1', undefined, scenario ?? undefined)
+const ticketService = new TicketService(configuration, secrets, process.env['WORKHUB_DEMO_TICKETS'] === '1', undefined, scenario ?? undefined, undefined, (target) => hosts.hostFor(target))
 // WORKHUB_DEMO_CALENDAR=1 serves synthetic meetings around now, so Plan can be shown without a calendar address.
 const calendar = new CalendarService({ configuration, secrets, source: new IcsCalendarSource(), demo: process.env['WORKHUB_DEMO_CALENDAR'] === '1' ? new DemoCalendarSource(Date.now, scenario ? productCalendarEvents : undefined) : null })
 
@@ -558,28 +578,106 @@ const bundledClaudeDir = join(
   `claude-agent-sdk-${process.platform}-${process.arch}`
 )
 const fallbackPath = existsSync(bundledClaudeDir) ? [bundledClaudeDir] : []
-const terminal = new TerminalRuntime({ path: sessionPath, fallbackPath })
 // Agent adapters installed with the app (claude-agent-acp) are found through PATH.
 const extraPath = app.isPackaged
   ? [join(bridgeDir, 'node_modules', '.bin')]
   : [join(repoRoot, 'node_modules', '.bin'), join(appRoot, 'node_modules', '.bin')]
-const runtimes = {
-  native: new ClaudeNativeRuntime({ bridgeDir, path: sessionPath, log: (m) => diagnostics.log.warn(m) }),
-  acp: new AcpRuntime({
-    clientName: 'workhub',
-    clientVersion: app.getVersion(),
-    extraPath,
-    path: sessionPath
-  }),
-  terminal
-}
 // Claude transcripts are parsed in a utility process, never on this one (a 50 MB file froze every window).
 const transcriptReader = createTranscriptReader((m) => diagnostics.log.warn(m))
-const claudeHistory = new ClaudeSessionHistory({ bridgeDir, transcripts: transcriptReader.read })
 // Kiro's data folder (~/.kiro); WORKHUB_KIRO_DIR points the readers elsewhere (smoke runs, demos).
 const kiroDir = process.env['WORKHUB_KIRO_DIR'] ? resolve(process.env['WORKHUB_KIRO_DIR']) : undefined
-// Past sessions per agent id; the readers behind them are kiro, opencode and codex (PLAN D9).
-const historySources = { claude: claudeHistory, kiro: new KiroSessionHistory({ kiroDir }), opencode: new OpenCodeSessionHistory(), codex: new CodexSessionHistory() }
+// Agent runtimes, transcript readers, past sessions per agent id and git, built as a host would build them.
+const execution = composeExecutionServices({
+  bridgeDir,
+  sessionPath,
+  fallbackPath,
+  extraPath,
+  clientVersion: app.getVersion(),
+  kiroDir,
+  claudeTranscripts: transcriptReader.read,
+  log: (m) => diagnostics.log.warn(m)
+})
+const { runtimes, terminal, history: historySources } = execution
+// The host each profile names (`profile.host`), read again on every config write: `hostFor` is
+// synchronous, so it reads this copy rather than the config.
+let profileHosts = new Map<string, ProfileHost>()
+// The hosts sessions run on: this computer, and the ones profiles name once they connect (see hosts.ts).
+const hosts = new HostRegistry(localHost(execution), (profileId) => profileHosts.get(profileId))
+// Main's control endpoint as a function, once its deps exist: what serves the requests hosts relay
+// from their own sockets (host-control.ts), so sessions on a host reach it without a network path.
+let controlServe: ControlServe | null = null
+// A profile that names a WSL distribution starts its host there (Windows only), once per distribution,
+// installing it first: from the release of this version, or from WORKHUB_HOST_PAYLOAD (a local
+// workhub-host-<version>-linux-<arch>.tar.gz, offline or for a development build). Each host's
+// status goes to every window (Settings → Profiles shows it).
+const hostStatus = new HostStatusBoard((list) => broadcast.toWindows('hosts:statusChanged', list))
+const wslHosts = new WslHosts({
+  platform: process.platform,
+  hostVersion: app.getVersion(),
+  run: wslRunner(),
+  runner: (timeoutMs) => wslRunner({ timeoutMs }),
+  install: ({ distro, home, arch, run, onProgress }) =>
+    ensureWslHost({
+      distro,
+      home,
+      arch,
+      onProgress,
+      version: app.getVersion(),
+      // As long as a cold start (its first check), or moving and removing a payload folder (hundreds of MB), takes.
+      run,
+      runWithInput: wslInputRunner(),
+      fetch: (url) => net.fetch(url),
+      payloadFile: process.env['WORKHUB_HOST_PAYLOAD'] || undefined,
+      cacheDir: join(dataDir, 'host-payloads'),
+      repo: RELEASE_REPO,
+      log: diagnostics.log
+    }),
+  register: (host) => hosts.register(host),
+  log: diagnostics.log,
+  status: (id, event) => {
+    hostStatus.apply(id, event)
+    // Sessions waiting for the host fail with the reason it is not there, or keep waiting while it (re)starts.
+    followHostStatus(hosts, id, event)
+    // The setup check waits for this host to check a WSL profile's tools: it reads them again now.
+    if (event.type === 'connected') broadcast.toWindows('setup:changed')
+  },
+  createProcess: (options) => new HostProcess({ ...options, log: diagnostics.log, serveControl: () => controlServe })
+})
+function readProfileHosts(config: WorkhubConfig): void {
+  profileHosts = new Map(config.profiles.flatMap((p): [string, ProfileHost][] => (p.host ? [[p.id, p.host]] : [])))
+  wslHosts.ensure(profileHosts.values())
+}
+void configuration.current().then(readProfileHosts)
+// WORKHUB_HOST=child: the sessions and folder checks of every profile that names no host run in a
+// `workhub host` child process, over its stdio, instead of in this process. A development switch
+// for the host stack. Until it connects, and when it cannot, this computer.
+const childHost =
+  process.env['WORKHUB_HOST'] === 'child'
+    ? new HostProcess({
+        entry: join(__dirname, 'host.js'),
+        hostVersion: app.getVersion(),
+        args: [
+          '--bridge-dir',
+          bridgeDir,
+          ...fallbackPath.flatMap((p) => ['--fallback-path', p]),
+          ...extraPath.flatMap((p) => ['--extra-path', p]),
+          ...(kiroDir ? ['--kiro-dir', kiroDir] : [])
+        ],
+        log: diagnostics.log,
+        onRestart: (host) => hosts.register(host),
+        serveControl: () => controlServe
+      })
+    : null
+if (childHost) {
+  childHost.connect().then(
+    (host) => {
+      hosts.register(host)
+      hosts.prefer(host.id)
+      diagnostics.log.info('host: sessions run in the child host process')
+    },
+    (err: unknown) => diagnostics.log.error(`host: the child host is not available, sessions run in this process: ${err instanceof Error ? err.message : String(err)}`)
+  )
+}
 // Models and modes each agent offers before a session starts (Kiro: its listing commands; Claude Code:
 // what it reports when a session starts, read without a prompt; others: their last session).
 const agentOptions = new AgentOptionsService({
@@ -682,22 +780,32 @@ const sessions = new SessionManager({
   log: (m) => diagnostics.log.warn(m),
   worktrees: new GitWorktrees(),
   text: (key, params) => trayText(tray.locale()).t(key, params),
-  sessionEnv: (sessionId) => controlEnv(sessionId, controlEndpoint, () => controlTokens.mint(sessionId)),
+  // A session on a host reaches the endpoint through the host's socket, relayed to main (host-control.ts).
+  sessionEnv: (sessionId, control) => controlEnv(sessionId, sessionEndpoint(control, controlEndpoint, controlServe !== null), () => controlTokens.mint(sessionId)),
   // Workhub's MCP server (Settings → Agents → Workhub tools), for sessions that reach the endpoint.
-  sessionMcp: async (env) => {
+  sessionMcp: async (env, _agent, control) => {
     if (!appOptions(await configuration.current()).workhubMcp) return []
-    return workhubMcpLaunch(env, { node: process.execPath, script: join(bridgeDir, WORKHUB_MCP_SCRIPT) })
+    return workhubMcpLaunch(env, mcpLaunchTarget(control, { node: process.execPath, script: join(bridgeDir, WORKHUB_MCP_SCRIPT) }))
   },
   names: sessionNames,
-  profileEnv: async (profileId, cwd) => {
+  profileEnv: async (profileId, cwd, hostHome) => {
     const config = await configuration.current()
-    return profileSessionEnv(config.profiles.find((p) => p.id === profileId), cwd, secrets, homedir())
+    return profileSessionEnv(config.profiles.find((p) => p.id === profileId), cwd, secrets, homedir(), hostHome)
   },
   accountEnv: (account) => accountSessionEnv(account, secrets),
   runtimes,
   terminal,
-  transcripts: [new ClaudeTranscriptReader(), new KiroTranscriptReader({ kiroDir }), new OpenCodeTranscriptReader(), new CodexTranscriptReader()],
+  transcripts: execution.transcripts,
   history: historySources,
+  // Sessions wait for the host their profile names; they never run on this computer in its place (hosts.ts).
+  hostFor: (target) => {
+    const servicesOf = (host: SessionHost) => ({ ...host.services, exists: host.exists, control: host.control, hostId: host.id, ...(host.home ? { home: host.home } : {}) })
+    const host = hosts.sessionHostFor(target)
+    if (!('ready' in host)) return servicesOf(host)
+    const ready = host.ready.then(servicesOf)
+    ready.catch(() => undefined) // handled where the session waits, maybe after other awaits
+    return { hostId: host.id, ready }
+  },
   onAgentOptions: (agentId, accountId, options) => agentOptions.record(agentId, accountId, options),
   emitEvent: (e) => {
     if (e.type === 'monitor' && e.snapshot.cost?.currency === 'USD') recordSessionCost(e.sessionId, e.snapshot.cost.amount)
@@ -751,7 +859,17 @@ const openSessions = new OpenSessions({
     return view
   },
   setMode: (id, mode) => sessions.setMode(id, mode),
-  folderExists: (path) => stat(path).then((s) => s.isDirectory(), () => false),
+  // A session of another host is checked there; while that host is not connected it is kept (it waits stopped, or its start reports the failure).
+  folderExists: (path, hostId) => {
+    if (!hostId) return stat(path).then((s) => s.isDirectory(), () => false)
+    const host = hosts.get(hostId)
+    return host ? host.stat(path).then((s) => s?.isDirectory === true, () => false) : Promise.resolve(true)
+  },
+  // The host the profile names, even while it is not connected: its folders are paths there.
+  hostOf: (view) => {
+    const named = view.profileId ? profileHosts.get(view.profileId) : undefined
+    return named ? hostIdOf(named) : hosts.hostFor({ profileId: view.profileId ?? null }).id
+  },
   enabled: async () => appOptions(await configuration.current()).reopenSessions,
   startAtLaunch: async () => appOptions(await configuration.current()).startSessionsAtLaunch,
   groups: async () => (await configuration.current()).sessionGroups,
@@ -966,15 +1084,28 @@ const briefs = new BriefService({
   resumes: (config, agentKey) => knownAgents(config).find((a) => a.id === (agentKey.split(':')[0] ?? agentKey))?.adapter === 'native'
 })
 
-// The monitor's "Local changes" of a session's folder (read-only git commands).
-const localGit = new GitReview()
+/**
+ * The host a session's files live on: this computer, or the host its view names (a WSL
+ * distribution); undefined while that host is not connected (nothing is read in its place).
+ */
+function sessionHostOf(sessionId: string): SessionHost | undefined {
+  const hostId = sessions.list().find((v) => v.id === sessionId)?.hostId
+  return hostId ? hosts.get(hostId) : hosts.local
+}
+
+// The monitor's "Local changes" of a session's folder (read-only git commands), with its host's git.
+const localGit = new GitReview(execution.git)
+function localGitOf(sessionId: string): GitReview | null {
+  const host = sessionHostOf(sessionId)
+  return !host ? null : host.id === hosts.local.id ? localGit : new GitReview(host.git)
+}
 
 // AI review before a pull request: a reviewer agent on a separate checkout of the dev session's branch.
 const aiReview = new AiReviewService({
   config: () => configuration.current(),
   sessions,
   driver,
-  git: new GitReview(),
+  git: new GitReview(execution.git),
   state: db.state('ai-review-state', 500),
   workDir: join(dataDir, 'ai-review'),
   emit: (snap) => send('aiReview:changed', snap),
@@ -994,9 +1125,16 @@ const aiReview = new AiReviewService({
 const localReview = new LocalReviewService({
   sessions,
   deliver: (id, text) => driver.deliver(id, text),
-  changes: new LocalChanges(),
+  changes: new LocalChanges(execution.git),
+  // A WSL session's repos are read with its host's git; it cannot revert there yet.
+  hostOf: (sessionId) => {
+    const hostId = sessions.list().find((v) => v.id === sessionId)?.hostId
+    if (!elsewhere(hostId)) return undefined
+    const host = hosts.get(hostId!)
+    return host ? { changes: new LocalChanges(host.git), realpath: host.realpath } : null
+  },
   // Content HEAD does not have (an untracked or new file) goes to the system trash, never deleted.
-  reverter: new LocalReverter({ trash: (path) => shell.trashItem(path) }),
+  reverter: new LocalReverter({ git: execution.git, trash: (path) => shell.trashItem(path) }),
   myPullRequests: async (profileId) => {
     const lists = await Promise.race([codeHost.lists(profileId), new Promise<null>((r) => setTimeout(() => r(null), 5_000))]).catch(() => null)
     return lists?.mine ?? []
@@ -1005,7 +1143,8 @@ const localReview = new LocalReviewService({
   history: (sessionId) => sessions.history(sessionId),
   touchedRepos: async (sessionId) => {
     const cwd = sessions.cwdOf(sessionId)
-    return cwd ? ((await localGit.localChanges(cwd, sessions.changePathsOf(sessionId)))?.repos ?? []) : []
+    const git = cwd ? localGitOf(sessionId) : null
+    return cwd && git ? ((await git.localChanges(cwd, sessions.changePathsOf(sessionId)))?.repos ?? []) : []
   }
 })
 
@@ -1045,7 +1184,7 @@ const continuity = new ContinuityService({
   copySession: (input) => copyClaudeSession(input),
   facts: handoffFacts,
   git: async (cwd) => {
-    const probe = await new GitReview().probe(cwd, 'main')
+    const probe = await new GitReview(execution.git).probe(cwd, 'main')
     return probe ? { branch: probe.branch, dirtyFiles: probe.dirtyFiles } : null
   },
   placeBeside: placeInSidebar,
@@ -1147,8 +1286,18 @@ const installs = new InstallQueue({
   emit: (snapshot) => broadcast.toWindows('setup:installProgress', snapshot),
   afterEach: refreshCliPath
 })
+/** The WSL distribution a profile runs in, and whether its host has connected; null for a profile on this computer. */
+function wslHostOf(config: WorkhubConfig, profileId: string | null | undefined): { distro: string; connected: boolean } | null {
+  const host = profileId ? config.profiles.find((p) => p.id === profileId)?.host : undefined
+  return host?.kind === 'wsl' ? { distro: host.distro, connected: hosts.get(hostIdOf(host)) !== undefined } : null
+}
 const setup = new SetupService({
   arch: process.arch,
+  // The active profile runs in WSL: Claude Code and git are checked there, once its host is up.
+  profileHost: (config) => {
+    const wsl = wslHostOf(config, config.activeProfileId)
+    return wsl ? { distro: wsl.distro, probe: wsl.connected ? wslHosts.toolProbe(wsl.distro) : null } : null
+  },
   config: () => configuration.current(),
   hasSecret: (ref) => secrets.has(ref),
   path: setupPath,
@@ -1264,6 +1413,7 @@ function registerIpc(): void {
   registerUsageIpc(ipc, {
     configuration,
     extraPath,
+    wslHost: wslHostOf,
     agentPath: () => [sessionPath() ?? process.env['PATH'] ?? '', ...fallbackPath].filter(Boolean).join(delimiter),
     agentOptions,
     usage,
@@ -1279,6 +1429,7 @@ function registerIpc(): void {
     }
   })
   registerSignInIpc(ipc, signIn)
+  registerHostsIpc(ipc, { platform: process.platform, run: wslRunner(), statuses: () => hostStatus.list(), retry: (id) => wslHosts.retry(id) })
   registerSetupIpc(ipc, {
     setup,
     installs: {
@@ -1351,7 +1502,7 @@ function registerIpc(): void {
     configChanged,
     ownerStarts,
     driver,
-    localGit,
+    localGitOf,
     sessionWindows,
     continuity
   })
@@ -1366,6 +1517,10 @@ function registerIpc(): void {
   registerAnalyticsIpc(ipc, { db, records: sessionRecords, scan: () => tokenSpend.scanNow(), reports: (r) => usageReports.report(r), exportCsv: createUsageCsvExporter({ window: windows.liveMain }) })
   registerSessionRequestsIpc(ipc, sessionRequests)
   registerAgentChangesIpc(ipc, agentChanges, agentChangesWindow((hash, title) => createAuxWindow(hash, title, { width: 780, height: 820, minWidth: 480, minHeight: 400 })))
+  registerBoardsIpc(ipc, {
+    boards,
+    enabled: (profileId) => boardsOn({ modules: boardModules }, profileId)
+  })
   registerFlowMapsIpc(ipc, {
     maps: flowMaps,
     pickFiles: async () => {
@@ -1403,7 +1558,12 @@ function registerIpc(): void {
   })
   registerAiReviewIpc(ipc, aiReview)
   registerAgentReviewIpc(ipc, agentReview, reviewLoopWindows((hash, title) => createAuxWindow(hash, title, REVIEW_LOOP_WINDOW_SIZE)))
-  registerLocalReviewIpc(ipc, localReview, { openWindow: openLocalReviewWindow, openPath: (path) => shell.openPath(path), showItemInFolder: (path) => shell.showItemInFolder(path) })
+  registerLocalReviewIpc(ipc, localReview, {
+    openWindow: openLocalReviewWindow,
+    openPath: (path) => shell.openPath(path),
+    showItemInFolder: (path) => shell.showItemInFolder(path),
+    hostOf: (sessionId) => hosts.hostFor({ profileId: sessions.list().find((v) => v.id === sessionId)?.profileId ?? null })
+  })
   registerFileViewerIpc(ipc, {
     createWindow: (hash, title) => createAuxWindow(hash, title, FILE_WINDOW_SIZE),
     home: homedir(),
@@ -1597,6 +1757,7 @@ const controlProfiles = {
   },
   folderProfile: async (path: string) => owningProfile(path, (await configuration.current()).profiles, homedir())?.id
 }
+const boardModules = async (profileId: string) => (await configuration.current()).profiles.find((p) => p.id === profileId)?.modules
 void app.whenReady().then(async () => {
   // A second launch only hands over to the running app (its 'second-instance'): it must not touch
   // the socket, the config or any other file the running app owns.
@@ -1611,20 +1772,39 @@ void app.whenReady().then(async () => {
   }, 8_000).unref()
   const controlDeps: ControlDeps = journalControl({
     auth: controlTokens.auth(() => sessions.list()),
+    // The session's folders are where it runs: a WSL session's are the distribution's.
+    isReviewFolder: async (sessionId, path) => {
+      const host = sessionHostOf(sessionId)
+      return host ? (await host.stat(path))?.isDirectory === true : false
+    },
     openReview: async (sessionId, repos) => {
       const v = sessions.list().find((s) => s.id === sessionId)
       if (!v) return { ok: false, status: 404, error: 'unknown session' }
       if (v.readOnly) return { ok: false, status: 403, error: 'a reviewer session cannot open a review' }
-      // An agent may only point the review at its own folder, its worktree or its profile's folders.
+      const host = sessionHostOf(sessionId)
+      if (!host) return { ok: false, status: 503, error: "the session's host is not connected" }
+      // An agent may only point the review at its own folder, its worktree or its profile's folders,
+      // compared on its host (where `~` in the profile's folders is that host's home).
       const profile = (await configuration.current()).profiles.find((p) => p.id === v.profileId)
-      const roots = [v.cwd, ...(profile ? profileFolderPaths(profile, homedir()).map((f) => f.path) : [])]
-      const outside = reviewPathOutside(repos, roots)
+      const folders = profile ? (elsewhere(host.id) && host.home ? profileFolderPaths({ folders: profile.folders }, host.home) : profileFolderPaths(profile, homedir())) : []
+      const roots = [v.cwd, ...folders.map((f) => f.path)]
+      const outside = await reviewPathOutside(repos, roots, host.realpath)
       if (outside) return { ok: false, status: 400, error: `not inside this session's folder, worktree or profile folders: ${outside}` }
       localReview.request(sessionId, repos)
       openLocalReviewWindow(sessionId, true)
       return { ok: true }
     },
     saveFlowMap: (map) => saveFlowMap(flowMaps, map, { keepAlerts: true }),
+    // Not a change an agent made: journalControl copies this dep as it is and records nothing for it.
+    saveBoard: createBoardSaver({
+      ...controlProfiles,
+      boards,
+      modules: boardModules,
+      chatOf: (id) => {
+        const view = sessions.list().find((s) => s.id === id)
+        return view ? sessionIdentity(view) : undefined
+      }
+    }),
     addInboxItems: async (body) => {
       // A reviewer cannot propose items; the session in the body is the caller's (bound by its token).
       const b = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as Record<string, unknown>
@@ -1653,6 +1833,7 @@ void app.whenReady().then(async () => {
     sessions: sessionRequests,
     log: (m) => diagnostics.log.warn(m)
   }, agentChanges)
+  controlServe = (req) => serveControl(controlDeps, req)
   if (loopbackControl) {
     const started = await startLoopbackControlServer(controlToken, controlDeps)
     controlServer = started?.server ?? null
@@ -1672,7 +1853,9 @@ void app.whenReady().then(async () => {
   }
   if (scenario && !loadError) {
     try {
-      if (await seedScenarioConfig(configuration, dataDir)) diagnostics.log.info(`demo scenario "${scenario}" seeded in ${dataDir}`)
+      if (await seedScenarioConfig(configuration, dataDir)) {
+        diagnostics.log.info(`demo scenario "${scenario}" seeded in ${dataDir}`)
+      }
     } catch (err) {
       loadError = err instanceof Error ? err.message : String(err)
       diagnostics.log.error(loadError)
@@ -1796,6 +1979,9 @@ let dbClosed = false
 app.on('will-quit', (event) => {
   historyIndexer.stop()
   transcriptReader.close()
+  // Sessions were stopped in before-quit; the host process goes with the app.
+  childHost?.stop()
+  wslHosts.stop()
   if (dbClosed) return
   event.preventDefault()
   const closeDb = () => {
