@@ -35,16 +35,16 @@ export function StepsBlock({ block, now }: { block: BoardStepsBlock; now: number
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-3">
-        <ol className="flex min-w-0 flex-1 items-center overflow-x-auto py-0.5">
+        <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-y-1 py-0.5">
           {block.steps.map((step, i) => (
             <li
               key={i}
               aria-current={step.state === 'current' ? 'step' : undefined}
               title={step.at !== undefined ? formatDate(step.at, boardTimeOptions(step.at, now)) : undefined}
-              className="flex shrink-0 items-center"
+              className="flex min-w-0 items-center"
             >
               {i > 0 && <span className={cn('mx-1.5 h-px w-5', block.steps[i - 1]!.state === 'done' ? 'bg-success' : 'bg-border-strong')} aria-hidden />}
-              <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap text-sm', step.state === 'current' ? 'font-semibold text-text' : step.state === 'done' ? 'text-text' : 'text-muted', step.state === 'skipped' && 'line-through')}>
+              <span className={cn('inline-flex min-w-0 items-center gap-1.5 break-words text-sm [overflow-wrap:anywhere]', step.state === 'current' ? 'font-semibold text-text' : step.state === 'done' ? 'text-text' : 'text-muted', step.state === 'skipped' && 'line-through')}>
                 <StepMark state={step.state} />
                 {step.label}
                 <span className="sr-only">({t(STEP_LABEL[step.state])})</span>

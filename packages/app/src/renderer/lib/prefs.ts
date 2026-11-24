@@ -83,7 +83,7 @@ export interface Prefs {
 export const BOARD_LAYOUTS_MAX = 40
 
 /** Ranges of the size preferences, as Workhub 1 offered them. */
-export const SIZE_RANGES = { terminalFontSize: [10, 24], terminalScrollback: [1000, 100_000], chatFontSize: [11, 20], textSize: [11, 20], monitorWidth: [240, 560], sidebarWidth: [200, 420], healthDetailWidth: [380, 900], boardPanelWidth: [360, 1200] } as const
+export const SIZE_RANGES = { terminalFontSize: [10, 24], terminalScrollback: [1000, 100_000], chatFontSize: [11, 20], textSize: [11, 20], monitorWidth: [240, 560], sidebarWidth: [200, 420], healthDetailWidth: [380, 900], boardPanelWidth: [360, 3000] } as const
 /** The app's base text size (styles.css `--text-base`). */
 export const BASE_TEXT_SIZE = 13
 
@@ -102,7 +102,7 @@ export const DEFAULT_PREFS: Prefs = {
   textSize: BASE_TEXT_SIZE,
   monitorWidth: 320,
   healthDetailWidth: 520,
-  boardPanelWidth: 620,
+  boardPanelWidth: 900,
   sidebarWidth: 256,
   monitorCollapsed: [],
   sidebarHidden: false,

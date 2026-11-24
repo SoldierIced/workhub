@@ -121,7 +121,7 @@ Then follow [Getting started](docs/user-guide/getting-started.md).
   where items from you, metric alerts and agents wait for approval before becoming tickets, local
   tasks or recorded decisions.
 - **Live boards** (module): follow a job done by several agents while it happens (stages, who asks
-  whom, agents, decisions, a log) in a panel beside the chat whose tool sends the board; see the
+  whom, agents, decisions, a log) in a panel over the chat whose tool sends the board; see the
   [guide](docs/user-guide/live-boards.md).
 
 **App**

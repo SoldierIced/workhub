@@ -13,9 +13,8 @@ export const GRAPH = {
   /** Where an arrow leaves and enters a bottom side, off the centre, so going down and coming up never share a line. */
   laneShift: 12,
   corner: 8,
-  /** The font size, in SVG units, of a box's label, and the smallest size it may be drawn at on screen. */
+  /** The font size, in SVG units, of a box's label. */
   labelFont: 13,
-  minLabelPx: 11,
   /** An edge label: its font size and the width of one of its characters, in SVG units (a safe average). */
   edgeFont: 11,
   edgeCharW: 6.4,
@@ -54,15 +53,6 @@ export interface GraphLayout {
   height: number
   boxes: GraphBox[]
   edges: GraphEdgeShape[]
-}
-
-/**
- * The narrowest the drawing may be drawn, in CSS px, for a drawing `width` units wide: the box labels (13
- * units) stay at 11 px or more, so a wide diagram scrolls sideways instead of shrinking past that. The
- * smaller texts (the detail line and the edge labels, 11 units) go down to about 9 px at that limit.
- */
-export function graphMinWidth(width: number): number {
-  return Math.ceil((width * GRAPH.minLabelPx) / GRAPH.labelFont)
 }
 
 const round = (n: number): number => Math.round(n * 10) / 10

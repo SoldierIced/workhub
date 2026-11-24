@@ -3,7 +3,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import type { BoardGraphBlock, BoardNode, BoardNodeState } from '@workhub/core'
 import { useI18n } from '../../i18n/I18nProvider'
 import type { MessageKey } from '../../i18n/translate'
-import { charsIn, clip, GRAPH, graphMinWidth, layoutGraph, placeLabels, type GraphOverrides } from '../../lib/boardGraph'
+import { charsIn, clip, GRAPH, layoutGraph, placeLabels, type GraphOverrides } from '../../lib/boardGraph'
 import { cn } from '../../lib/cn'
 import { formatWorking, given, workingMs } from '../../lib/boards'
 import { formatTokens } from '../../lib/home'
@@ -127,14 +127,14 @@ export function BoardGraph({ block, number, now, picked, onPick, overrides, onMo
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div>
       <svg
         ref={svg}
         role="group"
         aria-label={name}
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         className="mx-auto block h-auto w-full select-none text-text"
-        style={{ maxWidth: layout.width, minWidth: graphMinWidth(layout.width), touchAction: drag ? 'none' : undefined }}
+        style={{ maxWidth: layout.width, touchAction: drag ? 'none' : undefined }}
       >
         <defs>
           {(Object.keys(ARROW_FILL) as (keyof typeof ARROW_FILL)[]).map((s) => (

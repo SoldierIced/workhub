@@ -1,12 +1,12 @@
 import { LayoutDashboard, Trash2, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { boardLiveness, type BoardSummary, type StoredBoard } from '@workhub/core'
 import { Button, IconButton, Select, StateDot } from '../../components/atoms'
 import { ConfirmDeleteDialog } from '../../components/molecules'
 import { PaneResizeHandle } from '../../components/molecules/PaneResizeHandle'
 import { useI18n } from '../../i18n/I18nProvider'
 import { keptRemoval, removeBoard, selectedBoardId, type RemoveTarget } from '../../lib/boards'
-import { closeBoardPanel, toggleBoardPanel } from '../../lib/boardPanel'
+import { closeBoardPanel, panelFit, toggleBoardPanel } from '../../lib/boardPanel'
 import { DEFAULT_PREFS, SIZE_RANGES, setPrefs, usePrefs } from '../../lib/prefs'
 import { useNow } from '../../lib/usage'
 import { BoardHeader } from './BoardHeader'
@@ -62,7 +62,7 @@ export function ChatBoardsButton({ sessionId, profileId, chat, visible, open, co
 }
 
 /**
- * A chat's live board, beside the chat like the monitor: the whole board, with the same filter, boxes
+ * A chat's live board, over the right of the chat (the chat keeps its width and is covered, not squeezed): the whole board, with the same filter, boxes
  * and facts wherever a board is drawn. A chat with several boards picks one at the top (the newest
  * until one is picked). Resizable; its width is kept on this computer.
  */
@@ -103,23 +103,38 @@ export function ChatBoardPanel({ sessionId, profileId, chat, visible }: { sessio
       live = false
     }
   }, [profileId, shown, visible, tick])
-  const width = dragging ?? prefs.boardPanelWidth
+  // The chat it floats over: the panel is never wider than that, nor does a drag start past it.
+  const panel = useRef<HTMLElement>(null)
+  const [room, setRoom] = useState<number | null>(null)
+  useEffect(() => {
+    const chat = panel.current?.parentElement
+    if (!chat) return
+    const read = () => setRoom(chat.clientWidth || null)
+    read()
+    const observer = new ResizeObserver(read)
+    observer.observe(chat)
+    return () => observer.disconnect()
+  }, [])
+  const fit = panelFit(dragging ?? prefs.boardPanelWidth, room, SIZE_RANGES.boardPanelWidth[0], SIZE_RANGES.boardPanelWidth[1])
+  const width = fit.width
   const answered = stored !== null && stored.key === shown
   const board = answered ? stored.board : null
 
   return (
-    <aside aria-label={t('boards.panel.label')} className="relative flex min-w-80 max-w-[60%] shrink-0 flex-col border-l border-border bg-bg" style={{ width }} data-board-panel-of={sessionId}>
+    <aside ref={panel} aria-label={t('boards.panel.label')} className="absolute inset-y-0 right-0 z-20 flex min-w-[min(20rem,100%)] max-w-full flex-col border-l border-border bg-bg shadow-xl" style={{ width }} data-board-panel-of={sessionId}>
       <PaneResizeHandle
         edge="left"
         width={width}
-        min={SIZE_RANGES.boardPanelWidth[0]}
-        max={SIZE_RANGES.boardPanelWidth[1]}
+        min={Math.min(SIZE_RANGES.boardPanelWidth[0], fit.max)}
+        max={fit.max}
         label={t('boards.panel.resize')}
         title={t('pane.resizeHint')}
         onWidth={(w, done) => {
           if (done) {
+            // A click that moved nothing keeps the saved width (it may be wider than this chat, for a wider window).
+            const moved = dragging !== null || w !== fit.width
             setDragging(null)
-            setPrefs({ boardPanelWidth: w })
+            if (moved) setPrefs({ boardPanelWidth: Math.max(SIZE_RANGES.boardPanelWidth[0], w) })
           } else setDragging(w)
         }}
         onReset={() => {
