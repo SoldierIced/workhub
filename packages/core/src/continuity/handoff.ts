@@ -8,6 +8,8 @@ import { accountAgentId } from '../domain/agent'
 import type { SessionMonitorSnapshot } from '../domain/monitor'
 import type { Profile } from '../domain/profile'
 import type { HistoryMessage } from '../ports'
+import { fillPrompt, promptTemplate, PROMPTS } from '../prompts/registry'
+import type { PromptOverrides } from '../prompts/types'
 import type { EffectiveAgent } from '../usecases/effective-agents'
 import { orderAgents } from '../usecases/pick-agent'
 
@@ -50,6 +52,8 @@ export interface BriefOptions {
   maxChars?: number
   /** At most this many of the last messages (default 8). */
   exchanges?: number
+  /** The user's own texts (Settings → Prompts) for the intro and the next step. */
+  prompts?: PromptOverrides
 }
 
 export const DEFAULT_BRIEF_CHARS = 12_000
@@ -90,8 +94,7 @@ export function buildHandoffBrief(facts: HandoffFacts, options: BriefOptions): s
   const intro = [
     `# Hand-off from ${options.sourceLabel}`,
     '',
-    `You are taking over a coding session that ${options.sourceLabel} worked on in ${code(options.cwd)}. ` +
-      'This is a summary of that session, not its full conversation: check the repository before acting, and ask me when something is unclear.'
+    fillPrompt(promptTemplate(options.prompts, 'continuity.handoffIntro'), { source: options.sourceLabel, cwd: code(options.cwd) })
   ].join('\n')
 
   const goal = facts.goal ? section('Goal', [clip(facts.goal, GOAL_CHARS)]) : ''
@@ -112,7 +115,10 @@ export function buildHandoffBrief(facts: HandoffFacts, options: BriefOptions): s
   const open = facts.todos.filter((t) => t.status !== 'completed')
   const todos = section('Open TODOs', open.map((t) => `- [ ] ${clip(t.text, 300)}${t.status === 'in_progress' ? ' (in progress)' : ''}`))
   const summary = options.summary?.trim() ? section(`Summary by ${options.sourceLabel}`, [options.summary.trim()]) : ''
-  const next = section('Next step', ['Read the repository state above, then continue from where the session left off. Tell me what you plan to do before large changes.'])
+  // A long own text may not eat the budget: the Next step takes at most half of it (never less than the default's).
+  const nextBody = promptTemplate(options.prompts, 'continuity.handoffNextStep').trim()
+  const nextRoom = Math.max(Math.floor(max / 2) - '## Next step\n'.length - 2, PROMPTS['continuity.handoffNextStep'].defaultText.length)
+  const next = section('Next step', [nextBody.length > nextRoom ? clip(nextBody, nextRoom) : nextBody])
 
   const fixed = options.summary?.trim() ? [intro, goal, summary, links, repository, todos] : [intro, goal, links, repository, filesSection, commandsSection, todos]
   let head = fixed.filter(Boolean).join('\n\n')
@@ -164,17 +170,10 @@ export function factsFromHistory(messages: readonly HistoryMessage[], monitor: S
  * The fixed prompt of "Ask the agent to summarize": the source agent writes the summary itself
  * (it spends a turn of its account). No tools, so it cannot change anything while summarizing.
  */
-export const HANDOFF_SUMMARY_PROMPT = [
-  'Another coding agent is taking over this session. Without using any tools, write a hand-off summary of this conversation for it, in Markdown, with exactly these sections:',
-  '## Goal — what the user wants, in one or two sentences.',
-  '## Current state — what is done and what is not, as of now.',
-  '## Decisions — choices made and why (libraries, approaches, things ruled out).',
-  '## Files touched — paths, one line each on what changed.',
-  '## Commands — the commands that matter to rebuild, test or run it.',
-  '## Open TODOs — what is left, in order.',
-  '## Next step — the very next thing to do.',
-  'Reply with the summary only, no preamble. Keep it under 800 words.'
-].join('\n')
+export const HANDOFF_SUMMARY_PROMPT = PROMPTS['continuity.summaryAsk'].defaultText
+
+/** The summary prompt to send: the user's own text, else the default. */
+export const handoffSummaryPrompt = (overrides?: PromptOverrides): string => promptTemplate(overrides, 'continuity.summaryAsk')
 
 /**
  * The agents a session can be handed off to, in the profile's order: agents with the app mode

@@ -63,8 +63,8 @@ export function registerListenIpc(ipc: IpcRegistrar, deps: ListenIpcDeps): void 
     const now = deps.now ?? Date.now
     const started = now()
     try {
-      const model = appOptions(config).listenModel
-      const result = await deps.summarize({ text: text.slice(0, MAX_TEXT), model, ...(configDir ? { configDir } : {}), signal: controller.signal })
+      const { listenModel: model, prompts } = appOptions(config)
+      const result = await deps.summarize({ text: text.slice(0, MAX_TEXT), model, ...(prompts ? { prompts } : {}), ...(configDir ? { configDir } : {}), signal: controller.signal })
       // A run that reported nothing (cancelled before it started, no helper answer) spent nothing known.
       if (result.usage || result.costUsd !== undefined) {
         deps.background?.record({

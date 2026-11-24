@@ -17,6 +17,8 @@ import {
   parseRemote,
   removeComment,
   reviewMessage,
+  looksGoodMessage,
+  LOOKS_GOOD_MESSAGE,
   summarizeTouches,
   upsertComment,
   type ReviewComment
@@ -173,5 +175,14 @@ describe('onlySessionFiles', () => {
 
   it('drops a repo the session edited nothing in', () => {
     expect(onlySessionFiles(review, new Set())).toEqual({ review: { ...review, repos: [] }, hidden: 3 })
+  })
+})
+
+describe('editable local review texts', () => {
+  it('uses the own heading and the own looks-good text', () => {
+    const msg = reviewMessage([comment({ repoName: 'payouts', path: 'a.ts', line: 1, text: 'fix' })], { 'sessions.localReviewIntro': 'Please address in {repo}:' })
+    expect(msg).toBe('Please address in payouts:\n1. a.ts:1 — fix')
+    expect(looksGoodMessage()).toBe(LOOKS_GOOD_MESSAGE)
+    expect(looksGoodMessage({ 'sessions.localReviewLooksGood': 'All good, merge it.' })).toBe('All good, merge it.')
   })
 })

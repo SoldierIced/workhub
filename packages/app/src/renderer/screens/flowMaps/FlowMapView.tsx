@@ -13,6 +13,7 @@ import { flowEntryTiming, flowMapStanding, flowPartTones, notableDeviations, typ
 import { readPrefs, setPrefs } from '../../lib/prefs'
 import { useRowAnchor } from '../../lib/rowAnchor'
 import { pressable } from '../../lib/pressable'
+import { loadPromptOverrides } from '../../lib/promptText'
 import { FlowMapSvg, flowMapToPng, KIND_COLOR, WAIT } from './FlowMapSvg'
 import { FlowSequenceSvg, sequenceFitWidth, sequenceLayout } from './FlowSequenceSvg'
 import { flowMapPrompt } from './flowMapPrompt'
@@ -226,9 +227,10 @@ export function FlowMapView({ env, profileId, mapId, file, onAsk, onOpenSettings
       toast(t('flowMaps.copyFailed', { message: errorText(e) }), 'danger')
     }
   }
-  const ask = (focus: FlowPartRef | null = null) => {
+  const ask = async (focus: FlowPartRef | null = null) => {
     if (!map) return
-    const draft = flowMapPrompt((k, p) => t(k, p), { map, file: file ?? `${mapId}.json`, environment: env?.name ?? '—', reading, trace: selectedTrace, logs: logs?.ok ? logs.logs : null, focus, locale })
+    const overrides = await loadPromptOverrides()
+    const draft = flowMapPrompt((k, p) => t(k, p), { map, file: file ?? `${mapId}.json`, environment: env?.name ?? '—', reading, trace: selectedTrace, logs: logs?.ok ? logs.logs : null, focus, locale, overrides })
     if (onAsk) onAsk(draft, undefined)
     else window.hub.flowMaps.ask(draft)
   }

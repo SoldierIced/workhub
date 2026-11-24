@@ -5,7 +5,7 @@ import { parseSettingsTarget } from '../../lib/settingsTarget'
 /** The three groups of the Settings navigation: what holds for the whole app, what each profile has, and the rest. */
 export type SettingsNavGroup = 'app' | 'profile' | 'advanced'
 
-export type SettingsSectionId = 'general' | 'notifications' | 'agents' | 'connections' | 'remote' | 'profiles' | 'advanced'
+export type SettingsSectionId = 'general' | 'notifications' | 'agents' | 'connections' | 'remote' | 'profiles' | 'prompts' | 'advanced'
 
 export interface SettingsSectionMeta {
   id: SettingsSectionId
@@ -21,6 +21,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
   { id: 'connections', group: 'app', label: 'settings.nav.connections' },
   { id: 'remote', group: 'app', label: 'settingsV2.nav.remote' },
   { id: 'profiles', group: 'profile', label: 'settingsV2.nav.profiles' },
+  { id: 'prompts', group: 'advanced', label: 'settingsV2.nav.prompts' },
   { id: 'advanced', group: 'advanced', label: 'settingsV2.nav.advanced' }
 ]
 

@@ -20,6 +20,7 @@ import type { MenuCommand } from '@shared/windows-api'
 import { currentConfig, refreshConfig, useConfig } from './configStore'
 import { I18nProvider, useI18n } from './i18n/I18nProvider'
 import { setComposerDraft } from './lib/drafts'
+import { loadPromptOverrides } from './lib/promptText'
 import { runIntent, type IntentDeps, type IntentOutcome } from './lib/links'
 import { PrPromptOfferDialog, type PrPromptOffer } from './screens/pullRequests/PrPromptOfferDialog'
 import { keyProviders } from './lib/tickets'
@@ -473,14 +474,16 @@ function Shell() {
         setDraft: setComposerDraft,
         send: (sessionId, text, state) => submitPrompt(sessionId, state, false, text) !== 'refused'
       }
-      void runIntent(deps, intent).then((outcome: IntentOutcome) => {
-        const tr = latest.current.t
-        if (outcome.kind === 'error') return toast(tr(outcome.message, outcome.params), 'danger')
-        if (outcome.kind === 'offer') return setPrOffer(outcome)
-        openSession(outcome.sessionId)
-        if (outcome.kind === 'sent') return toast(outcome.started ? tr('prFeedback.startedSent', { folder: outcome.started.folder }) : tr('prFeedback.sent'))
-        toast(outcome.kind === 'opened' ? tr('links.opened') : outcome.drafted ? tr('links.drafted') : tr('links.started', { folder: outcome.folder }))
-      })
+      void loadPromptOverrides()
+        .then((overrides) => runIntent({ ...deps, overrides }, intent))
+        .then((outcome: IntentOutcome) => {
+          const tr = latest.current.t
+          if (outcome.kind === 'error') return toast(tr(outcome.message, outcome.params), 'danger')
+          if (outcome.kind === 'offer') return setPrOffer(outcome)
+          openSession(outcome.sessionId)
+          if (outcome.kind === 'sent') return toast(outcome.started ? tr('prFeedback.startedSent', { folder: outcome.started.folder }) : tr('prFeedback.sent'))
+          toast(outcome.kind === 'opened' ? tr('links.opened') : outcome.drafted ? tr('links.drafted') : tr('links.started', { folder: outcome.folder }))
+        })
     },
     [openSession, toast]
   )

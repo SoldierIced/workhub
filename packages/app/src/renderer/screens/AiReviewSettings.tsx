@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { aiReviewSettings, CLAUDE_MODEL_SUGGESTIONS, orderAgents, resolveEffectiveAgents, briefPromptOf, DEFAULT_REVIEW_BRIEF_PROMPT, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewerSessionMode, type ReviewLanguage } from '@workhub/core'
+import { aiReviewSettings, appOptions, type PromptOverrides, CLAUDE_MODEL_SUGGESTIONS, orderAgents, resolveEffectiveAgents, briefPromptOf, MAX_REVIEW_IDLE_SECONDS, MAX_REVIEW_ROUNDS, MIN_REVIEW_IDLE_SECONDS, MIN_REVIEW_ROUNDS, pickReviewer, readOnlyGuard, type AiReviewSettings, type EffectiveAgent, type Profile, type ReviewerSessionMode, type ReviewLanguage } from '@workhub/core'
 import { Button, Input, Select, Switch, Textarea } from '../components/atoms'
 import { Card, EmptyState, Field, OptionOrCustom, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
@@ -15,7 +15,7 @@ import { saveProfilePatch } from './settings/shared'
 const clamp = (n: number, min: number, max: number, fallback: number) => (Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback)
 
 /** The profile's "AI review" fields (Settings → AI review); edits a draft, saved by `AiReviewSection`. */
-export function AiReviewProfileFields({ form, agents, onChange }: { form: Profile; agents: readonly EffectiveAgent[]; onChange: (aiReview: AiReviewSettings) => void }) {
+export function AiReviewProfileFields({ form, agents, onChange, overrides }: { form: Profile; agents: readonly EffectiveAgent[]; onChange: (aiReview: AiReviewSettings) => void; /** The app-wide prompt texts (Settings → Prompts): the default of the brief prompt below. */ overrides?: PromptOverrides }) {
   const { t } = useI18n()
   const s = aiReviewSettings(form)
   const set = (patch: Partial<AiReviewSettings>) => onChange({ ...s, ...patch })
@@ -118,8 +118,8 @@ export function AiReviewProfileFields({ form, agents, onChange }: { form: Profil
           </span>
         }
       >
-        {/* Stored empty while it is the default, so a later default reaches every profile that never changed it. */}
-        <Textarea rows={8} value={briefPromptOf(s)} spellCheck={false} data-testid="ai-review-brief-prompt" onChange={(e) => set({ briefPrompt: e.target.value === DEFAULT_REVIEW_BRIEF_PROMPT ? '' : e.target.value })} />
+        {/* Stored empty while it equals the app-wide text, so a later edit of that text reaches every profile that never changed it. */}
+        <Textarea rows={8} value={briefPromptOf(s, overrides)} spellCheck={false} data-testid="ai-review-brief-prompt" onChange={(e) => set({ briefPrompt: e.target.value === briefPromptOf({ briefPrompt: '' }, overrides) ? '' : e.target.value })} />
       </Field>
     </div>
   )
@@ -152,7 +152,7 @@ export function AiReviewSection({ snap, run, profileId }: { snap: ConfigSnapshot
   const agents = orderAgents(profile.preferredAgents, resolveEffectiveAgents(snap.config, profile.id))
   return (
     <Card className="px-4">
-      <AiReviewProfileFields form={{ ...profile, aiReview: draft }} agents={agents} onChange={setDraft} />
+      <AiReviewProfileFields form={{ ...profile, aiReview: draft }} agents={agents} onChange={setDraft} overrides={appOptions(snap.config).prompts} />
     </Card>
   )
 }

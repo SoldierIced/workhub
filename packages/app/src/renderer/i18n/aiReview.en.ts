@@ -167,5 +167,5 @@ export const aiReviewEn = {
   'aiReview.settings.checklistHint': 'One check per line, added to the reviewer\'s prompt (e.g. "Every endpoint has an authorization test").',
   'aiReview.settings.briefPrompt': 'Brief prompt for "Review with another agent"',
   'aiReview.settings.briefPromptHint': 'What "Review before PR" asks the session\'s agent first: a brief for the reviewer between <review-brief> and </review-brief>. The dialog shows it and lets you edit it before sending.',
-  'aiReview.settings.briefPromptReset': 'Use the default'
+  'aiReview.settings.briefPromptReset': 'Use the app-wide text'
 } as const

@@ -5,7 +5,8 @@ import {
   commentCounts,
   fileKey,
   filterFiles,
-  LOOKS_GOOD_MESSAGE,
+  looksGoodMessage,
+  appOptions,
   removeComment,
   reviewMessage,
   upsertComment,
@@ -20,6 +21,7 @@ import {
 } from '@workhub/core'
 import type { LocalReviewElsewhere, LocalReviewLoad, LocalReviewSession } from '@shared/local-review-api'
 import { Badge, Button, Input, Select, Spinner, TooltipProvider } from '../components/atoms'
+import { refreshConfig, useConfig } from '../configStore'
 import { Dialog, EmptyState, RefreshButton } from '../components/molecules'
 import { I18nProvider, useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
@@ -81,6 +83,14 @@ function Review({ sessionId }: { sessionId: string }) {
     setChosen(true)
     setPrefs({ reviewFiles: f })
   }
+  // The user's own message texts (Settings → Prompts), as the config last said.
+  const snap = useConfig()
+  useEffect(() => {
+    void refreshConfig().catch(() => undefined)
+    return window.hub.config.onChanged(() => void refreshConfig().catch(() => undefined))
+  }, [])
+  const prompts = snap ? appOptions(snap.config).prompts : undefined
+  const lookGood = looksGoodMessage(prompts)
   const [reloads, setReloads] = useState(0)
   const reload = () => setReloads((n) => n + 1)
   const [result, setResult] = useState<LocalReviewLoad | null>(null)
@@ -240,13 +250,13 @@ function Review({ sessionId }: { sessionId: string }) {
     if (blocker || sending) return
     const all = composer && draft.trim() ? commitDraft() : comments
     if (!all.length) return
-    deliver(reviewMessage(all))
+    deliver(reviewMessage(all, prompts))
   }
 
   const looksGood = (tell: boolean) => {
     setConfirming(false)
     if (!tell || blocker) return window.close()
-    deliver(LOOKS_GOOD_MESSAGE)
+    deliver(lookGood)
   }
 
   useEffect(() => {
@@ -517,7 +527,7 @@ function Review({ sessionId }: { sessionId: string }) {
         open={confirming}
         onOpenChange={setConfirming}
         title={t('localReview.looksGoodTitle', { agent })}
-        description={comments.length ? tn('localReview.looksGoodDrops', comments.length, { message: LOOKS_GOOD_MESSAGE }) : t('localReview.looksGoodBody', { message: LOOKS_GOOD_MESSAGE })}
+        description={comments.length ? tn('localReview.looksGoodDrops', comments.length, { message: lookGood }) : t('localReview.looksGoodBody', { message: lookGood })}
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirming(false)}>

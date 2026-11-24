@@ -15,6 +15,8 @@ import { REVIEW_LANGUAGES, REVIEWER_SESSION_MODES } from '../ai-review/types'
 import { validUsdCeiling } from '../usage/api-budget'
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetOptions } from '../usage/budget'
 import { cleanProjectBudgets, type ProjectBudgets } from '../usage/project-budget'
+import { cleanPromptOverrides } from '../prompts/registry'
+import type { PromptOverrides } from '../prompts/types'
 import { AGENT_MILESTONE_MODES, MILESTONE_MARGIN_RANGE } from '../milestones'
 import { INBOX_LIMITS } from '../inbox/types'
 import { DEFAULT_WORKTREE_SETTINGS, WORKTREE_CLOSE_MODES } from '../worktrees/settings'
@@ -158,6 +160,11 @@ export interface AppOptions {
    * default, so it needs no config version bump; unset reads as `both` (see `setupGoal`).
    */
   setupGoal?: SetupGoal
+  /**
+   * The user's own text per prompt (Settings → Prompts), by prompt id; a missing id uses its default.
+   * Optional with no default, so it needs no config version bump.
+   */
+  prompts?: PromptOverrides
 }
 
 /** The blocks of the menu bar popover that can be hidden, and how many meetings "Today" lists. */
@@ -683,7 +690,9 @@ export const configSchema = z.object({
       // An entry that is no usable budget is dropped instead of keeping the config from loading.
       projectBudgets: z.unknown().transform(cleanProjectBudgets).optional(),
       // A hand-edited value that is no goal reads as unset instead of keeping the config from loading.
-      setupGoal: z.enum(SETUP_GOALS).optional().catch(undefined)
+      setupGoal: z.enum(SETUP_GOALS).optional().catch(undefined),
+      // Entry by entry: an unknown id, a blank or an over-long text is dropped, the others stay.
+      prompts: z.unknown().transform((raw) => cleanPromptOverrides(raw)).optional()
     })
     .optional(),
   sessionGroups: sessionGroups.optional(),

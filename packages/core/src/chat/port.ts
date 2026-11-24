@@ -1,3 +1,4 @@
+import type { PromptOverrides } from '../prompts/types'
 import type { RunUsage } from '../usage/background'
 import type { ChatDigest, ChatReadMode, HookRecord, TrackedThread, WatchedChannel } from './types'
 
@@ -10,6 +11,8 @@ export interface ChatReadRequest {
   /** The agent account folder whose chat connector is used; the agent's default when unset. */
   configDir?: string
   model: string
+  /** The user's own prompt texts (Settings → Prompts); the defaults when unset. */
+  prompts?: PromptOverrides
   /** Epoch milliseconds. */
   now: number
 }

@@ -4,6 +4,7 @@ import {
   accountAgentId,
   applyDigest,
   canonicalUrl,
+  appOptions,
   chatWatcherSettings,
   closeFinished,
   effectiveAgentKey,
@@ -200,7 +201,9 @@ export class SlackWatcherService {
     this.changed()
     const started = this.now()
     try {
-      const s = await this.settings()
+      const config = await this.deps.configuration.current()
+      const s = chatWatcherSettings(config)
+      const { prompts } = appOptions(config)
       // Threads that are done stop being followed before the request is built, so they are not read.
       await this.closeFinishedThreads()
       const open = this.state.threads.filter((t) => !t.closed).slice(0, THREADS_PER_READ)
@@ -210,7 +213,7 @@ export class SlackWatcherService {
         return
       }
       const result = await this.deps.source
-        .read({ channels: s.channels, cursors: this.state.cursors, threads: open, model: s.model, now: started, ...(this.configDirOf(s.accountId) ? { configDir: this.configDirOf(s.accountId) } : {}) })
+        .read({ channels: s.channels, cursors: this.state.cursors, threads: open, model: s.model, now: started, ...(prompts ? { prompts } : {}), ...(this.configDirOf(s.accountId) ? { configDir: this.configDirOf(s.accountId) } : {}) })
         .catch((err: unknown): ChatReadResult => ({ ok: false, failure: 'failed', error: err instanceof Error ? err.message : String(err), deniedTools: [] }))
       this.recordUsage(s, result, started)
       if (!result.ok) return this.recordFailure(s, result, started)
@@ -395,7 +398,7 @@ export class SlackWatcherService {
     if (await this.pausedByBudget(thread, plan, views, located?.configDir)) return
     switch (plan.kind) {
       case 'deliver': {
-        const outcome = await this.deps.driver.deliver(plan.sessionId, wakeText(thread, thread.pendingWake))
+        const outcome = await this.deps.driver.deliver(plan.sessionId, wakeText(thread, thread.pendingWake, appOptions(await this.deps.configuration.current()).prompts))
         update((t) => (outcome === 'delivered' ? settled(t, 'delivered', 'delivered') : recordWake(t, 'pending', 'busy', this.now(), false)))
         return
       }

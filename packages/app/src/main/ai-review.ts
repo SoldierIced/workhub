@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import {
   addOpinion,
+  appOptions,
   aiReviewSettings,
   applyDevReply,
   attachReviewer,
@@ -368,7 +369,7 @@ export class AiReviewService {
         uncommitted: repo.dirtyFiles,
         previous: findingsToVerify(review),
         userNotes: review.userNotes
-      })
+      }, appOptions(await this.deps.config()).prompts)
       // The reviewer cannot push: every remote gets an invalid push URL through the session's environment (nothing is written to the repository).
       const env = pushBlockEnv(await git.remotes(repo.root).catch(() => []), process.env)
       const model = settings.reviewerModel.trim()
@@ -410,7 +411,7 @@ export class AiReviewService {
     }
     if (reviewerId) this.reviewers.delete(reviewerId)
     const current = this.state.reviews[review.id]
-    const next = current && current.status === 'reviewing' ? completeRound(current, { raw, parsed: error ? null : parseReviewReply(raw), ...(error ? { error } : {}) }, settings, this.now()) : undefined
+    const next = current && current.status === 'reviewing' ? completeRound(current, { raw, parsed: error ? null : parseReviewReply(raw), ...(error ? { error } : {}) }, settings, this.now(), appOptions(await this.deps.config()).prompts) : undefined
     // `same`: the reviewer and its checkout wait for the next round, unless the round failed or the review ended.
     const keep = reuse && !error && next !== undefined && next.status !== 'failed' && next.status !== 'stopped' && reviewerId !== undefined && this.kept.get(review.id)?.sessionId === reviewerId
     if (!keep) {
@@ -524,7 +525,7 @@ export class AiReviewService {
   }
 
   continue(reviewId: string): Promise<void> {
-    return this.update(reviewId, (r, c) => continueReview(r, this.settingsFor(c, r), this.now()))
+    return this.update(reviewId, (r, c) => continueReview(r, this.settingsFor(c, r), this.now(), appOptions(c).prompts))
   }
 
   setFindingStatus(reviewId: string, ids: string[], status: FindingStatus): Promise<void> {
@@ -532,7 +533,7 @@ export class AiReviewService {
   }
 
   opinion(reviewId: string, text: string): Promise<void> {
-    return this.update(reviewId, (r, c) => addOpinion(r, text, this.settingsFor(c, r), this.now()))
+    return this.update(reviewId, (r, c) => addOpinion(r, text, this.settingsFor(c, r), this.now(), appOptions(c).prompts))
   }
 
   async stopReview(reviewId: string): Promise<void> {

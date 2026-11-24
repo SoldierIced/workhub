@@ -1,3 +1,4 @@
+import { promptTemplate, type PromptOverrides } from '@workhub/core'
 import { flowAlertsOf, flowCoverage, flowEntry, flowMeasures, flowPartLabel, formatMs, rankFlowDeviations, rankFlowParts, type FlowMap, type FlowMapReading, type FlowPartRef, type FlowTrace, type FlowTraceLog } from '@workhub/core'
 import type { MessageKey } from '../../i18n/translate'
 
@@ -14,6 +15,8 @@ export interface FlowMapPromptInput {
   /** "Investigate this part": the draft asks about this part first. */
   focus?: FlowPartRef | null
   locale: string
+  /** The user's own prompt texts (Settings → Prompts). */
+  overrides?: PromptOverrides
 }
 
 /**
@@ -22,7 +25,7 @@ export interface FlowMapPromptInput {
  * beyond the map, and what to do with all that. Nothing is sent: the draft lands in the composer.
  */
 export function flowMapPrompt(t: T, input: FlowMapPromptInput): string {
-  const { map, file, environment, reading, trace, logs, focus, locale } = input
+  const { map, file, environment, reading, trace, logs, focus, locale, overrides } = input
   const lines: string[] = [t('flowMapPrompt.title', { name: map.name, environment })]
   if (map.description) lines.push(map.description)
   lines.push('')
@@ -73,7 +76,7 @@ export function flowMapPrompt(t: T, input: FlowMapPromptInput): string {
     const numbers = timing && timing.count > 0 ? t('flowMapPrompt.focusNumbers', { calls: timing.count.toLocaleString(locale), p50: formatMs(timing.p50Ms), p95: formatMs(timing.p95Ms), failed: timing.errorRate !== undefined ? rate(timing.errorRate) : '–' }) : t('flowMapPrompt.focusNoNumbers')
     lines.push('', t('flowMapPrompt.focus', { label: flowPartLabel(map, focus), numbers }))
   }
-  lines.push('', t('flowMapPrompt.ask'))
+  lines.push('', promptTemplate(overrides, 'health.flowMapAsk', t('flowMapPrompt.ask')))
   return lines.join('\n')
 }
 

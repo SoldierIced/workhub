@@ -20,7 +20,10 @@ import {
   failoverMode,
   failoverTargets,
   handoffTargets,
-  HANDOFF_SUMMARY_PROMPT,
+  handoffSummaryPrompt,
+  PROMPTS,
+  promptTemplate,
+  appOptions,
   knownAgents,
   planFailover,
   resolveEffectiveAgents,
@@ -82,7 +85,7 @@ export interface ContinuityDeps {
  * What a session moved by itself after a usage limit is told: the limit cut its last turn, and
  * the transcript it resumes still holds that turn's request.
  */
-export const CONTINUE_AFTER_LIMIT_PROMPT = 'The previous account ran out of usage before you could finish. Continue where you left off.'
+export const CONTINUE_AFTER_LIMIT_PROMPT = PROMPTS['continuity.continueAfterLimit'].defaultText
 
 /** How long an account that reported a limit without a reset time is left out of failover. */
 const LIMIT_FALLBACK_MS = 60 * 60_000
@@ -187,7 +190,8 @@ export class ContinuityService {
       this.deps.facts(ctx.view, ctx.agent, ctx.account, ctx.config).catch(() => EMPTY_FACTS),
       this.deps.git(ctx.view.cwd).catch(() => null)
     ])
-    const brief = buildHandoffBrief(facts, { sourceLabel: ctx.view.label, cwd: ctx.view.cwd, git, ...(summary ? { summary } : {}) })
+    const { prompts } = appOptions(ctx.config)
+    const brief = buildHandoffBrief(facts, { sourceLabel: ctx.view.label, cwd: ctx.view.cwd, git, ...(summary ? { summary } : {}), ...(prompts ? { prompts } : {}) })
     const origin: SessionOrigin = { kind: 'handoff', fromLabel: ctx.view.label, fromIdentity: sessionIdentity(ctx.view) }
     const view = await this.deps.sessions.start({ profileId: ctx.view.profileId, agentKey: target.key, cwd: ctx.view.cwd, mode: 'app', cols: 100, rows: 30 }, { origin })
     // Next to the source in the sidebar, under the new session's provisional identity: an agent that
@@ -254,7 +258,7 @@ export class ContinuityService {
     if (plan.kind === 'none') return
     if (plan.kind === 'switch') {
       try {
-        await this.failover(sessionId, { targetKey: plan.target.key, reason: 'limit', window: p.window, prompt: CONTINUE_AFTER_LIMIT_PROMPT })
+        await this.failover(sessionId, { targetKey: plan.target.key, reason: 'limit', window: p.window, prompt: promptTemplate(appOptions(ctx.config).prompts, 'continuity.continueAfterLimit') })
         return
       } catch {
         // Fall back to asking: the user still gets the choices.
@@ -345,9 +349,10 @@ export class ContinuityService {
     const family = ctx.agent ? accountAgentId(ctx.agent) : view.agentId
     if (this.deps.budgetOf(family, view.accountId).action === 'block') return undefined
     this.collecting.set(view.id, [])
-    this.deps.showPrompt(view.id, HANDOFF_SUMMARY_PROMPT)
+    const ask = handoffSummaryPrompt(appOptions(ctx.config).prompts)
+    this.deps.showPrompt(view.id, ask)
     try {
-      const turn = this.deps.sessions.prompt(view.id, HANDOFF_SUMMARY_PROMPT)
+      const turn = this.deps.sessions.prompt(view.id, ask)
       const timeout = new Promise<string>((resolve) => {
         const t = setTimeout(() => resolve('timeout'), this.deps.summaryTimeoutMs ?? 180_000)
         t.unref?.()

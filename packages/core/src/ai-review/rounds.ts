@@ -1,3 +1,4 @@
+import type { PromptOverrides } from '../prompts/types'
 import { parseDisputes, parseFixes } from './parser'
 import { formatDevMessage, formatOpinionMessage, formatRawDevMessage } from './prompt'
 import {
@@ -197,7 +198,7 @@ export interface RoundResult {
  * - no blocker or major open: `ready`;
  * - otherwise `awaitingFixes`, with the message for the dev session queued.
  */
-export function completeRound(review: BranchReview, result: RoundResult, settings: AiReviewSettings, now: number): BranchReview {
+export function completeRound(review: BranchReview, result: RoundResult, settings: AiReviewSettings, now: number, overrides?: PromptOverrides): BranchReview {
   const round = review.rounds[review.rounds.length - 1]
   if (!round || review.status !== 'reviewing') return review
   if (result.error) {
@@ -215,7 +216,7 @@ export function completeRound(review: BranchReview, result: RoundResult, setting
   }
   const reasons = escalationsAfterRound(merged, result.parsed, settings)
   if (reasons.length) return pause(merged, reasons, now)
-  return settle(merged, settings, now)
+  return settle(merged, settings, now, overrides)
 }
 
 function pause(review: BranchReview, reasons: { reason: EscalationReason; detail: string }[], now: number): BranchReview {
@@ -228,7 +229,7 @@ function pause(review: BranchReview, reasons: { reason: EscalationReason; detail
  * Ready when nothing blocking is open; else the open findings go to the dev session. A ready
  * branch still gets its minors and nits once, if they were never sent.
  */
-function settle(review: BranchReview, settings: AiReviewSettings, now: number): BranchReview {
+function settle(review: BranchReview, settings: AiReviewSettings, now: number, overrides?: PromptOverrides): BranchReview {
   const { escalation: _cleared, ...rest } = review
   const ready = !blockingOpen(review).length
   const unsent = review.findings.some((f) => f.status === 'open' && !f.sent)
@@ -236,7 +237,7 @@ function settle(review: BranchReview, settings: AiReviewSettings, now: number): 
   const round = cycleRound(review, review.rounds[review.rounds.length - 1]?.n ?? 1)
   const last = review.rounds[review.rounds.length - 1]
   const reviewer = last?.reviewerLabel ? [last.reviewerLabel, last.reviewerModel].filter(Boolean).join(' · ') : undefined
-  const message = formatDevMessage({ language: settings.language, branch: review.branch, base: review.base, round, maxRounds: roundLimit(review, settings), findings: review.findings, ...(reviewer ? { reviewer } : {}) })
+  const message = formatDevMessage({ language: settings.language, branch: review.branch, base: review.base, round, maxRounds: roundLimit(review, settings), findings: review.findings, ...(reviewer ? { reviewer } : {}) }, overrides)
   const carried = review.findings.filter((f) => f.status === 'open').map((f) => f.id)
   return { ...rest, status: ready ? 'ready' : 'awaitingFixes', pendingDelivery: queue(review.pendingDelivery, message), pendingFindingIds: [...new Set([...(review.pendingFindingIds ?? []), ...carried])], updatedAt: now }
 }
@@ -279,7 +280,7 @@ export function applyDevReply(review: BranchReview, text: string, now: number): 
  * The user's "Continue" on a paused review: it grants a round when the limit was the reason,
  * forgives the reopen count, and lets the open findings (or the raw reply) go to the dev session.
  */
-export function continueReview(review: BranchReview, settings: AiReviewSettings, now: number): BranchReview {
+export function continueReview(review: BranchReview, settings: AiReviewSettings, now: number, overrides?: PromptOverrides): BranchReview {
   if (review.status !== 'paused') return review
   const reason = review.escalation?.reason
   const base: BranchReview = {
@@ -290,10 +291,10 @@ export function continueReview(review: BranchReview, settings: AiReviewSettings,
   if (reason === 'unparsed') {
     const raw = review.rounds[review.rounds.length - 1]?.raw ?? ''
     const { escalation: _cleared, ...rest } = base
-    return { ...rest, status: 'awaitingFixes', pendingDelivery: queue(review.pendingDelivery, formatRawDevMessage(settings.language, raw)), updatedAt: now }
+    return { ...rest, status: 'awaitingFixes', pendingDelivery: queue(review.pendingDelivery, formatRawDevMessage(settings.language, raw, overrides)), updatedAt: now }
   }
   const { escalation: _cleared, ...rest } = base
-  return settle(rest, settings, now)
+  return settle(rest, settings, now, overrides)
 }
 
 /** The user marks a finding. Outside a pause, the review becomes ready once nothing blocking is open. */
@@ -313,10 +314,10 @@ export function setFindingStatus(review: BranchReview, ids: readonly string[], s
 }
 
 /** The user's opinion: kept for the next reviewer round and queued for the dev session. */
-export function addOpinion(review: BranchReview, text: string, settings: Pick<AiReviewSettings, 'language'>, now: number): BranchReview {
+export function addOpinion(review: BranchReview, text: string, settings: Pick<AiReviewSettings, 'language'>, now: number, overrides?: PromptOverrides): BranchReview {
   const note = text.trim()
   if (!note) return review
-  return { ...review, userNotes: [...review.userNotes, note], pendingDelivery: queue(review.pendingDelivery, formatOpinionMessage(settings.language, note)), updatedAt: now }
+  return { ...review, userNotes: [...review.userNotes, note], pendingDelivery: queue(review.pendingDelivery, formatOpinionMessage(settings.language, note, overrides)), updatedAt: now }
 }
 
 export function stopReview(review: BranchReview, now: number): BranchReview {

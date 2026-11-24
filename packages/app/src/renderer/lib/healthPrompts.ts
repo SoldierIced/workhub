@@ -1,11 +1,13 @@
 import {
   failureRate,
+  promptTemplate,
   serviceOfPod,
   type FlowDetails,
   type HealthThresholds,
   type K8sEvent,
   type PodDetails,
   type PodIssue,
+  type PromptOverrides,
   type SelectedSignals,
   type ServiceErrorCount,
   type ServiceErrorDetails,
@@ -63,7 +65,9 @@ function trendLine(w: Words, stats: TrendStats, hours: number, noun: 'errors' | 
 }
 
 const kibanaLine = (w: Words, url: string | null | undefined) => (url ? `${w.t('healthPrompt.kibana', { url })}\n` : '')
-const closing = (w: Words, close: boolean, key: MessageKey = 'healthPrompt.ask') => (close ? w.t(key) : '')
+/** The closing request of a draft, when it is not left to the combined one. */
+const closing = (w: Words, close: boolean, overrides: PromptOverrides | undefined, flow = false) =>
+  close ? promptTemplate(overrides, flow ? 'health.flowAsk' : 'health.ask', w.t(flow ? 'healthPrompt.flow.ask' : 'healthPrompt.ask')) : ''
 
 /** How long a service has been silent: 45 min, 3 h, 2 d. */
 export function silence(minutes: number): string {
@@ -72,7 +76,7 @@ export function silence(minutes: number): string {
   return `${minutes} min`
 }
 
-export function errorsPrompt(locale: Locale, entry: ServiceErrorCount, details: Read<ServiceErrorDetails>, env: PromptEnvironment, kibana: string | null | undefined, close = true): string {
+export function errorsPrompt(locale: Locale, entry: ServiceErrorCount, details: Read<ServiceErrorDetails>, env: PromptEnvironment, kibana: string | null | undefined, close = true, overrides?: PromptOverrides): string {
   const w = words(locale)
   const hours = env.thresholds.errorWindowHours
   let text = `${w.t('healthPrompt.errors.title', { service: entry.service, environment: env.name })}\n${trendLine(w, entry.stats, hours, 'errors')}\n`
@@ -94,17 +98,17 @@ export function errorsPrompt(locale: Locale, entry: ServiceErrorCount, details: 
   } else if (details.error) {
     text += `${w.t('healthPrompt.errors.unread', { error: details.error })}\n`
   }
-  return text + kibanaLine(w, kibana) + closing(w, close)
+  return text + kibanaLine(w, kibana) + closing(w, close, overrides)
 }
 
-export function silentPrompt(locale: Locale, service: ServiceReporting, errors: ServiceErrorCount | undefined, env: PromptEnvironment, kibana: string | null | undefined, close = true): string {
+export function silentPrompt(locale: Locale, service: ServiceReporting, errors: ServiceErrorCount | undefined, env: PromptEnvironment, kibana: string | null | undefined, close = true, overrides?: PromptOverrides): string {
   const w = words(locale)
   let text = `${w.t('healthPrompt.silent.title', { service: service.service, environment: env.name })}\n${w.t('healthPrompt.silent.since', { silence: silence(service.silentMinutes), time: w.time(service.lastSeen) })}\n`
   if (errors) text += `${w.t('healthPrompt.silent.before', { trend: trendLine(w, errors.stats, env.thresholds.errorWindowHours, 'errors') })}\n`
-  return `${text}${kibanaLine(w, kibana)}${w.t('healthPrompt.silent.hint')}${close ? ` ${w.t('healthPrompt.ask')}` : ''}`
+  return `${text}${kibanaLine(w, kibana)}${w.t('healthPrompt.silent.hint')}${close ? ` ${closing(w, true, overrides)}` : ''}`
 }
 
-export function podPrompt(locale: Locale, pod: PodIssue, details: Read<PodDetails>, env: PromptEnvironment, kibana: string | null | undefined, close = true): string {
+export function podPrompt(locale: Locale, pod: PodIssue, details: Read<PodDetails>, env: PromptEnvironment, kibana: string | null | undefined, close = true, overrides?: PromptOverrides): string {
   const w = words(locale)
   const hours = env.thresholds.errorWindowHours
   const status = details.value?.status
@@ -141,19 +145,19 @@ export function podPrompt(locale: Locale, pod: PodIssue, details: Read<PodDetail
   } else if (details.error) {
     text += `${w.t('healthPrompt.pod.unread', { error: details.error })}\n`
   }
-  return text + kibanaLine(w, kibana) + closing(w, close)
+  return text + kibanaLine(w, kibana) + closing(w, close, overrides)
 }
 
-export function eventPrompt(locale: Locale, event: K8sEvent, env: PromptEnvironment, close = true): string {
+export function eventPrompt(locale: Locale, event: K8sEvent, env: PromptEnvironment, close = true, overrides?: PromptOverrides): string {
   const w = words(locale)
   let latest = w.t('healthPrompt.event.latest')
   if (event.lastSeen !== undefined) latest += `, ${w.time(event.lastSeen)}`
   if (event.object) latest += w.t('healthPrompt.event.about', { object: `${event.objectKind ? `${event.objectKind} ` : ''}${event.object}` })
   if (event.message) latest += `: ${event.message}`
-  return `${w.t('healthPrompt.event.title', { reason: event.reason, environment: env.name })}\n${trendLine(w, event.stats, env.thresholds.errorWindowHours, 'events')}\n${latest}\n${closing(w, close)}`
+  return `${w.t('healthPrompt.event.title', { reason: event.reason, environment: env.name })}\n${trendLine(w, event.stats, env.thresholds.errorWindowHours, 'events')}\n${latest}\n${closing(w, close, overrides)}`
 }
 
-export function flowPrompt(locale: Locale, tx: SlowTransaction, details: Read<FlowDetails>, env: PromptEnvironment, kibana: string | null | undefined, close = true): string {
+export function flowPrompt(locale: Locale, tx: SlowTransaction, details: Read<FlowDetails>, env: PromptEnvironment, kibana: string | null | undefined, close = true, overrides?: PromptOverrides): string {
   const w = words(locale)
   const hours = env.thresholds.slowFlowHours
   let stats = w.t('healthPrompt.flow.stats', { hours, calls: w.n(tx.calls), p50: formatMs(tx.p50Ms), p95: formatMs(tx.p95Ms), p99: formatMs(tx.p99Ms) })
@@ -187,7 +191,7 @@ export function flowPrompt(locale: Locale, tx: SlowTransaction, details: Read<Fl
     })}\n`
     if (c.newErrorTypes.length > 0) text += `${w.t('healthPrompt.flow.newTypes', { hours: c.windowHours, types: c.newErrorTypes.map((n) => n.exceptionType ?? n.culprit ?? n.groupingKey).join(', ') })}\n`
   }
-  return text + kibanaLine(w, kibana) + closing(w, close, 'healthPrompt.flow.ask')
+  return text + kibanaLine(w, kibana) + closing(w, close, overrides, true)
 }
 
 /** What the combined draft needs besides the selected rows. */
@@ -202,6 +206,8 @@ export interface TogetherContext {
   /** All error counts of the environment, for the silent services that had some before going quiet. */
   errorServices: ServiceErrorCount[]
   links: { errors: Record<string, string>; pods: Record<string, string>; services: Record<string, string> }
+  /** The user's own prompt texts (Settings → Prompts). */
+  overrides?: PromptOverrides
 }
 
 /**
@@ -217,20 +223,20 @@ export function togetherPrompt(locale: Locale, s: SelectedSignals, c: TogetherCo
   const timedOut = w.t('healthPrompt.together.timedOut')
   const orTimedOut = <T>(read: Read<T> | undefined): Read<T> => read ?? { error: timedOut }
   const sections: [string, string][] = [
-    ...s.errors.map((e): [string, string] => [w.t('healthPrompt.together.errors', { service: e.service }), errorsPrompt(locale, e, orTimedOut(c.errors[e.service]), c.env, c.links.errors[e.service], false)]),
+    ...s.errors.map((e): [string, string] => [w.t('healthPrompt.together.errors', { service: e.service }), errorsPrompt(locale, e, orTimedOut(c.errors[e.service]), c.env, c.links.errors[e.service], false, c.overrides)]),
     ...s.silent.map((x): [string, string] => [
       w.t('healthPrompt.together.silent', { service: x.service }),
-      silentPrompt(locale, x, c.errorServices.find((e) => e.service === x.service), c.env, c.links.services[x.service], false)
+      silentPrompt(locale, x, c.errorServices.find((e) => e.service === x.service), c.env, c.links.services[x.service], false, c.overrides)
     ]),
-    ...s.pods.map((p): [string, string] => [w.t('healthPrompt.together.pod', { pod: p.pod }), podPrompt(locale, p, orTimedOut(c.pods[p.pod]), c.env, c.links.pods[p.pod], false)]),
-    ...s.events.map((e): [string, string] => [w.t('healthPrompt.together.event', { reason: e.reason }), eventPrompt(locale, e, c.env, false)]),
+    ...s.pods.map((p): [string, string] => [w.t('healthPrompt.together.pod', { pod: p.pod }), podPrompt(locale, p, orTimedOut(c.pods[p.pod]), c.env, c.links.pods[p.pod], false, c.overrides)]),
+    ...s.events.map((e): [string, string] => [w.t('healthPrompt.together.event', { reason: e.reason }), eventPrompt(locale, e, c.env, false, c.overrides)]),
     ...s.flows.map((tx): [string, string] => [
       w.t('healthPrompt.together.flow', { name: tx.name, service: tx.service }),
-      flowPrompt(locale, tx, c.flows[`${tx.service}|${tx.name}`] ?? {}, c.env, c.links.services[tx.service], false)
+      flowPrompt(locale, tx, c.flows[`${tx.service}|${tx.name}`] ?? {}, c.env, c.links.services[tx.service], false, c.overrides)
     ])
   ]
   sections.forEach(([title, body], i) => {
     text += `\n## ${i + 1}. ${title}\n${body.trim()}\n`
   })
-  return `${text}\n${w.t('healthPrompt.together.ask')}`
+  return `${text}\n${promptTemplate(c.overrides, 'health.togetherAsk', w.t('healthPrompt.together.ask'))}`
 }

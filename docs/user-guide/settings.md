@@ -14,7 +14,7 @@ Models come from the agent (Claude's aliases `opus`, `sonnet` and `haiku` until 
 efforts are **Low**, **Medium**, **High**, **Extra high** and **Max**. **Other…** opens a text field
 for any other value; a saved value the list does not know shows there, never lost.
 
-The navigation on the left has six entries in three groups: what holds for the whole app (**This
+The navigation on the left has eight entries in three groups: what holds for the whole app (**This
 app**), what each profile has (**Per profile**), and **Advanced**. Everything outside **Profiles**
 applies to the whole app; everything inside a profile applies to that profile only. A red dot marks a
 section with a problem in the stored settings; the **Fix** buttons at the top open the place that
@@ -27,7 +27,8 @@ fixes it (a profile's problem opens that profile on the right tab).
 | | **Agents** | One card per agent installed on this computer, with its own sign-in and its accounts, **Add account** and each account's form; the usage reading switch under each agent. See [Agents](#agents). |
 | | **Connections** | The services Workhub reads, grouped by kind (Code, Tickets, Calendars, Slack, Health), each with the profiles and screens that use it. See [Connections](#connections). |
 | Per profile | **Profiles** | The list of profiles: colour and symbol, name, an **active** badge and a summary (folders, screens that are on, agents offered), with **Open** and a copy button that duplicates it; **New profile** adds one. See below. |
-| Advanced | **Advanced** | **Diagnostics and help** (**Setup check**, **Welcome tour**, **How Workhub works**), **Tools installed by Workhub** (version, size and **Remove** for each tool in its own tools folder, see [Getting started](getting-started.md#tools-workhub-installs-for-itself)) and **Data**: where `config.json`, `secrets.json` and the `workhub.db` database are kept, the database size, **Back up now**, **Show backups folder** and **Restore from a backup**, what each kind of data takes and **Compact now** (see [Usage](usage.md#how-long-it-is-kept)). |
+| Advanced | **Prompts** | The instructions Workhub writes to agents, by area, each editable with **Restore default**. See [Prompts](#prompts). |
+| | **Advanced** | **Diagnostics and help** (**Setup check**, **Welcome tour**, **How Workhub works**), **Tools installed by Workhub** (version, size and **Remove** for each tool in its own tools folder, see [Getting started](getting-started.md#tools-workhub-installs-for-itself)) and **Data**: where `config.json`, `secrets.json` and the `workhub.db` database are kept, the database size, **Back up now**, **Show backups folder** and **Restore from a backup**, what each kind of data takes and **Compact now** (see [Usage](usage.md#how-long-it-is-kept)). |
 
 ### A profile
 
@@ -182,6 +183,30 @@ secret store.
 | **Calendars** | **Add calendar (ICS)** | Name, your address in the calendar and its private address; **Test**. How often a profile reads its calendars is set in its Plan. |
 | **Slack** | | **Watch Slack channels**: the watcher (account and model, interval, hours, channels) and the **Tracking hook** that follows threads from sessions, for the whole app. See [Slack](slack.md). |
 | **Health (Elasticsearch)** | **Connect** | URL, authentication (API key or user and password), TLS (system, pinned fingerprint or insecure); **Test**. **Read at most every** (how often any profile may read Elasticsearch) is shown once. |
+
+## Prompts
+
+Every instruction Workhub itself writes to an agent, grouped by where it is used: **AI review**,
+**Continue elsewhere**, **Listen**, **Chat watcher**, **Sessions**, **Pull requests and tickets**
+and **Health and flow maps**. Each row says when the prompt is sent; open it to edit the text.
+
+- An edited text is used from the next time that prompt is sent, in every profile and whatever the
+  language of the app. A text left as it is keeps following the default, also when a later version
+  of Workhub changes it; an edited one stays as you wrote it. **Restore default** goes back.
+- `{name}` placeholders are filled in when the prompt is sent; the row lists the ones it knows.
+  Some are required (the row says which): that is where Workhub puts what it gathered, such as the
+  diff, the messages or the error data. A text with an unknown placeholder, or without a required
+  one, cannot be saved; leaving out an optional one only warns that its information will not be sent.
+- Only the instruction is editable. Workhub always adds, as before, what it gathered, the reply
+  formats it reads back (an AI review's findings and verdict), its notes that pasted data is
+  untrusted, and the lines that keep a reviewer read-only.
+- A profile's own review brief (**Profiles** → **Screens** → **AI review**) wins over the one here.
+  The meeting brief is not here: it is edited per profile in **Profiles** → **Screens** → **Plan**.
+- A text left blank goes back to its default; a prompt cannot be turned off from here.
+- The texts are kept in `config.json`, under `options.prompts`. A new version of Workhub never
+  overwrites them: it only changes the defaults of the prompts you left as they were. A text for a
+  prompt this version does not have stays in the file, unused. A text over 20,000 characters is
+  left out when the file is read; the rest are kept.
 
 ## Remote access
 

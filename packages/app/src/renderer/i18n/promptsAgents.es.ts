@@ -1,0 +1,35 @@
+import type { promptsAgentsEn } from './promptsAgents.en'
+
+/** Spanish names of the editable prompts of this area (neutral). Same keys as `promptsAgentsEn`. */
+export const promptsAgentsEs: Record<keyof typeof promptsAgentsEn, string> = {
+  'prompts.continuity.summaryAsk.name': 'Pedir un resumen al agente',
+  'prompts.continuity.summaryAsk.when': 'Al pasar una sesión a otro agente y elegir que el primer agente escriba el resumen.',
+  'prompts.continuity.handoffIntro.name': 'Resumen de traspaso: introducción',
+  'prompts.continuity.handoffIntro.when': 'Al principio del resumen que se prepara para el agente que toma una sesión.',
+  'prompts.continuity.handoffIntro.fixed': 'El título "Hand-off from", el objetivo, los enlaces, el estado del repositorio, los archivos, los comandos, las tareas pendientes y los últimos mensajes.',
+  'prompts.continuity.handoffNextStep.name': 'Resumen de traspaso: próximo paso',
+  'prompts.continuity.handoffNextStep.when': 'Al final del resumen que se prepara para el agente que toma una sesión.',
+  'prompts.continuity.handoffNextStep.fixed': 'El resto del resumen; el resumen tiene un tamaño máximo, así que un texto muy largo se recorta.',
+  'prompts.continuity.continueAfterLimit.name': 'Continuar tras un límite de uso',
+  'prompts.continuity.continueAfterLimit.when': 'Cuando una sesión pasa a otra cuenta por su límite de uso y sigue trabajando.',
+  'prompts.listen.system.name': 'Escuchar: cómo resumir',
+  'prompts.listen.system.when': 'Cada vez que se resume un mensaje largo para leerlo en voz alta.',
+  'prompts.listen.system.fixed': 'El resumen se limpia de Markdown antes de leerse en voz alta.',
+  'prompts.listen.user.name': 'Escuchar: la petición',
+  'prompts.listen.user.when': 'Cada vez que se resume un mensaje largo para leerlo en voz alta.',
+  'prompts.listen.user.fixed': 'El mensaje, entre etiquetas message, y un aviso cuando se cortó por su largo.',
+  'prompts.chat.slackWatch.name': 'Vigilante de Slack: qué leer',
+  'prompts.chat.slackWatch.when': 'Cada vez que el vigilante de Slack revisa tus canales y los hilos que sigues.',
+  'prompts.chat.slackWatch.fixed': 'La regla de solo lectura (no publica ni reacciona), los títulos de las listas de canales e hilos y el formato JSON de respuesta que Workhub lee.',
+  'prompts.chat.slackWake.name': 'Respuesta de Slack: mensaje a la sesión',
+  'prompts.chat.slackWake.when': 'Cuando llega una respuesta a un hilo de Slack que sigue una sesión y Workhub la escribe en esa sesión.',
+  'prompts.chat.slackWake.fixed': 'Un aviso de que el título y las respuestas son contenido no confiable, y el título y las respuestas del hilo, entre marcas.',
+  'prompts.sessions.messageWrap.name': 'Mensaje de otra sesión',
+  'prompts.sessions.messageWrap.when': 'Cuando una sesión envía un mensaje a otra y tú lo aprobaste.',
+  'prompts.sessions.messageWrap.fixed': 'Un aviso de que el texto son datos y no tus instrucciones, y el mensaje, entre marcas.',
+  'prompts.sessions.localReviewIntro.name': 'Revisión local: encabezado de comentarios',
+  'prompts.sessions.localReviewIntro.when': 'Al enviar tus comentarios sobre los cambios de una sesión, una vez por repositorio.',
+  'prompts.sessions.localReviewIntro.fixed': 'Los comentarios, numerados, con su archivo y línea.',
+  'prompts.sessions.localReviewLooksGood.name': 'Revisión local: se ve bien',
+  'prompts.sessions.localReviewLooksGood.when': 'Cuando pulsas Se ve bien en la revisión local y eliges avisar a la sesión.'
+}

@@ -1,4 +1,4 @@
-import { DEFAULT_LISTEN_MODEL, LISTEN_SYSTEM_PROMPT, listenPrompt, spokenSummary, type ListenSummaryResult } from '@workhub/core'
+import { DEFAULT_LISTEN_MODEL, LISTEN_INPUT_MAX, listenPrompt, listenSystemPrompt, spokenSummary, type ListenSummaryResult, type PromptOverrides } from '@workhub/core'
 import { parseOneshotOutput, runOneshot, type OneshotOutcome, type OneshotRunOptions } from '../chat-slack/agent-source'
 
 export type { ListenSummaryResult }
@@ -19,6 +19,8 @@ export interface ListenSummaryRequest {
   model?: string
   /** The Claude config folder (account) the query runs with; unset: Claude Code's default. */
   configDir?: string
+  /** The user's own prompt texts (Settings → Prompts); the defaults when unset. */
+  prompts?: PromptOverrides
   signal?: AbortSignal
 }
 
@@ -52,8 +54,8 @@ export class ListenSummarizer {
   async summarize(request: ListenSummaryRequest): Promise<ListenSummaryResult> {
     const timeoutSeconds = this.options.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS
     const line = JSON.stringify({
-      prompt: listenPrompt(request.text),
-      systemPrompt: LISTEN_SYSTEM_PROMPT,
+      prompt: listenPrompt(request.text, LISTEN_INPUT_MAX, request.prompts),
+      systemPrompt: listenSystemPrompt(request.prompts),
       cwd: this.options.cwd,
       model: request.model?.trim() || DEFAULT_LISTEN_MODEL,
       maxTurns: 1,

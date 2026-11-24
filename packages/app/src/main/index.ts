@@ -858,6 +858,7 @@ async function automaticUpdateCheck(): Promise<void> {
 const driver = new SessionDriver(sessions, (id, text) => send('automations:prompted', id, text))
 // What agents ask of other sessions over the control endpoint, waiting for the user (session-control.ts).
 const sessionRequests = new SessionRequests({
+  prompts: async () => appOptions(await configuration.current()).prompts,
   sessions: () => sessions.list(),
   profile: async (profileId) => {
     const config = await configuration.current()
