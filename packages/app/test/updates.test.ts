@@ -361,3 +361,96 @@ describe('the sample update of a development run (WORKHUB_DEMO_UPDATE)', () => {
     expect(s.status().state).toBe('idle')
   })
 })
+
+describe('an update that downloads but does not install (e.g. Windows Smart App Control)', () => {
+  beforeEach(() => {
+    autoUpdater.reset()
+    vi.clearAllMocks()
+  })
+  afterEach(() => setPlatform(realPlatform, realArch))
+
+  /** The persisted "version being installed", as index.ts keeps it in the database. */
+  function memoryMarker(initial?: string) {
+    const m = { version: initial as string | undefined, load: () => m.version, save: (v: string | undefined) => void (m.version = v) }
+    return m
+  }
+
+  function serviceOn(platform: NodeJS.Platform, marker = memoryMarker()) {
+    setPlatform(platform, 'x64')
+    const changes: UpdateStatus[] = []
+    const opened: string[] = []
+    const s = new UpdateService((st) => void changes.push(st), async (url) => void opened.push(url), macDeps(), published, { installMarker: marker })
+    return { s, changes, opened, marker }
+  }
+
+  const tagUrl = `https://github.com/${RELEASE_REPO}/releases/tag/v2.0.0-alpha.2`
+
+  it('offers the release page when the installer cannot be started', async () => {
+    const { s, opened } = serviceOn('win32')
+    await checkFinds(s)
+    await s.install()
+    autoUpdater.quitAndInstall.mockImplementationOnce(() => {
+      throw new Error('spawn UNKNOWN')
+    })
+    s.restart()
+    expect(s.status()).toMatchObject({ state: 'error', version: '2.0.0-alpha.2', releaseUrl: tagUrl, installFailed: { windows: true }, message: 'spawn UNKNOWN' })
+    await s.openRelease()
+    expect(opened).toEqual([tagUrl])
+  })
+
+  it('offers the release page when electron-updater reports an error once the update is ready', async () => {
+    const { s } = serviceOn('linux')
+    process.env['APPIMAGE'] = '/tmp/Acme.AppImage'
+    try {
+      await checkFinds(s)
+      await s.install()
+      s.restart()
+      autoUpdater.emit('error', new Error('installer blocked'))
+      expect(s.status()).toMatchObject({ state: 'error', releaseUrl: tagUrl, installFailed: { windows: false } })
+    } finally {
+      delete process.env['APPIMAGE']
+    }
+  })
+
+  it('remembers the version being installed and, started again on the old one, says it did not install', async () => {
+    const first = serviceOn('win32')
+    await checkFinds(first.s)
+    await first.s.install()
+    expect(first.marker.version).toBe('2.0.0-alpha.2')
+
+    const again = serviceOn('win32', first.marker)
+    expect(again.s.status()).toMatchObject({ state: 'error', currentVersion: '2.0.0-alpha.1', version: '2.0.0-alpha.2', releaseUrl: tagUrl, installFailed: { windows: true } })
+    // Said once: the next start does not repeat it.
+    expect(first.marker.version).toBeUndefined()
+    await again.s.openRelease()
+    expect(again.opened).toEqual([tagUrl])
+    // Check now looks again and leaves the failure behind.
+    await checkFinds(again.s)
+    expect(again.s.status().state).toBe('available')
+    expect(again.s.status().installFailed).toBeUndefined()
+  })
+
+  it('says nothing when the update did install', () => {
+    const marker = memoryMarker('2.0.0-alpha.1')
+    const { s } = serviceOn('win32', marker)
+    expect(s.status().state).toBe('idle')
+    expect(s.status().installFailed).toBeUndefined()
+    expect(marker.version).toBeUndefined()
+  })
+
+  it('keeps the happy path: a restart that works reports no failure', async () => {
+    const { s, changes } = serviceOn('win32')
+    await checkFinds(s)
+    await s.install()
+    s.restart()
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true)
+    expect(s.status().state).toBe('ready')
+    expect(changes.some((c) => c.installFailed)).toBe(false)
+  })
+
+  it('opens the latest release when it knows no version', async () => {
+    const { s, opened } = serviceOn('win32')
+    await s.openRelease()
+    expect(opened).toEqual([`https://github.com/${RELEASE_REPO}/releases/latest`])
+  })
+})

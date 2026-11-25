@@ -25,6 +25,12 @@ export interface UpdateStatus {
   notes?: ReleaseNotesEntry[]
   /** The release carries notes and they could not be read: the update is offered without them. */
   notesError?: boolean
+  /**
+   * With `state` `error`: version `version` was downloaded but did not install (the installer could
+   * not start, or the app started again on the old version). `releaseUrl` is where to get it by hand.
+   * `windows`: on Windows, where an app-control policy (Smart App Control) may block the installer.
+   */
+  installFailed?: { windows: boolean }
 }
 
 export interface UpdatesApi {
@@ -35,6 +41,8 @@ export interface UpdatesApi {
   install(): Promise<UpdateStatus>
   /** Restarts into an update that is `ready`. */
   restart(): Promise<void>
+  /** Opens the release page of the version that did not install (or the latest release) in the browser. */
+  openRelease(): Promise<void>
   onChanged(cb: (status: UpdateStatus) => void): () => void
   /** Never prompt again for this version (a newer one still prompts). */
   skip(version: string): Promise<void>

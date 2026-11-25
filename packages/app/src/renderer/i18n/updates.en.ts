@@ -29,6 +29,10 @@ export const updatesEn = {
   'updates.readyTitle': 'Update installed',
   'updates.readyBody': 'Version {version} is installed. Restart now, or keep working: it starts the next time you open Workhub.',
   'updates.error': 'Could not check for updates: {message}',
+  'updates.installFailedTitle': 'The update could not be installed',
+  'updates.installFailed': 'Version {version} was downloaded but could not be installed. Download it from GitHub and run the installer yourself.',
+  'updates.installFailedWindows': 'Version {version} was downloaded but could not be installed: Windows may have blocked the installer (for example Smart App Control). Download it from GitHub and run the installer yourself.',
+  'updates.downloadFromGitHub': 'Download from GitHub',
   'updates.unsupported': 'Updates are only checked in the installed app.',
   'updates.macNote': 'When the app cannot write to its folder (for example it is not in Applications), download the new version and replace the app.'
 } as const

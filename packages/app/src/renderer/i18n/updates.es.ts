@@ -31,6 +31,10 @@ export const updatesEs: Record<keyof typeof updatesEn, string> = {
   'updates.readyTitle': 'Actualización instalada',
   'updates.readyBody': 'La versión {version} está instalada. Reinicia ahora o sigue trabajando: arranca la próxima vez que abras Workhub.',
   'updates.error': 'No se pudo buscar actualizaciones: {message}',
+  'updates.installFailedTitle': 'No se pudo instalar la actualización',
+  'updates.installFailed': 'La versión {version} se descargó pero no se pudo instalar. Descárgala desde GitHub y ejecuta el instalador tú mismo.',
+  'updates.installFailedWindows': 'La versión {version} se descargó pero no se pudo instalar: es posible que Windows haya bloqueado el instalador (por ejemplo, Control inteligente de aplicaciones). Descárgala desde GitHub y ejecuta el instalador tú mismo.',
+  'updates.downloadFromGitHub': 'Descargar desde GitHub',
   'updates.unsupported': 'Las actualizaciones solo se buscan en la app instalada.',
   'updates.macNote': 'Si la app no puede escribir en su carpeta (por ejemplo, no está en Aplicaciones), descarga la versión nueva y reemplaza la app.'
 }

@@ -54,23 +54,42 @@ export function UpdatePromptDialog() {
 
   const ready = status.state === 'ready'
   const downloading = status.state === 'downloading'
+  const notInstalled = status.state === 'error' && status.installFailed
   const description = ready
     ? t('updates.readyBody', { version })
-    : downloading
-      ? t('updates.downloading', { version })
-      : status.state === 'error'
-        ? t('updates.error', { message: status.message ?? '' })
-        : t('updates.promptBody', { version, current: status.currentVersion })
+    : notInstalled
+      ? t(notInstalled.windows ? 'updates.installFailedWindows' : 'updates.installFailed', { version })
+      : downloading
+        ? t('updates.downloading', { version })
+        : status.state === 'error'
+          ? t('updates.error', { message: status.message ?? '' })
+          : t('updates.promptBody', { version, current: status.currentVersion })
 
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && close()}
-      title={ready ? t('updates.readyTitle') : t('updates.promptTitle')}
+      title={ready ? t('updates.readyTitle') : notInstalled ? t('updates.installFailedTitle') : t('updates.promptTitle')}
       description={description}
       className={ready ? undefined : 'w-[min(600px,calc(100vw-48px))]'}
       footer={
-        ready ? (
+        notInstalled ? (
+          <>
+            <Button variant="ghost" onClick={close}>
+              {t('updates.later')}
+            </Button>
+            <Button
+              variant="primary"
+              data-testid="update-open-release"
+              onClick={() => {
+                void window.hub.updates.openRelease()
+                close()
+              }}
+            >
+              {t('updates.downloadFromGitHub')}
+            </Button>
+          </>
+        ) : ready ? (
           <>
             <Button variant="ghost" onClick={close}>
               {t('updates.later')}
@@ -102,7 +121,7 @@ export function UpdatePromptDialog() {
         )
       }
     >
-      {ready ? null : <ReleaseNotesPanel status={status} />}
+      {ready || notInstalled ? null : <ReleaseNotesPanel status={status} />}
     </Dialog>
   )
 }

@@ -141,6 +141,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       check: () => invoke('updates:check'),
       install: () => invoke('updates:install'),
       restart: () => invoke('updates:restart'),
+      openRelease: () => invoke('updates:openRelease'),
       onChanged: (cb) => subscribe<[UpdateStatus]>('updates:changed', cb),
       skip: (version) => invoke('updates:skip', version),
       onPrompt: (cb) => subscribe<[UpdateStatus]>('updates:prompt', cb)

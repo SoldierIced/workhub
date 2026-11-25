@@ -48,11 +48,13 @@ export function UpdatesSettings({
             ? t('updates.downloading', { version: status.version ?? '' })
             : status.state === 'ready'
               ? t('updates.ready', { version: status.version ?? '' })
-              : status.state === 'error'
-                ? t('updates.error', { message: status.message ?? '' })
-                : status.state === 'unsupported'
-                  ? t('updates.unsupported')
-                  : t('updates.version', { version: status.currentVersion })
+              : status.state === 'error' && status.installFailed
+                ? t(status.installFailed.windows ? 'updates.installFailedWindows' : 'updates.installFailed', { version: status.version ?? '' })
+                : status.state === 'error'
+                  ? t('updates.error', { message: status.message ?? '' })
+                  : status.state === 'unsupported'
+                    ? t('updates.unsupported')
+                    : t('updates.version', { version: status.currentVersion })
 
   return (
     <>
@@ -67,6 +69,9 @@ export function UpdatesSettings({
           <div className="flex gap-2">
             {status?.state === 'available' && (
               <Button disabled={install.pending} onClick={() => install.run()}>{status.canInstall ? t('updates.install') : t('updates.download')}</Button>
+            )}
+            {status?.state === 'error' && status.installFailed && (
+              <Button data-testid="update-open-release" onClick={() => void window.hub.updates.openRelease()}>{t('updates.downloadFromGitHub')}</Button>
             )}
             {status?.state === 'ready' && <Button onClick={() => void window.hub.updates.restart()}>{t('updates.restartNow')}</Button>}
             <Button disabled={!status || status.state === 'unsupported' || status.state === 'checking' || status.state === 'downloading' || status.state === 'ready' || check.pending} onClick={() => check.run()}>

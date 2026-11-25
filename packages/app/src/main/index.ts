@@ -945,7 +945,19 @@ const quitGuard = createQuitGuard({
 })
 // WORKHUB_DEMO_UPDATE=1 (a run that is not packaged): a sample update with notes, to see the prompt.
 const demoUpdate = !app.isPackaged && process.env['WORKHUB_DEMO_UPDATE'] === '1'
-const updates = new UpdateService((s) => send('updates:changed', s), (url) => openLink(null, url), undefined, undefined, { demo: demoUpdate })
+// The version an install was started for: a start still on the old one means it was blocked.
+const updateInstallFile = db.state<{ version?: string }>('update-install', 0)
+const installMarker = {
+  load: () => {
+    const v = (updateInstallFile.load({}) as { version?: unknown }).version
+    return typeof v === 'string' && v ? v : undefined
+  },
+  save: (version: string | undefined) => {
+    updateInstallFile.save(version ? { version } : {})
+    updateInstallFile.flush()
+  }
+}
+const updates = new UpdateService((s) => send('updates:changed', s), (url) => openLink(null, url), undefined, undefined, { demo: demoUpdate, installMarker })
 // "A new version is available": after an automatic check, at most once a day, never for a skipped version.
 const updatePromptFile = db.state<UpdatePromptState>('update-prompt', 0)
 const saveUpdatePrompt = (patch: UpdatePromptState) => {
@@ -957,6 +969,8 @@ const UPDATE_RECHECK_MS = 6 * 60 * 60 * 1000
 /** Long enough for the window to be listening. */
 const DEMO_UPDATE_PROMPT_MS = 4_000
 async function automaticUpdateCheck(): Promise<void> {
+  // An update that did not install stays on screen (with its GitHub link) until "Check now".
+  if (updates.status().installFailed) return
   if (!appOptions(await configuration.current()).checkForUpdates) return
   const status = await updates.check()
   const state = readUpdatePromptState(updatePromptFile.load({}))
@@ -1405,6 +1419,7 @@ function registerIpc(): void {
   })
   registerNotificationsIpc(ipc, { showSessionNotification, notificationPermission, showMain })
   registerUpdatesIpc(ipc, { updates, quitGuard, saveUpdatePrompt })
+  ipc.handle('updates:openRelease', () => updates.openRelease())
   registerHistoryIpc(ipc, {
     named: namedHistory,
     deepen: () => {
@@ -1884,6 +1899,12 @@ void app.whenReady().then(async () => {
     // A version found by these automatic checks is announced in a prompt, at most once a day.
     updateChecks: () => {
       if (app.isPackaged) {
+        // Started again on the old version after an install: say so, with the GitHub download.
+        if (updates.status().installFailed) {
+          setTimeout(() => {
+            if (windows.liveMain()) send('updates:prompt', updates.status())
+          }, DEMO_UPDATE_PROMPT_MS)
+        }
         setTimeout(() => void automaticUpdateCheck(), 10_000)
         setInterval(() => void automaticUpdateCheck(), UPDATE_RECHECK_MS)
       } else if (demoUpdate) {

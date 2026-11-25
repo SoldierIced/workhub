@@ -43,8 +43,20 @@ export const fetchNotesFromGitHub = async (tag: string, request: typeof fetch = 
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
 }
 
+/**
+ * The version an install was started for, kept across a restart (a row of the app database). If the
+ * app starts again on an older version, the installer never ran: an app-control policy such as
+ * Windows Smart App Control, or an antivirus, can block the unsigned installer without any error
+ * reaching the app.
+ */
+export interface InstallMarker {
+  load(): string | undefined
+  save(version: string | undefined): void
+}
+
 export interface UpdateServiceOptions {
   fetchNotes?: FetchNotes
+  installMarker?: InstallMarker
   /** WORKHUB_DEMO_UPDATE=1 in a run that is not packaged: a sample update with notes (demo-update.ts). */
   demo?: boolean
 }
@@ -71,6 +83,7 @@ export class UpdateService {
   private notesFailed = false
   private readonly fetchNotes: FetchNotes
   private readonly demo: boolean
+  private readonly marker: InstallMarker | undefined
 
   constructor(
     private readonly onChanged: (status: UpdateStatus) => void,
@@ -83,8 +96,40 @@ export class UpdateService {
     // Never in an installed app: there the variable would hide the real state of its updates.
     this.demo = options.demo === true && !app.isPackaged
     this.current = { state: app.isPackaged ? 'idle' : 'unsupported', currentVersion: app.getVersion(), canInstall: process.platform !== 'darwin' && this.canInstallElsewhere() }
+    this.marker = options.installMarker
     if (this.demo) this.current = this.demoStatus()
     else if (!app.isPackaged) this.current.message = 'Updates are only checked in the packaged app.'
+    else this.readInstallMarker()
+  }
+
+  /** Started again on an older version than the one being installed: the install did not happen. */
+  private readInstallMarker(): void {
+    const version = this.marker?.load()
+    if (!version) return
+    // Said once; "Check now" offers the update again.
+    this.marker?.save(undefined)
+    if ((compareVersions(version, this.current.currentVersion) ?? 0) > 0) this.current = this.installFailedStatus(version)
+  }
+
+  private installFailedStatus(version: string | undefined, message?: string): UpdateStatus {
+    return {
+      ...this.current,
+      state: 'error',
+      version,
+      releaseUrl: version ? `${RELEASES}/tag/v${version}` : undefined,
+      message,
+      installFailed: { windows: process.platform === 'win32' }
+    }
+  }
+
+  private failInstall(message?: string): void {
+    const failed = this.installFailedStatus(this.current.version, message)
+    this.set(failed)
+  }
+
+  /** The release page of the version that did not install (or the latest release), in the browser. */
+  async openRelease(): Promise<void> {
+    await this.openUrl(this.current.releaseUrl ?? `${RELEASES}/latest`)
   }
 
   /** The sample update: it cannot be installed, so "Update" opens the list of releases. */
@@ -107,7 +152,7 @@ export class UpdateService {
     this.wire()
     // The notes shown belong to this check; what was read stays for the same release (readNotes).
     this.notesFailed = false
-    this.set({ state: 'checking', message: undefined, notes: undefined, notesError: undefined, canInstall: await this.canInstall() })
+    this.set({ state: 'checking', message: undefined, notes: undefined, notesError: undefined, installFailed: undefined, canInstall: await this.canInstall() })
     try {
       // electron-updater follows the newest tag, which exists before its installers are uploaded
       // (and for drafts). Point it at the newest release that has them. Without the API there is no
@@ -145,6 +190,8 @@ export class UpdateService {
         // "Later" still installs it, when the app quits.
         autoUpdater.autoInstallOnAppQuit = true
       }
+      // From here any quit installs it; a start still on this version means it did not.
+      this.marker?.save(this.current.version)
       this.set({ state: 'ready' })
     } catch (err) {
       // Back to `available` with the reason: Install and Check now both work again.
@@ -157,7 +204,14 @@ export class UpdateService {
   restart(): void {
     if (this.current.state !== 'ready') return
     // Silent: the assisted NSIS installer (oneClick: false) would otherwise open its wizard and wait.
-    if (process.platform !== 'darwin') return autoUpdater.quitAndInstall(true, true)
+    if (process.platform !== 'darwin') {
+      try {
+        autoUpdater.quitAndInstall(true, true)
+      } catch (err) {
+        this.failInstall(err instanceof Error ? err.message : String(err))
+      }
+      return
+    }
     app.relaunch()
     app.quit()
   }
@@ -219,7 +273,10 @@ export class UpdateService {
     autoUpdater.on('update-not-available', () => this.set({ state: 'none', version: undefined, releaseUrl: undefined, changesUrl: undefined }))
     autoUpdater.on('error', (err) => {
       // The macOS install does not go through electron-updater; its errors are reported by install().
-      if (this.current.state !== 'downloading') this.set({ state: 'error', message: err.message })
+      if (this.current.state === 'downloading') return
+      // Once downloaded, only the install runs: an error now means the installer did not start.
+      if (this.current.state === 'ready') return this.failInstall(err.message)
+      this.set({ state: 'error', message: err.message })
     })
   }
 
