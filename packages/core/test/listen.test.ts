@@ -9,6 +9,7 @@ import {
   LISTEN_SYSTEM_PROMPT,
   listenPlan,
   listenPrompt,
+  listenSystemPrompt,
   needsSummary,
   parseConfig,
   spokenSummary,
@@ -90,5 +91,16 @@ describe('listenModel option', () => {
     expect(appOptions(parseConfig({ version: 8 })).listenModel).toBe('haiku')
     expect(appOptions(parseConfig({ version: 8, options: { listenModel: ' claude-sonnet-4-5 ' } })).listenModel).toBe('claude-sonnet-4-5')
     expect(() => parseConfig({ version: 8, options: { listenModel: 'haiku; rm -rf' } })).toThrow()
+  })
+})
+
+describe('editable Listen prompts', () => {
+  it('uses the own system prompt and request, keeping the fenced message and the cut note', () => {
+    expect(listenSystemPrompt()).toBe(LISTEN_SYSTEM_PROMPT)
+    expect(listenSystemPrompt({ 'listen.system': 'Be brief.' })).toBe('Be brief.')
+    const prompt = listenPrompt('word '.repeat(60), 100, { 'listen.user': 'Read this aloud:\n{message}' })
+    expect(prompt.startsWith('Read this aloud:\n<message>\n')).toBe(true)
+    expect(prompt).toContain('more characters were left out')
+    expect(prompt.endsWith('\n</message>')).toBe(true)
   })
 })

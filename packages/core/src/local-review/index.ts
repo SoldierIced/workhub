@@ -4,6 +4,8 @@
  * the session as one message. Pure: git is read by the adapter, delivery happens in the app.
  */
 import type { DiffFile, DiffLine } from '../codehost/domain'
+import { fillPrompt, promptTemplate, PROMPTS } from '../prompts/registry'
+import type { PromptOverrides } from '../prompts/types'
 
 /** Everything the branch changed since it left its base, or only what is not committed yet. Untracked files count as added in both. */
 export type LocalReviewScope = 'branch' | 'uncommitted'
@@ -80,7 +82,10 @@ export interface ReviewComment {
   createdAt: number
 }
 
-export const LOOKS_GOOD_MESSAGE = 'Local review: looks good'
+export const LOOKS_GOOD_MESSAGE = PROMPTS['sessions.localReviewLooksGood'].defaultText
+
+/** What "Looks good" sends: the user's own text, else the default. */
+export const looksGoodMessage = (overrides?: PromptOverrides): string => promptTemplate(overrides, 'sessions.localReviewLooksGood')
 
 /** The id of a file across repos. */
 export function fileKey(repoRoot: string, path: string): string {
@@ -108,7 +113,7 @@ export function commentLocation(comment: Pick<ReviewComment, 'path' | 'side' | '
  * One message with every comment, grouped by repo (in the order they were first commented),
  * files and lines in order: "Review comments on payouts:\n1. src/A.cs:44 — text".
  */
-export function reviewMessage(comments: readonly ReviewComment[]): string {
+export function reviewMessage(comments: readonly ReviewComment[], overrides?: PromptOverrides): string {
   const repos: string[] = []
   for (const c of comments) if (!repos.includes(c.repoName)) repos.push(c.repoName)
   return repos
@@ -117,7 +122,7 @@ export function reviewMessage(comments: readonly ReviewComment[]): string {
         .filter((c) => c.repoName === repo && c.text.trim() !== '')
         .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line || a.createdAt - b.createdAt))
       const lines = items.map((c, i) => `${i + 1}. ${commentLocation(c)} — ${c.text.trim().replace(/\n/g, '\n   ')}`)
-      return [`Review comments on ${repo}:`, ...lines].join('\n')
+      return [fillPrompt(promptTemplate(overrides, 'sessions.localReviewIntro'), { repo }), ...lines].join('\n')
     })
     .join('\n\n')
 }

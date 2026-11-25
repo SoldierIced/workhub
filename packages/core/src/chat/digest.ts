@@ -1,3 +1,5 @@
+import { fillPrompt, promptTemplate } from '../prompts/registry'
+import type { PromptOverrides } from '../prompts/types'
 import { msToTs, plainLinks, pullRequestsIn, ticketsIn } from './links'
 import type { ChatDigest, ChatMessage, ChatReply, TrackedThread, WatchedChannel } from './types'
 
@@ -85,26 +87,36 @@ export const THREADS_PER_READ = 20
  * The read-only prompt of one watcher cycle (Workhub 1's wording): new top-level messages per
  * channel after its cursor, new replies per open thread, answered as strict JSON.
  */
-export function watchPrompt(channels: readonly WatchedChannel[], cursors: Readonly<Record<string, string>>, threads: readonly Pick<TrackedThread, 'channelId' | 'ts' | 'lastSeenReplyTs'>[], now: number): string {
-  const lines = [
-    'Read-only Slack check. Use ONLY Slack read tools (read channel history, read thread, search); never send, react, draft or schedule anything.',
-    'Copy message text verbatim (no summaries), truncated to 1500 characters. Slack timestamps (ts) are strings like 1712345678.123456.',
-    'Channels: for each, list top-level messages posted after its ts (at most 30, oldest first).'
-  ]
+export function watchPrompt(
+  channels: readonly WatchedChannel[],
+  cursors: Readonly<Record<string, string>>,
+  threads: readonly Pick<TrackedThread, 'channelId' | 'ts' | 'lastSeenReplyTs'>[],
+  now: number,
+  overrides?: PromptOverrides
+): string {
+  // The read-only line and the JSON answer format (the digest parser's) are fixed; the channel and
+  // thread lists, with their headings, go where the text puts its slots.
+  const channelLines = ['Channels: for each, list top-level messages posted after its ts (at most 30, oldest first).']
   for (const c of channels) {
     const cursor = cursors[c.id] ?? msToTs(now - 86_400_000)
-    lines.push(`- ${c.id} #${c.name}${c.purpose ? ` (${c.purpose})` : ''}: after ${cursor}`)
+    channelLines.push(`- ${c.id} #${c.name}${c.purpose ? ` (${c.purpose})` : ''}: after ${cursor}`)
   }
+  const threadLines: string[] = []
   if (threads.length) {
-    lines.push('Threads: for each, list replies after its ts (not the root message).')
-    for (const t of threads) lines.push(`- channel ${t.channelId} thread ${t.ts}: after ${t.lastSeenReplyTs}`)
+    threadLines.push('Threads: for each, list replies after its ts (not the root message).')
+    for (const t of threads) threadLines.push(`- channel ${t.channelId} thread ${t.ts}: after ${t.lastSeenReplyTs}`)
   }
-  lines.push('For "user", give the author\'s display name when the tool shows it, else their user ID.')
-  lines.push('Set "me" to my Slack display name if you can read it cheaply, else "".')
-  lines.push('Answer with STRICT JSON only, no prose and no code fence, using [] where nothing is new:')
-  lines.push(
+  const values = { channels: channelLines.join('\n'), threads: threadLines.join('\n') }
+  // No threads: a line holding only {threads} goes, as it never was a line.
+  const template = promptTemplate(overrides, 'chat.slackWatch')
+    .split('\n')
+    .filter((line) => threadLines.length > 0 || line.trim() !== '{threads}')
+    .join('\n')
+  return [
+    'Read-only Slack check. Use ONLY Slack read tools (read channel history, read thread, search); never send, react, draft or schedule anything.',
+    fillPrompt(template, values),
+    'Answer with STRICT JSON only, no prose and no code fence, using [] where nothing is new:',
     '{"channels":[{"id":"","messages":[{"ts":"","threadTs":"","user":"","text":"","permalink":"","replyCount":0}]}],' +
       '"threads":[{"channelId":"","ts":"","replies":[{"ts":"","user":"","text":""}]}],"me":""}'
-  )
-  return lines.join('\n')
+  ].join('\n')
 }

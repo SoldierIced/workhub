@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildHandoffBrief,
+  handoffSummaryPrompt,
+  HANDOFF_SUMMARY_PROMPT,
   EMPTY_FACTS,
   EMPTY_SESSION_GROUPS,
   factsFromHistory,
@@ -232,5 +234,27 @@ describe('placeBeside', () => {
     expect(placeBeside(s, member('n'), 'a').top).toEqual([{ kind: 'session', key: 'a' }, { kind: 'session', key: 'n' }, { kind: 'session', key: 'b' }])
     expect(placeBeside(s, member('n'), 'zzz')).toBe(s)
     expect(placeBeside(s, member('a'), 'a')).toBe(s)
+  })
+})
+
+describe('editable hand-off prompts', () => {
+  const opts = { sourceLabel: 'Claude', cwd: '/w' }
+  it('uses the own intro with its placeholders and keeps the title, sections and size budget', () => {
+    const brief = buildHandoffBrief(facts, { ...opts, prompts: { 'continuity.handoffIntro': 'Take over from {source} in {cwd}.', 'continuity.handoffNextStep': 'Do the next thing.' } })
+    expect(brief).toContain('# Hand-off from Claude\n\nTake over from Claude in `/w`.')
+    expect(brief).toContain('## Goal')
+    expect(brief.endsWith('## Next step\nDo the next thing.')).toBe(true)
+    expect(brief).not.toContain('You are taking over')
+  })
+
+  it('keeps the budget with a very long own next step', () => {
+    const brief = buildHandoffBrief(facts, { ...opts, maxChars: 1_000, prompts: { 'continuity.handoffNextStep': 'x'.repeat(10_000), 'continuity.handoffIntro': 'y'.repeat(10_000) } })
+    expect(brief.length).toBeLessThanOrEqual(1_000)
+    expect(brief).toContain('## Next step')
+  })
+
+  it('the summary ask is the own text when set', () => {
+    expect(handoffSummaryPrompt()).toBe(HANDOFF_SUMMARY_PROMPT)
+    expect(handoffSummaryPrompt({ 'continuity.summaryAsk': 'Summarize briefly.' })).toBe('Summarize briefly.')
   })
 })

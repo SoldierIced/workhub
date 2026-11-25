@@ -56,7 +56,7 @@ export function buildPermalink(host: string, channelId: string, ts: string, thre
 
 /** Slack wraps links as `<url|label>`; the plain URL is what the app shows and parses. */
 export function plainLinks(text: string): string {
-  return text.replace(/<(https?:\/\/[^|>\s]+)(?:\|[^>]*)?>/g, '$1')
+  return text.replace(/<(https?:\/\/[^|<>\s]+)(?:\|[^<>]*)?>/g, '$1')
 }
 
 /**

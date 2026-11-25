@@ -1,3 +1,7 @@
+import { promptsEs } from './prompts.es'
+import { promptsReviewEs } from './promptsReview.es'
+import { promptsAgentsEs } from './promptsAgents.es'
+import { promptsRendererEs } from './promptsRenderer.es'
 import { webEs } from './web.es'
 import { remoteEs } from './remote.es'
 import type { en } from './en'
@@ -503,6 +507,10 @@ export const es: Record<keyof typeof en, string> = {
   ...usageEs,
   ...aiReviewEs,
   ...continuityEs,
+  ...promptsEs,
+  ...promptsReviewEs,
+  ...promptsAgentsEs,
+  ...promptsRendererEs,
   ...sessionsUxEs,
   ...sessionMonitorEs,
   ...trayEs,

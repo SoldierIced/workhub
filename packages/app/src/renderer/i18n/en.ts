@@ -1,3 +1,7 @@
+import { promptsEn } from './prompts.en'
+import { promptsReviewEn } from './promptsReview.en'
+import { promptsAgentsEn } from './promptsAgents.en'
+import { promptsRendererEn } from './promptsRenderer.en'
 import { webEn } from './web.en'
 import { remoteEn } from './remote.en'
 import { linksEn } from './links.en'
@@ -504,6 +508,10 @@ export const en = {
   ...usageEn,
   ...aiReviewEn,
   ...continuityEn,
+  ...promptsEn,
+  ...promptsReviewEn,
+  ...promptsAgentsEn,
+  ...promptsRendererEn,
   ...sessionsUxEn,
   ...sessionMonitorEn,
   ...trayEn,

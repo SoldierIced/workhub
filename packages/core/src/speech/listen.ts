@@ -4,6 +4,8 @@
  * into a few spoken sentences. Pure on purpose: the renderer decides with these, main builds the
  * model's prompt with them.
  */
+import { fillPrompt, promptTemplate, PROMPTS } from '../prompts/registry'
+import type { PromptOverrides } from '../prompts/types'
 import type { RunUsage } from '../usage/background'
 import { speechText } from './text'
 
@@ -56,19 +58,17 @@ export function truncateForSummary(markdown: string, max: number = LISTEN_INPUT_
 }
 
 /** The system prompt of the summarizing query: spoken prose only, in the message's language. */
-export const LISTEN_SYSTEM_PROMPT = [
-  'You rewrite a message from a coding agent so it can be listened to instead of read.',
-  'Answer with the spoken summary only: plain prose of two to six short sentences.',
-  'No Markdown, no lists, no headings, no code, no URLs, no file paths spelled out, no emoji.',
-  'Name files, commands or code only in words when they matter, and keep numbers that matter.',
-  'Write in the same language as the message. Do not add greetings, opinions or anything the message does not say.'
-].join(' ')
+export const LISTEN_SYSTEM_PROMPT = PROMPTS['listen.system'].defaultText
+
+/** The system prompt to send: the user's own text, else the default. */
+export const listenSystemPrompt = (overrides?: PromptOverrides): string => promptTemplate(overrides, 'listen.system')
 
 /** The user prompt of the summarizing query: the message, cut to `max` characters with a note when longer. */
-export function listenPrompt(markdown: string, max: number = LISTEN_INPUT_MAX): string {
+export function listenPrompt(markdown: string, max: number = LISTEN_INPUT_MAX, overrides?: PromptOverrides): string {
   const { text, cut } = truncateForSummary(markdown, max)
   const note = cut > 0 ? `\n\n[The message was cut here: ${cut} more characters were left out. Summarize what is above.]` : ''
-  return `Summarize this message for listening.\n\n<message>\n${text}${note}\n</message>`
+  // The fence and the cut note are Workhub's: the text only says where the message goes.
+  return fillPrompt(promptTemplate(overrides, 'listen.user'), { message: `<message>\n${text}${note}\n</message>` })
 }
 
 /** The model's answer as speech: any Markdown it still wrote is cleaned the way a reply is. */

@@ -9,24 +9,26 @@ import {
   type EffectiveAgent,
   type LinkableSession,
   type Profile,
+  type PromptOverrides,
   type SessionState,
   type TicketKeyProvider
 } from '@workhub/core'
 import type { HistoryItem, StartSessionInput } from '@shared/api'
 import type { PullRequestTarget, SessionIntent, TicketTarget } from '@shared/links-api'
-import { translate, type Locale, type MessageKey, type Params } from '../i18n/translate'
+import type { Locale, MessageKey, Params } from '../i18n/translate'
 import type { SessionData } from '../store'
 import { errorText } from './errorText'
+import { draftPrompt } from './promptText'
 
 /** Prompt drafted for "Ask Claude to review". It goes into the composer; the app never sends it. */
-export function reviewPrompt(locale: Locale, pr: PullRequestTarget): string {
-  return translate(locale, 'links.prompt.review', { name: prName(pr, pr.provider), title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, author: pr.author })
+export function reviewPrompt(locale: Locale, pr: PullRequestTarget, overrides?: PromptOverrides): string {
+  return draftPrompt(overrides, 'links.reviewPr', locale, 'links.prompt.review', { name: prName(pr, pr.provider), title: pr.title, url: pr.url, branch: pr.branch, base: pr.base, author: pr.author })
 }
 
 /** Prompt drafted for "Start session about this ticket" (key, title and link). Never sent by the app. */
-export function ticketPrompt(locale: Locale, ticket: TicketTarget): string {
+export function ticketPrompt(locale: Locale, ticket: TicketTarget, overrides?: PromptOverrides): string {
   const params = { key: ticket.key, title: ticket.title, url: ticket.url ?? '' }
-  return translate(locale, ticket.url ? 'links.prompt.ticket' : 'links.prompt.ticketNoUrl', params)
+  return ticket.url ? draftPrompt(overrides, 'links.ticket', locale, 'links.prompt.ticket', params) : draftPrompt(overrides, 'links.ticketNoUrl', locale, 'links.prompt.ticketNoUrl', params)
 }
 
 const isLive = (s: SessionData): boolean => s.view.state !== 'stopped' && s.view.state !== 'error'
@@ -69,6 +71,8 @@ export type IntentOutcome =
 /** The things an intent needs from the app; injected so the logic runs (and is tested) without Electron. */
 export interface IntentDeps {
   locale: Locale
+  /** The user's own prompt texts (Settings → Prompts), read when the intent is carried out. */
+  overrides?: PromptOverrides
   agents: readonly EffectiveAgent[]
   /** The active profile, for its preferred agent order. */
   profile?: Pick<Profile, 'preferredAgents'>
@@ -132,7 +136,7 @@ export async function runIntent(deps: IntentDeps, intent: SessionIntent): Promis
       const agent = agentForDraft(deps.profile, deps.agents, claude)
       if (!agent) return failure(claude ? 'links.noClaude' : 'links.noAgent')
       const cwd = chooseFirstFolder(await deps.checkouts(intent.profileId)) ?? (await deps.defaultCwd())
-      return await startDrafted(deps, intent.profileId, agent, cwd, ticketPrompt(deps.locale, intent.ticket))
+      return await startDrafted(deps, intent.profileId, agent, cwd, ticketPrompt(deps.locale, intent.ticket, deps.overrides))
     }
     const { pr } = intent
     if (intent.kind === 'pullRequestSession') {
@@ -143,7 +147,7 @@ export async function runIntent(deps: IntentDeps, intent: SessionIntent): Promis
     const agent = agentForDraft(deps.profile, deps.agents, review) ?? (review ? undefined : deps.agents[0])
     if (!agent) return failure(review ? 'links.noClaude' : 'links.noAgent')
     const cwd = chooseFolderForPullRequest(pr, await deps.checkouts(intent.profileId)).path ?? (await deps.defaultCwd())
-    if (review) return await startDrafted(deps, intent.profileId, agent, cwd, reviewPrompt(deps.locale, pr))
+    if (review) return await startDrafted(deps, intent.profileId, agent, cwd, reviewPrompt(deps.locale, pr, deps.overrides))
     const view = await deps.start({ profileId: intent.profileId, agentKey: agent.key, cwd, cols: 100, rows: 30, model: deps.model(agent.key) })
     return { kind: 'started', sessionId: view.id, folder: cwd, drafted: false }
   } catch (e) {

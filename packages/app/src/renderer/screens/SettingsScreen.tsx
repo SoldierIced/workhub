@@ -33,6 +33,7 @@ import { ConnectionsSection } from "./settings/ConnectionsSection";
 import { focusSettingGroup, focusSettingRow } from "./settings/focusRow";
 import { NotificationsAlertsSection } from "./settings/NotificationsAlertsSection";
 import { ProfilesSection, type OpenProfile } from "./settings/ProfilesSection";
+import { PromptsSection } from "./settings/PromptsSection";
 import { RemoteSection } from "./settings/RemoteSection";
 import type { Run } from "./settings/run";
 import {
@@ -65,6 +66,7 @@ const INTRO: Record<SettingsSectionId, MessageKey> = {
   connections: "settingsConnections.intro",
   remote: "settingsV2.intro.remote",
   profiles: "settingsV2.intro.profiles",
+  prompts: "settingsV2.intro.prompts",
   advanced: "settingsV2.intro.advanced",
 };
 
@@ -444,6 +446,8 @@ function SettingsBody({
             focusHealthSecret={focus?.tab === "health"}
           />
         );
+      case "prompts":
+        return <PromptsSection snap={snap} run={run} />;
       case "advanced":
         return (
           <AdvancedSection snap={snap} run={run} />

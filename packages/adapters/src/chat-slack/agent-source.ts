@@ -144,7 +144,7 @@ export class SlackAgentChatSource implements ChatSource {
 
   async read(request: ChatReadRequest): Promise<ChatReadResult> {
     const line = JSON.stringify({
-      prompt: watchPrompt(request.channels, request.cursors, request.threads, request.now),
+      prompt: watchPrompt(request.channels, request.cursors, request.threads, request.now, request.prompts),
       cwd: this.options.cwd,
       model: request.model || 'haiku',
       maxTurns: 8,

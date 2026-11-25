@@ -38,7 +38,7 @@ const BRIEF = 'Sure.\n<review-brief>\nRepos: /work/acme/pay on feat/refunds; dif
 const CHANGES = '1. major: src/refund.ts:12 refunds twice.\nVERDICT: CHANGES_REQUESTED'
 const APPROVED = 'All fixed.\nVERDICT: APPROVED'
 
-function setup(script: { author?: Step[]; reviewer?: Step[]; installed?: Record<string, boolean>; budget?: BudgetStatus } = {}) {
+function setup(script: { author?: Step[]; reviewer?: Step[]; installed?: Record<string, boolean>; budget?: BudgetStatus; prompts?: Record<string, string> } = {}) {
   const views: SessionView[] = [view('dev', 'ready', { name: 'Refunds in pay' })]
   const author = [...(script.author ?? [])]
   const reviewer = [...(script.reviewer ?? [])]
@@ -51,7 +51,7 @@ function setup(script: { author?: Step[]; reviewer?: Step[]; installed?: Record<
   const placed: [string, string][] = []
   const emitted: ReviewLoopView[][] = []
   const hanging = new Map<string, (stopReason: string) => void>()
-  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false } }], activeProfileId: 'p' }
+  const config: WorkhubConfig = { version: CONFIG_VERSION, connections: [], agents: [], accounts: [], profiles: [{ id: 'p', name: 'P', connections: {}, accountIds: [], modules: { flows: false, health: false, chatWatcher: false, automations: false, flowMaps: false, planner: false, boards: false } }], activeProfileId: 'p', ...(script.prompts ? { options: { prompts: script.prompts } as WorkhubConfig['options'] } : {}) }
   const setState = (id: string, state: SessionState) => {
     const i = views.findIndex((v) => v.id === id)
     views[i] = { ...views[i]!, state }
@@ -117,6 +117,21 @@ describe('AgentReviewService', () => {
     expect(o?.reviewers.every((r) => r.adapter !== 'terminal')).toBe(true)
     expect(o?.briefPrompt).toContain('<review-brief>')
     expect(o?.maxRounds).toBe(3)
+  })
+
+  it('uses the app-wide prompt texts: the brief ask in the dialog, the loop texts when each one is sent', async () => {
+    const prompts = { 'review.briefAsk': 'Custom brief ask <review-brief>', 'review.loopRole': 'Custom role for {sessionTitle}.\n{brief}', 'review.loopAuthorFix': 'Custom fix round {round}.', 'review.loopAuthorApproved': 'Custom approved.' }
+    const s = setup({ author: [BRIEF], reviewer: [CHANGES, APPROVED], prompts })
+    expect((await s.service.options('dev'))?.briefPrompt).toBe('Custom brief ask <review-brief>')
+    await s.service.start('dev', request)
+    await until(() => ended(s.loop()))
+    const reviewerFirst = s.prompts.find(([id]) => id === 'rev1')![1]
+    expect(reviewerFirst.startsWith('Custom role for Refunds in pay.\n')).toBe(true)
+    expect(reviewerFirst).toContain('your only output is the review.')
+    expect(reviewerFirst).toContain('VERDICT: APPROVED')
+    const toAuthor = s.prompts.filter(([id]) => id === 'dev').map(([, t]) => t)
+    expect(toAuthor[1]).toContain('Custom fix round 1.\n\n<review>')
+    expect(toAuthor[2]).toContain('Custom approved.\n\n<review>')
   })
 
   it('approves on round 1: the author briefs, a linked read-only reviewer reviews, both chats show it', async () => {

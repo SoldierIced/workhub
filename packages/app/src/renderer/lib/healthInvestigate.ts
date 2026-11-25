@@ -15,6 +15,7 @@ import {
   type K8sEvent,
   type PodDetails,
   type PodIssue,
+  type PromptOverrides,
   type ServiceErrorCount,
   type ServiceErrorDetails,
   type ServiceReporting,
@@ -39,6 +40,8 @@ export type HealthRow =
 
 export interface InvestigateDeps {
   locale: Locale
+  /** The user's own prompt texts (Settings → Prompts), read when the draft is built. */
+  overrides?: PromptOverrides
   /** The profile's folders (absolute paths). */
   folders: string[]
   profileName: string
@@ -71,21 +74,21 @@ export async function investigateRow(row: HealthRow, deps: InvestigateDeps): Pro
   switch (row.kind) {
     case 'errors': {
       const details = await read<ServiceErrorDetails>(deps, { kind: 'errors', service: row.entry.service })
-      return { draft: errorsPrompt(locale, row.entry, details, pe, env.errorUrls[row.entry.service]), folder: matchFolder(folders, row.entry.service) }
+      return { draft: errorsPrompt(locale, row.entry, details, pe, env.errorUrls[row.entry.service], true, deps.overrides), folder: matchFolder(folders, row.entry.service) }
     }
     case 'silent': {
       const errors = env.snapshot.errorServices.find((e) => e.service === row.service.service)
-      return { draft: silentPrompt(locale, row.service, errors, pe, env.serviceUrls[row.service.service]), folder: matchFolder(folders, row.service.service) }
+      return { draft: silentPrompt(locale, row.service, errors, pe, env.serviceUrls[row.service.service], true, deps.overrides), folder: matchFolder(folders, row.service.service) }
     }
     case 'pod': {
       const details = await read<PodDetails>(deps, { kind: 'pod', pod: row.pod.pod })
-      return { draft: podPrompt(locale, row.pod, details, pe, env.podUrls[row.pod.pod]), folder: folderForPod(folders, row.pod.pod, details.value?.status?.container) }
+      return { draft: podPrompt(locale, row.pod, details, pe, env.podUrls[row.pod.pod], true, deps.overrides), folder: folderForPod(folders, row.pod.pod, details.value?.status?.container) }
     }
     case 'event':
-      return { draft: eventPrompt(locale, row.event, pe), folder: folderForEvent(folders, row.event) }
+      return { draft: eventPrompt(locale, row.event, pe, true, deps.overrides), folder: folderForEvent(folders, row.event) }
     case 'flow': {
       const details = await read<FlowDetails>(deps, { kind: 'flow', service: row.tx.service, name: row.tx.name })
-      return { draft: flowPrompt(locale, row.tx, details, pe, env.serviceUrls[row.tx.service]), folder: matchFolder(folders, row.tx.service) }
+      return { draft: flowPrompt(locale, row.tx, details, pe, env.serviceUrls[row.tx.service], true, deps.overrides), folder: matchFolder(folders, row.tx.service) }
     }
   }
 }
@@ -140,7 +143,8 @@ export async function investigateTogether(selection: ReadonlySet<HealthItemId>, 
     pods,
     flows,
     errorServices: snapshot.errorServices,
-    links: { errors: deps.env.errorUrls, pods: deps.env.podUrls, services: deps.env.serviceUrls }
+    links: { errors: deps.env.errorUrls, pods: deps.env.podUrls, services: deps.env.serviceUrls },
+    overrides: deps.overrides
   })
   return { draft, folder }
 }

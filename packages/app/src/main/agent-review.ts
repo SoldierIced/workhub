@@ -11,6 +11,7 @@
 import {
   afterVerdict,
   aiReviewSettings,
+  appOptions,
   briefPromptOf,
   buildAuthorFinalPrompt, buildAuthorFixPrompt,
   buildLoopReviewerPrompt,
@@ -152,6 +153,11 @@ export class AgentReviewService {
     this.changed()
   }
 
+  /** The user's prompt texts, read when a prompt is sent so an edit applies from the next one. */
+  private async prompts() {
+    return appOptions(await this.deps.config()).prompts
+  }
+
   private chatAgents(config: WorkhubConfig, profileId: string | null): EffectiveAgent[] {
     return resolveEffectiveAgents(config, profileId).filter((a) => a.agent.capabilities.appMode && a.agent.adapter !== 'terminal')
   }
@@ -169,7 +175,7 @@ export class AgentReviewService {
     return {
       reviewers: agents.map((a) => ({ key: a.key, label: a.label, agentId: a.agent.id, adapter: a.agent.adapter, installed: installed[a.agent.id] !== false })),
       ...(fallback ? { defaultReviewerKey: fallback.key } : {}),
-      briefPrompt: briefPromptOf(settings),
+      briefPrompt: briefPromptOf(settings, appOptions(config).prompts),
       maxRounds: settings.maxRounds,
       approveFindings: settings.approveFindings
     }
@@ -225,7 +231,7 @@ export class AgentReviewService {
       const reviewerId = await this.startReviewer(run, author, reviewer, settings)
       this.set(run, { phase: 'reviewing', round: 1 })
       const title = author.name ?? this.titles.get(author.id)
-      let review = await this.turn(run, config, reviewerId, reviewer.key, buildLoopReviewerPrompt({ brief, ...(title ? { sessionTitle: title } : {}), maxRounds: run.view.maxRounds, language }), 'reviewerClosed')
+      let review = await this.turn(run, config, reviewerId, reviewer.key, buildLoopReviewerPrompt({ brief, ...(title ? { sessionTitle: title } : {}), maxRounds: run.view.maxRounds, language }, await this.prompts()), 'reviewerClosed')
       for (;;) {
         if (!review.trim()) throw new LoopEnd({ failure: 'emptyReview' })
         const { round, maxRounds } = run.view
@@ -236,14 +242,14 @@ export class AgentReviewService {
         if (next !== 'fixing') {
           // The author always gets the reviewer's last answer, approved or not.
           this.set(run, { phase: 'fixing' })
-          await this.turn(run, config, author.id, authorKey, buildAuthorFinalPrompt({ review, reviewer: reviewer.label, outcome: next, round, maxRounds, ...(selection ? { selection } : {}) }), 'authorClosed')
+          await this.turn(run, config, author.id, authorKey, buildAuthorFinalPrompt({ review, reviewer: reviewer.label, outcome: next, round, maxRounds, ...(selection ? { selection } : {}) }, await this.prompts()), 'authorClosed')
           return this.set(run, { phase: next })
         }
         this.set(run, { phase: 'fixing' })
-        const answer = await this.turn(run, config, author.id, authorKey, buildAuthorFixPrompt({ review, reviewer: reviewer.label, round, maxRounds, ...(selection ? { selection } : {}) }), 'authorClosed')
+        const answer = await this.turn(run, config, author.id, authorKey, buildAuthorFixPrompt({ review, reviewer: reviewer.label, round, maxRounds, ...(selection ? { selection } : {}) }, await this.prompts()), 'authorClosed')
         this.set(run, { phase: 'reviewing', round: round + 1 })
         const setAside = { items: run.setAside, ...(selection?.note ? { note: selection.note } : {}) }
-        review = await this.turn(run, config, reviewerId, reviewer.key, buildReReviewPrompt({ reply: answer, round: round + 1, maxRounds, language, ...(selection ? { setAside } : {}) }), 'reviewerClosed')
+        review = await this.turn(run, config, reviewerId, reviewer.key, buildReReviewPrompt({ reply: answer, round: round + 1, maxRounds, language, ...(selection ? { setAside } : {}) }, await this.prompts()), 'reviewerClosed')
       }
     } catch (e) {
       if (isEnded(run.view)) return // stopped by the user meanwhile

@@ -1,3 +1,6 @@
+import { REVIEW_PROMPTS } from '../prompts/defs/review'
+import { promptTemplate } from '../prompts/registry'
+import type { PromptOverrides } from '../prompts/types'
 import type { ReviewFinding, ReviewLanguage, ReviewSeverity } from './types'
 import { BLOCKING_SEVERITIES, REVIEW_SEVERITIES } from './types'
 
@@ -62,10 +65,8 @@ interface PromptStrings {
 /** The reviewer prompt per language; English is the default. Placeholders are `{name}`. */
 export const REVIEW_PROMPT_STRINGS: Record<ReviewLanguage, PromptStrings> = {
   en: {
-    intro:
-      'You are the code reviewer of branch `{branch}`, which will be opened as a pull request into `{base}`. This is review round {round} of at most {maxRounds}. The team wants ONE exhaustive pass: report everything you find now, so the author does not get a new batch of comments on every round. Be precise and concrete; do not pad the list.',
-    intro2:
-      'Round {round}: the author pushed new commits after your last review. Review the delta since `{fromSha}` (below), re-check the whole branch where the delta touches it, and verify each previous finding listed below: say whether it is fixed or still open. Report only genuinely new issues as new findings.',
+    intro: REVIEW_PROMPTS['review.prRound'].defaultText,
+    intro2: REVIEW_PROMPTS['review.prRoundDelta'].defaultText,
     readOnly:
       'This folder is a read-only checkout of the branch at `{headSha}`. Read any file you need, but do not edit files, run commands that change anything, commit or push. Your only output is the review.',
     context: 'Merge base with `{baseRef}`: `{mergeBase}`.',
@@ -104,10 +105,8 @@ export const REVIEW_PROMPT_STRINGS: Record<ReviewLanguage, PromptStrings> = {
     language: 'Write everything in English: the summary and the text of every finding and note.'
   },
   es: {
-    intro:
-      'Eres el revisor de código de la rama `{branch}`, que se abrirá como pull request hacia `{base}`. Esta es la ronda de revisión {round} de un máximo de {maxRounds}. El equipo quiere UNA pasada exhaustiva: informa ahora todo lo que encuentres, para que el autor no reciba una tanda nueva de comentarios en cada ronda. Sé preciso y concreto; no rellenes la lista.',
-    intro2:
-      'Ronda {round}: el autor subió commits nuevos después de tu última revisión. Revisa el delta desde `{fromSha}` (abajo), vuelve a mirar la rama entera donde el delta la toca y verifica cada hallazgo anterior listado abajo: indica si está corregido o sigue abierto. Informa como hallazgos nuevos solo problemas realmente nuevos.',
+    intro: REVIEW_PROMPTS['review.prRound'].defaultEs,
+    intro2: REVIEW_PROMPTS['review.prRoundDelta'].defaultEs,
     readOnly:
       'Esta carpeta es una copia de solo lectura de la rama en `{headSha}`. Lee los archivos que necesites, pero no edites archivos, no ejecutes comandos que cambien algo, no hagas commit ni push. Tu única salida es la revisión.',
     context: 'Base de fusión con `{baseRef}`: `{mergeBase}`.',
@@ -178,7 +177,7 @@ function findingLine(f: ReviewFinding): string {
 }
 
 /** The reviewer prompt for one round. Pure: the caller gathers the git facts. */
-export function buildReviewPrompt(input: ReviewPromptInput): string {
+export function buildReviewPrompt(input: ReviewPromptInput, overrides?: PromptOverrides): string {
   const s = REVIEW_PROMPT_STRINGS[input.language] ?? REVIEW_PROMPT_STRINGS.en
   const p = {
     branch: input.branch,
@@ -193,10 +192,10 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
     key: input.ticket?.key ?? '',
     title: input.ticket?.title ?? ''
   }
-  const parts: string[] = [fill(s.intro, p)]
+  const parts: string[] = [fill(promptTemplate(overrides, 'review.prRound', s.intro), p)]
   // `round` counts within the cycle, so a delta can come in round 1 of a later cycle.
   const delta = Boolean(input.fromSha)
-  if (delta) parts.push(fill(s.intro2, p))
+  if (delta) parts.push(fill(promptTemplate(overrides, 'review.prRoundDelta', s.intro2), p))
   parts.push(fill(s.readOnly, p), fill(s.context, p))
   parts.push(input.ticket ? fill(input.ticket.title ? s.ticket : s.ticketNoTitle, p) : s.noTicket)
   if (input.userNotes.length) parts.push([s.userNotes, ...input.userNotes.map((n) => `> ${n.replace(/\n/g, '\n> ')}`)].join('\n'))
@@ -224,7 +223,9 @@ interface MessageStrings {
   where: string
   why: string
   fix: string
+  /** The editable opening of the instructions, then the part the reply parser depends on. */
   instructions: string
+  instructionsFixed: string
   raw: string
   opinion: string
   severity: Record<ReviewSeverity, string>
@@ -241,10 +242,11 @@ export const DEV_MESSAGE_STRINGS: Record<ReviewLanguage, MessageStrings> = {
     where: 'Where',
     why: 'Why',
     fix: 'Fix',
-    instructions:
-      'Fix them, run the tests, and commit (do not open the pull request yet). The reviewer checks the new commits in the next round. For each finding you fixed, end your reply with one line `FIXED F<n>: <what you changed>`. If you disagree with a finding, do not change it: reply with one line per finding, `DISPUTE F<n>: <reason>`.',
+    instructions: REVIEW_PROMPTS['review.prDevMessage'].defaultText,
+    instructionsFixed:
+      'For each finding you fixed, end your reply with one line `FIXED F<n>: <what you changed>`. If you disagree with a finding, do not change it: reply with one line per finding, `DISPUTE F<n>: <reason>`.',
     raw: 'The reviewer\'s reply could not be read as structured findings; here it is as it came:',
-    opinion: 'A note from the user about this review:',
+    opinion: REVIEW_PROMPTS['review.prOpinion'].defaultText,
     severity: { blocker: 'blocker', major: 'major', minor: 'minor', nit: 'nit' }
   },
   es: {
@@ -256,10 +258,11 @@ export const DEV_MESSAGE_STRINGS: Record<ReviewLanguage, MessageStrings> = {
     where: 'Dónde',
     why: 'Por qué',
     fix: 'Corrección',
-    instructions:
-      'Corrígelos, ejecuta las pruebas y haz commit (no abras el pull request todavía). El revisor verifica los commits nuevos en la próxima ronda. Por cada hallazgo que corregiste, termina tu respuesta con una línea `FIXED F<n>: <qué cambiaste>`. Si no estás de acuerdo con un hallazgo, no lo cambies: responde con una línea por hallazgo, `DISPUTE F<n>: <motivo>`.',
+    instructions: REVIEW_PROMPTS['review.prDevMessage'].defaultEs,
+    instructionsFixed:
+      'Por cada hallazgo que corregiste, termina tu respuesta con una línea `FIXED F<n>: <qué cambiaste>`. Si no estás de acuerdo con un hallazgo, no lo cambies: responde con una línea por hallazgo, `DISPUTE F<n>: <motivo>`.',
     raw: 'La respuesta del revisor no se pudo leer como hallazgos estructurados; esta es tal como llegó:',
-    opinion: 'Una nota del usuario sobre esta revisión:',
+    opinion: REVIEW_PROMPTS['review.prOpinion'].defaultEs,
     severity: { blocker: 'bloqueante', major: 'mayor', minor: 'menor', nit: 'detalle' }
   }
 }
@@ -283,7 +286,12 @@ export interface DevMessageInput {
 }
 
 /** One clear message with every open finding: blockers and majors first, then minors and nits. */
-export function formatDevMessage(input: DevMessageInput): string {
+/** The instructions closing a message to the dev: the editable opening, then the FIXED / DISPUTE lines the reply parser reads. */
+function devInstructions(s: MessageStrings, overrides: PromptOverrides | undefined): string {
+  return `${promptTemplate(overrides, 'review.prDevMessage', s.instructions)} ${s.instructionsFixed}`
+}
+
+export function formatDevMessage(input: DevMessageInput, overrides?: PromptOverrides): string {
   const s = DEV_MESSAGE_STRINGS[input.language] ?? DEV_MESSAGE_STRINGS.en
   const open = sortedOpenFindings(input.findings)
   const lines: string[] = [fill(s.header, { branch: input.branch, base: input.base, round: input.round, maxRounds: input.maxRounds, count: open.length })]
@@ -302,18 +310,18 @@ export function formatDevMessage(input: DevMessageInput): string {
   }
   block(s.blocking, open.filter((f) => BLOCKING_SEVERITIES.includes(f.severity)))
   block(s.other, open.filter((f) => !BLOCKING_SEVERITIES.includes(f.severity)))
-  lines.push('', s.instructions)
+  lines.push('', devInstructions(s, overrides))
   return lines.join('\n')
 }
 
 /** An unparseable reviewer reply, forwarded verbatim once the user lets the loop continue. */
-export function formatRawDevMessage(language: ReviewLanguage, raw: string): string {
+export function formatRawDevMessage(language: ReviewLanguage, raw: string, overrides?: PromptOverrides): string {
   const s = DEV_MESSAGE_STRINGS[language] ?? DEV_MESSAGE_STRINGS.en
-  return `${s.raw}\n\n${raw.trim()}\n\n${s.instructions}`
+  return `${s.raw}\n\n${raw.trim()}\n\n${devInstructions(s, overrides)}`
 }
 
 /** The user's opinion, as the dev session reads it. */
-export function formatOpinionMessage(language: ReviewLanguage, text: string): string {
+export function formatOpinionMessage(language: ReviewLanguage, text: string, overrides?: PromptOverrides): string {
   const s = DEV_MESSAGE_STRINGS[language] ?? DEV_MESSAGE_STRINGS.en
-  return `${s.opinion}\n\n${text.trim()}`
+  return `${promptTemplate(overrides, 'review.prOpinion', s.opinion)}\n\n${text.trim()}`
 }

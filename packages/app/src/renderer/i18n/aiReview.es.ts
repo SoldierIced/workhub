@@ -170,5 +170,5 @@ export const aiReviewEs: Record<keyof typeof aiReviewEn, string> = {
   'aiReview.settings.checklistHint': 'Una verificación por línea, agregada al prompt del revisor (por ejemplo, "Cada endpoint tiene una prueba de autorización").',
   'aiReview.settings.briefPrompt': 'Prompt del brief para "Revisar con otro agente"',
   'aiReview.settings.briefPromptHint': 'Lo que "Revisar antes del PR" le pide primero al agente de la sesión: un brief para el revisor entre <review-brief> y </review-brief>. El diálogo lo muestra y permite editarlo antes de enviarlo.',
-  'aiReview.settings.briefPromptReset': 'Usar el predeterminado'
+  'aiReview.settings.briefPromptReset': 'Usar el texto general'
 }

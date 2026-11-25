@@ -440,6 +440,11 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     ["profileExtra.env", undefined, "profileExtra.envHelp"],
   ]),
 
+  // Prompts: the section itself (each prompt's name is searched on its own screen)
+  ...rows("prompts", "settingsV2.nav.prompts", [
+    ["settingsV2.nav.prompts", "settingsV2.intro.prompts"],
+  ]),
+
   // Advanced
   ...rows("advanced", "settingsV2.advanced.diagnostics", [
     ["setup.entry.check", "setup.entry.checkHint"],

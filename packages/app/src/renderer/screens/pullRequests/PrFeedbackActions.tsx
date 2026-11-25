@@ -8,6 +8,7 @@ import { useToast } from '../../components/molecules'
 import { useI18n, type I18n } from '../../i18n/I18nProvider'
 import type { Locale } from '../../i18n/translate'
 import { errorText } from '../../lib/errorText'
+import { loadPromptOverrides } from '../../lib/promptText'
 import { feedbackKinds, feedbackPrompt, targetOf, type PrFeedbackKind } from '../../lib/prFeedback'
 import type { PrToolbarAction } from './PrActionsToolbar'
 
@@ -30,7 +31,7 @@ export function prFeedbackToolbarActions(detail: PullRequestDetail | undefined, 
       icon: <Icon className="size-3.5" aria-hidden />,
       label: t(`prFeedback.${kind}`),
       title: t(`prFeedback.${kind}Hint`),
-      onSelect: () => window.hub.links.request({ kind: 'pullRequestPrompt', profileId, pr: target, prompt: feedbackPrompt(locale, kind, target, detail) })
+      onSelect: () => void loadPromptOverrides().then((overrides) => window.hub.links.request({ kind: 'pullRequestPrompt', profileId, pr: target, prompt: feedbackPrompt(locale, kind, target, detail, overrides) }))
     }
   })
 }
@@ -53,7 +54,7 @@ export function MonitorPrFeedback({ pr, profileId, session }: { pr: PullRequest;
       const target = targetOf(r.detail)
       // Loaded on use: the prompt queue pulls in the preload bridge's constants, which the monitor's tests do not have.
       const { submitPrompt } = await import('../../promptQueue')
-      const sent = submitPrompt(session.id, session.state, false, feedbackPrompt(locale, kind, target, r.detail)) !== 'refused'
+      const sent = submitPrompt(session.id, session.state, false, feedbackPrompt(locale, kind, target, r.detail, await loadPromptOverrides())) !== 'refused'
       notify(sent ? t('prFeedback.sentHere') : t('prFeedback.notSent'), sent ? 'success' : 'danger')
     } catch (e) {
       notify(t('prFeedback.loadFailed', { message: errorText(e) }), 'danger')

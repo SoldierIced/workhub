@@ -75,3 +75,13 @@ describe('oneshot.mjs bare mode', () => {
     expect(source).toContain('tools: [],')
   })
 })
+
+describe('ListenSummarizer prompts', () => {
+  it('sends the own system prompt and request text', async () => {
+    const { s, run } = summarizer(answer({ result: 'ok' }))
+    await s.summarize({ text: 'Hello there', prompts: { 'listen.system': 'Be short.', 'listen.user': 'Say it:\n{message}' } })
+    const request = JSON.parse(run.mock.calls[0]![0])
+    expect(request.systemPrompt).toBe('Be short.')
+    expect(request.prompt).toBe('Say it:\n<message>\nHello there\n</message>')
+  })
+})

@@ -19,6 +19,7 @@ import { useMetricAlerts, useMetricAlertsOpen } from '../metricAlertsStore'
 import { openAlerts } from '../lib/metricAlerts'
 import { boardServices, favoriteServices, healthFavoriteKey, toggleKey } from '../lib/healthBoard'
 import { readPrefs, setPrefs, usePrefs } from '../lib/prefs'
+import { currentPromptOverrides } from '../lib/promptText'
 
 const STATUS_COPY: Partial<Record<HealthState, { title: MessageKey; hint: MessageKey }>> = {
   moduleOff: { title: 'health.status.moduleOff.title', hint: 'health.status.moduleOff.hint' },
@@ -123,6 +124,7 @@ export function HealthScreen({ profile, projectFolders, onOpenSettings, onInvest
   }
   const deps = (env: HealthEnvironmentView) => ({
     locale,
+    overrides: currentPromptOverrides(),
     folders,
     profileName: profile?.name ?? '',
     env,

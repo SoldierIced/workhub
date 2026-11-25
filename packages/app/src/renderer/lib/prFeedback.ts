@@ -1,6 +1,7 @@
-import { fenceUntrusted, prName, type CommentThread, type PullRequest, type PullRequestCheck, type PullRequestDetail, type PullRequestReview } from '@workhub/core'
+import { fenceUntrusted, prName, type CommentThread, type PromptOverrides, type PullRequest, type PullRequestCheck, type PullRequestDetail, type PullRequestReview } from '@workhub/core'
 import type { PullRequestTarget } from '@shared/links-api'
 import { translate, type Locale } from '../i18n/translate'
+import { draftPrompt } from './promptText'
 
 /**
  * "Fix CI" and "Address review comments": a prompt about a pull request's failing checks or its
@@ -61,8 +62,10 @@ function reviewBlock(title: string, detail: Pick<PullRequestDetail, 'reviews' | 
 }
 
 /** The prompt for one action, built from the pull request's detail. */
-export function feedbackPrompt(locale: Locale, kind: PrFeedbackKind, pr: PullRequestTarget, detail: Pick<PullRequestDetail, 'checks' | 'reviews' | 'threads'>): string {
-  const data = fenceUntrusted(kind === 'fixCi' ? checksBlock(pr.title, failingChecks(detail)) : reviewBlock(pr.title, detail), PR_FEEDBACK_LIMITS.block)
+export function feedbackPrompt(locale: Locale, kind: PrFeedbackKind, pr: PullRequestTarget, detail: Pick<PullRequestDetail, 'checks' | 'reviews' | 'threads'>, overrides?: PromptOverrides): string {
+  const fenced = fenceUntrusted(kind === 'fixCi' ? checksBlock(pr.title, failingChecks(detail)) : reviewBlock(pr.title, detail), PR_FEEDBACK_LIMITS.block)
+  // The note that the data is untrusted is fixed: it always goes right before the data, wherever the text puts `{data}`.
+  const data = `${translate(locale, kind === 'fixCi' ? 'prFeedback.note.fixCi' : 'prFeedback.note.addressReview')}\n${fenced}`
   const params = { name: prName(pr, pr.provider), url: pr.url, branch: pr.branch, data }
-  return translate(locale, kind === 'fixCi' ? 'prFeedback.prompt.fixCi' : 'prFeedback.prompt.addressReview', params)
+  return kind === 'fixCi' ? draftPrompt(overrides, 'links.fixCi', locale, 'prFeedback.prompt.fixCi', params) : draftPrompt(overrides, 'links.addressReview', locale, 'prFeedback.prompt.addressReview', params)
 }
