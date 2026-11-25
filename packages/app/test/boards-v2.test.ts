@@ -117,9 +117,9 @@ describe('moved boxes, kept on this computer', () => {
   })
   it('loads prefs saved by the version that let blocks be reordered, and keeps the panel width in range', async () => {
     const { DEFAULT_PREFS, parsePrefs } = await import('../src/renderer/lib/prefs')
-    const p = parsePrefs(JSON.stringify({ boardBlockOrder: ['table:Decisions', 'list:Agents'], boardPanelWidth: 5000 }))
+    const p = parsePrefs(JSON.stringify({ boardBlockOrder: ['table:Decisions', 'list:Agents'], boardPanelWidth: 9000 }))
     expect('boardBlockOrder' in p).toBe(false)
-    expect(p.boardPanelWidth).toBe(1200)
+    expect(p.boardPanelWidth).toBe(3000)
     expect(parsePrefs(JSON.stringify({ boardPanelWidth: 'wide' })).boardPanelWidth).toBe(DEFAULT_PREFS.boardPanelWidth)
   })
 })
@@ -254,5 +254,20 @@ describe('removing a board from its chat panel', () => {
     const { es } = await import('../src/renderer/i18n/es')
     expect(en['boards.remove.failed']).toContain('{message}')
     expect(es['boards.remove.failed']).toContain('{message}')
+  })
+})
+
+describe('the board panel width', () => {
+  it('never starts a drag from more than the chat has: width and limit follow the room, the saved width is kept', async () => {
+    const { panelFit } = await import('../src/renderer/lib/boardPanel')
+    // A saved 1200 in a 860 px chat: drawn at 860, and the handle starts there and stops there.
+    expect(panelFit(1200, 860, 360, 3000)).toEqual({ width: 860, max: 860 })
+    // Room enough: the saved width as it is, the usual limit.
+    expect(panelFit(900, 1400, 360, 3000)).toEqual({ width: 900, max: 1400 })
+    expect(panelFit(900, 5000, 360, 3000)).toEqual({ width: 900, max: 3000 })
+    // Not measured yet: nothing changes.
+    expect(panelFit(900, null, 360, 3000)).toEqual({ width: 900, max: 3000 })
+    // A chat narrower than the panel's least width: the panel fills it, no more.
+    expect(panelFit(900, 280, 360, 3000)).toEqual({ width: 280, max: 280 })
   })
 })
