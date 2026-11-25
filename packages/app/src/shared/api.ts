@@ -678,7 +678,7 @@ export interface StorageInfo {
 export type StorageBackupResult = { ok: true; path: string } | { ok: false; error: string }
 
 /** A group of tables in the database: usage detail (turns, sessions, links, tags), usage summaries (`turns_daily`), History's search index, events (pull request and ticket timelines, automation runs) and app state. */
-export type StorageGroupName = 'usageDetail' | 'usageSummaries' | 'historyIndex' | 'events' | 'state'
+export type StorageGroupName = 'usageDetail' | 'usageSummaries' | 'historyIndex' | 'events' | 'pullRequests' | 'state'
 
 /** What the data takes in the database (Settings → Advanced → Data). */
 export interface StorageUsage {

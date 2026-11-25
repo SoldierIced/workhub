@@ -6,9 +6,9 @@
  */
 import type { DatabaseSync } from 'node:sqlite'
 
-export type StorageGroup = 'usageDetail' | 'usageSummaries' | 'historyIndex' | 'events' | 'state'
+export type StorageGroup = 'usageDetail' | 'usageSummaries' | 'historyIndex' | 'events' | 'pullRequests' | 'state'
 
-export const STORAGE_GROUPS: readonly StorageGroup[] = ['usageDetail', 'usageSummaries', 'historyIndex', 'events', 'state']
+export const STORAGE_GROUPS: readonly StorageGroup[] = ['usageDetail', 'usageSummaries', 'historyIndex', 'events', 'pullRequests', 'state']
 
 /** The tables whose rows each group counts (History's full-text tables are counted by session, in `history_index`). */
 export const STORAGE_ROW_TABLES: Record<StorageGroup, readonly string[]> = {
@@ -16,6 +16,7 @@ export const STORAGE_ROW_TABLES: Record<StorageGroup, readonly string[]> = {
   usageSummaries: ['turns_daily'],
   historyIndex: ['history_index'],
   events: ['pr_events', 'ticket_events', 'automation_runs'],
+  pullRequests: ['merged_prs', 'merged_found', 'merged_coverage'],
   state: ['kv_state', 'flow_maps', 'flow_history_measures', 'flow_history_hours']
 }
 

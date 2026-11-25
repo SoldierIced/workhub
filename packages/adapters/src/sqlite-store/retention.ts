@@ -11,6 +11,7 @@
  * transcript read again (a resumed old session, a rewritten file) never counts them twice.
  */
 import type { WorkhubDb } from './db'
+import { MERGED_UNUSED_MS, pruneMergedSearches } from './merged-prs'
 
 /** How long the usage detail (turns), timeline events and automation runs are kept, in months. */
 export const USAGE_RETENTION_MONTHS = 12
@@ -37,6 +38,9 @@ export interface RetentionResult {
   prEvents: number
   ticketEvents: number
   automationRuns: number
+  /** Merged-view searches not used for `MERGED_UNUSED_MS`, forgotten, and the merged pull requests only they had found. */
+  mergedSearches: number
+  mergedPullRequests: number
 }
 
 export interface RetentionOptions {
@@ -149,7 +153,7 @@ export async function applyRetention(db: WorkhubDb, options: RetentionOptions = 
   const now = options.now?.() ?? Date.now()
   const pause = options.pause ?? (() => new Promise<void>((resolve) => setImmediate(resolve)))
   const cutoff = retentionCutoff(now, options.months)
-  const result: RetentionResult = { cutoff, days: 0, turns: 0, summaries: 0, prEvents: 0, ticketEvents: 0, automationRuns: 0 }
+  const result: RetentionResult = { cutoff, days: 0, turns: 0, summaries: 0, prEvents: 0, ticketEvents: 0, automationRuns: 0, mergedSearches: 0, mergedPullRequests: 0 }
   const oldest = db.raw.prepare('SELECT MIN(at) AS at FROM turns WHERE at < ?')
   for (;;) {
     if (!db.isOpen) return result
@@ -176,6 +180,9 @@ export async function applyRetention(db: WorkhubDb, options: RetentionOptions = 
   result.prEvents = await prune('pr_events', 'at')
   result.ticketEvents = await prune('ticket_events', 'at')
   result.automationRuns = await prune('automation_runs', 'started_at')
+  const merged = await pruneMergedSearches(db, now - MERGED_UNUSED_MS, pause, PRUNE_BATCH)
+  result.mergedSearches = merged.searches
+  result.mergedPullRequests = merged.pullRequests
   if (db.isOpen) db.transaction(() => saveState(db, { rolledUntil: Math.max(retentionState(db).rolledUntil, cutoff), lastRunAt: now }, now))
   return result
 }

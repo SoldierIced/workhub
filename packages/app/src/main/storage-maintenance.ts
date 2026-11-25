@@ -41,8 +41,8 @@ export class StorageMaintenance {
   run(): Promise<RetentionResult> {
     this.running ??= applyRetention(this.deps.db, { now: this.deps.now, pause: this.deps.pause })
       .then((r) => {
-        if (r.turns || r.prEvents || r.ticketEvents || r.automationRuns) {
-          this.deps.log?.(`storage: ${r.turns} turns of ${r.days} days summed into ${r.summaries} rows; pruned ${r.prEvents} pull request events, ${r.ticketEvents} ticket events, ${r.automationRuns} automation runs`)
+        if (r.turns || r.prEvents || r.ticketEvents || r.automationRuns || r.mergedSearches || r.mergedPullRequests) {
+          this.deps.log?.(`storage: ${r.turns} turns of ${r.days} days summed into ${r.summaries} rows; pruned ${r.prEvents} pull request events, ${r.ticketEvents} ticket events, ${r.automationRuns} automation runs, ${r.mergedSearches} unused merged searches and ${r.mergedPullRequests} merged pull requests only they had found`)
         }
         return r
       })

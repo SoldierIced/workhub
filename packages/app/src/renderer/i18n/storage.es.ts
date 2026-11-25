@@ -20,6 +20,7 @@ export const storageEs: Record<keyof typeof storageEn, string> = {
   'storage.group.usageSummaries': 'Resúmenes de uso',
   'storage.group.historyIndex': 'Índice de búsqueda del Historial',
   'storage.group.events': 'Eventos y ejecuciones de automatizaciones',
+  'storage.group.pullRequests': 'Pull requests fusionadas',
   'storage.group.state': 'Estado de la app',
   'storage.rows': '{count} filas',
   'storage.sizeUnknown': 'tamaño desconocido',

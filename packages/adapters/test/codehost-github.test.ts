@@ -55,6 +55,34 @@ describe('GitHubCodeHost lists', () => {
     expect(seen[0]!.some((a) => a.startsWith('after='))).toBe(false)
   })
 
+  it('asks the same page again with half the pull requests when GitHub runs out of time (HTTP 502), then gives up', async () => {
+    const node = (n: number) => ({ number: n, url: `https://github.com/acme/app/pull/${n}`, repository: { name: 'app', owner: { login: 'acme' } } })
+    const sizes: string[] = []
+    let failures = 1
+    const run: CliRunner = async (_c, args) => {
+      sizes.push(args.find((a) => a.startsWith('first='))!)
+      if (failures-- > 0) return { code: 1, stdout: '', stderr: 'gh: HTTP 502' }
+      return { code: 0, stdout: JSON.stringify({ data: { search: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node(1)] } } }), stderr: '' }
+    }
+    expect((await new GitHubCodeHost({ run }).listAuthored({})).map((p) => p.number)).toEqual([1])
+    expect(sizes).toEqual(['first=50', 'first=25'])
+
+    sizes.length = 0
+    failures = 10
+    await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toMatchObject({ kind: 'failed', message: 'gh: HTTP 502' })
+    expect(sizes).toEqual(['first=50', 'first=25', 'first=12'])
+  })
+
+  it('does not retry a failure that is not GitHub running out of time', async () => {
+    let calls = 0
+    const run: CliRunner = async () => {
+      calls++
+      return { code: 1, stdout: '', stderr: 'gh: Could not resolve to a Repository (HTTP 404)' }
+    }
+    await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toBeInstanceOf(CodeHostError)
+    expect(calls).toBe(1)
+  })
+
   it('turns an unreadable answer into a CodeHostError', async () => {
     const run: CliRunner = async () => ({ code: 0, stdout: 'not json', stderr: '' })
     await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toBeInstanceOf(CodeHostError)
@@ -258,5 +286,39 @@ describe('shared CLI helpers', () => {
     expect(parseJsonPages('[{"a":1}]\n[]\n[{"a":3}]')).toEqual([{ a: 1 }, { a: 3 }])
     expect(parseJsonPages('[{"body":"see [a][b] and \\"][\\""}][{"n":2}]')).toEqual([{ body: 'see [a][b] and "]["' }, { n: 2 }])
     expect(parseJsonPages('')).toEqual([])
+  })
+})
+
+describe('GitHubCodeHost sign-in', () => {
+  const runner = (user: () => string, token = () => 'token-1') => {
+    const calls: string[][] = []
+    const run: CliRunner = async (_c, args) => {
+      calls.push(args)
+      if (args[0] === 'auth') return { code: 0, stdout: token(), stderr: '' }
+      return { code: 0, stdout: user(), stderr: '' }
+    }
+    return { run, calls }
+  }
+  const userCalls = (calls: string[][]) => calls.filter((c) => c[0] === 'api').length
+
+  it('asks who is signed in once per token and again when the token changes', async () => {
+    let token = 'token-1'
+    let login = 'ana'
+    const { run, calls } = runner(() => login, () => token)
+    const h = new GitHubCodeHost({ run })
+    expect(await h.status()).toEqual({ state: 'ready', login: 'ana' })
+    expect(await h.status()).toEqual({ state: 'ready', login: 'ana' })
+    expect(userCalls(calls)).toBe(1)
+    token = 'token-2'
+    login = 'bo'
+    expect(await h.status()).toEqual({ state: 'ready', login: 'bo' })
+    expect(userCalls(calls)).toBe(2)
+  })
+
+  it('classifies gh auth failures as signed out', async () => {
+    const run: CliRunner = async () => ({ code: 1, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' })
+    await expect(new GitHubCodeHost({ run }).listAuthored({})).rejects.toMatchObject({ kind: 'signedOut' })
+    const http: CliRunner = async () => ({ code: 1, stdout: '', stderr: 'gh: Bad credentials (HTTP 401)' })
+    await expect(new GitHubCodeHost({ run: http }).diff({ provider: 'github', owner: 'a', repo: 'b', number: 1, url: 'https://github.com/a/b/pull/1' })).rejects.toMatchObject({ kind: 'signedOut' })
   })
 })

@@ -19,7 +19,7 @@ import { CodexPlanUsageReader, CodexTranscriptReader } from '@workhub/adapters/t
 import { KiroPlanUsageReader, KiroTranscriptReader, readKiroCreditEntries } from '@workhub/adapters/transcript-kiro'
 import { GitReview, LocalChanges, LocalReverter } from '@workhub/adapters/git-review'
 import { GitWorktrees } from '@workhub/adapters/git-worktree'
-import { AutomationRunLog, BackgroundRuns, BACKUP_FOLDER, backupDatabase, DB_FILE, describeImport, importLegacyJson, listBackups, SessionRecords, SqliteFlowMaps, SqliteHistoryIndex, SqlitePrEventStore, Timelines, TurnIngest, repoProjects, WorkhubDb, type ProjectResolver } from '@workhub/adapters/sqlite-store'
+import { AutomationRunLog, BackgroundRuns, BACKUP_FOLDER, backupDatabase, DB_FILE, describeImport, importLegacyJson, listBackups, SessionRecords, SqliteFlowMaps, SqliteHistoryIndex, SqliteMergedStore, SqlitePrEventStore, Timelines, TurnIngest, repoProjects, WorkhubDb, type ProjectResolver } from '@workhub/adapters/sqlite-store'
 import { DemoCalendarSource, IcsCalendarSource } from '@workhub/adapters/calendar-ics'
 import { OpenCodeTranscriptReader } from '@workhub/adapters/transcript-opencode'
 import { composeExecutionServices, wslInputRunner, wslRunner } from '@workhub/adapters/host'
@@ -390,7 +390,7 @@ let sessionsWanted = false
 // The demo moves on one step at a time (`prEvents.demoAdvance`) so pull request events can be seen.
 let demoPrStep = 0
 // `hosts` is built further down, with the execution services; nothing reads a profile's remotes before then.
-const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1', demoStep: () => demoPrStep, onListsChanged: () => scheduleTray(), hostFor: (target) => hosts.hostFor(target) })
+const codeHost = new CodeHostService(() => configuration.current(), { demo: process.env['WORKHUB_DEMO_CODEHOST'] === '1', mergedStore: new SqliteMergedStore(db), demoStep: () => demoPrStep, onListsChanged: () => scheduleTray(), onChanged: (url, profileId) => broadcast.toWindows('codeHost:changed', url, profileId), hostFor: (target) => hosts.hostFor(target) })
 const prEvents = new PrEventService({
   source: codeHost,
   store: new SqlitePrEventStore(db),
@@ -1013,8 +1013,7 @@ const slack = new SlackWatcherService({
     return new Set(lists.mine.map((i) => canonicalUrl(i.pr.url)))
   },
   prState: async (url) => {
-    const r = await codeHost.view((await configuration.current()).activeProfileId ?? null, url)
-    return r.ok ? r.view.detail.state : undefined
+    return codeHost.prState((await configuration.current()).activeProfileId ?? null, url)
   },
   emit: (snap) => {
     tray.setSlack(snap)

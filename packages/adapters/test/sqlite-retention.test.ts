@@ -287,7 +287,7 @@ describe('storage figures', () => {
     const detail = count(db, 'turns') + count(db, 'sessions') + count(db, 'session_links') + count(db, 'session_tags') + count(db, 'turn_files')
     const stats = storageStats(db)
     const of = (g: string) => stats.groups.find((x) => x.group === g)!
-    expect(stats.groups.map((g) => g.group)).toEqual(['usageDetail', 'usageSummaries', 'historyIndex', 'events', 'state'])
+    expect(stats.groups.map((g) => g.group)).toEqual(['usageDetail', 'usageSummaries', 'historyIndex', 'events', 'pullRequests', 'state'])
     expect(of('usageDetail').rows).toBe(detail)
     expect(of('usageSummaries').rows).toBe(0)
     expect(of('events').rows).toBe(1)
@@ -305,6 +305,8 @@ describe('storage figures', () => {
     expect(storageGroupOf('turns_daily')).toBe('usageSummaries')
     expect(storageGroupOf('history_fts_data')).toBe('historyIndex')
     expect(storageGroupOf('automation_runs')).toBe('events')
+    expect(storageGroupOf('merged_prs')).toBe('pullRequests')
+    expect(storageGroupOf('merged_coverage')).toBe('pullRequests')
     expect(storageGroupOf('kv_state')).toBe('state')
     expect(storageGroupOf('sqlite_schema')).toBe('state')
   })

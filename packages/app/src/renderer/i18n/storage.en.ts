@@ -18,6 +18,7 @@ export const storageEn = {
   'storage.group.usageSummaries': 'Usage summaries',
   'storage.group.historyIndex': 'History search index',
   'storage.group.events': 'Events and automation runs',
+  'storage.group.pullRequests': 'Merged pull requests',
   'storage.group.state': 'App state',
   'storage.rows': '{count} rows',
   'storage.sizeUnknown': 'size not known',

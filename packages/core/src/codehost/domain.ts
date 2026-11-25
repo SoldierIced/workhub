@@ -22,6 +22,26 @@ export interface PullRequestRef {
   url: string
 }
 
+/**
+ * A merged pull request, as the Merged view counts it. Lines and files are undefined when the host's
+ * list does not report them (GitLab), which is not the same as zero.
+ */
+export interface MergedPullRequest extends PullRequestRef {
+  title: string
+  author: string
+  /** Head (source) branch. */
+  branch: string
+  /** Base (target) branch, as the host names it (`main`, `master`, `release/2.4`). */
+  base: string
+  /** Epoch milliseconds. */
+  mergedAt: number
+  /** Epoch milliseconds; undefined when the host did not say. */
+  createdAt?: number
+  additions?: number
+  deletions?: number
+  changedFiles?: number
+}
+
 export interface PullRequest extends PullRequestRef {
   title: string
   author: string
@@ -178,13 +198,16 @@ export type CodeHostStatus =
  */
 export type CodeHostFailure = 'notMergeable' | 'checksFailing' | 'forbidden' | 'exists'
 
-export type CodeHostErrorKind = 'missingCli' | 'signedOut' | 'failed' | 'unsupported' | CodeHostFailure
+/** `rateLimited`: the host refused because of its rate limit (`CodeHostError.retryAt` says until when Workhub waits). */
+export type CodeHostErrorKind = 'missingCli' | 'signedOut' | 'failed' | 'unsupported' | 'rateLimited' | CodeHostFailure
 
 /** An error from the host with a message fit for the user (the CLI's own text). */
 export class CodeHostError extends Error {
   constructor(
     message: string,
-    readonly kind: CodeHostErrorKind = 'failed'
+    readonly kind: CodeHostErrorKind = 'failed',
+    /** For `rateLimited`: epoch milliseconds before which the host is not asked again. */
+    readonly retryAt?: number
   ) {
     super(message)
     this.name = 'CodeHostError'

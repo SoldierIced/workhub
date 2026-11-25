@@ -48,12 +48,12 @@ export function MonitorPrFeedback({ pr, profileId, session }: { pr: PullRequest;
   const send = async (kind: PrFeedbackKind) => {
     setBusy(true)
     try {
-      const r = await window.hub.codeHost.view(profileId, pr.url)
+      const r = await window.hub.codeHost.detail(profileId, pr.url, true)
       if (!r.ok) return notify(t('prFeedback.loadFailed', { message: r.error }), 'danger')
-      const target = targetOf(r.view.detail)
+      const target = targetOf(r.detail)
       // Loaded on use: the prompt queue pulls in the preload bridge's constants, which the monitor's tests do not have.
       const { submitPrompt } = await import('../../promptQueue')
-      const sent = submitPrompt(session.id, session.state, false, feedbackPrompt(locale, kind, target, r.view.detail)) !== 'refused'
+      const sent = submitPrompt(session.id, session.state, false, feedbackPrompt(locale, kind, target, r.detail)) !== 'refused'
       notify(sent ? t('prFeedback.sentHere') : t('prFeedback.notSent'), sent ? 'success' : 'danger')
     } catch (e) {
       notify(t('prFeedback.loadFailed', { message: errorText(e) }), 'danger')
