@@ -1,7 +1,5 @@
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { createCliRunner, type CliRunner } from '@workhub/adapters/cli'
-import { GIT_HARDENING } from '@workhub/adapters/git-hardening'
+import { runGit } from '@workhub/adapters/git-review'
 import { GitHubCodeHost, createDemoRunner } from '@workhub/adapters/codehost-github'
 import { GitLabCodeHost } from '@workhub/adapters/codehost-gitlab'
 import {
@@ -40,6 +38,7 @@ import {
   type ReviewAction,
   type WorkhubConfig
 } from '@workhub/core'
+import { originUrl, type HostFolders, type HostTarget } from './hosts'
 import type { IpcRegistrar } from './ipc-guard'
 import { MERGED_ANSWER_CAP, MergedSyncer, mergedFailureOf, type MergedFailure, type MergedProfileRead, type MergedTarget } from './merged-sync'
 import {
@@ -58,7 +57,6 @@ import {
   type PullRequestWindowTab
 } from '../shared/codehost-api'
 
-const exec = promisify(execFile)
 const LIST_TTL_MS = 30_000
 /** How long a pull request read by URL for the session monitor is kept. */
 const ITEM_TTL_MS = 180_000
@@ -137,6 +135,7 @@ interface Resolved {
   hostKey: string
   scope: string
   cli: string
+  /** The profile's folders, on the host its profile runs on. */
   folders: string[]
   filter?: PullRequestFilterSettings
 }
@@ -177,6 +176,8 @@ export class CodeHostService {
   private readonly flights = new Map<string, { running: Promise<CodeHostLists>; queued?: Promise<CodeHostLists> }>()
   private readonly onListsChanged: (() => void) | undefined
   private readonly onChanged: ((url: string, profileId: string | null) => void) | undefined
+  /** The host a profile's folders live on. */
+  private readonly folderHost: (target: HostTarget) => Pick<HostFolders, 'git'>
   /** Detail reads by pull request (LRU, `DETAIL_MAX` entries). Never holds a value read before a write to that PR. */
   private readonly details = new Map<string, { at: number; value: PullRequestDetail }>()
   private readonly detailFlights = new Map<string, { gen: number; promise: Promise<PullRequestDetail> }>()
@@ -207,8 +208,11 @@ export class CodeHostService {
       run?: CliRunner
       /** Merged pull requests kept between launches. Without one a merged read is kept in memory only. */
       mergedStore?: MergedStore
+      /** The host a profile's folders live on; this computer when not given. */
+      hostFor?: (target: HostTarget) => Pick<HostFolders, 'git'>
     }
   ) {
+    this.folderHost = options.hostFor ?? (() => ({ git: runGit }))
     this.run = options.run ?? createCliRunner()
     this.mergedSyncer = options.mergedStore ? new MergedSyncer(options.mergedStore) : null
     this.onListsChanged = options.onListsChanged
@@ -232,14 +236,13 @@ export class CodeHostService {
     return null
   }
 
-  private async remotesOf(folders: string[]): Promise<string[]> {
+  /** The `origin` URLs of the folders, read where the profile's folders live; folders without one are skipped. */
+  private async remotesOf(folders: string[], profileId: string | null): Promise<string[]> {
+    const { git } = this.folderHost({ profileId })
     const out: string[] = []
     for (const folder of folders) {
-      try {
-        out.push((await exec('git', [...GIT_HARDENING, '-C', folder, 'remote', 'get-url', 'origin'], { windowsHide: true, timeout: 10_000 })).stdout.trim())
-      } catch {
-        // Not a git repository, or no origin.
-      }
+      const url = await originUrl(git, folder)
+      if (url !== null) out.push(url)
     }
     return out
   }
@@ -285,7 +288,7 @@ export class CodeHostService {
     if (r.host.provider === 'github' && r.filter?.repos?.length) return githubRepoScopeBatches(r.filter)
     if (r.host.provider === 'github' && r.filter?.owners?.length) return [githubScopeFromFilter(r.filter)]
     if (r.scope || r.host.provider !== 'github' || r.folders.length === 0) return [r.scope]
-    return [githubScopeFromRemotes(await this.remotesOf(r.folders))]
+    return [githubScopeFromRemotes(await this.remotesOf(r.folders, r.profileId))]
   }
 
   /**
@@ -311,7 +314,7 @@ export class CodeHostService {
     }
     if (r.scope) return { scopes: [r.scope], scope: { kind: 'connection', values: [r.scope] } }
     if (github && r.folders.length > 0) {
-      const tokens = githubScopeFromRemotes(await this.remotesOf(r.folders)).split(' ').filter(Boolean)
+      const tokens = githubScopeFromRemotes(await this.remotesOf(r.folders, r.profileId)).split(' ').filter(Boolean)
       if (tokens.length > 0) return { scopes: chunkTokens(tokens, MERGED_SCOPE_MAX), scope: { kind: 'folders', values: tokens.map((t) => t.replace(/^repo:/, '')) } }
     }
     return { scopes: [''], scope: { kind: 'none', values: [] } }

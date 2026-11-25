@@ -4,6 +4,21 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.45](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.44...v2.0.0-alpha.45) (2026-11-24)
+
+
+### Features
+
+* **app:** show what changed in the update prompt ([#177](https://github.com/SoldierIced/workhub/issues/177)) ([29d0349](https://github.com/SoldierIced/workhub/commit/29d03497084b7ef8065dae327d1adf70b3bafda1))
+* run sessions inside WSL from the Windows app ([#160](https://github.com/SoldierIced/workhub/issues/160)) ([fbe1688](https://github.com/SoldierIced/workhub/commit/fbe16882864fd690defd0a678d932868f561acab))
+
+
+### Bug Fixes
+
+* **app:** reopen a chat whose agent belongs to another profile or account ([#171](https://github.com/SoldierIced/workhub/issues/171)) ([99794b2](https://github.com/SoldierIced/workhub/commit/99794b221bb3b18029c1afca33b3c332aef16e0d))
+* **review:** list only the repositories the session changed ([#164](https://github.com/SoldierIced/workhub/issues/164)) ([aac4e8c](https://github.com/SoldierIced/workhub/commit/aac4e8ce7f58fe478589d771f94ac620e030eabc))
+* **sessions:** tell the user when Claude Code never receives a message ([#165](https://github.com/SoldierIced/workhub/issues/165)) ([8cfa77a](https://github.com/SoldierIced/workhub/commit/8cfa77ae356da30e809dc7a4133c91dad39b7feb))
+
 ## [2.0.0-alpha.44](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.43...v2.0.0-alpha.44) (2026-11-22)
 
 

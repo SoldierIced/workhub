@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import type { LocalReviewInput } from '@workhub/adapters/git-review'
 import type { HistoryMessage, LocalReview } from '@workhub/core'
 import type { SessionView } from '../src/shared/api'
 import { readForViewer, textPayload } from '../src/main/file-viewer'
@@ -227,6 +228,9 @@ describe('opening a file of the review', () => {
     expect(opensAsProgram('C:\\r\\index.js', {}, 'win32')).toBe(true)
     expect(opensAsProgram('/r/index.js', { mode: 0o100644 }, 'darwin')).toBe(false)
     expect(opensAsProgram('C:\\r\\notes.txt', { mode: 0o100777 }, 'win32')).toBe(false)
+    // A Linux path on Windows is a file of a WSL host: its mode bits are Linux ones and count.
+    expect(opensAsProgram('/home/ana/repo/tool', { mode: 0o100755 }, 'win32')).toBe(true)
+    expect(opensAsProgram('/home/ana/repo/notes.txt', { mode: 0o100644 }, 'win32')).toBe(false)
   })
 
   it.skipIf(process.platform === 'win32')('shows a risky file in its folder and opens the rest', async () => {
@@ -255,15 +259,40 @@ describe('opening a file of the review', () => {
   })
 })
 
+describe('opening a reviewed file', () => {
+  it("looks at the file on the session's host before opening it", async () => {
+    const handlers = new Map<string, (...args: any[]) => unknown>()
+    const ipc: IpcRegistrar = { handle: (c, l) => void handlers.set(c, l), on: () => undefined }
+    const service = { filePath: (_s: string, root: string, path: string) => `${root}/${path}` } as unknown as LocalReviewService
+    const opened: string[] = []
+    const shown: string[] = []
+    const asked: [string, string][] = []
+    const hostOf = (sessionId: string) => ({
+      stat: async (path: string) => {
+        asked.push([sessionId, path])
+        return path.endsWith('.md') ? { size: 1, mtimeMs: 1, mode: 0o644, isFile: true, isDirectory: false } : path.endsWith('/tool') ? { size: 1, mtimeMs: 1, mode: 0o755, isFile: true, isDirectory: false } : null
+      }
+    })
+    registerLocalReviewIpc(ipc, service, { openWindow: () => undefined, openPath: async (p) => (opened.push(p), ''), showItemInFolder: (p) => void shown.push(p), hostOf })
+    const open = (path: string) => handlers.get('localReview:openFile')!({}, 's1', '/w/acme', path)
+    expect(await open('notes.md')).toBe(true)
+    expect(await open('tool')).toBe(true)
+    expect(await open('gone.ts')).toBe(false)
+    expect(asked).toEqual([['s1', '/w/acme/notes.md'], ['s1', '/w/acme/tool'], ['s1', '/w/acme/gone.ts']])
+    expect(opened).toEqual(['/w/acme/notes.md'])
+    expect(shown).toEqual(['/w/acme/tool'])
+  })
+})
+
 describe('changes the session made outside the review', () => {
   const repo = (root: string, files = 1) => ({ root, name: root.split('/').pop()!, branch: 'main', base: 'main', files: Array.from({ length: files }, (_, i) => ({ path: `f${i}.ts`, status: 'modified', additions: 1, deletions: 0 })) })
   const touched = (root: string, files: number, additions: number, deletions: number) => ({ name: root.split('/').pop()!, root, branch: 'feat/x', files, additions, deletions })
 
   function make(touchedRepos: ReturnType<typeof touched>[]) {
-    const load = vi.fn(async (input: { extraRepos?: { path: string }[] }) => ({
+    const load = vi.fn(async (input: { extraRepos?: { path: string }[]; alsoRepos?: readonly string[] }) => ({
       folder: '/w/app',
       scope: 'branch' as const,
-      repos: [repo('/w/app'), ...(input.extraRepos ?? []).filter((r) => r.path !== '/w/app').map((r) => repo(r.path))],
+      repos: [repo('/w/app'), ...(input.extraRepos ?? []).filter((r) => r.path !== '/w/app').map((r) => repo(r.path)), ...(input.alsoRepos ?? []).map((p) => repo(p))],
       scannedRepos: 1
     }) as unknown as LocalReview)
     const service = new LocalReviewService({ sessions: { list: () => [view()] }, deliver: async () => 'delivered', changes: { load }, emit: () => {}, touchedRepos: async () => touchedRepos })
@@ -287,9 +316,140 @@ describe('changes the session made outside the review', () => {
     await service.load('s1', 'branch')
     service.includeElsewhere('s1')
     const res = await service.load('s1', 'branch')
-    expect(load).toHaveBeenLastCalledWith(expect.objectContaining({ extraRepos: [{ path: '/w/app' }, { path: '/scratch/clone' }] }))
+    expect(load).toHaveBeenLastCalledWith(expect.objectContaining({ alsoRepos: ['/scratch/clone'] }))
+    expect(load.mock.calls.at(-1)![0]).not.toHaveProperty('extraRepos')
     expect(res.ok && res.review.repos.map((r) => r.root)).toEqual(['/w/app', '/scratch/clone'])
     expect(res.ok && res.elsewhere).toBeUndefined()
+  })
+
+  it('keeps the scan of a folder that is not a repo when they are added: the session repos stay', async () => {
+    const load = vi.fn(async (input: { extraRepos?: { path: string }[]; alsoRepos?: readonly string[] }) => ({
+      folder: '/w',
+      scope: 'branch' as const,
+      // A scan finds the children; extraRepos would replace it (the old bug), alsoRepos joins it.
+      repos: input.extraRepos?.length ? input.extraRepos.map((r) => repo(r.path)) : [repo('/w/a'), repo('/w/b'), ...(input.alsoRepos ?? []).map((p) => repo(p))],
+      scannedRepos: 2
+    }) as unknown as LocalReview)
+    const service = new LocalReviewService({ sessions: { list: () => [view({ cwd: '/w' })] }, deliver: async () => 'delivered', changes: { load }, emit: () => {}, touchedRepos: async () => [touched('/scratch/clone', 3, 1, 0)] })
+    await service.load('s1', 'branch')
+    service.includeElsewhere('s1')
+    const res = await service.load('s1', 'branch')
+    expect(res.ok && res.review.repos.map((r) => r.root)).toEqual(['/w/a', '/w/b', '/scratch/clone'])
+  })
+})
+
+describe('the session split of the review', () => {
+  const repo = (root: string, names = ['f.ts']) => ({ root, name: root.split('/').pop()!, branch: 'main', base: 'main', files: names.map((path) => ({ path, status: 'modified', additions: 1, deletions: 0 })) })
+  const other = (root: string) => ({ name: root.split('/').pop()!, root, files: 2, additions: 5, deletions: 1 })
+
+  function make(opts: { paths?: string[]; asked?: boolean; adapterWhole?: boolean; touchedRepos?: { name: string; root: string; branch: string; files: number; additions: number; deletions: number }[]; history?: HistoryMessage[] } = {}) {
+    const load = vi.fn(async (_input: LocalReviewInput) => ({
+      folder: '/w',
+      scope: 'branch' as const,
+      // With a history, the root as git names it on this system: the session filter compares resolved
+      // paths, and on Windows `/w/a` resolves to a drive path.
+      repos: [repo(opts.history ? resolve('/w/a') : '/w/a', ['f.ts', 'g.ts'])],
+      untouched: [other('/w/b')],
+      // What the adapter reports: it scanned without the split only when it was asked to and nothing asked resolved.
+      ...(opts.adapterWhole ? { wholeFolder: true as const } : {}),
+      scannedRepos: 2
+    }) as unknown as LocalReview)
+    const service = new LocalReviewService({
+      sessions: { list: () => [view({ cwd: '/w', startedAt: 500 })] },
+      deliver: async () => 'delivered',
+      changes: { load },
+      emit: () => {},
+      changePaths: () => opts.paths,
+      touchedRepos: async () => opts.touchedRepos ?? [],
+      ...(opts.history ? { history: async () => opts.history! } : {})
+    })
+    if (opts.asked) service.request('s1', [{ path: '/w/a' }])
+    return { service, load }
+  }
+  const edit = (path: string): HistoryMessage => ({ kind: 'tool', view: { kind: 'edit', path } }) as unknown as HistoryMessage
+
+  it('passes what the session changed, when it reports it, with the start time', async () => {
+    const { service, load } = make({ paths: ['/w/a/f.ts'] })
+    await service.load('s1', 'branch')
+    expect(load).toHaveBeenCalledWith(expect.objectContaining({ touched: ['/w/a/f.ts'], since: 500 }))
+    expect(load.mock.calls[0]![0]).not.toHaveProperty('wholeFolder')
+    expect(load.mock.calls[0]![0]).not.toHaveProperty('alsoRepos')
+  })
+
+  it('passes no touched list when the session has none or reports nothing', async () => {
+    for (const paths of [undefined, []]) {
+      const { service, load } = make({ paths })
+      await service.load('s1', 'branch')
+      expect(load.mock.calls[0]![0]).not.toHaveProperty('touched')
+      expect(load).toHaveBeenCalledWith(expect.objectContaining({ since: 500 }))
+    }
+  })
+
+  it('passes wholeFolder when asked, and says so in the answer only as the adapter reports it', async () => {
+    const { service, load } = make({ adapterWhole: true })
+    const res = await service.load('s1', 'branch', 'repo', true, true)
+    expect(load).toHaveBeenCalledWith(expect.objectContaining({ wholeFolder: true }))
+    expect(res.ok && res.wholeFolder).toBe(true)
+    expect(res.ok && 'wholeFolder' in res.review).toBe(false)
+    // The adapter did not scan without the split (nothing asked for it): no whole-folder bar.
+    const plain = make()
+    const res0 = await plain.service.load('s1', 'branch')
+    expect(res0.ok && res0.wholeFolder).toBeUndefined()
+    // Repos a tool asked for resolved, so no scan ran: the adapter reports nothing.
+    const asked = make({ asked: true })
+    const res2 = await asked.service.load('s1', 'branch', 'repo', true, true)
+    expect(res2.ok && res2.wholeFolder).toBeUndefined()
+    // Repos a tool asked for did not resolve and the folder was scanned whole: the answer says so.
+    const unresolved = make({ asked: true, adapterWhole: true })
+    const res3 = await unresolved.service.load('s1', 'branch', 'repo', true, true)
+    expect(res3.ok && res3.wholeFolder).toBe(true)
+  })
+
+  it('answers with the untouched repos, with either file filter, and drops the key when there are none', async () => {
+    const { service } = make({ history: [edit('/w/a/f.ts')] })
+    const repoRes = await service.load('s1', 'branch', 'repo')
+    expect(repoRes.ok && repoRes.untouched).toEqual([other('/w/b')])
+    const sessionRes = await service.load('s1', 'branch', 'session')
+    expect(sessionRes.ok && sessionRes.files).toBe('session')
+    expect(sessionRes.ok && sessionRes.hiddenFiles).toBe(1)
+    expect(sessionRes.ok && sessionRes.untouched).toEqual([other('/w/b')])
+    expect(sessionRes.ok && 'untouched' in sessionRes.review).toBe(false)
+    expect(repoRes.ok && 'untouched' in repoRes.review).toBe(false)
+    const none = new LocalReviewService({ sessions: { list: () => [view()] }, deliver: async () => 'delivered', changes: { load: vi.fn(async () => ({ folder: '/w/app', scope: 'branch' as const, repos: [], scannedRepos: 1 }) as LocalReview) }, emit: () => {} })
+    const res = await none.load('s1', 'branch')
+    expect(res.ok && 'untouched' in res).toBe(false)
+  })
+
+  it('opens and reverts files only of the repos listed, never of an untouched one', async () => {
+    const revert = vi.fn(async () => ({ ok: true }) as never)
+    const { service } = make()
+    const withRevert = new LocalReviewService({ sessions: { list: () => [view({ cwd: '/w' })] }, deliver: async () => 'delivered', changes: { load: async () => ({ folder: '/w', scope: 'uncommitted' as const, repos: [repo('/w/a')], untouched: [other('/w/b')], scannedRepos: 2 }) as unknown as LocalReview }, reverter: { revert }, emit: () => {} })
+    await service.load('s1', 'branch')
+    await withRevert.load('s1', 'uncommitted')
+    expect(service.filePath('s1', '/w/a', 'f.ts')).toBe(resolve('/w/a', 'f.ts'))
+    expect(service.filePath('s1', '/w/b', 'f.ts')).toBeNull()
+    const request = { repoRoot: '/w/b', path: 'f.ts', scope: 'uncommitted', target: { kind: 'file' }, digest: 'd' }
+    expect(await withRevert.revert('s1', request)).toEqual({ ok: false, error: 'notReviewed' })
+    expect(revert).not.toHaveBeenCalled()
+  })
+
+  it('does not list an untouched repo as changed elsewhere too', async () => {
+    const t = (root: string) => ({ name: root.split('/').pop()!, root, branch: 'x', files: 2, additions: 5, deletions: 1 })
+    const { service } = make({ touchedRepos: [t('/w/a'), t('/w/b'), t('/scratch/clone')] })
+    const res = await service.load('s1', 'branch')
+    expect(res.ok && res.untouched?.map((r) => r.root)).toEqual(['/w/b'])
+    expect(res.ok && res.elsewhere?.map((r) => r.root)).toEqual(['/scratch/clone'])
+  })
+
+  it('takes the whole-folder flag over IPC as a fifth argument, only when it is true', async () => {
+    const handlers = new Map<string, (...args: any[]) => unknown>()
+    const ipc: IpcRegistrar = { handle: (c, l) => void handlers.set(c, l), on: () => undefined }
+    const load = vi.fn(async () => ({ ok: false, reason: 'unknownSession' }))
+    registerLocalReviewIpc(ipc, { load } as unknown as LocalReviewService, { openWindow: () => undefined, openPath: async () => '', showItemInFolder: () => undefined })
+    await handlers.get('localReview:load')!({}, 's1', 'branch', 'repo', true, true)
+    await handlers.get('localReview:load')!({}, 's1', 'branch', 'repo', true, 'yes')
+    expect(load).toHaveBeenNthCalledWith(1, 's1', 'branch', 'repo', true, true)
+    expect(load).toHaveBeenNthCalledWith(2, 's1', 'branch', 'repo', true, false)
   })
 })
 

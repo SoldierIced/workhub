@@ -42,6 +42,7 @@ import type { GitReview, RepoProbe } from '@workhub/adapters/git-review'
 import type { SessionView, StartSessionInput } from '../shared/api'
 import type { AiReviewHold, AiReviewNotice, AiReviewSnapshot, AiReviewStartResult, AiReviewView } from '../shared/ai-review-api'
 import type { IpcRegistrar } from './ipc-guard'
+import { elsewhere } from './hosts'
 
 /** The usage gate's word on starting a reviewer: `ok`, or the budget that holds it. */
 export type ReviewGate = { ok: true } | { ok: false; budget: BudgetStatus }
@@ -261,7 +262,7 @@ export class AiReviewService {
   }
 
   private async maybeAutoReview(config: WorkhubConfig, view: SessionView): Promise<void> {
-    if (!isLive(view) || view.agentId === 'shell') return
+    if (!isLive(view) || view.agentId === 'shell' || elsewhere(view.hostId)) return
     const profile = this.profileOf(config, view.profileId)
     const settings = aiReviewSettings(profile)
     const identity = sessionIdentity(view)
@@ -285,6 +286,8 @@ export class AiReviewService {
     const view = this.deps.sessions.list().find((v) => v.id === sessionId)
     if (!view) return { ok: false, reason: 'unknownSession' }
     if (this.isReviewerSession(view)) return { ok: false, reason: 'reviewerSession' }
+    // Its review checkout would be made on this computer, with this computer's git: not yet.
+    if (elsewhere(view.hostId)) return { ok: false, reason: 'otherHost' }
     const config = await this.deps.config()
     const settings = aiReviewSettings(this.profileOf(config, view.profileId))
     if (!settings.enabled) return { ok: false, reason: 'disabled' }

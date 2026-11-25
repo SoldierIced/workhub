@@ -7,7 +7,8 @@
  * electron-builder copies the folder to <resources>/bridge, where main finds it (the bridge runs
  * with Electron's own Node, so it needs no Node install).
  *
- * usage: stage-bridge.mjs [--platform darwin|win32|linux] [--arch x64|arm64]   (default: this machine)
+ * usage: stage-bridge.mjs [--platform darwin|win32|linux] [--arch x64|arm64] [--out dir]   (default: this machine)
+ *        --out stages into another folder (scripts/stage-host.mjs, the Linux host payload)
  *        stage-bridge.mjs --update-lock      rewrites scripts/bridge-deps/ after a version bump
  *
  * The bridge's dependency tree is locked in scripts/bridge-deps/package-lock.json and installed with
@@ -17,16 +18,16 @@
  */
 import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const stage = join(root, 'packages', 'app', '.stage', 'bridge')
 const args = process.argv.slice(2)
 const opt = (name, fallback) => {
   const i = args.indexOf(`--${name}`)
   return i >= 0 ? args[i + 1] : fallback
 }
+const stage = resolve(opt('out', join(root, 'packages', 'app', '.stage', 'bridge')))
 const updateLock = args.includes('--update-lock')
 const platform = opt('platform', process.platform)
 const arch = opt('arch', process.arch)

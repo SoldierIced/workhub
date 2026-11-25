@@ -1,9 +1,10 @@
 // Types of the preload bridge (window.hub), shared by main, preload and renderer.
 import type { AnalyticsApi } from './analytics-api'
 import type { ChatJournal } from './chat-journal'
-import type { BackgroundSpend, ChromeProfile, GroupChoice, SessionWorktree, SignInTool, WorktreeStatus } from '@workhub/core'
+import type { AgentAvailability, BackgroundSpend, ChromeProfile, GroupChoice, SessionWorktree, SignInTool, WorktreeStatus } from '@workhub/core'
 import type { NotificationKind, TrayApi, TrayRoute } from './tray-api'
 import type { ProfileEnvApi, SetupApi, SystemNotificationsApi } from './setup-api'
+import type { HostsApi } from './hosts-api'
 import type { SignInPaneApi } from './sign-in-api'
 import type { AgentToolsApi } from './agent-tools-api'
 import type {
@@ -126,6 +127,8 @@ export interface PendingPermission {
 /** A session as the renderer sees it. */
 export interface SessionView extends Session {
   label: string
+  /** The host the session runs on (`wsl:<distro>`); absent on this computer. */
+  hostId?: string
   /** The worktree Workhub created for this session; closing it can remove it. */
   worktree?: SessionWorktree
   /** The name the user gave the session (Rename…, `/rename`), kept across restarts; else it shows its agent's name. */
@@ -474,8 +477,12 @@ export interface AgentOptionsView {
 }
 
 export interface AgentsApi {
-  /** For each known agent id, whether its executable is installed (found on PATH). */
+  /**
+   * For each known agent id, whether its executable is installed (found on PATH); for a profile
+   * that runs in WSL, what that host offers (`pending` while it connects, `unsupported` there).
+   */
   availability(): Promise<Record<string, boolean>>
+  availability(profileId: string | null): Promise<Record<string, AgentAvailability>>
   /** Models and modes of an agent key (`kiro`, `kiro:<accountId>`); `refresh` lists them again. */
   options(agentKey: string, refresh?: boolean): Promise<AgentOptionsView>
 }
@@ -628,6 +635,8 @@ export interface HubApi {
   menu: MenuApi
   settings: SettingsWindowApi
   setup: SetupApi
+  /** Where a profile's sessions run: WSL distributions and the status of each host (Settings → Profiles; never offered to paired devices). */
+  hosts: HostsApi
   /**
    * Opens the sign-in window for a tool of the fixed list (`SIGN_IN_TOOLS`), with a Claude
    * account's config folder when `accountId` names one. Main runs the tool's own command; false

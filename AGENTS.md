@@ -48,6 +48,9 @@ npm run demo         # dev build with synthetic data in .demo-data/ (add -- --re
 - **Public repo: synthetic data only.** No employer or company names, internal ticket keys, real
   service or repo names, chat channels, people, or home paths in code, tests, fixtures, docs,
   comments or commit messages. Use stand-ins such as `acme` and `example.com`.
+- **A release carries its notes**: before the release pull request is merged, `release-notes.json`
+  gets that version's entry, written for users, in English and Spanish (CONTRIBUTING.md, Release
+  notes). `packages/app/test/release-notes.test.ts` fails without it.
 - Secrets never go to `config.json`; they go through the secret store (`secrets.json`, encrypted).
 
 ## Where things are

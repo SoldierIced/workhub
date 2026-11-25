@@ -201,7 +201,10 @@ agents get it. You can also copy or symlink them into `~/.claude/skills/` or a p
 ### Updates
 
 Settings > General > Updates has a **Check for new versions automatically** switch, off by default: nothing contacts
-GitHub unless you turn it on or press **Check now**. **Install update** downloads and installs the
+GitHub unless you turn it on or press **Check now**. When a newer version is found, the prompt and
+that section list what changed in the versions after yours (new, improved and fixed; the newest 10
+when you are far behind), in English or Spanish, with a link to every release on GitHub; **Skip this version** stops asking about it.
+**Install update** downloads and installs the
 new version on macOS, Windows and the Linux AppImage, then asks whether to restart now or later.
 Elsewhere (the `.deb`, or a macOS app outside a writable folder) it opens the release page.
 
@@ -292,6 +295,7 @@ Other environment variables, all for development, demos and smoke runs:
 |---|---|
 | `WORKHUB_DEMO_TICKETS=1`, `WORKHUB_DEMO_CODEHOST=1`, `WORKHUB_DEMO_SLACK=1`, `WORKHUB_DEMO_HEALTH=1`, `WORKHUB_DEMO_USAGE=1`, `WORKHUB_DEMO_CALENDAR=1` | Serve synthetic tickets, pull requests, Slack channels, Health data, usage or meetings instead of a real service |
 | `WORKHUB_DEMO_SCENARIO=team-lead` | With the demo variables above and an empty data folder: seeds the "team lead" profile, calendar, milestones, inbox and metric alerts (`npm run demo` sets it) |
+| `WORKHUB_DEMO_UPDATE=1` | In a run that is not packaged: a sample newer version with release notes, so the update prompt (shown a few seconds after start) and Settings > General > Updates can be seen. Nothing is contacted or installed |
 | `WORKHUB_KIRO_USAGE=1` | Read Kiro plan usage in a development or test run. Off by default outside a packaged app, because each read starts `kiro-cli acp` and refreshes the Kiro sign-in token |
 | `WORKHUB_KIRO_DIR` | Read Kiro's files from another folder |
 | `WORKHUB_NOTIFICATION_LOG`, `WORKHUB_TRAY_LOG` | Write notifications / the tray menu to a file, for smoke runs |
@@ -325,9 +329,11 @@ Conventional Commits on `main`; [CHANGELOG.md](CHANGELOG.md) is generated the sa
 1. Every push to `main` with a `feat`, `fix`, `perf` or `revert` commit opens or updates the
    release pull request: the next version (`2.0.0-alpha.N` while in alpha) in every `package.json`
    and `package-lock.json`, and the new changelog entry.
+   Before it is merged, the notes users see in the update prompt are added to `release-notes.json`,
+   in English and Spanish ([CONTRIBUTING.md](CONTRIBUTING.md#release-notes)).
 2. Merging it tags `v<version>`, creates a draft release with the changelog as notes, and
    runs the `release` workflow, which builds the macOS, Windows and Linux installers and attaches
-   them, with checksums and `latest*.yml` update metadata, to it.
+   them, with checksums, `latest*.yml` update metadata and `release-notes.json`, to it.
 3. Once the installers are attached, the workflow publishes the release as the latest one (not a
    pre-release, alphas included, so the download links and one-line installers follow it). There is
    nothing to publish by hand.

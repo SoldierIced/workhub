@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { AutomationRunLog, checkReadOnlySql, deniedTables, ensureHistoryIndex, Timelines, type WorkhubDb } from '@workhub/adapters/sqlite-store'
+import { AutomationRunLog, checkReadOnlySql, deniedTables, ensureHistoryIndex, Timelines, weekStartOf, type WorkhubDb } from '@workhub/adapters/sqlite-store'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createAnalyticsControl, EXAMPLES, timeOf, type AnalyticsControlDeps } from '../src/main/analytics-control'
 import { AnalyticsQueries, forkQueryWorker, type QueryWorker } from '../src/main/analytics-queries'
@@ -23,9 +23,16 @@ const ELECTRON = ((): string | undefined => {
 /** The worker refuses every query without SQLite's authorizer (Node 22): run it where it exists, this Node or Electron's. */
 const RUNTIME = authorizerAvailable() ? process.execPath : ELECTRON
 const HOUR = 3_600_000
-// Rows are recent so the examples (last 30 days, this month, last 7 days) find them.
+// Rows are recent so the examples (last 30 days, this month, last 7 days) find them. They also sit in
+// the past and inside this local week and month, whatever the hour the tests run: within five hours of
+// Monday 00:00 or of the 1st the steps between them shrink, or the weekly report of their week and the
+// "this month" example would miss some.
 const NOW = Date.now()
-const T0 = NOW - 5 * HOUR
+const PERIOD_START = Math.max(weekStartOf(NOW), new Date(new Date(NOW).getFullYear(), new Date(NOW).getMonth(), 1).getTime())
+const STEP = Math.min(HOUR, Math.floor((NOW - PERIOD_START) / 5))
+/** Between two turns of the same session: under a sixtieth of a step, so 30 of them stay within one. */
+const TICK = Math.min(1000, Math.floor(STEP / 60))
+const T0 = NOW - 5 * STEP
 const PR = 'https://github.com/acme/api/pull/42'
 
 const opened: { db: WorkhubDb; queries: AnalyticsQueries }[] = []
@@ -38,17 +45,17 @@ afterEach(() => {
 
 function seed(db: WorkhubDb): void {
   const s = db.raw.prepare('INSERT INTO sessions (id, agent, profile_id, cwd, project, title, started_at, ended_at, active_ms, source, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-  s.run('s1', 'claude', 'work', '/w/acme/api/src', '/w/acme/api', 'Fix login', T0, T0 + HOUR, 600_000, 'workhub', NOW)
-  s.run('s2', 'codex', 'home', '/w/acme/web', '/w/acme/web', 'Landing', T0 + 2 * HOUR, T0 + 3 * HOUR, 300_000, 'transcript', NOW)
+  s.run('s1', 'claude', 'work', '/w/acme/api/src', '/w/acme/api', 'Fix login', T0, T0 + STEP, 600_000, 'workhub', NOW)
+  s.run('s2', 'codex', 'home', '/w/acme/web', '/w/acme/web', 'Landing', T0 + 2 * STEP, T0 + 3 * STEP, 300_000, 'transcript', NOW)
   const t = db.raw.prepare('INSERT INTO turns (session_id, agent, msg_key, at, model, input_tokens, output_tokens, usd, cwd, project, turn_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-  for (let i = 0; i < 30; i++) t.run('s1', 'claude', `m${i}`, T0 + i * 1000, 'sonnet', 100, 10, 0.1, '/w/acme/api/src', '/w/acme/api', 20_000)
-  t.run('s2', 'codex', 'm0', T0 + 2 * HOUR, 'gpt', 50, 5, 0.5, '/w/acme/web', '/w/acme/web', 300_000)
+  for (let i = 0; i < 30; i++) t.run('s1', 'claude', `m${i}`, T0 + i * TICK, 'sonnet', 100, 10, 0.1, '/w/acme/api/src', '/w/acme/api', 20_000)
+  t.run('s2', 'codex', 'm0', T0 + 2 * STEP, 'gpt', 50, 5, 0.5, '/w/acme/web', '/w/acme/web', 300_000)
   const link = db.raw.prepare('INSERT INTO session_links (session_id, kind, ref, source, at) VALUES (?, ?, ?, ?, ?)')
   link.run('s1', 'ticket', 'ABC-123', 'user', T0)
   link.run('s1', 'ticket', 'ABC-124', 'user', T0)
   link.run('s1', 'pr', PR, 'acted', T0)
   db.raw.prepare('INSERT INTO session_tags (session_id, tag, at) VALUES (?, ?, ?)').run('s2', 'idea', T0)
-  new AutomationRunLog(db).record([{ id: 'r1', automationId: 'a1', automationName: 'Triage', trigger: 'interval', queuedAt: T0, startedAt: T0, endedAt: T0 + 1000, outcome: 'error', detail: 'agent failed', merged: 0 }], () => 'work')
+  new AutomationRunLog(db).record([{ id: 'r1', automationId: 'a1', automationName: 'Triage', trigger: 'interval', queuedAt: T0, startedAt: T0, endedAt: T0 + TICK, outcome: 'error', detail: 'agent failed', merged: 0 }], () => 'work')
   new Timelines(db).appendPrEvents('work', [{ id: 'acme/api#42|approved|1', name: 'acme/api#42', url: PR, kind: 'approved', at: T0, title: 'Fix login', actor: 'ana' } as never])
   db.raw.prepare('INSERT INTO ticket_events (profile_id, key, kind, at, from_value, to_value, title, json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('work', 'ABC-123', 'status', T0, 'To do', 'In progress', 'Fix login', '{}')
   db.raw.prepare('INSERT INTO turn_files (path, agent, session_id, size, mtime_ms, offset, scanned_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('/w/t.jsonl', 'claude', 's1', 10, 1, 10, NOW)

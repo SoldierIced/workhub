@@ -1,3 +1,5 @@
+import type { ReleaseNotesEntry } from './release-notes'
+
 /** Update checks against the GitHub Releases of the project (P8). */
 export type UpdateState = 'idle' | 'checking' | 'none' | 'available' | 'downloading' | 'ready' | 'error' | 'unsupported'
 
@@ -8,12 +10,21 @@ export interface UpdateStatus {
   version?: string
   /** Where to download the new version by hand (always set when `available`). */
   releaseUrl?: string
+  /** The list of every release with its changes: the newest one's page only has its own. */
+  changesUrl?: string
   /**
    * Whether the app can download and install the update itself. On macOS only when it runs from a
    * bundle in a folder it can write to (it replaces its own bundle); otherwise the user downloads it.
    */
   canInstall: boolean
   message?: string
+  /**
+   * What changed in the versions after the running one up to `version`, newest first, in every
+   * interface language. Absent when the release carries no notes.
+   */
+  notes?: ReleaseNotesEntry[]
+  /** The release carries notes and they could not be read: the update is offered without them. */
+  notesError?: boolean
 }
 
 export interface UpdatesApi {

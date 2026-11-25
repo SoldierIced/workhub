@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { Button } from '../atoms/Button'
 import { Dialog } from '../molecules/Dialog'
 import { errorText } from '../../lib/errorText'
+import { ReleaseNotesPanel } from './ReleaseNotesPanel'
 
 /** What the dialog shows when the install call itself failed: the error state, with its message. */
 export function failedInstall(status: UpdateStatus, error: unknown): UpdateStatus {
@@ -12,6 +13,7 @@ export function failedInstall(status: UpdateStatus, error: unknown): UpdateStatu
 
 /**
  * "A new version is available": main asks for it after an automatic check (at most once a day).
+ * It says what changed in every version after the running one, when the release carries notes.
  * Update installs it (or opens the release page where the app cannot replace itself), then offers
  * a restart; Later asks again tomorrow; Skip this version never asks for it again.
  */
@@ -66,6 +68,7 @@ export function UpdatePromptDialog() {
       onOpenChange={(o) => !o && close()}
       title={ready ? t('updates.readyTitle') : t('updates.promptTitle')}
       description={description}
+      className={ready ? undefined : 'w-[min(600px,calc(100vw-48px))]'}
       footer={
         ready ? (
           <>
@@ -99,7 +102,7 @@ export function UpdatePromptDialog() {
         )
       }
     >
-      {null}
+      {ready ? null : <ReleaseNotesPanel status={status} />}
     </Dialog>
   )
 }

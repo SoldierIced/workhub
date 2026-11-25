@@ -6,7 +6,19 @@
 import type { FolderOptions, Profile } from './profile'
 
 /** The profile fields that decide folders and ownership. */
-export type FolderProfile = Pick<Profile, 'id' | 'folders' | 'folderOptions' | 'ownsOutside'>
+export type FolderProfile = Pick<Profile, 'id' | 'folders' | 'folderOptions' | 'ownsOutside'> & HostOf
+
+/** The host a profile's sessions run on (`profile.host`), which decides what home `~` means. */
+type HostOf = Partial<Pick<Profile, 'host'>>
+
+/**
+ * The home `~` in a profile's folders expands to: `home` for a profile on this computer; none for
+ * one that runs on another host (a WSL distribution), whose `~` is that host's home, not this
+ * computer's: its folders stay as written there.
+ */
+export function folderHome(profile: HostOf | null | undefined, home?: string): string | undefined {
+  return profile?.host && profile.host.kind !== 'local' ? undefined : home
+}
 
 /** A folder found inside a profile folder. */
 export interface FolderChild {
@@ -31,10 +43,17 @@ export const PROJECT_CHILDREN_CAP = 500
 /** The separator a path uses: `\\` for a Windows path without forward slashes, else `/`. */
 const separatorOf = (path: string): string => (path.includes('\\') && !path.includes('/') ? '\\' : '/')
 
+/** `path` without its trailing `/` and `\\` (a linear scan: no backtracking pattern on long runs). */
+function trimSeparators(path: string): string {
+  let end = path.length
+  while (end > 0 && (path[end - 1] === '/' || path[end - 1] === '\\')) end--
+  return path.slice(0, end)
+}
+
 /** `~` and `~/…` under `home`; anything else as written. */
 export function expandHomePath(path: string, home?: string): string {
   if (!home) return path
-  const h = home.replace(/[\\/]+$/, '')
+  const h = trimSeparators(home)
   if (path === '~') return h
   if (path.startsWith('~/') || path.startsWith('~\\')) return `${h}${separatorOf(h)}${path.slice(2)}`
   return path
@@ -43,7 +62,7 @@ export function expandHomePath(path: string, home?: string): string {
 /** Home expanded and the trailing separators dropped. */
 export function normalizeFolder(path: string, home?: string): string {
   const expanded = expandHomePath(path.trim(), home)
-  return expanded.replace(/[\\/]+$/, '') || expanded
+  return trimSeparators(expanded) || expanded
 }
 
 /**
@@ -51,9 +70,9 @@ export function normalizeFolder(path: string, home?: string): string {
  * its first folder; home expanded. Undefined for no profile or one without folders (the caller then
  * uses the home folder).
  */
-export function profileDefaultFolder(profile: Pick<Profile, 'folders' | 'defaultFolder'> | undefined, home?: string): string | undefined {
+export function profileDefaultFolder(profile: (Pick<Profile, 'folders' | 'defaultFolder'> & HostOf) | undefined, home?: string): string | undefined {
   const chosen = profile?.defaultFolder?.trim() || profile?.folders?.find((f) => f.trim())
-  return chosen ? normalizeFolder(chosen, home) : undefined
+  return chosen ? normalizeFolder(chosen, folderHome(profile, home)) : undefined
 }
 
 /**
@@ -80,23 +99,25 @@ export function isInsideFolder(path: string, folder: string): boolean {
 const lastSegment = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path
 
 /** The switches of one of the profile's folders (looked up as written, then by normalized path). */
-export function folderOptionsOf(profile: Pick<Profile, 'folderOptions'>, folder: string, home?: string): FolderOptions {
+export function folderOptionsOf(profile: Pick<Profile, 'folderOptions'> & HostOf, folder: string, home?: string): FolderOptions {
   const options = profile.folderOptions ?? {}
   const direct = options[folder]
   if (direct) return direct
-  const wanted = normalizeFolder(folder, home)
-  for (const [key, value] of Object.entries(options)) if (normalizeFolder(key, home) === wanted) return value
+  const h = folderHome(profile, home)
+  const wanted = normalizeFolder(folder, h)
+  for (const [key, value] of Object.entries(options)) if (normalizeFolder(key, h) === wanted) return value
   return {}
 }
 
 /** The profile's folders, normalized, blanks left out. */
-export function profileFolderPaths(profile: Pick<Profile, 'folders'>, home?: string): { folder: string; path: string }[] {
-  return (profile.folders ?? []).filter((f) => f.trim()).map((folder) => ({ folder, path: normalizeFolder(folder, home) }))
+export function profileFolderPaths(profile: Pick<Profile, 'folders'> & HostOf, home?: string): { folder: string; path: string }[] {
+  const h = folderHome(profile, home)
+  return (profile.folders ?? []).filter((f) => f.trim()).map((folder) => ({ folder, path: normalizeFolder(folder, h) }))
 }
 
 /** The deepest of the profile's folders that holds `path`, or undefined. */
-export function containingFolder(path: string, profile: Pick<Profile, 'folders'>, home?: string): { folder: string; path: string } | undefined {
-  const target = normalizeFolder(path, home)
+export function containingFolder(path: string, profile: Pick<Profile, 'folders'> & HostOf, home?: string): { folder: string; path: string } | undefined {
+  const target = normalizeFolder(path, folderHome(profile, home))
   let best: { folder: string; path: string } | undefined
   for (const f of profileFolderPaths(profile, home)) {
     if (isInsideFolder(target, f.path) && (!best || f.path.length > best.path.length)) best = f
@@ -125,7 +146,7 @@ export function ownsFolder(profileId: string, path: string | null | undefined, p
 }
 
 /** The profile folder `${PROFILE_ROOT}` names for a session in `path`: the deepest one holding it, else the first one. */
-export function profileRootFor(path: string, profile: Pick<Profile, 'folders'>, home?: string): string | undefined {
+export function profileRootFor(path: string, profile: Pick<Profile, 'folders'> & HostOf, home?: string): string | undefined {
   return containingFolder(path, profile, home)?.path ?? profileFolderPaths(profile, home)[0]?.path
 }
 

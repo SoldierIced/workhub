@@ -92,6 +92,10 @@ jobs:
             cp "$f" "../release-files/$stable"
             (cd ../release-files && if command -v shasum >/dev/null; then shasum -a 256 "$stable" > "$stable.sha256"; else sha256sum "$stable" > "$stable.sha256"; fi)
           done
+          # What changed, for the people who use the app (release-notes.json, CONTRIBUTING.md): the
+          # update prompt reads it from the release. Once, from the Linux runner; a tag from before
+          # the file existed has none.
+          if [ "$RUNNER_OS" = "Linux" ] && [ -f ../release-notes.json ]; then cp ../release-notes.json ../release-files/; fi
           ls -l ../release-files
       # electron-updater reads latest*.yml (latest-mac.yml, latest.yml, latest-linux.yml): every OS
       # writes its own name, so the three artifacts never overwrite each other.
@@ -102,12 +106,54 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The Linux host payload the app installs into a WSL distribution on first use
+  # (scripts/stage-host.mjs): one archive per arch, built on an Ubuntu 22.04 runner of that arch (node-pty's
+  # pty.node links the runner's glibc, so an older runner keeps 22.04+ distros working) because
+  # node-pty is native and not cross-built. arm64 uses GitHub's arm64 runner; it may not fail the
+  # release (continue-on-error), so a missing arm64 payload only leaves arm64 distributions without one.
+  host-payload:
+    name: host payload (linux-${{ matrix.arch }})
+    needs: check
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: ubuntu-22.04 }
+          - { arch: arm64, runner: ubuntu-22.04-arm }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @workhub/app
+      - name: Stage the payload
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          node scripts/stage-host.mjs --arch "$ARCH" --out host-payload
+          mkdir -p release-files
+          cp host-payload/workhub-host-"${TAG#v}"-linux-"$ARCH".tar.gz host-payload/workhub-host-"${TAG#v}"-linux-"$ARCH".tar.gz.sha256 release-files/
+          ls -l release-files
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-host-${{ matrix.arch }}
+          path: release-files/
+          if-no-files-found: error
+          retention-days: 7
+
   # Build provenance: a signed statement, kept by GitHub, that these exact files were built by this
   # workflow from this tag. `gh attestation verify <file> --repo <owner>/<repo>` checks it. It
   # attests the files the installers job uploaded, not a rebuild, so the digests are the ones the
   # .sha256 files and the release carry.
   attest:
-    needs: installers
+    needs: [installers, host-payload]
     runs-on: ubuntu-latest
     permissions:
       # Read the repository for the action's own needs; no write access to it.
@@ -122,7 +168,7 @@ jobs:
           pattern: release-*
           path: release-files
           merge-multiple: true
-      # The installers only: checksums, update manifests and block maps are not attested.
+      # The installers and host payloads only: checksums, update manifests and block maps are not attested.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -131,9 +177,10 @@ jobs:
             release-files/*.exe
             release-files/*.AppImage
             release-files/*.deb
+            release-files/workhub-host-*.tar.gz
 
   publish:
-    needs: [installers, attest]
+    needs: [installers, host-payload, attest]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -163,8 +210,13 @@ jobs:
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Workhub 2 ${TAG#v}" --generate-notes --prerelease=false
           fi
           shopt -s nullglob
-          files=(*)
+          files=()
+          for f in *; do [ "$f" = release-notes.json ] || files+=("$f"); done
           [ "${#files[@]}" -gt 0 ] || { echo "no release files were built" >&2; exit 1; }
+          # The notes first, and only once (they are left out of the list above): the app only
+          # offers a release that has its update manifest, so by then the notes it shows next to
+          # it are already there.
+          if [ -f release-notes.json ]; then gh release upload "$TAG" release-notes.json --clobber --repo "$GITHUB_REPOSITORY"; fi
           printf 'uploading: %s\n' "${files[@]}"
           gh release upload "$TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false --latest

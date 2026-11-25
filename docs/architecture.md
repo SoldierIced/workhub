@@ -447,13 +447,47 @@ download, checksum check and unpacking (zip and tar.gz, with path checks) are
 `adapters/src/managed-tools`; the queue behind **Install what is missing** is
 `app/src/main/setup-queue.ts`.
 
-### Workhub host (not wired yet)
+### Workhub host
 
-Groundwork for running sessions inside WSL from the native Windows app. The app stays the UI and
-the orchestrator, and a `workhub host` Node process inside the distro is meant to own what has to
-run next to the code: agent runtimes, transcripts, history, git and file access. The two talk over
-the stdio of the process that starts the host (`wsl.exe`). Nothing in the app starts a host yet; the
-pieces below are used only by their tests.
+The native Windows app can run a profile's sessions inside a WSL distribution (`profile.host`,
+`{kind: 'wsl', distro}`; see [Run sessions inside WSL](user-guide/profiles.md#run-sessions-inside-wsl)).
+The app stays the UI and the orchestrator: sessions, config, secrets, SQLite, paired devices and the
+control endpoint's logic remain in main. A `workhub host` Node process inside the distribution owns
+what has to run next to the code: the agent runtimes, transcript readers, history sources, git and
+file access. The boundary is at the core ports, not at the renderer's IPC.
+
+- **Hosts** (`app/src/main/hosts.ts`): a `HostRegistry` holds `local` (this computer, built in this
+  process) and one `wsl:<distro>` per connected distribution. `hostFor(profileId)` picks the host
+  the profile names, or this computer while that host is not connected; SessionManager asks it once
+  per session start and keeps the services it got, and folder checks (git, exists, stat) go to the
+  same host. A session's view carries its host id (`hostId`).
+- **Process and transport** (`app/src/main/host-process.ts`, `wsl-hosts.ts`): `HostProcess` starts
+  `wsl.exe -d <distro> --cd ~ -e <dir>/node/bin/node <dir>/host.js --stdio`, with `WSLENV` emptied so
+  no Windows variable reaches it, talks newline-delimited JSON over its stdio, and restarts it with
+  backoff when it goes away. On the host side the services are served by `startHost`
+  (`adapters/src/host/main.ts`, bundled as `out/main/host.js`); on the app side the proxies in
+  `adapters/src/host/proxies` give the same ports (`AgentRuntime`, `TranscriptReader`, history, git).
+  `WORKHUB_HOST=child` runs the same host as a child process on this computer, a development switch.
+- **Status** (`app/src/main/host-status.ts`, `ipc/hosts.ts`): each WSL host reports `connecting`,
+  `installing` (download bytes, checksum, unpacking), `connected` (with a warning when it has no
+  control endpoint), `failed` with a reason, or `unavailable` off Windows. `hosts:status` and the
+  `hosts:statusChanged` event carry them to Settings, `hosts:wslDistros` lists the distributions
+  (`wsl.exe -l`, Windows only), and `hosts:retry` starts a failed one again.
+- **Control relay** (`adapters/src/host/control-relay.ts`, `app/src/main/host-control.ts`): the host
+  listens on a Unix socket of its own (mode 0600, in a folder only the user can open) and relays each
+  HTTP request on it to the app as a `control.request` event; main serves it with its own endpoint,
+  which checks the session token as for a local session, and answers with `control.respond`. Sessions
+  on the host get that socket as `WORKHUB_SOCKET` and Workhub's MCP server runs there on the host's
+  Node, so no network path from the distribution to Windows is needed.
+- **Payload and install** (`scripts/stage-host.mjs`, `core/src/host/payload.ts`,
+  `app/src/main/wsl-host-install.ts`): the Linux payload (host.js, its own Node, node-pty and the
+  bridge with the Linux `claude`) is a release asset per architecture, about 180 MB, built on a glibc
+  2.35 system. On first use the app downloads it (or takes `WORKHUB_HOST_PAYLOAD`), checks its
+  SHA-256, keeps it in `<dataDir>/host-payloads/<version>`, streams it into the distribution through
+  `wsl.exe` and unpacks it to `~/.workhub/host/<version>`, marking it ready last so a failed install
+  is never used.
+
+The pieces underneath:
 
 - **Protocol** (`core/src/host/protocol.ts`): newline-delimited JSON, one message per line, at most
   1 MB of UTF-8 per line (`HOST_MAX_LINE_BYTES`). Four messages, told apart by `t`: `hello` (the
@@ -472,6 +506,11 @@ pieces below are used only by their tests.
   side: a map of handlers that run concurrently, and only an error's code and message cross the
   wire. When the channel closes, every pending request fails with `closed` and the abort signal of
   each running handler fires.
+- **Large results** (`adapters/src/host/proxies/chunks.ts`): a past session's messages, a
+  transcript snapshot or a sub-agent conversation can be larger than a line. The host then answers
+  with the first piece of the result's JSON (at most 512 KB once encoded) and a cursor, and the app
+  asks `history.next` or `transcripts.next` for the rest before parsing it; a result that fits is
+  sent whole. The host keeps up to 16 unfinished results for 2 minutes each.
 - **Paths** (`core/src/host/paths.ts`): join, normalize, dirname and basename for an explicit flavor
   (`posix` or `win32`), because the Windows app handles the distro's POSIX paths and `core` cannot
   use `node:path`. Also the translation between `\\wsl.localhost\<distro>\...` (or `\\wsl$\...`) and

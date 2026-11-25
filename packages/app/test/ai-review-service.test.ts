@@ -171,6 +171,17 @@ describe('AiReviewService', () => {
     expect(t.started).toHaveLength(1)
   })
 
+  it('never reviews a session in WSL: manual rounds are refused, automatic ones never start', async () => {
+    const t = setup()
+    t.views[0] = { ...t.views[0]!, hostId: 'wsl:Ubuntu' }
+    expect(await t.service.startManual('dev')).toEqual({ ok: false, reason: 'otherHost' })
+    t.change('dev', 'busy')
+    t.change('dev', 'ready')
+    t.advance(61_000)
+    await t.service.tick()
+    expect(t.started).toHaveLength(0)
+  })
+
   it('skips automatic rounds for a session whose chat turned auto review off, keeps it across restarts, and still runs manual ones', async () => {
     const t = setup()
     t.service.setSessionAuto('dev', false)

@@ -26,7 +26,8 @@ export type SetupItemId =
   | 'health'
   | 'usage'
   | 'agentSkills'
-export type SetupStatus = 'ok' | 'warning' | 'missing'
+/** `pending`: not checked yet, and not a problem (the WSL host a profile runs on has not connected). */
+export type SetupStatus = 'ok' | 'warning' | 'missing' | 'pending'
 
 /**
  * What fixes an item: a Settings tab, a page to read (`admin`: the official install needs
@@ -90,11 +91,14 @@ const item = (kind: SetupItemId, status: SetupStatus, code: string, params: Reco
 
 const firstLine = (text: string): string => text.split(/\r?\n/).find((l) => l.trim())?.trim() ?? ''
 
+/** A tool's version banner is short: bound what the version patterns scan. */
+const banner = (text: string): string => text.slice(0, 256)
+
 export function claudeCodeItem(p: Probe, context?: InstallContext | string): SetupItem {
   const link = installFix('claudeCode', context)
   switch (p.result) {
     case 'ok':
-      return item('claudeCode', 'ok', 'version', { version: /\d+\.\d+\.\d+/.exec(p.output)?.[0] ?? firstLine(p.output) })
+      return item('claudeCode', 'ok', 'version', { version: /\d+\.\d+\.\d+/.exec(banner(p.output))?.[0] ?? firstLine(p.output) })
     case 'notFound':
       return item('claudeCode', 'missing', 'claudeMissing', {}, { fix: link })
     case 'timeout':
@@ -136,7 +140,7 @@ export function claudeSignInItem(id: string, name: string, p: Probe, accountId: 
 export function nodeItem(p: Probe, neededBy: readonly string[] = [], context?: InstallContext | string): SetupItem {
   switch (p.result) {
     case 'ok':
-      return item('node', 'ok', 'version', { version: /v\d+\.\d+\.\d+/.exec(p.output)?.[0] ?? firstLine(p.output) })
+      return item('node', 'ok', 'version', { version: /v\d+\.\d+\.\d+/.exec(banner(p.output))?.[0] ?? firstLine(p.output) })
     case 'timeout':
       return item('node', 'warning', 'timeout', { command: 'node --version' })
     default:
@@ -148,9 +152,25 @@ export function nodeItem(p: Probe, neededBy: readonly string[] = [], context?: I
 
 /** `git --version`. macOS without Apple's tools answers through a stub that fails: that is missing too. */
 export function gitItem(p: Probe, context?: InstallContext | string): SetupItem {
-  if (p.result === 'ok') return item('git', 'ok', 'version', { version: /\d+\.\d+(?:\.\d+)?/.exec(p.output)?.[0] ?? firstLine(p.output) })
+  if (p.result === 'ok') return item('git', 'ok', 'version', { version: /\d+\.\d+(?:\.\d+)?/.exec(banner(p.output))?.[0] ?? firstLine(p.output) })
   if (p.result === 'timeout') return item('git', 'warning', 'timeout', { command: 'git --version' })
   return item('git', 'missing', 'gitMissing', {}, { fix: installFix('git', context) })
+}
+
+/**
+ * Claude Code, its sign-in and git as found inside the WSL distribution `host` the active profile
+ * runs in (`claude --version` of the host's bundled Claude Code, `claude auth status`, `git
+ * --version`), or pending while that host has not connected (`probes` null). No row carries a fix:
+ * every fix the check knows installs or signs in on this computer.
+ */
+export function hostToolItems(host: string, probes: { claude: Probe; auth: Probe; git: Probe } | null): SetupItem[] {
+  const inHost = (i: SetupItem): SetupItem => {
+    const { fix: _fix, ...rest } = i
+    return { ...rest, params: { ...i.params, host }, ...(i.kind === 'claudeSignIn' && i.code === 'notSignedIn' ? { code: 'hostNotSignedIn' } : {}) }
+  }
+  const signInId = `claudeSignIn:wsl:${host}`
+  if (!probes) return [item('claudeCode', 'pending', 'hostPending', { host }), { ...item('claudeSignIn', 'pending', 'hostPending', { host, name: 'Claude' }), id: signInId }, item('git', 'pending', 'hostPending', { host })]
+  return [inHost(claudeCodeItem(probes.claude)), inHost(claudeSignInItem(signInId, 'Claude', probes.auth, null)), inHost(gitItem(probes.git))]
 }
 
 /**
@@ -217,7 +237,7 @@ export function agentItem(kind: 'kiro' | 'opencode' | 'gemini', p: Probe, contex
   if (p.result === 'ok') {
     if (kind === 'kiro' && auth?.result === 'failed') return item(kind, 'missing', 'kiroNotSignedIn', {}, { fix: { kind: 'signIn', tool: 'kiro' } })
     if (kind === 'kiro' && auth?.result === 'timeout') return item(kind, 'warning', 'timeout', { command: 'kiro-cli whoami' })
-    return item(kind, 'ok', 'version', { version: /\d+\.\d+(?:\.\d+)?/.exec(p.output)?.[0] ?? firstLine(p.output) })
+    return item(kind, 'ok', 'version', { version: /\d+\.\d+(?:\.\d+)?/.exec(banner(p.output))?.[0] ?? firstLine(p.output) })
   }
   if (p.result === 'timeout') return item(kind, 'warning', 'timeout', { command: `${AGENT_COMMANDS[kind]} --version` })
   return item(kind, 'missing', `${kind}Missing`, {}, { fix: installFix(kind, context) })

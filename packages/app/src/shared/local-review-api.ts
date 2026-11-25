@@ -1,5 +1,5 @@
 // Types of the local review and file viewer bridges (window.hub.localReview, window.hub.files), shared by main, preload and renderer.
-import type { LocalReview, LocalReviewDelivery, LocalReviewFiles, LocalReviewScope, LocalRevertAnswer, LocalRevertRequest, ReviewComment } from '@workhub/core'
+import type { LocalReview, LocalReviewDelivery, LocalReviewFiles, LocalReviewOther, LocalReviewScope, LocalRevertAnswer, LocalRevertRequest, ReviewComment } from '@workhub/core'
 
 /** The session a review belongs to, as the review window shows it. */
 export interface LocalReviewSession {
@@ -11,10 +11,6 @@ export interface LocalReviewSession {
   blocker?: 'closed' | 'readOnly'
 }
 
-/**
- * `files`: what the review shows (it can differ from the one asked; see `load`). `hiddenFiles`: changed
- * files left out because the session's agent did not edit them (`files: 'session'`).
- */
 /** A repo the session changed that the review did not load (a worktree or a clone outside its folder). */
 export interface LocalReviewElsewhere {
   name: string
@@ -24,15 +20,23 @@ export interface LocalReviewElsewhere {
   deletions: number
 }
 
-export type LocalReviewLoad = { ok: true; session: LocalReviewSession; review: LocalReview; files?: LocalReviewFiles; hiddenFiles?: number; elsewhere?: LocalReviewElsewhere[] } | { ok: false; reason: 'unknownSession' | 'failed'; detail?: string }
+/**
+ * `files`: what the review shows (it can differ from the one asked; see `load`). `hiddenFiles`: changed
+ * files left out because the session's agent did not edit them (`files: 'session'`). `untouched`: repos
+ * of the session's folder with changes that are not traced to the session (not in `review.repos`).
+ * `wholeFolder`: true when the folder was scanned without that split because it was asked to.
+ */
+export type LocalReviewLoad = { ok: true; session: LocalReviewSession; review: LocalReview; files?: LocalReviewFiles; hiddenFiles?: number; elsewhere?: LocalReviewElsewhere[]; untouched?: LocalReviewOther[]; wholeFolder?: boolean } | { ok: false; reason: 'unknownSession' | 'failed'; detail?: string }
 
 export interface LocalReviewApi {
   /**
-   * The session's local changes in `scope` (its folder's repo and the repos inside it it touched):
-   * only the files its agent edited (`session`), or every change in those repos (`repo`, the default).
+   * The session's local changes in `scope` (its folder's repo and the repos inside it the session
+   * changed; the folder's other repos with changes come back as `untouched`): only the files its agent
+   * edited (`session`), or every change in those repos (`repo`, the default).
    * `chosen` false: `files` is only the saved default, and a review a tool asked for shows the whole repo.
+   * `wholeFolder` true: every repo of the folder with changes is listed, with no split.
    */
-  load(sessionId: string, scope: LocalReviewScope, files?: LocalReviewFiles, chosen?: boolean): Promise<LocalReviewLoad>
+  load(sessionId: string, scope: LocalReviewScope, files?: LocalReviewFiles, chosen?: boolean, wholeFolder?: boolean): Promise<LocalReviewLoad>
   /** The comments not sent yet (kept while the app runs). */
   comments(sessionId: string): Promise<ReviewComment[]>
   setComments(sessionId: string, comments: ReviewComment[]): Promise<void>

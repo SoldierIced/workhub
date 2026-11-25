@@ -13,6 +13,7 @@ export const aiReviewEn = {
   'aiReview.blocked.noReviewer': 'No agent with a chat (app mode) is available to review.',
   'aiReview.blocked.budget': 'The reviewer\'s account is past its usage budget ({window}). Use "Run anyway" in the Review panel.',
   'aiReview.blocked.unknownSession': 'The session is gone.',
+  'aiReview.blocked.otherHost': 'AI review is not available for sessions in WSL yet.',
   'aiReview.blocked.reviewerSession': 'This is a reviewer session.',
 
   'agentReview.title': 'Review with another agent',

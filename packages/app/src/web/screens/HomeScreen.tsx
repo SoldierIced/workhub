@@ -1,10 +1,11 @@
 import { Bot, ChevronRight, FolderClosed, FolderOpen, Plus, RotateCcw, Search, X } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { accountColor, EMPTY_SESSION_GROUPS, memberAgentId, profileColor, resumesBySessionId, sidebarRows, statusLevel, subtreeMembers, type GroupMember, type GroupRow, type StatusLevel, type SubagentSummary } from '@workhub/core'
+import { accountColor, EMPTY_SESSION_GROUPS, memberAgentId, profileColor, sidebarRows, statusLevel, subtreeMembers, type GroupMember, type GroupRow, type StatusLevel, type SubagentSummary } from '@workhub/core'
 import { useI18n } from '../../renderer/i18n/I18nProvider'
 import { cn } from '../../renderer/lib/cn'
 import { LEVEL_LABEL, LEVEL_TONE } from '../../renderer/lib/attention'
 import { folderName } from '../../renderer/lib/home'
+import { reopenInput, ReopenAgentMissing } from '../../renderer/lib/reopen'
 import { visibleSubagents } from '../../renderer/lib/subagentView'
 import { useNow } from '../../renderer/lib/usage'
 import { groupSummary, listSessions, memberOf, rowName, sessionNameInfo, type ListedSession } from '../../renderer/lib/sessionGroups'
@@ -118,21 +119,11 @@ export function HomeScreen() {
     setReopening(member.key)
     setReopenError(null)
     try {
-      const memberProfile = member.profileId ?? profileId
-      const agents = await window.hub.config.effectiveAgents(memberProfile)
-      const choice = agents.find((a) => a.key === member.agentKey)
-      if (!choice) throw new Error(member.agentName ?? member.agentKey)
-      const resumes = resumesBySessionId(choice.agent)
-      const view = await window.hub.sessions.reopen(member.key, {
-        profileId: memberProfile,
-        agentKey: member.agentKey,
-        cwd: member.cwd,
-        mode: 'app',
-        ...(resumes ? { resumeAgentSessionId: member.key } : { identity: member.key })
-      })
+      const asked = await reopenInput(member, profileId, (id) => window.hub.config.effectiveAgents(id))
+      const view = await window.hub.sessions.reopen(member.key, { ...asked, mode: 'app' })
       navigate({ screen: 'session', id: view.id })
     } catch (e) {
-      setReopenError(t('groups.reopenFailed', { message: e instanceof Error ? e.message : String(e) }))
+      setReopenError(e instanceof ReopenAgentMissing ? t('groups.reopenNoAgent', { agent: e.agent }) : t('groups.reopenFailed', { message: e instanceof Error ? e.message : String(e) }))
     } finally {
       setReopening(null)
     }

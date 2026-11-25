@@ -15,6 +15,7 @@ export const aiReviewEs: Record<keyof typeof aiReviewEn, string> = {
   'aiReview.blocked.noReviewer': 'No hay un agente con chat (modo app) disponible para revisar.',
   'aiReview.blocked.budget': 'La cuenta del revisor superó su presupuesto de uso ({window}). Usa "Ejecutar de todos modos" en el panel de revisión.',
   'aiReview.blocked.unknownSession': 'La sesión ya no existe.',
+  'aiReview.blocked.otherHost': 'La revisión con IA todavía no está disponible para sesiones en WSL.',
   'aiReview.blocked.reviewerSession': 'Esta es una sesión revisora.',
 
   'agentReview.title': 'Revisar con otro agente',

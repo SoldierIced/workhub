@@ -17,8 +17,9 @@ const saved = (identity: string, over: Partial<SavedOpenSession> = {}): SavedOpe
   ...over
 })
 
-function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?: boolean; groups?: SessionGroups; missing?: string[]; failing?: string[]; broken?: { config: boolean } } = {}) {
+function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?: boolean; groups?: SessionGroups; missing?: string[]; failing?: string[]; broken?: { config: boolean }; hostOf?: (v: SessionView) => string } = {}) {
   let file = stored
+  const checked: [string, string | undefined][] = []
   let flushed = 0
   const live: SessionView[] = []
   const engines = new Map<string, 'app' | 'console'>()
@@ -48,7 +49,11 @@ function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?
     setMode: async (id, mode) => {
       modes.push([id, mode])
     },
-    folderExists: async (path) => !opts.missing?.includes(path),
+    folderExists: async (path, hostId) => {
+      checked.push([path, hostId])
+      return !opts.missing?.includes(path)
+    },
+    ...(opts.hostOf ? { hostOf: opts.hostOf } : {}),
     enabled: async () => {
       if (opts.broken?.config) throw new Error('Invalid config')
       return opts.enabled ?? true
@@ -57,7 +62,7 @@ function harness(stored: SavedOpenSessions, opts: { enabled?: boolean; atLaunch?
     groups: async () => opts.groups,
     firstPrompt: (id) => prompts.get(id)
   })
-  return { open, prompts, live, engines, starts, extras, modes, file: () => file, flushed: () => flushed }
+  return { open, prompts, live, engines, starts, extras, modes, checked, file: () => file, flushed: () => flushed }
 }
 
 describe('open sessions across launches', () => {
@@ -91,6 +96,31 @@ describe('open sessions across launches', () => {
     const worktree = { repoRoot: '/repo', path: '/_worktrees/repo-x', branch: 'x' }
     expect(savedSessionOf(view('w', { worktree }), 'app')?.worktree).toEqual(worktree)
     expect(readSavedSessions({ sessions: [saved('w', { worktree }), { ...saved('v'), worktree: { path: '/x' } }] })).toEqual([saved('w', { worktree }), saved('v')])
+  })
+
+  it('keeps the host a session ran on, never this computer, and reads older records without one', () => {
+    expect(savedSessionOf(view('h'), 'app', undefined, 'wsl:Ubuntu')?.hostId).toBe('wsl:Ubuntu')
+    expect(savedSessionOf(view('l'), 'app', undefined, 'local')).not.toHaveProperty('hostId')
+    expect(savedSessionOf(view('n'), 'app')).not.toHaveProperty('hostId')
+    expect(readSavedSessions({ sessions: [saved('h', { hostId: 'wsl:Ubuntu' }), { ...saved('l'), hostId: 'local' }, { ...saved('x'), hostId: 7 }, saved('old')] })).toEqual([
+      saved('h', { hostId: 'wsl:Ubuntu' }),
+      saved('l'),
+      saved('x'),
+      saved('old')
+    ])
+  })
+
+  it('checks a stored folder on the host its session ran on, and stores the host of each open session', async () => {
+    const h = harness({ sessions: [saved('w', { cwd: '/w/acme/api', hostId: 'wsl:Ubuntu' }), saved('l')] }, { hostOf: (v) => (v.cwd.startsWith('/w/') ? 'wsl:Ubuntu' : 'local') })
+    await h.open.restore()
+    expect(h.checked).toEqual([
+      ['/w/acme/api', 'wsl:Ubuntu'],
+      ['/repo/l', undefined]
+    ])
+    expect(h.file().sessions.map((s) => [s.identity, s.hostId])).toEqual([
+      ['w', 'wsl:Ubuntu'],
+      ['l', undefined]
+    ])
   })
 
   it('reopens in sidebar order: top level, then each group in place, the rest after', () => {

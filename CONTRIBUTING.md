@@ -84,11 +84,17 @@ Versions and the [CHANGELOG](CHANGELOG.md) come from the Conventional Commits on
    opened it, and the required checks block the merge until it passes. Approve it under the
    pull request's **Checks** tab, or with
    `gh api -X POST repos/<owner>/<repo>/actions/runs/<run-id>/approve`.
-2. **Cut the release.** Merge the release pull request. The run on that merge tags it
+2. **Write the release notes.** Before merging, add the entry for that version at the top of
+   [`release-notes.json`](release-notes.json) and push it to the release pull request's branch as a
+   `docs:` commit (see [Release notes](#release-notes)). The push also starts the `ci` run. A test
+   fails while the version in `package.json` has no entry, so the pull request cannot be merged
+   without its notes. When release-please rebuilds the branch (another commit reached `main`), the
+   commit is gone: push it again.
+3. **Cut the release.** Merge the release pull request. The run on that merge tags it
    (`v<version>`), creates the GitHub release with the changelog entry as its notes, and calls
    `.github/workflows/release.yml`, which builds the macOS, Windows and Linux installers and
-   attaches them, with `.sha256` files and the `latest*.yml` update metadata.
-3. **Published by itself.** Once the files are attached, `release.yml` publishes the release as the
+   attaches them, with `.sha256` files, the `latest*.yml` update metadata and `release-notes.json`.
+4. **Published by itself.** Once the files are attached, `release.yml` publishes the release as the
    **latest**; the in-app update check sees it from then on (it skips a release without its
    `latest*.yml`). Every release, alpha ones included, is the latest and not a pre-release, because the README's download links and the one-line
    installers use `releases/latest/download/<file>`, which only follows the latest release. Each
@@ -99,6 +105,39 @@ Versions and the [CHANGELOG](CHANGELOG.md) come from the Conventional Commits on
 The release pull request is opened by the workflow's own token, so it does not start the `ci`
 workflow. If a branch rule requires `ci`, close and reopen the pull request (or push a commit to
 its branch) to run the checks.
+
+### Release notes
+
+The changelog is generated from commit subjects, for people who read the code. `release-notes.json`
+is written by hand for the people who use the app: the update prompt and Settings > General >
+Updates show it, so someone can decide whether to update. One entry per version, newest first:
+
+```json
+{
+  "version": "2.0.0-alpha.45",
+  "date": "2026-11-25",
+  "items": [
+    {
+      "kind": "new",
+      "title": { "en": "Live boards beside the chat", "es": "Tableros en vivo junto al chat" },
+      "body": { "en": "One sentence on what it is for.", "es": "Una frase sobre para qué sirve." }
+    }
+  ]
+}
+```
+
+- `kind` is `new`, `improved` or `fixed`. `title` has at most 80 characters and `body`, which is
+  optional, 240. Both always in English and Spanish. One to 8 items, the most useful first.
+- Everyday words: what the person can do now or what stopped going wrong. No pull request numbers,
+  commit scopes or internal names. Several commits about one thing are one item; a change nobody
+  would notice is left out.
+- Plain text only: the app shows it as written, without Markdown or links.
+- The file keeps the newest 30 releases; delete older entries.
+- `packages/app/test/release-notes.test.ts` checks all of this. The format is in
+  `packages/app/src/shared/release-notes.ts`.
+- To correct notes already published, fix the file (every later release carries all its entries)
+  and replace the asset: `gh release upload v<version> release-notes.json --clobber`.
+- `WORKHUB_DEMO_UPDATE=1 npm run dev` shows the prompt with sample notes.
 
 ### Moving to beta or stable
 
@@ -116,8 +155,8 @@ its branch) to run the checks.
 ### Manual fallback
 
 When release-please cannot be used, set the same version in the root `package.json`,
-`packages/app/package.json`, `package-lock.json` and `.release-please-manifest.json`, commit and
-push, then push the tag: `git tag v<version> && git push origin v<version>`. `release.yml` checks
+`packages/app/package.json`, `package-lock.json` and `.release-please-manifest.json`, add that
+version's entry to `release-notes.json`, commit and push, then push the tag: `git tag v<version> && git push origin v<version>`. `release.yml` checks
 the tag against the version, builds the installers and creates the release (notes generated
 by GitHub), published once its files are attached. `scripts/release.sh --dry-run`, then `--publish`, releases a macOS
 build from your machine.
