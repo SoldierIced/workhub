@@ -106,6 +106,13 @@ export interface PromptResult {
   stopReason: string
 }
 
+/**
+ * Starts the error of a prompt the agent never took: it was written to the agent, which did not
+ * acknowledge it in time. The prompt is dropped (the session does not wait on it); the app hands
+ * its text back so the user can send it again.
+ */
+export const PROMPT_NOT_RECEIVED = 'workhub:prompt-not-received'
+
 /** Everything a runtime reports about a session, tagged with Workhub's session id. */
 export type AgentEvent =
   | { sessionId: string; type: 'state'; state: SessionState; error?: string }

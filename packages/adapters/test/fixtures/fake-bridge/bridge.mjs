@@ -43,6 +43,12 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       break
     case 'user': {
       const text = m.text ?? m.content.filter((b) => b.type === 'text').map((b) => b.text).join(' ')
+      // The bridge's receipts, then Claude Code's acknowledgement, as the real ones send them.
+      if (m.uuid) send({ type: 'received', uuid: m.uuid })
+      if (m.uuid) send({ type: 'handed', uuid: m.uuid })
+      // A prompt Claude Code never takes: no acknowledgement, no turn.
+      if (text === 'lose') break
+      if (m.uuid && !process.env.FAKE_BRIDGE_NO_LIFECYCLE) sdk({ type: 'command_lifecycle', command_uuid: m.uuid, state: 'queued' })
       if (text === 'echo start') {
         reply('msg_start', JSON.stringify({ cwd: process.cwd(), start, configEnv: process.env.CLAUDE_CONFIG_DIR ?? null }))
         sdk({ type: 'result', subtype: 'success', is_error: false })

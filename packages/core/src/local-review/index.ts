@@ -45,11 +45,24 @@ export interface LocalReviewRepo {
   files: LocalReviewFile[]
 }
 
+/** A repo inside the folder with changes in the scope that are not traced to the session: counted, not loaded as a repo. */
+export interface LocalReviewOther {
+  name: string
+  root: string
+  files: number
+  additions: number
+  deletions: number
+}
+
 export interface LocalReview {
   folder: string
   scope: LocalReviewScope
   /** The repos with changes in this scope, the session's folder first. */
   repos: LocalReviewRepo[]
+  /** Repos of the folder with changes in this scope that are not the session's; absent when there are none. */
+  untouched?: LocalReviewOther[]
+  /** Set only when the folder was scanned without the split because it was asked to. */
+  wholeFolder?: true
   /** How many repos were looked at, with changes or not. */
   scannedRepos: number
 }

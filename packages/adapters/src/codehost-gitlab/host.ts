@@ -7,6 +7,9 @@ import {
   type CodeHost,
   type CodeHostCapabilities,
   type CodeHostStatus,
+  type MergedList,
+  type MergedPullRequest,
+  type MergedQuery,
   type DiffFile,
   type MergeMethod,
   type NewPullRequest,
@@ -17,13 +20,16 @@ import {
   type ReviewAction
 } from '@workhub/core'
 import { CliNotFoundError, failureText, parseJsonPages, type CliResult, type CliRunner } from '../shared/cli'
-import { mapDetail, mapDiffs, mapMergeRequestList } from './mapping'
+import { mapDetail, mapDiffs, mapMergedList, mapMergeRequestList } from './mapping'
 
 export interface GitLabCodeHostOptions {
   run: CliRunner
   /** Web host; set for a self-managed GitLab. Defaults to gitlab.com. */
   host?: string
 }
+
+/** At most this many merge requests are read per call (30 pages of 100); more is `truncated`. */
+const MERGED_CAP = 3000
 
 const LIST = 'state=opened&per_page=50&order_by=updated_at'
 
@@ -124,6 +130,34 @@ export class GitLabCodeHost implements CodeHost {
   async listReviewRequested(query: PullRequestQuery): Promise<PullRequest[]> {
     const login = await this.currentLogin()
     return this.list(this.base(query.scope), `scope=all&reviewer_username=${encodeURIComponent(login)}`)
+  }
+
+  /**
+   * Merge requests merged in `[since, until)`, read page by page (`updated_after` narrows the read,
+   * the merge time is checked here). No line or file counts: the list does not have them.
+   */
+  async listMerged(query: MergedQuery): Promise<MergedList> {
+    const author = query.mine ? `&author_username=${encodeURIComponent(await this.currentLogin())}` : ''
+    const path = `${this.base(query.scope)}?state=merged&scope=all&per_page=100&order_by=updated_at&sort=desc&updated_after=${encodeURIComponent(new Date(query.since).toISOString())}${author}`
+    const found = new Map<string, MergedPullRequest>()
+    let read = 0
+    let truncated = false
+    for (let page = 1; ; page++) {
+      const raw = parseJsonPages((await this.glab(['api', `${path}&page=${page}`], 'GitLab search failed')).stdout)
+      read += raw.length
+      try {
+        for (const m of mapMergedList(raw, (u) => this.recognizer.parse(u))) found.set(m.url, m)
+      } catch {
+        throw new CodeHostError('GitLab returned an answer Workhub could not read')
+      }
+      if (raw.length < 100) break
+      if (read >= MERGED_CAP) {
+        truncated = true
+        break
+      }
+    }
+    const items = [...found.values()].filter((m) => m.mergedAt >= query.since && m.mergedAt < query.until).sort((a, b) => b.mergedAt - a.mergedAt)
+    return { items, truncated }
   }
 
   private mr(ref: PullRequestRef): string {

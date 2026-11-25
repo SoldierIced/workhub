@@ -85,7 +85,7 @@ collect_assets() {
   find "$dist" -maxdepth 1 -type f \( -name "*-$version-*" -o -name 'latest*.yml' \) ! -name '*.sha256' ! -name '*.md' | sort
 }
 
-publish_cmd_preview=(gh release create "$tag" "<artifacts, .sha256 files and latest*.yml from dist/>" --repo "$repo" --target "<HEAD>" --title "$product $version" --notes-file "$notes" ${prerelease[@]+"${prerelease[@]}"})
+publish_cmd_preview=(gh release create "$tag" "<artifacts, .sha256 files and latest*.yml from dist/, release-notes.json>" --repo "$repo" --target "<HEAD>" --title "$product $version" --notes-file "$notes" ${prerelease[@]+"${prerelease[@]}"})
 
 if $dry_run; then
   echo "dry run: nothing is built, written or published"
@@ -132,13 +132,16 @@ for f in "${assets[@]}"; do
   sums+=("$f.sha256")
 done
 release_notes > "$notes"
+# What changed, for the people who use the app: the update prompt reads it from the release.
+user_notes=()
+[[ -f "$root/release-notes.json" ]] && user_notes=("$root/release-notes.json")
 
 echo "artifacts:"
-printf '  %s\n' "${assets[@]}" "${sums[@]}"
+printf '  %s\n' "${assets[@]}" "${sums[@]}" ${user_notes[@]+"${user_notes[@]}"}
 echo "notes: $notes"
 
 if $publish; then
-  gh release create "$tag" "${assets[@]}" "${sums[@]}" --repo "$repo" --target "$(git -C "$root" rev-parse HEAD)" \
+  gh release create "$tag" "${assets[@]}" "${sums[@]}" ${user_notes[@]+"${user_notes[@]}"} --repo "$repo" --target "$(git -C "$root" rev-parse HEAD)" \
     --title "$product $version" --notes-file "$notes" ${prerelease[@]+"${prerelease[@]}"}
   echo "published $tag on $repo"
 else

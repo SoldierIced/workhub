@@ -60,6 +60,8 @@ export class HostClient {
   private isClosed = false
   private readonly pending = new Map<number, Pending>()
   private readonly eventHandlers = new Map<string, Set<(payload: unknown) => void>>()
+  private readonly closeHandlers = new Set<(reason: string) => void>()
+  private closeReason = ''
   private settleHello!: { resolve: (hello: HostHello) => void; reject: (err: HostHelloError) => void }
 
   constructor(
@@ -134,6 +136,19 @@ export class HostClient {
     }
   }
 
+  /**
+   * Called once when the channel closes (the host went away, or `close()`), after pending requests
+   * were rejected; at once, on the next microtask, when it is already closed.
+   */
+  onClose(handler: (reason: string) => void): () => void {
+    if (this.isClosed) {
+      queueMicrotask(() => handler(this.closeReason))
+      return () => {}
+    }
+    this.closeHandlers.add(handler)
+    return () => this.closeHandlers.delete(handler)
+  }
+
   close(): void {
     this.channel.close()
   }
@@ -181,5 +196,8 @@ export class HostClient {
     this.settleHello.reject(new HostHelloError('closed', err?.message ?? 'the host channel closed before hello'))
     const reason = err ? `the host channel closed: ${err.message}` : 'the host channel closed'
     for (const id of [...this.pending.keys()]) this.settle(id, new HostRequestError('closed', reason))
+    this.closeReason = reason
+    for (const handler of [...this.closeHandlers]) handler(reason)
+    this.closeHandlers.clear()
   }
 }

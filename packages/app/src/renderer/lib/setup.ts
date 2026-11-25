@@ -7,7 +7,10 @@ type TN = (base: PluralKey, count: number, params?: Params) => string
 
 /** The row's title in the user's language. */
 export function itemTitle(t: T, item: SetupItem): string {
-  return t(`setup.item.${item.kind}` as MessageKey, item.params)
+  const title = t(`setup.item.${item.kind}` as MessageKey, item.params)
+  // Checked inside the WSL distribution the active profile runs in.
+  const host = item.params['host']
+  return host ? t('setup.inHost', { title, host }) : title
 }
 
 /** The row's one-line detail: what was found, or what to do about it. */

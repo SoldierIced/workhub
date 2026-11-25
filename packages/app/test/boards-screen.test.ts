@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { boardLiveness, productBoard, type Board, type BoardLogEntry, type StoredBoard } from '@workhub/core'
-import { GRAPH, graphMinWidth, layoutGraph } from '../src/renderer/lib/boardGraph'
+import { GRAPH, layoutGraph } from '../src/renderer/lib/boardGraph'
 import { boardTimeOptions, columnPercents, given, hasDetailEntries, itemKey, keptRemoval, logRows, selectedBoardId, untitledNumbers } from '../src/renderer/lib/boards'
 import { BoardHeader } from '../src/renderer/screens/boards/BoardHeader'
 import { BoardView } from '../src/renderer/screens/boards/BoardView'
@@ -59,24 +59,6 @@ describe('graph geometry', () => {
     const a = boxes[0]!
     expect(edges[0]!.d.startsWith(`M${c.x + c.w / 2 + GRAPH.laneShift} ${c.y + c.h}V`)).toBe(true)
     expect(edges[0]!.d.endsWith(`V${a.y + a.h}`)).toBe(true)
-  })
-
-  it('never lets the labels fall below a readable size: the minimum width follows the drawing, and a wide one scrolls', () => {
-    const wide = (columns: number) => layoutGraph(Array.from({ length: columns }, (_, c) => ({ id: `n${c}`, label: `N${c}`, col: c, row: 0 })), [])
-    for (const columns of [1, 4, 6, 12]) {
-      const { width } = wide(columns)
-      const min = graphMinWidth(width)
-      // Drawn at its narrowest, a box label (GRAPH.labelFont units) is still at least minLabelPx on screen.
-      expect((min / width) * GRAPH.labelFont).toBeGreaterThanOrEqual(GRAPH.minLabelPx)
-      expect(min).toBeLessThanOrEqual(width)
-    }
-    // 6 columns: about 1.5k units wide, so it cannot be squeezed under about 1.25k px (it used to be 800).
-    expect(wide(6).width).toBe(2 * GRAPH.pad + 6 * GRAPH.boxW + 5 * GRAPH.gapX)
-    expect(graphMinWidth(wide(6).width)).toBeGreaterThan(1200)
-    // 12 columns: three thousand units, at least 2.5k px (it used to be 800, which drew the labels at about 5 px).
-    expect(graphMinWidth(wide(12).width)).toBeGreaterThan(2500)
-    // The sample's four columns fit a normal window, next to the list of chats, without scrolling.
-    expect(graphMinWidth(wide(4).width)).toBeLessThan(950)
   })
 
   it('leaves out an edge whose end is not a node', () => {
@@ -166,6 +148,11 @@ describe('log rows', () => {
 describe('the board view', () => {
   const stored = (board: Board, receivedAt = NOW): StoredBoard => ({ board, receivedAt, firstReceivedAt: receivedAt })
   const html = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(BoardView, { profileId: 'p', boardKey: 'k', stored: stored(productBoard(NOW)), now: NOW })))
+
+  it('never scrolls sideways: the diagram fits the width it gets and the stages line wraps', () => {
+    expect(html).not.toContain('overflow-x-auto')
+    expect(html).not.toMatch(/min-width:/)
+  })
 
   it('draws every kind of block of the sample board under its title', () => {
     for (const kind of ['steps', 'graph', 'list', 'table', 'log', 'text']) expect(html).toContain(`data-block="${kind}"`)

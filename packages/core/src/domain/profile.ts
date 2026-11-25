@@ -5,6 +5,7 @@ import type { PlannerSettings } from '../calendar/types'
 import type { WorktreeSettings } from '../worktrees/settings'
 import type { PullRequestFilterSettings } from '../codehost/filters'
 import type { ConnectionKind } from './connection'
+import type { ProfileHost } from '../host/profile-host'
 
 /** Optional modules (PLAN section 4): each one adds its screens only when enabled in a profile. */
 export const OPTIONAL_MODULES = ['flows', 'health', 'chatWatcher', 'automations', 'flowMaps', 'planner', 'boards'] as const
@@ -86,6 +87,8 @@ export interface Profile {
   planner?: PlannerSettings
   /** Alerts across modules (Settings → Alerts): the quiet hours. Unset: none. */
   alerts?: ProfileAlertSettings
+  /** Where the profile's sessions and folders live (see `hostOfProfile`). Unset: this computer. */
+  host?: ProfileHost
 }
 
 /** Colours a profile without one of its own takes, by its place in the list (Workhub 1's accent palette). */

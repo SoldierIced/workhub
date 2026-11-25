@@ -3,6 +3,7 @@ import type {
   CommentThread,
   InlineComment,
   Mergeability,
+  MergedPullRequest,
   PullRequest,
   PullRequestCheck,
   PullRequestComment,
@@ -255,4 +256,43 @@ export function mapDetail(view: unknown, inlinePages: readonly unknown[], ref: P
     commits,
     checks
   }
+}
+
+/** A number the API sent, or undefined: a merged PR without line counts is "not reported", never zero. */
+const optNum = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+
+/** One node of the merged search (`MERGED_QUERY` in `host.ts`). Null for nodes that are not merged pull requests. */
+export function mapMergedNode(node: unknown, provider = 'github'): MergedPullRequest | null {
+  const n = obj(node)
+  const number = num(n['number'])
+  const url = str(n['url'])
+  const mergedAt = epoch(n['mergedAt'])
+  if (!number || !url || mergedAt === undefined) return null
+  const repository = obj(n['repository'])
+  return {
+    provider,
+    owner: login(repository['owner']),
+    repo: str(repository['name']),
+    number,
+    url,
+    title: str(n['title']),
+    // A deleted account has no author: GitHub shows it as "ghost".
+    author: login(n['author']) || 'ghost',
+    branch: str(n['headRefName']),
+    base: str(n['baseRefName']),
+    mergedAt,
+    createdAt: epoch(n['createdAt']),
+    additions: optNum(n['additions']),
+    deletions: optNum(n['deletions']),
+    changedFiles: optNum(n['changedFiles'])
+  }
+}
+
+/** One page of the merged search: its pull requests, the search's total (`issueCount`) and the next cursor. */
+export function mapMergedPage(stdout: string, provider = 'github'): { items: MergedPullRequest[]; issueCount: number; next: string | null } {
+  const search = obj(obj(obj(JSON.parse(stdout))['data'])['search'])
+  const items = arr(search['nodes']).map((n) => mapMergedNode(n, provider)).filter((p): p is MergedPullRequest => p !== null)
+  const info = obj(search['pageInfo'])
+  const next = info['hasNextPage'] === true && typeof info['endCursor'] === 'string' && info['endCursor'] ? info['endCursor'] : null
+  return { items, issueCount: optNum(search['issueCount']) ?? items.length, next }
 }

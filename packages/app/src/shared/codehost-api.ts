@@ -1,5 +1,5 @@
 // Types of the pull request bridge (window.hub.codeHost), shared by main, preload and renderer.
-import type { CodeHostCapabilities, CodeHostErrorKind, MergeMethod, PullRequestItem, PullRequestView, RepositoryRef, ReviewAction } from '@workhub/core'
+import type { CodeHostCapabilities, CodeHostErrorKind, DiffFile, MergedPullRequest, MergeMethod, PullRequestDetail, PullRequestItem, PullRequestView, RepositoryRef, ReviewAction } from '@workhub/core'
 
 /** Why the lists are empty: nothing is connected, a CLI is missing or logged out, or a read failed. */
 export type CodeHostState = 'ready' | 'notConnected' | 'missingCli' | 'signedOut' | 'error'
@@ -23,6 +23,69 @@ export interface CodeHostLists {
 export type PullRequestViewResult =
   | { ok: true; view: PullRequestView; capabilities: CodeHostCapabilities; provider: string; isMine: boolean }
   | { ok: false; error: string }
+
+/** The detail view without its diff: what the panel shows first. */
+export type PullRequestDetailResult =
+  | { ok: true; detail: PullRequestDetail; capabilities: CodeHostCapabilities; provider: string; isMine: boolean }
+  | { ok: false; error: string }
+
+/** What the Merged view asks: a period (epoch milliseconds, `until` excluded) and whose pull requests. */
+export interface MergedRequest {
+  since: number
+  until: number
+  mine: boolean
+  /** Every profile's saved merges (each read in its own scope), not only this profile's. */
+  allProfiles?: boolean
+  /** The `version` of the answer the view already holds: an answer with the same items comes back without them (`unchanged`). */
+  known?: string
+}
+
+/**
+ * How the read went against the host. `synced`: what was missing was read; `saved`: answered from what is
+ * saved (it was read moments ago); `failed`: the host could not be read, the items are what was saved.
+ */
+export type MergedSync =
+  | { state: 'synced' | 'saved' }
+  | { state: 'failed'; reason: CodeHostState | 'rateLimited'; error: string; retryAt?: number }
+
+/**
+ * The merged pull requests of a period in the profile's scope (its repositories, owners and hidden
+ * repositories apply). `state` is the lists' meaning when not `ready`; `unsupported`: the host cannot list merges.
+ */
+/**
+ * What the merged search was narrowed to, for the header: the profile's repositories, its owners,
+ * the connection's scope text, the repositories behind its folders, or nothing (only `mine` is allowed then).
+ */
+export interface MergedScope {
+  kind: 'repos' | 'owners' | 'connection' | 'folders' | 'none'
+  values: string[]
+}
+
+export type MergedPullRequestsResult =
+  | {
+      ok: true
+      items: MergedPullRequest[]
+      truncated: boolean
+      provider: string
+      fetchedAt: number
+      scope: MergedScope
+      demo?: boolean
+      sync: MergedSync
+      /** Part of the period was never read completely (a failed or cut read): the numbers miss those days. */
+      partial: boolean
+      /** With `allProfiles`: how many profiles the items come from. */
+      profiles?: number
+      /** The signed-in logins of the profiles read (lowercase): Mine is Everyone's items by these authors. Absent: unknown. */
+      logins?: string[]
+      /** A fingerprint of `items`: the same items, the same version. */
+      version?: string
+      /** The items are the ones of `known`: `items` is sent empty, keep the ones held. */
+      unchanged?: true
+    }
+  | { ok: false; state: CodeHostState | 'unsupported' | 'noScope' | 'rateLimited'; error: string; retryAt?: number }
+
+/** The files changed by a pull request, read on their own (the diff is the slowest read). */
+export type PullRequestDiffResult = { ok: true; files: DiffFile[] } | { ok: false; error: string }
 
 /** `kind`: why the host refused, when it said so (not mergeable, checks failing, no permission, already exists). */
 export type CodeHostActionResult = { ok: true } | { ok: false; error: string; kind?: CodeHostErrorKind }
@@ -62,6 +125,12 @@ export const isPullRequestWindowTab = (tab: unknown): tab is PullRequestWindowTa
 export interface CodeHostApi {
   lists(profileId: string | null, force?: boolean): Promise<CodeHostLists>
   view(profileId: string | null, url: string): Promise<PullRequestViewResult>
+  /** The PR without its diff (conversation, checks, reviews): faster than `view`. Main keeps it a minute; `fresh` reads the host again. */
+  detail(profileId: string | null, url: string, fresh?: boolean): Promise<PullRequestDetailResult>
+  /** Merged pull requests of a period; kept a few minutes per profile and request unless `force`. */
+  merged(profileId: string | null, request: MergedRequest, force?: boolean): Promise<MergedPullRequestsResult>
+  /** The PR's changed files on their own. */
+  diff(profileId: string | null, url: string): Promise<PullRequestDiffResult>
   /** One pull request by URL, as the lists show it (title, state, size); null when it cannot be read. Kept for a few minutes. */
   pullRequest(profileId: string | null, url: string): Promise<PullRequestItem | null>
   review(profileId: string | null, url: string, action: ReviewAction, body: string): Promise<CodeHostActionResult>
@@ -85,6 +154,8 @@ export interface CodeHostApi {
   onFocus(cb: (url: string, profileId: string | null) => void): () => void
   /** Opens a recognized PR URL in the browser. */
   openExternal(profileId: string | null, url: string): Promise<void>
+  /** Fires in every window after a write on a PR succeeded (review, comment, reply, merge, close), so each drops its cached copy. */
+  onChanged(cb: (url: string, profileId: string | null) => void): () => void
   /** Fires in a PR window that was already open when it was asked to show a tab. */
   onShowTab(cb: (tab: PullRequestWindowTab) => void): () => void
 }

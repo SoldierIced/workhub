@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ControlAuth } from '../src/main/control-auth'
-import { controlEnv, controlSocketPath, NO_CONTROL_ENV, newControlToken, parseReviewBody, privateSocketDir, probeSocket, reviewPathOutside, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
+import { controlEnv, controlSocketPath, NO_CONTROL_ENV, newControlToken, parseReviewBody, privateSocketDir, probeSocket, reviewPathOutside, serveControl, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -81,13 +81,33 @@ describe('control endpoint', () => {
     }
   })
 
-  it('checks the repos of a review request', () => {
+  it('answers a failure inside a route with a fixed message, and logs what failed', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wh-ctl-'))
+    dirs.push(dir)
+    const logged: string[] = []
+    const socket = controlSocketPath(dir)
+    const server = await startControlServer(socket, {
+      auth: testAuth(['s1']),
+      log: (m) => void logged.push(m),
+      openReview: () => {
+        throw new Error('<img src=x onerror=alert(1)>')
+      }
+    })
+    try {
+      expect(await call(socket, 'POST', '/v1/sessions/s1/review', {})).toEqual({ status: 500, json: { ok: false, error: 'internal error' } })
+      expect(logged.some((m) => m.includes('<img src=x onerror=alert(1)>'))).toBe(true)
+    } finally {
+      server?.close()
+    }
+  })
+
+  it('checks the repos of a review request', async () => {
     const dir = (p: string) => p.startsWith('/ok')
-    expect(parseReviewBody(undefined, dir)).toEqual([])
-    expect(parseReviewBody({ repos: ['/ok/a', { path: '/ok/b', base: 'origin/main' }] }, dir)).toEqual([{ path: '/ok/a' }, { path: '/ok/b', base: 'origin/main' }])
-    expect(parseReviewBody({ repos: [{ path: 'rel' }] }, dir)).toMatch(/absolute/)
-    expect(parseReviewBody({ repos: ['/nope'] }, dir)).toMatch(/not a folder/)
-    expect(parseReviewBody({ repos: [{ path: '/ok/a', base: 'x; rm -rf' }] }, dir)).toMatch(/bad "base"/)
+    expect(await parseReviewBody(undefined, dir)).toEqual([])
+    expect(await parseReviewBody({ repos: ['/ok/a', { path: '/ok/b', base: 'origin/main' }] }, dir)).toEqual([{ path: '/ok/a' }, { path: '/ok/b', base: 'origin/main' }])
+    expect(await parseReviewBody({ repos: [{ path: 'rel' }] }, dir)).toMatch(/absolute/)
+    expect(await parseReviewBody({ repos: ['/nope'] }, dir)).toMatch(/not a folder/)
+    expect(await parseReviewBody({ repos: [{ path: '/ok/a', base: 'x; rm -rf' }] }, dir)).toMatch(/bad "base"/)
   })
 
   it('opens the review of a session over the socket', async () => {
@@ -111,6 +131,57 @@ describe('control endpoint', () => {
     } finally {
       server?.close()
     }
+  })
+})
+
+describe('serveControl (plain requests)', () => {
+  const plain = (method: string, url: string, token: string | null, body?: unknown) => ({
+    method,
+    url,
+    headers: token ? { 'x-workhub-token': token } : {},
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  })
+
+  it('answers like the HTTP endpoint: 200 with the token, 401 without, 403 for another session', async () => {
+    const opened: string[] = []
+    const deps = { auth: testAuth(['s1', 's2']), openReview: (id: string) => (opened.push(id), { ok: true as const }) }
+    const ok = await serveControl(deps, plain('POST', '/v1/sessions/s1/review', 't-s1', {}), () => true)
+    expect(ok).toEqual({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ok: true }) })
+    expect(opened).toEqual(['s1'])
+    const anonymous = await serveControl(deps, plain('POST', '/v1/sessions/s1/review', null, {}))
+    expect(anonymous.status).toBe(401)
+    expect(JSON.parse(anonymous.body)).toMatchObject({ ok: false })
+    expect((await serveControl(deps, plain('POST', '/v1/sessions/s2/review', 't-s1', {}))).status).toBe(403)
+    expect((await serveControl(deps, plain('GET', '/v1/health', null))).status).toBe(200)
+    expect(opened).toEqual(['s1'])
+  })
+
+  it("checks a review's repos on the session's host, not on this computer", async () => {
+    const opened: unknown[] = []
+    const asked: [string, string][] = []
+    const deps = {
+      auth: testAuth(['s1']),
+      openReview: (_id: string, repos: unknown) => (opened.push(repos), { ok: true as const }),
+      // The session runs in WSL: its folders are the distribution's.
+      isReviewFolder: async (sessionId: string, path: string) => (asked.push([sessionId, path]), path === '/home/ana/acme')
+    }
+    const ok = await serveControl(deps, plain('POST', '/v1/sessions/s1/review', 't-s1', { repos: ['/home/ana/acme'] }), () => false)
+    expect(ok.status).toBe(200)
+    expect(opened).toEqual([[{ path: '/home/ana/acme' }]])
+    expect(asked).toEqual([['s1', '/home/ana/acme']])
+    const missing = await serveControl(deps, plain('POST', '/v1/sessions/s1/review', 't-s1', { repos: ['/home/ana/gone'] }), () => true)
+    expect(missing.status).toBe(400)
+  })
+
+  it('refuses a body that is not JSON or passed the cap', async () => {
+    const deps = { auth: testAuth(), openReview: () => ({ ok: true as const }) }
+    const bad = await serveControl(deps, { method: 'POST', url: '/v1/sessions/s1/review', headers: { 'x-workhub-token': 't-s1' }, body: '<script>nope' })
+    expect(bad.status).toBe(400)
+    // The parser's message quotes the body: it is not sent back.
+    expect(JSON.parse(bad.body)).toEqual({ ok: false, error: 'the body is not valid JSON' })
+    const big = await serveControl(deps, { method: 'POST', url: '/v1/sessions/s1/review', headers: { 'x-workhub-token': 't-s1' }, bodyTooLarge: true })
+    expect(big.status).toBe(400)
+    expect(JSON.parse(big.body)).toEqual({ ok: false, error: 'body too large' })
   })
 })
 
@@ -207,8 +278,19 @@ describe.skipIf(process.platform === 'win32')('control socket ownership', () => 
   })
 })
 
+describe('reviewPathOutside on a host', () => {
+  it("compares the host's real paths as POSIX paths, whatever this computer is", async () => {
+    // The distribution's realpath: /home/ana/link points outside the session's folders.
+    const real = async (p: string) => ({ '/home/ana/acme': '/home/ana/acme', '/home/ana/acme/api': '/home/ana/acme/api', '/home/ana/link': '/srv/other', '/home/ana/work': '/home/ana/work' })[p] ?? null
+    const roots = ['/home/ana/acme', '/home/ana/work']
+    expect(await reviewPathOutside([{ path: '/home/ana/acme/api' }, { path: '/home/ana/acme' }], roots, real)).toBeNull()
+    expect(await reviewPathOutside([{ path: '/home/ana/link' }], roots, real)).toBe('/home/ana/link')
+    expect(await reviewPathOutside([{ path: '/home/ana/missing' }], roots, real)).toBe('/home/ana/missing')
+  })
+})
+
 describe.skipIf(process.platform === 'win32')('reviewPathOutside', () => {
-  it('accepts folders inside a root, refuses outside ones and symlinks that point outside', () => {
+  it('accepts folders inside a root, refuses outside ones and symlinks that point outside', async () => {
     const base = mkdtempSync(join(tmpdir(), 'wh-rev-'))
     dirs.push(base)
     const session = join(base, 'session')
@@ -217,10 +299,10 @@ describe.skipIf(process.platform === 'win32')('reviewPathOutside', () => {
     for (const d of [join(session, 'repo'), profile, outside]) mkdirSync(d, { recursive: true })
     symlinkSync(outside, join(session, 'link'))
     const roots = [session, profile]
-    expect(reviewPathOutside([{ path: join(session, 'repo') }, { path: session }, { path: profile }], roots)).toBeNull()
-    expect(reviewPathOutside([{ path: join(session, 'repo') }, { path: outside }], roots)).toBe(outside)
-    expect(reviewPathOutside([{ path: join(session, 'link') }], roots)).toBe(join(session, 'link'))
-    expect(reviewPathOutside([{ path: join(session, '..', 'outside') }], roots)).toBe(join(session, '..', 'outside'))
-    expect(reviewPathOutside([{ path: join(session, 'missing') }], roots)).toBe(join(session, 'missing'))
+    expect(await reviewPathOutside([{ path: join(session, 'repo') }, { path: session }, { path: profile }], roots)).toBeNull()
+    expect(await reviewPathOutside([{ path: join(session, 'repo') }, { path: outside }], roots)).toBe(outside)
+    expect(await reviewPathOutside([{ path: join(session, 'link') }], roots)).toBe(join(session, 'link'))
+    expect(await reviewPathOutside([{ path: join(session, '..', 'outside') }], roots)).toBe(join(session, '..', 'outside'))
+    expect(await reviewPathOutside([{ path: join(session, 'missing') }], roots)).toBe(join(session, 'missing'))
   })
 })

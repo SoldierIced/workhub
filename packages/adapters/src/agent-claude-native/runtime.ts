@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { isUsageLimitText, limitResetFromText } from '@workhub/core'
+import { isUsageLimitText, limitResetFromText, PROMPT_NOT_RECEIVED, redactText } from '@workhub/core'
 import type {
   AgentCapabilities,
   AgentDefinition,
@@ -31,6 +31,11 @@ import { CLAUDE_PERMISSION_MODES, ClaudeBridgeMapper, claudePermissionMode, perm
 const CLAUDE_MODES: ReadonlySet<string> = new Set(CLAUDE_PERMISSION_MODES.map((m) => m.id))
 
 const DEFAULT_START_TIMEOUT_MS = 60_000
+/**
+ * How long a prompt written to the bridge may go unacknowledged. Claude Code reports a prompt it
+ * took (`command_lifecycle` "queued") within a second, even while a turn runs or MCP servers start.
+ */
+const DEFAULT_PROMPT_ACK_TIMEOUT_MS = 30_000
 
 export interface ClaudeNativeRuntimeOptions {
   /** Folder holding `bridge.mjs` and `sessions.mjs`. */
@@ -51,6 +56,10 @@ export interface ClaudeNativeRuntimeOptions {
    * start; the process PATH when unset or when it returns undefined.
    */
   path?: () => string | undefined
+  /** How long a prompt may go unacknowledged before it is dropped as not received. 30 s by default. */
+  promptAckTimeoutMs?: number
+  /** The main log: a prompt Claude never took, with where it got to (never its text). */
+  log?: (message: string) => void
 }
 
 interface Pending {
@@ -58,6 +67,15 @@ interface Pending {
   uuid: string
   resolve: (r: PromptResult) => void
   reject: (e: Error) => void
+  /** When it was written to the bridge. */
+  sentAt: number
+  /** Sent while another prompt ran (priority `next`). */
+  midTurn: boolean
+  /** How far it got: the bridge read it, handed it to the SDK, Claude Code queued it. */
+  receivedByBridge: boolean
+  handedToSdk: boolean
+  acked: boolean
+  ackTimer?: ReturnType<typeof setTimeout>
 }
 
 interface NativeSession {
@@ -73,6 +91,10 @@ interface NativeSession {
   stderr: StderrTail
   /** The bridge's last `error` line, kept so its exit does not report the session as stopped. */
   error?: string
+  /** Claude Code reported a prompt's lifecycle once: it acknowledges every prompt it takes. */
+  lifecycle: boolean
+  /** When the bridge last relayed a message from Claude Code (an older CLI acknowledges nothing else). */
+  lastSdkAt: number
 }
 
 type Obj = Record<string, unknown>
@@ -113,7 +135,9 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
       cancelled: false,
       stopping: false,
       models: [],
-      stderr: new StderrTail()
+      stderr: new StderrTail(),
+      lifecycle: false,
+      lastSdkAt: 0
     }
     this.sessions.set(id, session)
 
@@ -228,7 +252,11 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
     if (!midTurn) s.cancelled = false
     this.emit({ sessionId, type: 'state', state: 'busy' })
     const uuid = randomUUID()
-    const result = new Promise<PromptResult>((resolve, reject) => s.pending.push({ uuid, resolve, reject }))
+    const result = new Promise<PromptResult>((resolve, reject) => {
+      const pending: Pending = { uuid, resolve, reject, sentAt: Date.now(), midTurn, receivedByBridge: false, handedToSdk: false, acked: false }
+      s.pending.push(pending)
+      this.watchAck(s, pending)
+    })
     const stamp = { uuid, ...(midTurn ? { priority: 'next' } : {}) }
     if (images.length) {
       const content = [
@@ -311,7 +339,23 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
   }
 
   private onLine(s: NativeSession, line: Obj): void {
+    // The bridge's receipts for a prompt: read from the app, handed to the SDK.
+    if (line['type'] === 'received' || line['type'] === 'handed') {
+      const p = s.pending.find((x) => x.uuid === line['uuid'])
+      if (p && line['type'] === 'received') p.receivedByBridge = true
+      else if (p) p.handedToSdk = true
+      return
+    }
     const message = line['type'] === 'sdk' ? (line['message'] as Obj | undefined) : undefined
+    if (message) {
+      s.lastSdkAt = Date.now()
+      if (message['type'] === 'command_lifecycle') {
+        s.lifecycle = true
+        const p = s.pending.find((x) => x.uuid === message['command_uuid'])
+        if (p) this.ack(p)
+        return
+      }
+    }
     // `/clear` gives the conversation a new session id and transcript: the session follows it, so
     // its monitor, its resume and its sidebar place keep pointing at the live conversation. Only
     // main-thread messages (the init and a turn's result) are trusted for it.
@@ -332,7 +376,10 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
         message
       )
       const stopReason = resultStopReason(message, s.cancelled)
-      for (const p of s.pending.filter((p) => settled.includes(p.uuid))) p.resolve({ stopReason })
+      for (const p of s.pending.filter((p) => settled.includes(p.uuid))) {
+        this.ack(p)
+        p.resolve({ stopReason })
+      }
       s.pending = s.pending.filter((p) => !settled.includes(p.uuid))
       s.cancelled = false
       // A prompt sent during the turn still waits for its own turn: the session stays busy.
@@ -342,7 +389,10 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
     if (line['type'] === 'error') {
       const error = String(line['message'] ?? 'the Claude bridge failed')
       s.error = error
-      for (const p of s.pending.splice(0)) p.reject(new Error(error))
+      for (const p of s.pending.splice(0)) {
+        this.ack(p)
+        p.reject(new Error(error))
+      }
       this.emit({ sessionId: s.id, type: 'state', state: 'error', error })
       return
     }
@@ -353,7 +403,45 @@ export class ClaudeNativeRuntime implements AgentRuntime, SessionControls, Sessi
   }
 
   private finishPending(s: NativeSession, stopReason: string): void {
-    for (const p of s.pending.splice(0)) p.resolve({ stopReason })
+    for (const p of s.pending.splice(0)) {
+      this.ack(p)
+      p.resolve({ stopReason })
+    }
+  }
+
+  /** The prompt is accounted for (taken, answered or ended): its watch stops. */
+  private ack(p: Pending): void {
+    p.acked = true
+    if (p.ackTimer) clearTimeout(p.ackTimer)
+    p.ackTimer = undefined
+  }
+
+  /**
+   * Drops a prompt Claude Code never took, so the session does not wait on it forever: Claude
+   * Code acknowledges each prompt it reads, and an older one that does not at least starts a turn.
+   * A prompt sent during a turn to such an older CLI waits silently by design and is not watched.
+   */
+  private watchAck(s: NativeSession, p: Pending): void {
+    const ms = this.options.promptAckTimeoutMs ?? DEFAULT_PROMPT_ACK_TIMEOUT_MS
+    if (ms <= 0) return
+    p.ackTimer = setTimeout(() => {
+      p.ackTimer = undefined
+      if (p.acked || !s.pending.includes(p) || this.sessions.get(s.id) !== s) return
+      if (!s.lifecycle && (p.midTurn || s.lastSdkAt >= p.sentAt)) return
+      s.pending = s.pending.filter((x) => x !== p)
+      const alive = s.child.exitCode === null && s.child.signalCode === null
+      const where = !p.receivedByBridge ? 'the bridge never read it' : !p.handedToSdk ? 'the bridge read it but the SDK never took it' : 'the SDK took it but Claude Code never acknowledged it'
+      const stderr = s.stderr.last(5)
+      this.options.log?.(
+        `session ${s.id}: prompt ${p.uuid} not received after ${Math.round(ms / 1000)} s: ${where}` +
+          ` (sent ${p.midTurn ? 'during a turn' : 'while idle'}, bridge ${alive ? `running, pid ${s.child.pid}` : 'gone'},` +
+          ` Claude Code acknowledged prompts before: ${s.lifecycle ? 'yes' : 'no'}, last message from Claude Code ${s.lastSdkAt ? `${Math.round((Date.now() - s.lastSdkAt) / 1000)} s ago` : 'never'})` +
+          (stderr.length ? `; bridge stderr: ${redactText(stderr.join(' | '), 1500)}` : '')
+      )
+      p.reject(new Error(`${PROMPT_NOT_RECEIVED}: Claude Code did not take this message (${where})`))
+      if (!s.pending.length && this.sessions.has(s.id)) this.emit({ sessionId: s.id, type: 'state', state: 'ready' })
+    }, ms)
+    p.ackTimer.unref?.()
   }
 
   private send(s: NativeSession, message: Obj): void {

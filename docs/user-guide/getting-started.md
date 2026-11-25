@@ -70,6 +70,10 @@ Windows is built by CI and has not been tested on real machines yet. Please repo
 On Windows, the **Shell** view opens the shell named by the `COMSPEC` environment variable, else
 `powershell.exe`.
 
+To run a profile's sessions inside WSL (Ubuntu 22.04 or later), pick the distribution in
+**Settings → Profiles → Folders → Where sessions run**. See
+[Run sessions inside WSL](profiles.md#run-sessions-inside-wsl).
+
 By hand instead: download `Workhub-2-<version>-win-x64.exe` from the Releases page and run it.
 SmartScreen shows "Windows protected your PC": click **More info**, then **Run anyway** (expected
 for every unsigned build). To check the download first:
@@ -249,6 +253,13 @@ version** on a Mac that cannot replace the app), **Later** (asks again the next 
 version** (never asks for that one again; a newer one does). **Check now** in Settings never asks.
 **Check for updates…** in the menu bar icon checks at once and opens Settings on this group,
 highlighted for a moment, where the result shows.
+
+Both the question and Settings say what changed, so you can decide: for every version after yours,
+newest first, a short list of what is **New**, **Improved** and **Fixed**, in the app's language.
+Several versions behind, the two newest are open and **Show N earlier versions** opens the rest (up
+to 10 versions in all). **See all the changes on GitHub** opens the list of releases, where every
+version has its complete list of changes. A release published without notes shows only that link;
+when the notes could not be loaded, it says so above the link.
 
 ## Menu bar and tray
 

@@ -18,6 +18,7 @@ import type { MenuCommand } from './windows-api'
 import type { RemoteStatusView } from './remote-api'
 import type { SignInEvent } from './sign-in-api'
 import type { InstallQueueSnapshot } from './setup-api'
+import type { HostStatus } from './hosts-api'
 
 /** What carries `hub` calls to the main process: request/response, one-way, and main's events. */
 export interface HubTransport {
@@ -112,7 +113,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       revealFolder: (path) => invoke('history:revealFolder', path)
     },
     agents: {
-      availability: () => invoke('agents:availability'),
+      availability: (profileId?: string | null) => invoke('agents:availability', profileId ?? null),
       options: (agentKey, refresh) => invoke('agents:options', agentKey, refresh)
     },
     usage: {
@@ -140,6 +141,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       check: () => invoke('updates:check'),
       install: () => invoke('updates:install'),
       restart: () => invoke('updates:restart'),
+      openRelease: () => invoke('updates:openRelease'),
       onChanged: (cb) => subscribe<[UpdateStatus]>('updates:changed', cb),
       skip: (version) => invoke('updates:skip', version),
       onPrompt: (cb) => subscribe<[UpdateStatus]>('updates:prompt', cb)
@@ -151,7 +153,10 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
     },
     codeHost: {
       lists: (profileId, force) => invoke('codeHost:lists', profileId, force),
+      merged: (profileId, request, force) => invoke('codeHost:merged', profileId, request, force === true),
       view: (profileId, url) => invoke('codeHost:view', profileId, url),
+      detail: (profileId, url, fresh) => invoke('codeHost:detail', profileId, url, fresh === true),
+      diff: (profileId, url) => invoke('codeHost:diff', profileId, url),
       pullRequest: (profileId, url) => invoke('codeHost:pullRequest', profileId, url),
       review: (profileId, url, action, body) => invoke('codeHost:review', profileId, url, action, body),
       comment: (profileId, url, body) => invoke('codeHost:comment', profileId, url, body),
@@ -165,7 +170,8 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       showInWorkhub: (profileId, url) => invoke('codeHost:showInWorkhub', profileId, url),
       onFocus: (cb) => subscribe<[string, string | null]>('codeHost:focus', cb),
       openExternal: (profileId, url) => invoke('codeHost:openExternal', profileId, url),
-      onShowTab: (cb) => subscribe<[PullRequestWindowTab]>('codeHost:showTab', cb)
+      onShowTab: (cb) => subscribe<[PullRequestWindowTab]>('codeHost:showTab', cb),
+      onChanged: (cb) => subscribe<[string, string | null]>('codeHost:changed', cb)
     },
     links: {
       request: (intent) => send('links:request', intent),
@@ -334,6 +340,12 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       completeWelcome: () => invoke('setup:completeWelcome'),
       folders: () => invoke('setup:folders')
     },
+    hosts: {
+      wslDistros: () => invoke('hosts:wslDistros'),
+      status: () => invoke('hosts:status'),
+      retry: (id) => invoke('hosts:retry', id),
+      onStatus: (cb) => subscribe<[HostStatus[]]>('hosts:statusChanged', cb)
+    },
     signIn: (tool, accountId) => invoke('signIn:open', tool, accountId ?? null),
     signInPane: {
       attach: (id) => invoke('signIn:attach', id),
@@ -364,7 +376,7 @@ export function buildHub(transport: HubTransport, platform: Platform): HubApi {
       test: (body) => invoke('systemNotifications:test', body)
     },
     localReview: {
-      load: (sessionId, scope, files, chosen) => invoke('localReview:load', sessionId, scope, files, chosen),
+      load: (sessionId, scope, files, chosen, wholeFolder) => invoke('localReview:load', sessionId, scope, files, chosen, wholeFolder),
       comments: (sessionId) => invoke('localReview:comments', sessionId),
       setComments: (sessionId, comments) => invoke('localReview:setComments', sessionId, comments),
       send: (sessionId, text) => invoke('localReview:send', sessionId, text),

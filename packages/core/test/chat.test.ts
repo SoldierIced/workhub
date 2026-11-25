@@ -55,6 +55,14 @@ describe('chat links', () => {
     expect(plainText('<@U1|ana> in <#C2|reviews>: a &amp; b')).toBe('@ana in #reviews: a & b')
   })
 
+  it('unwraps links in linear time on text full of unclosed link openings', () => {
+    expect(plainText('see <https://example.com/a|the doc> and <https://example.com/b>')).toBe('see https://example.com/a and https://example.com/b')
+    const hostile = '<http://!|'.repeat(50_000)
+    const started = Date.now()
+    expect(plainText(hostile)).toBe(hostile)
+    expect(Date.now() - started).toBeLessThan(1_000)
+  })
+
   it('cuts long titles at a word boundary', () => {
     const title = threadTitle('word '.repeat(30))
     expect(title.endsWith('…')).toBe(true)

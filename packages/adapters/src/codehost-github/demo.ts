@@ -91,7 +91,7 @@ function searchNode(p: DemoPr, now: number, step = 0) {
   }
 }
 
-function viewJson(p: DemoPr, now: number, step = 0, state: 'OPEN' | 'MERGED' = 'OPEN') {
+function viewJson(p: DemoPr, now: number, step = 0, state: 'OPEN' | 'MERGED' = 'OPEN', merged?: DemoMerged) {
   const ci = p.ci
   return {
     number: p.number,
@@ -104,9 +104,9 @@ function viewJson(p: DemoPr, now: number, step = 0, state: 'OPEN' | 'MERGED' = '
     baseRefName: p.base,
     headRefName: p.head,
     headRefOid: headOf(p, step),
-    createdAt: iso(now, p.hoursAgo + 26),
+    createdAt: iso(now, merged ? merged.createdHoursAgo : p.hoursAgo + 26),
     updatedAt: iso(now, p.hoursAgo),
-    mergedAt: state === 'MERGED' ? iso(now, 0) : null,
+    mergedAt: state === 'MERGED' ? iso(now, merged?.hoursAgo ?? 0) : null,
     mergeable: p.mergeable ?? 'MERGEABLE',
     reviewDecision: p.decision ?? '',
     labels: [{ name: 'enhancement' }, ...(p.draft ? [{ name: 'wip' }] : [])],
@@ -134,6 +134,87 @@ function viewJson(p: DemoPr, now: number, step = 0, state: 'OPEN' | 'MERGED' = '
     deletions: p.deletions,
     changedFiles: p.files
   }
+}
+
+/** A pull request merged some time ago: `hoursAgo` is when it was merged. */
+interface DemoMerged extends DemoPr {
+  createdHoursAgo: number
+}
+
+const MERGED_REPOS = ['storefront', 'billing-api', 'design-system', 'notifications']
+const MERGED_PEOPLE = ['mira-kline', 'tomas-ibarra', 'priya-nair', 'li-wen', 'sam-okafor', DEMO_LOGIN, 'dependabot']
+const MERGED_TITLES = [
+  'Show the delivery estimate on the product page',
+  'Fix the cart total rounding',
+  'Add idempotency keys to refunds',
+  'Document the focus ring tokens',
+  'Retry failed webhooks with backoff',
+  'Bump the build tooling',
+  'Guest checkout: keep the address between steps',
+  'Cache the catalog query for anonymous users'
+]
+
+/**
+ * About 120 days of merged pull requests (newest first), from a fixed seed so every run is the same:
+ * `develop` and `main` in most repositories, `master` in one, two release branches, a hotfix and a bot author.
+ */
+export function demoMergedPrs(): DemoMerged[] {
+  let seed = 7
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const out: DemoMerged[] = []
+  let n = 900
+  for (let day = 0; day < 120; day++) {
+    const count = Math.floor(rnd() * 3.6)
+    for (let i = 0; i < count; i++) {
+      const repo = MERGED_REPOS[Math.floor(rnd() * MERGED_REPOS.length)]!
+      const r = rnd()
+      let base = r < 0.45 ? 'develop' : r < 0.75 ? 'main' : r < 0.9 ? (day < 40 ? 'release/2.5' : 'release/2.4') : 'hotfix/guest-address'
+      if (repo === 'design-system') base = base === 'main' ? 'master' : base
+      else if (base === 'master') base = 'main'
+      const author = MERGED_PEOPLE[Math.floor(rnd() * MERGED_PEOPLE.length)]!
+      const additions = Math.round(15 + rnd() ** 2 * 900)
+      const hoursAgo = day * 24 + 1 + Math.floor(rnd() * 20)
+      const number = n++
+      out.push({
+        number, repo, title: MERGED_TITLES[Math.floor(rnd() * MERGED_TITLES.length)]!, author, head: `feat/change-${number}`, base,
+        hoursAgo, createdHoursAgo: hoursAgo + Math.round(5 + rnd() ** 2 * 190), decision: 'APPROVED', ci: 'SUCCESS', mergeable: 'MERGEABLE',
+        additions, deletions: Math.round(additions * (0.1 + rnd() * 0.5)), files: 2 + Math.floor(rnd() * 22), mine: false, review: false
+      })
+    }
+  }
+  return out
+}
+
+const mergedNode = (p: DemoMerged, now: number) => ({
+  number: p.number,
+  title: p.title,
+  url: urlOf(p),
+  mergedAt: iso(now, p.hoursAgo),
+  createdAt: iso(now, p.createdHoursAgo),
+  headRefName: p.head,
+  baseRefName: p.base,
+  additions: p.additions,
+  deletions: p.deletions,
+  changedFiles: p.files,
+  author: { login: p.author },
+  repository: { name: p.repo, owner: { login: OWNER } }
+})
+
+/** Answers a merged search the way GitHub does: the `merged:` window, `author:@me`, 100 per page by cursor, the total in `issueCount`. */
+function mergedSearch(args: string[], now: number): CliResult {
+  const q = args.find((x) => x.startsWith('q=')) ?? ''
+  const range = /merged:(\S+)\.\.(\S+)/.exec(q)
+  const from = range ? Date.parse(range[1]!) : -Infinity
+  const to = range ? Date.parse(range[2]!) : Infinity
+  const mine = q.includes('author:@me')
+  const all = demoMergedPrs().filter((p) => {
+    const at = Math.floor((now - p.hoursAgo * 3_600_000) / 1000) * 1000
+    return at >= from && at <= to && (!mine || p.author === DEMO_LOGIN)
+  })
+  const offset = Number(args.find((x) => x.startsWith('after='))?.slice(6) ?? 0)
+  const page = all.slice(offset, offset + 100)
+  const more = offset + 100 < all.length
+  return ok(JSON.stringify({ data: { search: { issueCount: all.length, pageInfo: { hasNextPage: more, endCursor: more ? String(offset + 100) : null }, nodes: page.map((p) => mergedNode(p, now)) } } }))
 }
 
 function inlineComments(now: number) {
@@ -206,6 +287,7 @@ export function createDemoRunner(now: number = Date.now(), step: () => number = 
       if (a === 'api' && args.includes('user')) return ok(`${DEMO_LOGIN}\n`)
       if (a === 'api' && args.includes('graphql')) {
         const q = args.find((x) => x.startsWith('q=')) ?? ''
+        if (q.includes('is:merged')) return mergedSearch(args, now)
         const wanted = q.includes('review-requested:@me') ? (p: DemoPr) => p.review : (p: DemoPr) => p.mine
         const s = step()
         const open = [...DEMO_PRS, ...(s >= 2 ? [LATE_REVIEW] : [])].flatMap((p) => atStep(p, s) ?? [])
@@ -218,6 +300,8 @@ export function createDemoRunner(now: number = Date.now(), step: () => number = 
       if (a === 'pr' && b === 'view') {
         const s = step()
         const p = [...DEMO_PRS, LATE_REVIEW].find((x) => urlOf(x) === args[2])
+        const merged = p ? undefined : demoMergedPrs().find((x) => urlOf(x) === args[2])
+        if (merged) return ok(JSON.stringify(viewJson(merged, now, s, 'MERGED', merged)))
         if (!p) return fail('GraphQL: Could not resolve to a PullRequest (demo)')
         const staged = atStep(p, s)
         // A PR the demo removed from the open list reads as merged.

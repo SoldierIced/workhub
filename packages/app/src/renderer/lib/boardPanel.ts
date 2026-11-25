@@ -28,3 +28,12 @@ export function useBoardPanelOpen(sessionId: string): boolean {
   const read = () => open.has(sessionId)
   return useSyncExternalStore(subscribeBoardPanel, read, read)
 }
+
+/**
+ * The panel's width and drag limit in a chat `room` px wide (null until measured): never more than the
+ * chat, so a drag starts from what is drawn. The saved width stays as it is, for a wider window later.
+ */
+export function panelFit(saved: number, room: number | null, min: number, max: number): { width: number; max: number } {
+  const limit = room === null ? max : Math.max(1, Math.min(max, Math.round(room)))
+  return { width: Math.min(saved, limit), max: limit }
+}

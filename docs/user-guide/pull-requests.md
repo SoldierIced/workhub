@@ -21,9 +21,11 @@ repositories in another:
 | Field | What it does |
 |---|---|
 | **Organizations or users** | One per line (`acme`, `ana`; a GitLab group such as `acme/team`). Only their repositories are read. |
+| **Only these repositories** | One per line, as `owner/repo` (no `*`). Only these are read, and they win over the organizations above. Up to 50. |
 | **Hidden repositories** | One per line, as `owner/repo`; `*` stands for any name (`acme/legacy-*`, `acme/*`). Never shown, even when an owner above includes them. |
 
-With no owners, the search falls back to the connection's `scope`, then to the repositories of the
+With only some repositories set, the search reads just those (in a few searches at once when the
+list is long). With no owners, the search falls back to the connection's `scope`, then to the repositories of the
 profile's folders, then to everything your login sees. Hidden repositories apply in every case.
 
 ## The list
@@ -34,6 +36,7 @@ profile's folders, then to everything your login sees. Hidden repositories apply
 | **Mine** | Your open pull requests. |
 | **Stale** | Yours that have been idle for 30 days. |
 | **All** | Mine and the ones waiting for you. |
+| **Merged** | What was merged in a period, with a summary; see [Merged](#merged). |
 
 Search by title, author, branch or ticket. The **Filters** button under it opens a panel that
 filters by **Status**, **Into** (base branch), **Repo**, **Author** and **Ticket** (**With ticket** /
@@ -47,6 +50,53 @@ list** sorts by newest update, oldest update or repository. Each row shows its s
 **Conflicts**, **Merged** or **Closed**. Tickets in titles and branch names link to the
 [Tickets](tickets.md) screen when a tracker is connected.
 
+## Merged
+
+**Merged** lists the pull requests merged in a period and, beside them, a summary of that period.
+Nothing is read until you open it; then it reads the last 30 days. Merged pull requests are saved in
+Workhub's database (a merge does not change), so later visits, other periods and a restart read only
+what is new: the days since the last read, and any day of the period never read before. Within 5 minutes
+of a read nothing is asked again; **Refresh** at the bottom, and the next read after a merge made in
+Workhub, read what is new at once. The last 15 minutes are always read again, since GitHub's search can take a while to list
+a new merge. The first visit of a large organization can take a few minutes. Reads are kept per
+account and scope: after `gh auth switch`, or a change of the profile's repositories or organizations,
+Workhub reads the period again. A repository you gain access to later under the same account and scope
+is not read for days already read. A search no visit used for 90 days (an old scope or account) is
+forgotten by the daily upkeep, with the merges only it had found. A
+preset period ends today: coming back on another day moves it.
+
+- **Everyone / Mine**: everyone's pull requests in the profile's scope, or only yours. **Everyone**
+  needs a scope: set **Only these repositories** or **Organizations or users** for the profile (or a
+  `scope` on the connection, or, on GitHub, folders); without one, only **Mine** is offered, so Workhub never
+  reads every merge your login can see.
+- **This profile / All profiles** (shown when more than one profile has a code host): the merges of
+  this profile, or of every profile, each read in its own scope and with its own sign-in, without
+  repeats. The summary says how many profiles they come from.
+- **7 days / 30 days / 90 days / Custom…**: the period, up to 366 days; days are local days and weeks
+  start on Monday.
+- The list groups the pull requests by day, newest first, and draws the first 200; **Show more** adds
+  200 at a time (a day's header always counts all of its merges). Each row shows the branch it was merged
+  into (**→ develop**), the lines added and removed, and the author. **Filters** narrows the list
+  and the summary together: **Into** lists each target branch on its own (`main` and `master` apart),
+  plus **release/\*** for every release branch; **Repo**; **Author**. These filters are separate from
+  the other lists' and start empty.
+- Select a pull request to read it as usual; **Back to summary** or Esc returns to the summary.
+
+The summary shows how many were merged (and the change against the previous period of the same
+length), lines added and removed, and the median time from opening to merge; a chart
+per day or week, stacked by target branch (**main**, **master**, **release/\***, **develop**, **Other**),
+with **Table** for the same numbers; and tables by target branch and by repository.
+
+GitHub answers at most 1,000 results per search, so Workhub splits long periods into smaller
+searches; it shows at most the newest 10,000 merges of the period and the previous one, and says so
+when it stopped there (the comparison with the previous period is then left out). To stay under
+GitHub's rate limits it runs at most two searches at once and 40 a minute. If GitHub still answers
+with a rate limit, Workhub asks GitHub nothing more for a few minutes (until the time GitHub gives):
+Merged keeps showing what was saved, says until when it waits, and reads again by itself then. A line
+above the summary also says when some days of the period could not be read yet. File counts are not
+read: asking GitHub for them makes each search about four times slower. GitLab does not report lines in its lists, so they show as not reported. Merged is
+not on the phone.
+
 ## The pull request window
 
 Select a pull request to read it in the screen, or open it in its own window (**Open in its own
@@ -56,10 +106,17 @@ chosen for the profile; see [Profiles](profiles.md#opening-links).
 | Tab | Contents |
 |---|---|
 | **Conversation** | Description, reviewers and their state, comments, labels, linked tickets. |
-| **Files** | The changed files with their diff, review threads inline, and **Reply** on a thread. Long diffs show the first lines with **Show all**. |
+| **Files** | The changed files with their diff, review threads inline, and **Reply** on a thread. Long diffs show the first lines with **Show all**. The diff loads after the rest of the pull request, so the other tabs are ready first; the tab says **Loading files…** meanwhile, and an error here has its own **Retry**. |
 | **Commits** | The commits of the pull request. |
 | **Checks** | CI checks and their state. |
 | **Slack** | **Followed threads** and **Messages that link it**, with **Track a Slack link**. See [Slack](slack.md). |
+
+A pull request you already opened shows again at once from what Workhub kept, and is read again in
+the background (up to 30 are kept per profile; switching profiles forgets the others). If that
+read fails, the last copy stays with a quiet line that says how old it is. **Refresh** always asks
+the code host again. Workhub checks who you are signed in as once and again every 10 minutes, not
+before every read; before approving, sending back or closing it asks again, so switching accounts
+in `gh` counts at once.
 
 Actions on the toolbar:
 
@@ -92,6 +149,12 @@ Actions on the toolbar:
   pull request's branch are offered to close with their worktree removed; nothing happens until
   you click, and a worktree with uncommitted or unpushed work is kept.
 - **Copy link**.
+
+When the code host confirms an action, the dialog closes at once and the screen shows the result
+before the next read: an approved, sent-back or reviewed pull request leaves **To review**, a merged
+one shows **Merged** and a closed one **Closed**. That holds for up to two minutes, or until the
+code host reports a newer change to the pull request; a failed read never undoes it. Both the
+pull request and the list are then read again in the background, in every open window.
 
 ## Create a pull request from a session
 

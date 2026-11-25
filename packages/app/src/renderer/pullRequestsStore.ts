@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { profileRefreshMs } from '@workhub/core'
 import type { CodeHostLists } from '@shared/codehost-api'
 import { currentConfig } from './configStore'
 import { errorText } from './lib/errorText'
+import { patchesVersion, patchFor, patchLists, settlePatch, subscribePatches } from './lib/prPatches'
+import { RunQueue } from './lib/runQueue'
 
 /** How often a poller checks whether its profile is due; the refresh itself follows the code host connection's interval. */
 export const POLL_TICK_MS = 15_000
@@ -28,18 +30,32 @@ function set(key: string, entry: Entry): void {
   for (const l of listeners) l()
 }
 
-/** Reads the lists through the main process; the last answer stays visible while the next one loads. */
-export async function refreshPullRequests(profileId: string | null, force = false): Promise<void> {
+const queue = new RunQueue()
+
+/** Settles the local patches with what a read reported: a PR changed after its action holds the truth. */
+function settleFrom(lists: CodeHostLists): void {
+  for (const item of [...lists.mine, ...lists.toReview]) settlePatch(item.pr.url, item.pr.updatedAt)
+}
+
+/**
+ * Reads the lists through the main process; the last answer stays visible while the next one loads. A forced
+ * refresh asked while a read is in flight runs right after it (never dropped), and resolves with that newer read.
+ */
+export function refreshPullRequests(profileId: string | null, force = false): Promise<void> {
   const key = keyOf(profileId)
-  const current = entries.get(key) ?? EMPTY
-  if (current.loading) return
-  set(key, { ...current, loading: true })
-  try {
-    set(key, { lists: await window.hub.codeHost.lists(profileId, force), loading: false })
-  } catch (e) {
-    const message = errorText(e)
-    set(key, { lists: { state: 'error', message, mine: [], toReview: [], ...(current.lists ? { mine: current.lists.mine, toReview: current.lists.toReview } : {}) }, loading: false })
-  }
+  return queue.request(key, force, async () => {
+    const current = entries.get(key) ?? EMPTY
+    set(key, { ...current, loading: true })
+    try {
+      const lists = await window.hub.codeHost.lists(profileId, force)
+      settleFrom(lists)
+      set(key, { lists, loading: false })
+    } catch (e) {
+      const message = errorText(e)
+      const last = entries.get(key)?.lists ?? current.lists
+      set(key, { lists: { state: 'error', message, mine: [], toReview: [], ...(last ? { mine: last.mine, toReview: last.toReview } : {}) }, loading: false })
+    }
+  })
 }
 
 interface Poller {
@@ -72,6 +88,17 @@ function watchVisibility(): void {
   })
 }
 
+let changedWatched = false
+
+/** A write succeeded in any window (the PR window, the main window): every polled profile reads its lists again. */
+function watchChanges(): void {
+  if (changedWatched || typeof window === 'undefined' || !window.hub?.codeHost?.onChanged) return
+  changedWatched = true
+  window.hub.codeHost.onChanged((_url, profileId) => {
+    for (const p of pollers.values()) if (profileId === null || p.profileId === profileId) void refreshPullRequests(p.profileId, true)
+  })
+}
+
 /**
  * Keeps a profile's lists fresh while something shows them: at its code host connection's interval, skipped while the
  * window is hidden (and caught up with one refresh when it shows again). Returns the release.
@@ -79,6 +106,7 @@ function watchVisibility(): void {
 export function pollPullRequests(profileId: string | null): () => void {
   const key = keyOf(profileId)
   watchVisibility()
+  watchChanges()
   let poller = pollers.get(key)
   if (!poller) {
     const p: Poller = {
@@ -134,7 +162,7 @@ export function usePullRequestLists(profileId: string | null, active = true): { 
     return pollPullRequests(profileId)
   }, [profileId, active])
   const refresh = useCallback(() => refreshPullRequests(profileId, true), [profileId])
-  return { lists: entry.lists, loading: entry.loading, refresh }
+  return { lists: usePatched(entry.lists), loading: entry.loading, refresh }
 }
 
 /**
@@ -153,5 +181,11 @@ export function useCachedPullRequestLists(profileId: string | null): CodeHostLis
   useEffect(() => {
     if (!entries.has(key)) void refreshPullRequests(profileId)
   }, [key, profileId])
-  return entry.lists
+  return usePatched(entry.lists)
+}
+
+/** The lists with what the user just did applied (approved: out of "To review"; merged: merged) until a refresh shows the host caught up. */
+function usePatched(lists: CodeHostLists | null): CodeHostLists | null {
+  const version = useSyncExternalStore(subscribePatches, patchesVersion)
+  return useMemo(() => (lists ? patchLists(lists, (url) => patchFor(url)) : null), [lists, version])
 }

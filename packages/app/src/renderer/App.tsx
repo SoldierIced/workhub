@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { appOptions, EMPTY_SESSION_GROUPS, groupOf, nextNeedingYou, notificationTitle, orderAgents, pickAgent, profileDefaultFolder, refreshMembers, resumesBySessionId, sessionIdentity, setGroupCollapsed, statusLevel, stepSession, worktreeDefault, type EffectiveAgent, type GroupMember } from '@workhub/core'
+import { appOptions, EMPTY_SESSION_GROUPS, groupOf, nextNeedingYou, notificationTitle, orderAgents, pickAgent, profileDefaultFolder, refreshMembers, sessionIdentity, setGroupCollapsed, statusLevel, stepSession, worktreeDefault, type EffectiveAgent, type GroupMember } from '@workhub/core'
 import type { SessionView, WorkspaceFolder } from '@shared/api'
 import { TooltipProvider } from './components/atoms'
 import { ToastProvider, useToast } from './components/molecules'
@@ -10,6 +10,7 @@ import { dropOnSessionsTitle, isWorking, SessionList } from './components/organi
 import { RenameSessionDialog } from './components/organisms/RenameSessionDialog'
 import { CloseSessionDialog } from './components/organisms/CloseSessionDialog'
 import { closeAsks } from './lib/closeSession'
+import { reopenInput, ReopenAgentMissing } from './lib/reopen'
 import { UpdatePromptDialog } from './components/organisms/UpdatePromptDialog'
 import { ResumeSheet } from './components/organisms/ResumeSheet'
 import { ConfigLoadErrorBanner } from './components/organisms/ConfigLoadErrorBanner'
@@ -291,7 +292,7 @@ function Shell() {
       const { profile: p, agents: list, home: h, activeProfileId: profileId } = quick.current
       const plan = quickSessionPlan(p, list, h, agentKey)
       const agent = list.find((a) => a.key === plan?.agentKey)
-      const installed = agent ? await window.hub.agents.availability().then((m) => m[agent.agent.id] !== false, () => true) : false
+      const installed = agent ? await window.hub.agents.availability(profileId ?? null).then((m) => m[agent.agent.id] !== false && m[agent.agent.id] !== 'unsupported', () => true) : false
       if (!plan || !installed) return newSession(null, agentKey)
       try {
         // The profile (or the folder) may start sessions in a worktree; a folder outside a repository starts as is.
@@ -416,23 +417,19 @@ function Shell() {
   }, [reachable, platform, navigate, quickSession])
 
   const reopenMember = async (member: GroupMember) => {
-    const choice = agents.find((a) => a.key === member.agentKey)
-    const resumes = choice ? resumesBySessionId(choice.agent) : false
     try {
+      const asked = await reopenInput(member, activeProfileId, (id) => window.hub.config.effectiveAgents(id))
       // The same single start per identity as a Slack wake: both at once open one session.
       const view = await window.hub.sessions.reopen(member.key, {
-        profileId: activeProfileId,
-        agentKey: member.agentKey,
-        cwd: member.cwd,
+        ...asked,
         cols: 100,
         rows: 30,
         model: readPrefs().models[member.agentKey],
-        modeId: readPrefs().modes[member.agentKey],
-        ...(resumes ? { resumeAgentSessionId: member.key } : { identity: member.key })
+        modeId: readPrefs().modes[member.agentKey]
       })
       openSession(view.id)
     } catch (e) {
-      toast(t('groups.reopenFailed', { message: errorText(e) }), 'danger')
+      toast(e instanceof ReopenAgentMissing ? t('groups.reopenNoAgent', { agent: e.agent }) : t('groups.reopenFailed', { message: errorText(e) }), 'danger')
     }
   }
 

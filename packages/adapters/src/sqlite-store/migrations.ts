@@ -206,5 +206,55 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX turns_daily_session ON turns_daily (session_id, at);
       CREATE INDEX turns_daily_day ON turns_daily (day, session_id);
     `
+  },
+  {
+    version: 4,
+    sql: `
+      -- Merged pull requests kept for the Merged view: one row per profile and pull request (a merge does not change).
+      CREATE TABLE merged_prs (
+        profile_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        number INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        author TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        base TEXT NOT NULL,
+        merged_at INTEGER NOT NULL,
+        created_at INTEGER,
+        additions INTEGER,
+        deletions INTEGER,
+        changed_files INTEGER,
+        saved_at INTEGER NOT NULL,
+        PRIMARY KEY (profile_id, url)
+      );
+      CREATE INDEX merged_prs_profile_at ON merged_prs (profile_id, merged_at);
+      CREATE INDEX merged_prs_repo ON merged_prs (owner, repo, merged_at);
+      -- Which search of the profile found each one (a scope change is a new search).
+      CREATE TABLE merged_found (
+        profile_id TEXT NOT NULL,
+        search_key TEXT NOT NULL,
+        url TEXT NOT NULL,
+        PRIMARY KEY (profile_id, search_key, url)
+      );
+      -- The ranges each search read completely; at: when the read that set the range's newest end ended.
+      CREATE TABLE merged_coverage (
+        profile_id TEXT NOT NULL,
+        search_key TEXT NOT NULL,
+        since INTEGER NOT NULL,
+        until INTEGER NOT NULL,
+        at INTEGER NOT NULL
+      );
+      CREATE INDEX merged_coverage_key ON merged_coverage (profile_id, search_key, since);
+    `
+  },
+  {
+    version: 5,
+    sql: `
+      -- Which searches found a pull request: the daily prune deletes the rows no search found.
+      CREATE INDEX merged_found_url ON merged_found (profile_id, url);
+    `
   }
 ]

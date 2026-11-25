@@ -831,6 +831,19 @@ describe('SessionManager worktrees', () => {
     expect(view.profileId).toBe('work')
   })
 
+  it("checks the worktree's folders where the session's host keeps them", async () => {
+    const { worktrees, created } = fake()
+    const exists = vi.fn(async (p: string) => p === join(wt('acme-feat-login'), 'src'))
+    const { manager } = setup(config(), false, { worktrees, exists })
+    const view = await manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme/src', worktree: { branch: 'login' } })
+    // The host says the subfolder exists in the new worktree, so the session starts in it.
+    expect(view.cwd).toBe(join(wt('acme-feat-login'), 'src'))
+    expect(exists.mock.calls.map(([p]) => p)).toEqual([wt('acme-feat-login'), join(wt('acme-feat-login'), 'src')])
+    exists.mockImplementation(async () => true)
+    await expect(manager.start({ profileId: 'work', agentKey: 'claude', cwd: '/w/acme', worktree: { branch: 'other' } })).rejects.toThrow('already exists')
+    expect(created).toHaveLength(1)
+  })
+
   it('bootstraps a new worktree: the copy, then the folder setup command with the session environment, and reports it', async () => {
     const copyIncluded = vi.fn(async () => ({ copied: ['.env'], skipped: [], bytes: 10, found: true }))
     const { worktrees } = fake({ copyIncluded })

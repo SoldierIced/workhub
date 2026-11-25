@@ -83,6 +83,10 @@ terminal's output to the screen in batches of about one frame, so a command that
   turn ends (**Queued: sent when the agent finishes**). With Claude Code the message joins the turn
   in progress instead. If you interrupt, queued messages come back into the composer, unsent. Each
   queued message has a **Remove queued message** button.
+- **Messages the agent did not receive**: Claude Code confirms each message it receives. When it
+  does not confirm one within 30 seconds, the chat says **The agent did not receive this message**,
+  its text comes back into the composer to send again, and the session stops waiting on it. The
+  main log (Help → Reveal Logs) records where the message got stuck, never its text.
 - **Pasted images**: paste or drag images into the composer (agents that accept images only: PNG,
   JPEG, GIF or WebP, up to 3.75 MB each). They show as thumbnails you can remove, and
   appear in the conversation, where **Click to view** opens them in the file viewer.
@@ -300,7 +304,9 @@ with "Earlier messages are not shown", and the full conversation stays in Histor
   down** (Alt+↑ and Alt+↓), **Move to group**, **Take out of group**, and for groups **Rename
   group…** and **Delete group** (its open sessions go back to the list; nothing is closed). A
   closed session stays in its group, marked **Closed**; click it to reopen, or **Delete session**
-  to take it out of the sidebar for good. Order within each group is kept.
+  to take it out of the sidebar for good. It reopens in its own profile and account, whichever
+  profile is active (also after it continued in another account); if its agent is no longer set
+  up in Workhub, Workhub says so instead of starting a new conversation. Order within each group is kept.
 - **Sub-groups**: a group's menu (right click, or its **…**) has **New session** (the New session
   dialog with that group picked), **New sub-group…**, **Move into group** and, for a sub-group,
   **Move to the top level**. Sub-groups are listed inside their group, before its sessions, and

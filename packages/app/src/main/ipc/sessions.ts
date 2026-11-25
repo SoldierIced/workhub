@@ -36,7 +36,8 @@ export interface SessionsIpcDeps {
   configChanged: () => void
   ownerStarts: Pick<OwnerStarts, 'start'>
   driver: Pick<SessionDriver, 'typeInConsoleWhenSettled' | 'userPrompted' | 'userTyped'>
-  localGit: Pick<GitReview, 'localChanges'>
+  /** The session bar's "Local changes" of a session, read with its host's git; null while that host is not connected. */
+  localGitOf(sessionId: string): Pick<GitReview, 'localChanges'> | null
   sessionWindows: SessionWindows
   continuity: Pick<ContinuityService, 'options' | 'failover' | 'handoff'>
 }
@@ -136,7 +137,8 @@ export function registerSessionsIpc(ipc: IpcRegistrar, deps: SessionsIpcDeps): v
   })
   ipc.handle('sessions:localChanges', async (_e, id: string) => {
     const cwd = sessions.cwdOf(id)
-    return cwd ? deps.localGit.localChanges(cwd, sessions.changePathsOf(id)) : null
+    const git = cwd ? deps.localGitOf(id) : null
+    return cwd && git ? git.localChanges(cwd, sessions.changePathsOf(id)) : null
   })
   ipc.handle('sessions:rename', (_e, id: string, name: string | null) => {
     if (name !== null && typeof name !== 'string') throw new Error('a name is required')

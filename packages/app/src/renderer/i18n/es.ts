@@ -54,6 +54,7 @@ import { settingsV2Es } from './settingsV2.es'
 import { settingsAccountsEs } from './settingsAccounts.es'
 import { notificationsAlertsEs } from './notificationsAlerts.es'
 import { profileAgentsEs } from './profileAgents.es'
+import { profileHostEs } from './profileHost.es'
 import { settingsAgentsEs } from './settingsAgents.es'
 import { settingsConnectionsEs } from './settingsConnections.es'
 
@@ -114,6 +115,7 @@ export const es: Record<keyof typeof en, string> = {
   'groups.members.one': '1 sesión',
   'groups.members.other': '{count} sesiones',
   'groups.reopenFailed': 'No se pudo reabrir la sesión: {message}',
+  'groups.reopenNoAgent': 'No se pudo reabrir la sesión: {agent} ya no está configurado en Workhub. Vuelve a agregarlo en Ajustes → Agentes o empieza una sesión nueva.',
   'attention.error': 'Error',
   'attention.needsAnswer': 'Necesita una respuesta',
   'attention.readyToReview': 'Lista para revisar',
@@ -179,6 +181,9 @@ export const es: Record<keyof typeof en, string> = {
   'newSession.browse': 'Elegir una carpeta',
   'newSession.start': 'Iniciar sesión',
   'newSession.notInstalled': 'no instalado',
+  'newSession.notInWsl': 'aún no disponible en WSL',
+  'newSession.hostPending': 'iniciando en WSL',
+  'newSession.notInWslHint': 'Las sesiones en WSL ({distro}) solo ejecutan Claude Code por ahora. Elige Claude Code, o un perfil que se ejecute en este equipo.',
   'agent.install.generic': 'No se encontró el comando "{command}" en tu PATH. Instálalo o corrige su ruta en la definición del agente.',
   'agent.install.kiro': 'Instala el CLI de Kiro (kiro.dev/cli) e inicia sesión con "kiro-cli login".',
   'agent.install.opencode': 'Instala OpenCode (opencode.ai), por ejemplo con "npm i -g opencode-ai", e inicia sesión con "opencode auth login".',
@@ -429,6 +434,7 @@ export const es: Record<keyof typeof en, string> = {
   'chat.attached': 'Imágenes adjuntas',
   'chat.placeholderQueue': 'El agente está trabajando… un mensaje enviado ahora espera a que termine su turno',
   'chat.placeholderInject': 'El agente está trabajando… un mensaje enviado ahora se suma a su turno',
+  'chat.promptNotReceived': 'El agente no recibió este mensaje. El texto volvió al cuadro de texto: envialo de nuevo.',
   'chat.queued': 'En cola: se envía cuando el agente termine',
   'chat.queuedList': 'Mensajes en cola',
   'chat.idleContext.body': 'Inactivo hace {time}: la caché del prompt probablemente venció, así que tu próximo mensaje vuelve a enviar todo el contexto (unos {tokens} tokens) a precio completo.',
@@ -530,6 +536,7 @@ export const es: Record<keyof typeof en, string> = {
   ...settingsAccountsEs,
   ...notificationsAlertsEs,
   ...profileAgentsEs,
+  ...profileHostEs,
   ...settingsAgentsEs,
   ...settingsConnectionsEs,
   ...remoteEs,

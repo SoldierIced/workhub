@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { emptyConfig, RETYPE_SECRET_TO_TEST, type Connection, type Profile, type SecretStore, type WorkhubConfig } from '@workhub/core'
 import type { HttpClient } from '@workhub/adapters/http'
-import { buildTracker, TicketService } from '../src/main/tickets-service'
+import type { GitRunner } from '@workhub/adapters/git-review'
+import { buildTracker, githubReposOfFolders, TicketService } from '../src/main/tickets-service'
 
 const jira: Connection = { id: 'work-jira', kind: 'tracker', provider: 'jira', endpoint: 'https://acme.example.com', secretRef: 'connection/work-jira', settings: { email: 'dana@example.com', projectKeys: 'ABC, WEB', ignoredStatuses: 'Blocked' } }
 const linear: Connection = { id: 'lin', kind: 'tracker', provider: 'linear', secretRef: 'connection/lin', settings: {} }
@@ -17,6 +18,14 @@ function service(opts: { connections?: Connection[]; tracker?: string; secrets?:
   }
   return new TicketService({ current: async () => config } as never, secrets, opts.demo ?? false, opts.http)
 }
+
+describe('githubReposOfFolders', () => {
+  it("reads each folder's origin with the git it is given, skipping folders without a GitHub one", async () => {
+    const origins: Record<string, string> = { '/w/acme/api': 'git@github.com:acme/api.git\n', '/w/acme/lab': 'https://gitlab.com/acme/lab.git' }
+    const git: GitRunner = async (cwd) => (origins[cwd] ? { ok: true, stdout: origins[cwd]!, stderr: '' } : { ok: false, stdout: '', stderr: 'not a git repository' })
+    expect(await githubReposOfFolders(['/w/acme/api', '/w/acme/lab', '/w/notes'], 'github.com', git)).toEqual(['acme/api'])
+  })
+})
 
 describe('buildTracker', () => {
   it('needs the site, email and token for Jira', () => {

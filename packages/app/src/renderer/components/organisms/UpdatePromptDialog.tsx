@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { Button } from '../atoms/Button'
 import { Dialog } from '../molecules/Dialog'
 import { errorText } from '../../lib/errorText'
+import { ReleaseNotesPanel } from './ReleaseNotesPanel'
 
 /** What the dialog shows when the install call itself failed: the error state, with its message. */
 export function failedInstall(status: UpdateStatus, error: unknown): UpdateStatus {
@@ -12,6 +13,7 @@ export function failedInstall(status: UpdateStatus, error: unknown): UpdateStatu
 
 /**
  * "A new version is available": main asks for it after an automatic check (at most once a day).
+ * It says what changed in every version after the running one, when the release carries notes.
  * Update installs it (or opens the release page where the app cannot replace itself), then offers
  * a restart; Later asks again tomorrow; Skip this version never asks for it again.
  */
@@ -52,22 +54,42 @@ export function UpdatePromptDialog() {
 
   const ready = status.state === 'ready'
   const downloading = status.state === 'downloading'
+  const notInstalled = status.state === 'error' && status.installFailed
   const description = ready
     ? t('updates.readyBody', { version })
-    : downloading
-      ? t('updates.downloading', { version })
-      : status.state === 'error'
-        ? t('updates.error', { message: status.message ?? '' })
-        : t('updates.promptBody', { version, current: status.currentVersion })
+    : notInstalled
+      ? t(notInstalled.windows ? 'updates.installFailedWindows' : 'updates.installFailed', { version })
+      : downloading
+        ? t('updates.downloading', { version })
+        : status.state === 'error'
+          ? t('updates.error', { message: status.message ?? '' })
+          : t('updates.promptBody', { version, current: status.currentVersion })
 
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && close()}
-      title={ready ? t('updates.readyTitle') : t('updates.promptTitle')}
+      title={ready ? t('updates.readyTitle') : notInstalled ? t('updates.installFailedTitle') : t('updates.promptTitle')}
       description={description}
+      className={ready ? undefined : 'w-[min(600px,calc(100vw-48px))]'}
       footer={
-        ready ? (
+        notInstalled ? (
+          <>
+            <Button variant="ghost" onClick={close}>
+              {t('updates.later')}
+            </Button>
+            <Button
+              variant="primary"
+              data-testid="update-open-release"
+              onClick={() => {
+                void window.hub.updates.openRelease()
+                close()
+              }}
+            >
+              {t('updates.downloadFromGitHub')}
+            </Button>
+          </>
+        ) : ready ? (
           <>
             <Button variant="ghost" onClick={close}>
               {t('updates.later')}
@@ -99,7 +121,7 @@ export function UpdatePromptDialog() {
         )
       }
     >
-      {null}
+      {ready || notInstalled ? null : <ReleaseNotesPanel status={status} />}
     </Dialog>
   )
 }

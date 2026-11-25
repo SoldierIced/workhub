@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MacUpdateDeps } from '../src/main/mac-update'
+import { RELEASE_NOTES_LIMITS, compareVersions } from '../src/shared/release-notes'
 import type { UpdateStatus } from '../src/shared/updates-api'
 
 const electron = vi.hoisted(() => ({
@@ -33,7 +34,7 @@ const updater = vi.hoisted(() => {
 })
 vi.mock('electron-updater', () => updater)
 
-const { RELEASE_REPO, UpdateService } = await import('../src/main/updates')
+const { RELEASE_REPO, UpdateService, fetchNotesFromGitHub } = await import('../src/main/updates')
 const { autoUpdater } = updater
 
 const realPlatform = process.platform
@@ -206,5 +207,250 @@ describe('picking the release to check', () => {
     expect(autoUpdater.setFeedURL).not.toHaveBeenCalled()
     // Without the list, electron-updater would follow the newest tag and 404 on a release still being built.
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+  })
+})
+
+describe('what changed in the version found', () => {
+  beforeEach(() => {
+    autoUpdater.reset()
+    vi.clearAllMocks()
+    setPlatform('darwin', 'arm64')
+  })
+  afterEach(() => setPlatform(realPlatform, realArch))
+
+  const manifests = [{ name: 'latest-mac.yml' }, { name: 'latest.yml' }, { name: 'latest-linux.yml' }]
+  const release = (version: string, withNotes = true) => ({ tag_name: `v${version}`, draft: false, prerelease: true, assets: withNotes ? [...manifests, { name: 'release-notes.json' }] : manifests })
+  const entry = (version: string) => ({ version, date: '2026-01-15', items: [{ kind: 'new', title: { en: `New in ${version}`, es: `Nuevo en ${version}` } }] })
+  const file = { releases: [entry('2.0.0-alpha.3'), entry('2.0.0-alpha.2'), entry('2.0.0-alpha.1')] }
+
+  function serviceWith(releases: ReturnType<typeof release>[], fetchNotes: (tag: string) => Promise<unknown>) {
+    const changes: UpdateStatus[] = []
+    const asked: string[] = []
+    const s = new UpdateService((st) => void changes.push(st), async () => undefined, macDeps(), async () => releases, {
+      fetchNotes: (tag) => {
+        asked.push(tag)
+        return fetchNotes(tag)
+      }
+    })
+    return { s, changes, asked }
+  }
+
+  it('announces the version together with the notes of every version after the running one', async () => {
+    const { s, changes, asked } = serviceWith([release('2.0.0-alpha.3')], async () => file)
+    const status = await checkFinds(s, found('2.0.0-alpha.3'))
+    expect(asked).toEqual(['v2.0.0-alpha.3'])
+    expect(status.notes?.map((n) => n.version)).toEqual(['2.0.0-alpha.3', '2.0.0-alpha.2'])
+    // Never the version first and its notes later: the first `available` already has them.
+    expect(changes.find((c) => c.state === 'available')?.notes).toHaveLength(2)
+    expect(status.notesError).toBeFalsy()
+  })
+
+  it('asks for no file when the release has none, and shows no notes', async () => {
+    const { s, asked } = serviceWith([release('2.0.0-alpha.2', false)], async () => file)
+    const status = await checkFinds(s)
+    expect(asked).toEqual([])
+    expect(status).toMatchObject({ state: 'available', version: '2.0.0-alpha.2' })
+    expect(status.notes).toBeUndefined()
+    expect(status.notesError).toBeFalsy()
+  })
+
+  it('asks for no file when the newest release is the running version', async () => {
+    const { s, asked } = serviceWith([release('2.0.0-alpha.1')], async () => file)
+    await s.check()
+    expect(asked).toEqual([])
+  })
+
+  it('still offers the update when the notes cannot be read, and says they could not', async () => {
+    const { s } = serviceWith([release('2.0.0-alpha.2')], async () => {
+      throw new Error('timeout')
+    })
+    const status = await checkFinds(s)
+    expect(status).toMatchObject({ state: 'available', version: '2.0.0-alpha.2', notesError: true })
+    expect(status.notes).toBeUndefined()
+  })
+
+  it('does not keep the notes of an earlier check for a version whose notes could not be read', async () => {
+    const releases = [release('2.0.0-alpha.2')]
+    let fail = false
+    const { s, changes } = serviceWith(releases, async () => {
+      if (fail) throw new Error('offline')
+      return file
+    })
+    expect((await checkFinds(s)).notes).toHaveLength(1)
+    fail = true
+    releases.unshift(release('2.0.0-alpha.3'))
+    const status = await checkFinds(s, found('2.0.0-alpha.3'))
+    expect(status).toMatchObject({ version: '2.0.0-alpha.3', notesError: true })
+    expect(status.notes).toBeUndefined()
+    // Nor while it is checking again.
+    expect(changes.filter((c) => c.state === 'checking').at(-1)?.notes).toBeUndefined()
+  })
+
+  it('keeps the notes it already read when a later check of the same release cannot read them', async () => {
+    let fail = false
+    const { s } = serviceWith([release('2.0.0-alpha.2')], async () => {
+      if (fail) throw new Error('timeout')
+      return file
+    })
+    await checkFinds(s)
+    fail = true
+    const status = await checkFinds(s)
+    expect(status.notes?.map((n) => n.version)).toEqual(['2.0.0-alpha.2'])
+    expect(status.notesError).toBeFalsy()
+  })
+
+  it('links to the list of releases, where every version has its changes', async () => {
+    const { s } = serviceWith([release('2.0.0-alpha.3')], async () => file)
+    const status = await checkFinds(s, found('2.0.0-alpha.3'))
+    expect(status.changesUrl).toBe(`https://github.com/${RELEASE_REPO}/releases`)
+    expect(status.releaseUrl).toBe(`https://github.com/${RELEASE_REPO}/releases/tag/v2.0.0-alpha.3`)
+  })
+})
+
+describe('what changed: the request to the release', () => {
+  const answer = (body: string, status = 200) => (async () => new Response(body, { status })) as unknown as typeof fetch
+
+  it('asks the release for its file and reads it', async () => {
+    const asked: string[] = []
+    const request = (async (url: string) => {
+      asked.push(url)
+      return new Response('{"releases":[]}')
+    }) as unknown as typeof fetch
+    expect(await fetchNotesFromGitHub('v2.0.0-alpha.2', request)).toEqual({ releases: [] })
+    expect(asked).toEqual([`https://github.com/${RELEASE_REPO}/releases/download/v2.0.0-alpha.2/release-notes.json`])
+  })
+
+  it('fails on a missing file, on a body that is not the file and on one over the size limit', async () => {
+    await expect(fetchNotesFromGitHub('v1.0.0', answer('Not Found', 404))).rejects.toThrow('404')
+    await expect(fetchNotesFromGitHub('v1.0.0', answer('<html>sign in</html>'))).rejects.toThrow()
+    await expect(fetchNotesFromGitHub('v1.0.0', answer(JSON.stringify({ releases: [], pad: 'x'.repeat(RELEASE_NOTES_LIMITS.bytes) })))).rejects.toThrow('too large')
+  })
+})
+
+describe('the sample update of a development run (WORKHUB_DEMO_UPDATE)', () => {
+  beforeEach(() => {
+    autoUpdater.reset()
+    vi.clearAllMocks()
+    electron.app.isPackaged = false
+  })
+  afterEach(() => {
+    electron.app.isPackaged = true
+  })
+
+  it('shows a newer version with sample notes in both languages and contacts nothing', async () => {
+    const opened: string[] = []
+    const fetchReleases = vi.fn(async () => [])
+    const fetchNotes = vi.fn(async () => ({}))
+    const s = new UpdateService(() => {}, async (url) => void opened.push(url), macDeps(), fetchReleases, { fetchNotes, demo: true })
+    const status = await s.check()
+    expect(status).toMatchObject({ state: 'available', currentVersion: '2.0.0-alpha.1', canInstall: false })
+    expect(status.notes!.length).toBeGreaterThan(1)
+    expect(status.notes![0]!.version).toBe(status.version)
+    for (const note of status.notes!) expect(compareVersions(note.version, status.currentVersion)).toBeGreaterThan(0)
+    expect(fetchReleases).not.toHaveBeenCalled()
+    expect(fetchNotes).not.toHaveBeenCalled()
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    // "Update" opens the list of releases: the sample version has no page of its own.
+    await s.install()
+    expect(opened).toEqual([`https://github.com/${RELEASE_REPO}/releases`])
+  })
+
+  it('is ignored by a packaged app', () => {
+    electron.app.isPackaged = true
+    const s = new UpdateService(() => {}, async () => {}, macDeps(), async () => [], { demo: true })
+    expect(s.status().state).toBe('idle')
+  })
+})
+
+describe('an update that downloads but does not install (e.g. Windows Smart App Control)', () => {
+  beforeEach(() => {
+    autoUpdater.reset()
+    vi.clearAllMocks()
+  })
+  afterEach(() => setPlatform(realPlatform, realArch))
+
+  /** The persisted "version being installed", as index.ts keeps it in the database. */
+  function memoryMarker(initial?: string) {
+    const m = { version: initial as string | undefined, load: () => m.version, save: (v: string | undefined) => void (m.version = v) }
+    return m
+  }
+
+  function serviceOn(platform: NodeJS.Platform, marker = memoryMarker()) {
+    setPlatform(platform, 'x64')
+    const changes: UpdateStatus[] = []
+    const opened: string[] = []
+    const s = new UpdateService((st) => void changes.push(st), async (url) => void opened.push(url), macDeps(), published, { installMarker: marker })
+    return { s, changes, opened, marker }
+  }
+
+  const tagUrl = `https://github.com/${RELEASE_REPO}/releases/tag/v2.0.0-alpha.2`
+
+  it('offers the release page when the installer cannot be started', async () => {
+    const { s, opened } = serviceOn('win32')
+    await checkFinds(s)
+    await s.install()
+    autoUpdater.quitAndInstall.mockImplementationOnce(() => {
+      throw new Error('spawn UNKNOWN')
+    })
+    s.restart()
+    expect(s.status()).toMatchObject({ state: 'error', version: '2.0.0-alpha.2', releaseUrl: tagUrl, installFailed: { windows: true }, message: 'spawn UNKNOWN' })
+    await s.openRelease()
+    expect(opened).toEqual([tagUrl])
+  })
+
+  it('offers the release page when electron-updater reports an error once the update is ready', async () => {
+    const { s } = serviceOn('linux')
+    process.env['APPIMAGE'] = '/tmp/Acme.AppImage'
+    try {
+      await checkFinds(s)
+      await s.install()
+      s.restart()
+      autoUpdater.emit('error', new Error('installer blocked'))
+      expect(s.status()).toMatchObject({ state: 'error', releaseUrl: tagUrl, installFailed: { windows: false } })
+    } finally {
+      delete process.env['APPIMAGE']
+    }
+  })
+
+  it('remembers the version being installed and, started again on the old one, says it did not install', async () => {
+    const first = serviceOn('win32')
+    await checkFinds(first.s)
+    await first.s.install()
+    expect(first.marker.version).toBe('2.0.0-alpha.2')
+
+    const again = serviceOn('win32', first.marker)
+    expect(again.s.status()).toMatchObject({ state: 'error', currentVersion: '2.0.0-alpha.1', version: '2.0.0-alpha.2', releaseUrl: tagUrl, installFailed: { windows: true } })
+    // Said once: the next start does not repeat it.
+    expect(first.marker.version).toBeUndefined()
+    await again.s.openRelease()
+    expect(again.opened).toEqual([tagUrl])
+    // Check now looks again and leaves the failure behind.
+    await checkFinds(again.s)
+    expect(again.s.status().state).toBe('available')
+    expect(again.s.status().installFailed).toBeUndefined()
+  })
+
+  it('says nothing when the update did install', () => {
+    const marker = memoryMarker('2.0.0-alpha.1')
+    const { s } = serviceOn('win32', marker)
+    expect(s.status().state).toBe('idle')
+    expect(s.status().installFailed).toBeUndefined()
+    expect(marker.version).toBeUndefined()
+  })
+
+  it('keeps the happy path: a restart that works reports no failure', async () => {
+    const { s, changes } = serviceOn('win32')
+    await checkFinds(s)
+    await s.install()
+    s.restart()
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true)
+    expect(s.status().state).toBe('ready')
+    expect(changes.some((c) => c.installFailed)).toBe(false)
+  })
+
+  it('opens the latest release when it knows no version', async () => {
+    const { s, opened } = serviceOn('win32')
+    await s.openRelease()
+    expect(opened).toEqual([`https://github.com/${RELEASE_REPO}/releases/latest`])
   })
 })

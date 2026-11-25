@@ -1,12 +1,13 @@
 import { Plus, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { ENV_NAME, worktreeSettings, type ChromeProfile, type FolderOptions, type Profile, type WorktreeSettings } from '@workhub/core'
+import { ENV_NAME, worktreeSettings, worktreesAvailable, type ChromeProfile, type FolderOptions, type Profile, type WorktreeSettings } from '@workhub/core'
 import { Button, Input, Select, Switch } from '../components/atoms'
 import { Field, HelpTip, SwitchRow } from '../components/molecules'
 import { useI18n } from '../i18n/I18nProvider'
 import { cn } from '../lib/cn'
 import { PROFILE_SYMBOLS, PROFILE_SYMBOL_IDS } from '../lib/profileSymbols'
+import { folderForHost, folderPickError, shownFolderError, type FolderPickError } from '../lib/profileHost'
 import { abbreviateFolder } from '../lib/sessionHeader'
 import { envDirty } from '../lib/unsavedChanges'
 
@@ -284,9 +285,10 @@ export function ProfileExtraFields({ form, onChange, env, parts = ALL_PARTS }: {
                 ]}
               />
             </SwitchRow>
-            <SwitchRow label={t('profileExtra.folderWorktrees')} hint={t('profileExtra.folderWorktreesHint')}>
+            <SwitchRow label={t('profileExtra.folderWorktrees')} hint={worktreesAvailable(form) ? t('profileExtra.folderWorktreesHint') : t('profileHost.noWorktreesHint')}>
               <Select
                 className="w-44"
+                disabled={!worktreesAvailable(form)}
                 aria-label={t('profileExtra.folderWorktrees')}
                 value={folderWorktreeMode(form.folderOptions?.[folder]?.worktrees)}
                 onChange={(v) => setFolder(folder, { worktrees: v === 'on' ? true : v === 'off' ? false : undefined })}
@@ -341,10 +343,12 @@ function WorktreeFields({ form, onChange }: { form: Profile; onChange: (profile:
   const { t } = useI18n()
   const settings = worktreeSettings(form)
   const set = (patch: Partial<WorktreeSettings>) => onChange({ ...form, worktrees: { ...settings, ...patch } })
+  // A WSL profile's sessions never get a worktree yet: the switch shows off and cannot be turned on.
+  const available = worktreesAvailable(form)
   return (
     <div className="flex flex-col gap-3 py-2">
-      <SwitchRow label={t('profileExtra.worktreesEnabled')} hint={t('profileExtra.worktreesEnabledHint')}>
-        <Switch checked={settings.enabled} onChange={(on) => set({ enabled: on })} />
+      <SwitchRow label={t('profileExtra.worktreesEnabled')} hint={available ? t('profileExtra.worktreesEnabledHint') : t('profileHost.noWorktreesHint')}>
+        <Switch checked={available && settings.enabled} disabled={!available} aria-label={t('profileExtra.worktreesEnabled')} onChange={(on) => set({ enabled: on })} />
       </SwitchRow>
       <Field label={t('profileExtra.worktreesLocation')} hint={t('profileExtra.worktreesLocationHint')}>
         <Input value={settings.location} placeholder="${folder}/_worktrees" spellCheck={false} onChange={(e) => set({ location: e.target.value })} />
@@ -463,6 +467,9 @@ const PICK_OTHER = '__other__'
 /** Where "New session" starts without asking: one of the profile's folders, another one, or (empty) the first folder. */
 export function DefaultFolderField({ form, onChange }: { form: Profile; onChange: (defaultFolder: string | undefined) => void }) {
   const { t } = useI18n()
+  const [refusal, setRefusal] = useState<FolderPickError | null>(null)
+  // A refusal goes away with the next choice, or once the profile's folders or host changed.
+  const error = shownFolderError(refusal, form.folders, form.host)
   const folders = (form.folders ?? []).map((f) => f.trim()).filter(Boolean)
   const current = form.defaultFolder?.trim() || ''
   const options = [
@@ -472,13 +479,20 @@ export function DefaultFolderField({ form, onChange }: { form: Profile; onChange
     { value: PICK_OTHER, label: t('settings.defaultFolderOther') }
   ]
   return (
-    <Field label={t('settings.defaultFolder')} hint={t('settings.defaultFolderHint')}>
+    <Field label={t('settings.defaultFolder')} hint={t('settings.defaultFolderHint')} error={error ?? undefined}>
       <Select
         aria-label={t('settings.defaultFolder')}
         value={current}
         onChange={(v) => {
+          setRefusal(null)
           if (v !== PICK_OTHER) return onChange(v || undefined)
-          void window.hub.pickFolder().then((picked) => picked && onChange(picked))
+          void window.hub.pickFolder().then((picked) => {
+            if (!picked) return
+            // A WSL profile keeps the folder's Linux path, and refuses a Windows folder.
+            const folder = folderForHost(form.host, picked)
+            if (folder.ok) onChange(folder.path)
+            else setRefusal(folderPickError(t(folder.error, folder.params), form.folders, form.host))
+          })
         }}
         options={options}
       />

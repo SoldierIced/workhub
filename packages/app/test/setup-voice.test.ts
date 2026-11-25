@@ -108,6 +108,36 @@ describe('SetupService', () => {
     expect(calls.find((c) => c.cmd === 'gh' && c.args[0] === '--version')?.timeoutMs).toBeUndefined()
     expect(items.find((i) => i.id === 'profile')).toMatchObject({ status: 'missing' })
   })
+  it('checks Claude Code, its sign-in and git inside the WSL host of the active profile, waiting while it connects', async () => {
+    const local: string[] = []
+    const make = (probe: ((tool: 'claude' | 'auth' | 'git') => Promise<{ result: 'ok'; output: string }>) | null) =>
+      new SetupService({
+        config: async () => config,
+        hasSecret: async () => false,
+        path: () => '/bin',
+        home: '/tmp/workhub-test-home',
+        slackFailure: async () => null,
+        profileHost: () => ({ distro: 'Ubuntu', probe }),
+        run: async (cmd, args) => {
+          local.push(`${cmd} ${args[0]}`)
+          return { result: 'notFound', output: '' }
+        }
+      })
+    const pending = await make(null).run()
+    expect(pending.filter((i) => ['claudeCode', 'claudeSignIn', 'git'].includes(i.kind)).map((i) => [i.id, i.status])).toEqual([
+      ['claudeCode', 'pending'],
+      ['claudeSignIn:wsl:Ubuntu', 'pending'],
+      ['git', 'pending']
+    ])
+    const found = await make(async (tool) => ({ result: 'ok', output: tool === 'auth' ? '{"loggedIn":true,"email":"a@b.c"}' : '2.1.0' })).run()
+    expect(found.filter((i) => ['claudeCode', 'claudeSignIn', 'git'].includes(i.kind)).map((i) => [i.id, i.status, i.params['host']])).toEqual([
+      ['claudeCode', 'ok', 'Ubuntu'],
+      ['claudeSignIn:wsl:Ubuntu', 'ok', 'Ubuntu'],
+      ['git', 'ok', 'Ubuntu']
+    ])
+    // Windows' own Claude Code and git are not what these sessions use: they are not asked.
+    expect(local.filter((c) => c.startsWith('claude ') || c.startsWith('git '))).toEqual([])
+  })
   it('names the default folder for an account configured with it, as its sessions do', async () => {
     const dirs: (string | undefined)[] = []
     const service = new SetupService({
@@ -140,10 +170,14 @@ describe('setup wording', () => {
     expect(fixLabel(t, { kind: 'link', url: 'https://x', title: 'downloadNode' })).toBe('Download Node.js')
     expect(fixLabel(t, { kind: 'adminCommand', installer: 'git', command: 'sudo apt-get install git', url: 'https://x' })).toBe('Copy command')
     expect(itemTitle(t, item({ kind: 'gitlab' }))).toBe('GitLab (glab)')
+    // A row checked inside a WSL host names it.
+    expect(itemTitle(t, item({ kind: 'git', params: { host: 'Ubuntu' } }))).toBe('git (WSL: Ubuntu)')
+    expect(itemDetail(t, tn, item({ status: 'pending', code: 'hostPending', params: { host: 'Ubuntu' } }))).toBe('Checked in Ubuntu once Workhub is running there.')
+    expect(t('setup.statusPending')).toBe('Waiting')
     expect(itemDetail(t, tn, item({ code: 'nodeMissingFor', params: { names: 'Codex, Gemini CLI' } }))).toBe('Not found. Codex, Gemini CLI runs on Node.js: install it, then check again.')
   })
   it('every message code the checks can produce has copy', () => {
-    for (const code of ['version', 'claudeMissing', 'timeout', 'commandFailed', 'installClaudeFirst', 'authUnreadable', 'notSignedIn', 'signedIn', 'nodeMissingFor', 'nodeNotNeeded', 'gitMissing', 'ghMissing', 'ghNoAnswer', 'ghNotSignedIn', 'ghSignedIn', 'glabMissing', 'glabNotSignedIn', 'codexReady', 'codexNeedsNode', 'codexNeedsCli', 'codexNotSignedIn', 'kiroMissing', 'kiroNotSignedIn', 'opencodeMissing', 'geminiMissing', 'linearConnected', 'linearNoKey', 'linearOff', 'noFolders', 'jiraConnected', 'jiraNoToken', 'jiraOff', 'slackOff', 'slackFailing', 'healthConfigured', 'healthIncomplete', 'healthOff', 'usageOn', 'usageOff']) {
+    for (const code of ['version', 'claudeMissing', 'timeout', 'commandFailed', 'installClaudeFirst', 'authUnreadable', 'notSignedIn', 'signedIn', 'nodeMissingFor', 'nodeNotNeeded', 'gitMissing', 'ghMissing', 'ghNoAnswer', 'ghNotSignedIn', 'ghSignedIn', 'glabMissing', 'glabNotSignedIn', 'codexReady', 'codexNeedsNode', 'codexNeedsCli', 'codexNotSignedIn', 'kiroMissing', 'kiroNotSignedIn', 'opencodeMissing', 'geminiMissing', 'linearConnected', 'linearNoKey', 'linearOff', 'noFolders', 'jiraConnected', 'jiraNoToken', 'jiraOff', 'slackOff', 'slackFailing', 'healthConfigured', 'healthIncomplete', 'healthOff', 'usageOn', 'usageOff', 'hostPending', 'hostNotSignedIn']) {
       expect(DICTIONARIES.en[`setup.msg.${code}` as keyof typeof DICTIONARIES.en], code).toBeTruthy()
     }
   })
@@ -203,6 +237,15 @@ describe('profile environment', () => {
     await saveProfileEnv('acme', {}, ['TOKEN'], secrets)
     expect(await storedProfileEnvNames(profile, secrets)).toEqual(['ROOT'])
     expect(await profileSessionEnv(undefined, '/repo', secrets, '/h')).toEqual({})
+  })
+  it("expands ~ in a WSL profile's folders with the distribution's home, never this computer's", async () => {
+    const secrets = store()
+    await saveProfileEnv('acme', { ROOT: '${PROFILE_ROOT}' }, [], secrets)
+    const wsl: Profile = { ...profile, envNames: ['ROOT'], host: { kind: 'wsl', distro: 'Ubuntu' } }
+    // The host's home is known: the folder is expanded as there.
+    expect(await profileSessionEnv(wsl, '/home/ana/work/acme', secrets, 'C:\\Users\\ana', '/home/ana')).toEqual({ ROOT: '/home/ana/work' })
+    // Not known: left as written, for the host to resolve.
+    expect(await profileSessionEnv(wsl, '/srv/acme', secrets, 'C:\\Users\\ana', null)).toEqual({ ROOT: '~/work' })
   })
   it('expands both variables', () => {
     expect(expandEnvValue('${FOLDER}|${PROFILE_ROOT}', { folder: '/a', profileRoot: '/b' })).toBe('/a|/b')

@@ -53,6 +53,7 @@ import { settingsV2En } from './settingsV2.en'
 import { settingsAccountsEn } from './settingsAccounts.en'
 import { notificationsAlertsEn } from './notificationsAlerts.en'
 import { profileAgentsEn } from './profileAgents.en'
+import { profileHostEn } from './profileHost.en'
 import { settingsAgentsEn } from './settingsAgents.en'
 import { settingsConnectionsEn } from './settingsConnections.en'
 /**
@@ -115,6 +116,7 @@ export const en = {
   'groups.members.one': '1 session',
   'groups.members.other': '{count} sessions',
   'groups.reopenFailed': 'Could not reopen the session: {message}',
+  'groups.reopenNoAgent': 'Could not reopen the session: {agent} is no longer set up in Workhub. Add it again in Settings → Agents, or start a new session.',
   'attention.error': 'Error',
   'attention.needsAnswer': 'Needs an answer',
   'attention.readyToReview': 'Ready to review',
@@ -180,6 +182,9 @@ export const en = {
   'newSession.browse': 'Choose a folder',
   'newSession.start': 'Start session',
   'newSession.notInstalled': 'not installed',
+  'newSession.notInWsl': 'not available in WSL yet',
+  'newSession.hostPending': 'starting in WSL',
+  'newSession.notInWslHint': 'Sessions in WSL ({distro}) run Claude Code only for now. Pick Claude Code, or a profile that runs on this computer.',
   'agent.install.generic': 'The command "{command}" was not found on your PATH. Install it, or fix its path in the agent definition.',
   'agent.install.kiro': 'Install the Kiro CLI (kiro.dev/cli) and sign in with "kiro-cli login".',
   'agent.install.opencode': 'Install OpenCode (opencode.ai), for example with "npm i -g opencode-ai", and sign in with "opencode auth login".',
@@ -430,6 +435,7 @@ export const en = {
   'chat.attached': 'Attached images',
   'chat.placeholderQueue': 'The agent is working… a message sent now waits for its turn to end',
   'chat.placeholderInject': 'The agent is working… a message sent now joins its turn',
+  'chat.promptNotReceived': 'The agent did not receive this message. Its text is back in the composer: send it again.',
   'chat.queued': 'Queued: sent when the agent finishes',
   'chat.queuedList': 'Queued messages',
   'chat.idleContext.body': 'Idle for {time}: the prompt cache has likely expired, so your next message sends the whole context again (about {tokens} tokens) at full price.',
@@ -531,6 +537,7 @@ export const en = {
   ...settingsAccountsEn,
   ...notificationsAlertsEn,
   ...profileAgentsEn,
+  ...profileHostEn,
   ...settingsAgentsEn,
   ...settingsConnectionsEn,
   ...remoteEn,

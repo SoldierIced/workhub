@@ -222,7 +222,7 @@ export class SessionRequests implements SessionControl {
     const profile = await this.deps.profile(me.profileId)
     const agent = profile.agents.find((a) => a.key === agentKey)
     if (!agent) return fail(400, `this profile does not offer the agent "${agentKey}"; use one of: ${profile.agents.map((a) => a.key).join(', ') || 'none'}`)
-    const problem = this.folderProblem(folder, profile.folders)
+    const problem = await this.folderProblem(folder, profile.folders)
     if (problem) return fail(400, problem)
     if (this.waitingFrom(caller) >= SESSION_CONTROL_LIMITS.pendingPerSession) return fail(429, `${SESSION_CONTROL_LIMITS.pendingPerSession} requests of this session already wait for the user; wait until they approve or dismiss them`)
     if (!this.take('proposals', caller)) return fail(429, 'too many proposals from this session; try again later')
@@ -305,7 +305,7 @@ export class SessionRequests implements SessionControl {
     // Checked again: the profile's folders or agents may have changed while it waited.
     const profile = await this.deps.profile(request.profileId)
     if (!profile.agents.some((a) => a.key === request.agentKey)) return { ok: false, error: 'agent' }
-    if (this.folderProblem(request.cwd, profile.folders)) return { ok: false, error: 'folder' }
+    if (await this.folderProblem(request.cwd, profile.folders)) return { ok: false, error: 'folder' }
     const input = await attendedStart({ profileId: request.profileId, agentKey: request.agentKey, cwd: request.cwd }, (s) => this.deps.startMode(s))
     if (!input) return { ok: false, error: 'unattended' }
     if (!this.pending.delete(id)) return { ok: false, error: 'gone' }
@@ -422,10 +422,10 @@ export class SessionRequests implements SessionControl {
   }
 
   /** Why a proposed folder cannot be used: not absolute, not a folder, or outside the profile's folders. */
-  private folderProblem(folder: string, roots: readonly string[]): string | null {
+  private async folderProblem(folder: string, roots: readonly string[]): Promise<string | null> {
     if (!isAbsolute(folder)) return '"folder" must be an absolute path'
     if (!(this.deps.isDir ?? isDirectory)(folder)) return `not a folder: ${folder}`
-    if (reviewPathOutside([{ path: folder }], roots)) return `not inside this profile's folders: ${folder}`
+    if (await reviewPathOutside([{ path: folder }], roots)) return `not inside this profile's folders: ${folder}`
     return null
   }
 }

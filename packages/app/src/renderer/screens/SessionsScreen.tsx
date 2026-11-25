@@ -108,7 +108,7 @@ export const SessionPane = memo(function SessionPane({ data, visible, theme }: {
         </div>
       )}
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="relative flex min-w-0 flex-1 flex-col">
           {hasApp && (
             <div className={cn('flex min-h-0 flex-1', v.mode !== 'app' && 'hidden')}>
               <ChatPane data={data} active={visible && v.mode === 'app'} />
@@ -124,9 +124,9 @@ export const SessionPane = memo(function SessionPane({ data, visible, theme }: {
               <TerminalPane channel={terminalChannel(v.id, 'shell')} visible={visible && v.mode === 'shell'} theme={theme} label={t('session.modeShell')} />
             </div>
           )}
+          {/* The chat's live board, unfolded with the Board button of its bar: it floats over the chat, which keeps its width. */}
+          {boardPanel && <ChatBoardPanel sessionId={v.id} profileId={profileId} chat={sessionIdentity(v)} visible={visible} />}
         </div>
-        {/* The chat's live board, unfolded with the Board button of its bar. */}
-        {boardPanel && <ChatBoardPanel sessionId={v.id} profileId={profileId} chat={sessionIdentity(v)} visible={visible} />}
         {/* Folded away with the session header's monitor button (⇧⌘M), as Workhub 1's Inspector. */}
         {monitorHidden ? null : v.screens.includes('monitor') ? <MonitorPanel data={data} visible={visible} /> : <AiReviewAside view={v} />}
       </div>

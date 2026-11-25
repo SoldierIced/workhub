@@ -3,6 +3,7 @@ import type { Result, WorkhubConfig } from '@workhub/core'
 import type { UpdateStatus } from '@shared/updates-api'
 import { Button, Switch } from '../components/atoms'
 import { Dialog, SwitchRow } from '../components/molecules'
+import { ReleaseNotesPanel } from '../components/organisms/ReleaseNotesPanel'
 import { useI18n } from '../i18n/I18nProvider'
 import { useAsyncAction } from '../lib/useAsyncAction'
 
@@ -47,30 +48,38 @@ export function UpdatesSettings({
             ? t('updates.downloading', { version: status.version ?? '' })
             : status.state === 'ready'
               ? t('updates.ready', { version: status.version ?? '' })
-              : status.state === 'error'
-                ? t('updates.error', { message: status.message ?? '' })
-                : status.state === 'unsupported'
-                  ? t('updates.unsupported')
-                  : t('updates.version', { version: status.currentVersion })
+              : status.state === 'error' && status.installFailed
+                ? t(status.installFailed.windows ? 'updates.installFailedWindows' : 'updates.installFailed', { version: status.version ?? '' })
+                : status.state === 'error'
+                  ? t('updates.error', { message: status.message ?? '' })
+                  : status.state === 'unsupported'
+                    ? t('updates.unsupported')
+                    : t('updates.version', { version: status.currentVersion })
 
   return (
     <>
       <SwitchRow label={t('settingsV2.general.checkUpdates')} hint={t('updates.checkHint')}>
         <Switch checked={enabled} disabled={!editable} onChange={(on) => void run(() => window.hub.config.saveOptions({ checkForUpdates: on }))} />
       </SwitchRow>
-      <div className="flex items-center justify-between gap-4 py-3">
-        <span className="text-sm text-muted" data-testid="update-status">
-          {line}
-        </span>
-        <div className="flex gap-2">
-          {status?.state === 'available' && (
-            <Button disabled={install.pending} onClick={() => install.run()}>{status.canInstall ? t('updates.install') : t('updates.download')}</Button>
-          )}
-          {status?.state === 'ready' && <Button onClick={() => void window.hub.updates.restart()}>{t('updates.restartNow')}</Button>}
-          <Button disabled={!status || status.state === 'unsupported' || status.state === 'checking' || status.state === 'downloading' || status.state === 'ready' || check.pending} onClick={() => check.run()}>
-            {t('updates.checkNow')}
-          </Button>
+      <div className="py-3">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-muted" data-testid="update-status">
+            {line}
+          </span>
+          <div className="flex gap-2">
+            {status?.state === 'available' && (
+              <Button disabled={install.pending} onClick={() => install.run()}>{status.canInstall ? t('updates.install') : t('updates.download')}</Button>
+            )}
+            {status?.state === 'error' && status.installFailed && (
+              <Button data-testid="update-open-release" onClick={() => void window.hub.updates.openRelease()}>{t('updates.downloadFromGitHub')}</Button>
+            )}
+            {status?.state === 'ready' && <Button onClick={() => void window.hub.updates.restart()}>{t('updates.restartNow')}</Button>}
+            <Button disabled={!status || status.state === 'unsupported' || status.state === 'checking' || status.state === 'downloading' || status.state === 'ready' || check.pending} onClick={() => check.run()}>
+              {t('updates.checkNow')}
+            </Button>
+          </div>
         </div>
+        {status && (status.state === 'available' || status.state === 'downloading') && <ReleaseNotesPanel status={status} className="mt-3" />}
       </div>
       <Dialog
         open={asking}
