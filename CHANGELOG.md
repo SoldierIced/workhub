@@ -4,6 +4,22 @@ All notable changes to Workhub 2 are listed here. Entries from 2.0.0-alpha.2 on 
 [release-please](https://github.com/googleapis/release-please) from the Conventional Commits on
 `main`; see the release process in [CONTRIBUTING.md](CONTRIBUTING.md#releases).
 
+## [2.0.0-alpha.46](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.45...v2.0.0-alpha.46) (2026-11-26)
+
+
+### Features
+
+* **app:** edit the prompts Workhub sends in Settings ([#172](https://github.com/SoldierIced/workhub/issues/172)) ([488c965](https://github.com/SoldierIced/workhub/commit/488c9656c6b9a87b9dad7abd824d06cf2fb6ba53))
+* **app:** float the board panel over the chat without sideways scroll ([#176](https://github.com/SoldierIced/workhub/issues/176)) ([8cb9ef0](https://github.com/SoldierIced/workhub/commit/8cb9ef0873cf18b8c81dc61a793871cc1c3526f6))
+* **app:** show merged pull requests and their statistics ([#174](https://github.com/SoldierIced/workhub/issues/174)) ([21c6d6a](https://github.com/SoldierIced/workhub/commit/21c6d6a8f988afcf8dfe75bdf5a5a2cc440520ee))
+* **review:** accept a linked git worktree of an allowed repository ([#182](https://github.com/SoldierIced/workhub/issues/182)) ([f561311](https://github.com/SoldierIced/workhub/commit/f561311bf3093f1bc106aca6c24656cd32856ca7))
+
+
+### Bug Fixes
+
+* **app:** offer a GitHub download when an update fails to install ([#178](https://github.com/SoldierIced/workhub/issues/178)) ([5db1939](https://github.com/SoldierIced/workhub/commit/5db19393853e7a456db11e55c37aa4e3d60ad9fe))
+* **app:** show full ticket keys and widen the tickets screen ([#181](https://github.com/SoldierIced/workhub/issues/181)) ([42f3265](https://github.com/SoldierIced/workhub/commit/42f3265bfe07ba5cfceeeda112fccfabc1f57530))
+
 ## [2.0.0-alpha.45](https://github.com/SoldierIced/workhub/compare/v2.0.0-alpha.44...v2.0.0-alpha.45) (2026-11-24)
 
 
