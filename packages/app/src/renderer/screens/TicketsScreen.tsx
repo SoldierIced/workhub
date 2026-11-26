@@ -5,7 +5,7 @@ import { Badge, Button, Spinner } from '../components/atoms'
 import { Card, CardHeader, EmptyState, RefreshButton } from '../components/molecules'
 import { TicketRow } from '../components/molecules/TicketRow'
 import { useI18n } from '../i18n/I18nProvider'
-import { keyProviders, sessionRefs } from '../lib/tickets'
+import { keyColumnChars, keyProviders, sessionRefs } from '../lib/tickets'
 import { DEFAULT_TICKETS_VIEW, loadTicketsView, saveTicketsView, type TicketScope, type TicketsView } from '../lib/ticketsView'
 import type { SessionData } from '../store'
 import { useBacklog, useTickets } from '../ticketsStore'
@@ -45,6 +45,7 @@ export function TicketsScreen({ profile, sessions, onOpenSettings }: TicketsScre
   const facets = useMemo(() => ticketFacets(all), [all])
   const tickets = useMemo(() => filterTickets(all, filter), [all, filter])
   const groups = useMemo(() => groupBySprint(tickets, t('tickets.backlog')), [tickets, t])
+  const keyChars = useMemo(() => keyColumnChars(tickets), [tickets])
   const providers = useMemo(() => keyProviders(status), [status])
   const refs = useMemo(() => sessionRefs(sessions), [sessions])
 
@@ -119,6 +120,7 @@ export function TicketsScreen({ profile, sessions, onOpenSettings }: TicketsScre
                   <TicketRow
                     ticket={ticket}
                     showAssignee={inBacklog}
+                    keyChars={keyChars}
                     sessionCount={sessionsForTicket(ticket.key, refs, providers).length}
                     onOpen={() => open(ticket.key)}
                     onStartSession={() => window.hub.links.request({ kind: 'ticketSession', profileId, ticket: { key: ticket.key, title: ticket.title, url: ticket.url } })}
@@ -134,7 +136,7 @@ export function TicketsScreen({ profile, sessions, onOpenSettings }: TicketsScre
   }
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-5 px-8 py-7">
+    <div className="mx-auto flex max-w-7xl flex-col gap-5 px-8 py-7">
       <header className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">{t('nav.tickets')}</h1>

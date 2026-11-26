@@ -2,7 +2,7 @@ import { ArrowRight, Ticket as TicketIcon } from 'lucide-react'
 import { sessionsForTicket, ticketsInProgress, type Ticket } from '@workhub/core'
 import type { TicketsStatus } from '@shared/tickets-api'
 import { useI18n } from '../../i18n/I18nProvider'
-import { keyProviders, sessionRefs } from '../../lib/tickets'
+import { keyColumnChars, keyProviders, sessionRefs } from '../../lib/tickets'
 import type { SessionData } from '../../store'
 import { Button } from '../atoms/Button'
 import { Spinner } from '../atoms/Spinner'
@@ -60,6 +60,7 @@ export function HomeTicketsCard(props: {
                 <li key={ticket.key}>
                   <TicketRow
                     ticket={ticket}
+                    keyChars={keyColumnChars(ordered.slice(0, SHOWN))}
                     sessionCount={sessionsForTicket(ticket.key, refs, providers).length}
                     onOpen={() => profileId && void window.hub.tickets.openWindow(profileId, ticket.key)}
                   />
