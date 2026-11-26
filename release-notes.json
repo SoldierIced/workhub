@@ -1,6 +1,78 @@
 {
   "releases": [
     {
+      "version": "2.0.0-alpha.46",
+      "date": "2026-11-26",
+      "items": [
+        {
+          "kind": "new",
+          "title": {
+            "en": "Edit the prompts Workhub sends to agents",
+            "es": "Edita los prompts que Workhub envía a los agentes"
+          },
+          "body": {
+            "en": "Settings > Advanced > Prompts shows every prompt Workhub writes for an agent, such as the AI review or a hand-off, and lets you change it or go back to the default.",
+            "es": "Ajustes > Avanzado > Prompts muestra cada prompt que Workhub escribe para un agente, como la revisión con IA o el traspaso, y te deja cambiarlo o volver al original."
+          }
+        },
+        {
+          "kind": "new",
+          "title": {
+            "en": "See merged pull requests and their statistics",
+            "es": "Mira los pull requests mergeados y sus estadísticas"
+          },
+          "body": {
+            "en": "Pull requests has a Merged view: what was merged in a period, by day, with lines changed, and a summary for everyone or just you. The screen also loads faster.",
+            "es": "Pull requests tiene una vista Mergeados: lo que se mergeó en un período, por día, con las líneas cambiadas, y un resumen de todos o solo tuyo. La pantalla además carga más rápido."
+          }
+        },
+        {
+          "kind": "improved",
+          "title": {
+            "en": "The live board floats over the chat",
+            "es": "El tablero en vivo flota sobre el chat"
+          },
+          "body": {
+            "en": "The board panel no longer narrows the chat, opens wider and never scrolls sideways.",
+            "es": "El panel del tablero ya no angosta el chat, se abre más ancho y nunca se desplaza de costado."
+          }
+        },
+        {
+          "kind": "improved",
+          "title": {
+            "en": "Review an agent's worktree in Workhub, wherever it is",
+            "es": "Revisa el worktree de un agente en Workhub, esté donde esté"
+          },
+          "body": {
+            "en": "When an agent works in a git worktree outside your folders, such as one in a temporary folder, its review opens in Workhub instead of a browser.",
+            "es": "Cuando un agente trabaja en un worktree de git fuera de tus carpetas, por ejemplo en una carpeta temporal, su revisión se abre en Workhub en vez del navegador."
+          }
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Workhub tells you when an update could not install",
+            "es": "Workhub avisa cuando una actualización no se pudo instalar"
+          },
+          "body": {
+            "en": "If your system blocks the installer, the update prompt and Settings say so and offer to download the version from GitHub.",
+            "es": "Si tu sistema bloquea el instalador, el aviso de actualización y Ajustes lo dicen y ofrecen descargar la versión desde GitHub."
+          }
+        },
+        {
+          "kind": "fixed",
+          "title": {
+            "en": "Tickets show their whole key",
+            "es": "Los tickets muestran su clave completa"
+          },
+          "body": {
+            "en": "Long ticket keys were cut in the Tickets list. They now show in full, and the screen uses more of a wide window.",
+            "es": "Las claves largas se cortaban en la lista de Tickets. Ahora se ven completas y la pantalla aprovecha más una ventana ancha."
+          }
+        }
+      ]
+    },
+    {
       "version": "2.0.0-alpha.45",
       "date": "2026-11-24",
       "items": [
