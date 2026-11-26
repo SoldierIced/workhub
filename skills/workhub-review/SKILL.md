@@ -45,8 +45,10 @@ W -X POST "http://workhub/v1/sessions/$WORKHUB_SESSION/review" -H 'content-type:
 ```
 
 - `repos` lists only the repos you changed, by absolute path. Each must be inside this session's
-  folder, its worktree or one of its profile's folders (by real path); others are refused with a
-  400. A clone in a temporary folder outside them cannot be reviewed here: say so.
+  folder, its worktree or one of its profile's folders (by real path), or be a `git worktree add`
+  worktree of a repository there (local sessions only; a session that runs in a linked worktree also
+  reaches its repository's main folder and other worktrees); others are refused with a 400. A plain
+  clone in a temporary folder outside them cannot be reviewed here: say so.
 - `base` is what to compare with: the branch the work started from (`origin/main`, a release
   branch) or a commit. Leave it out to let Workhub pick.
 - An open window reloads with the new repos and base.

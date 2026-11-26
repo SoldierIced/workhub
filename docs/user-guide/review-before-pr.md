@@ -212,7 +212,7 @@ port with a token made at each launch): replace `--unix-socket "$WORKHUB_SOCKET"
 `X-Workhub-Token` header.
 
 `repos` is optional: the listed repositories are added to the ones Workhub finds in the session's
-folder, and `base` picks what to compare with: a branch, or any commit (such as the last one you pushed). An open window reloads. Every listed path must be inside the session's folder (or its worktree) or inside one of its profile's folders, compared by real path (a symlink that points outside does not count); any other path is refused with a 400 error.
+folder, and `base` picks what to compare with: a branch, or any commit (such as the last one you pushed). An open window reloads. Every listed path must be inside the session's folder (or its worktree) or inside one of its profile's folders, compared by real path (a symlink that points outside does not count). A linked git worktree elsewhere (one made with `git worktree add /tmp/fix`) counts too when its repository is inside them and git links the two both ways (not one at or above your home folder); for sessions on this computer only, not in WSL. A session that runs in a linked worktree may also review its repository's main folder and other worktrees. Any other path is refused with a 400 error.
 
 The `workhub-review` skill, installed with the other Workhub tools (**Settings → Agents → Workhub
 tools**), teaches agents to open this window before a commit, push or pull request and to wait for
