@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { localDayKey, spendKey, type SpendBuckets } from '@workhub/core'
-import { claudePending, claudeSpendLine, codexSpendLine, commitClaude, kiroSpendFile, TokenSpendScanner, worktreeAliases, worktreeOf, type ClaudeSpendState, type CodexSpendState } from '../src/token-spend'
+import { claudePending, claudeSpendLine, codexSpendLine, commitClaude, kiroSpendFile, TokenSpendScanner, confirmedWorktreeOf, worktreeAliases, worktreeOf, type ClaudeSpendState, type CodexSpendState } from '../src/token-spend'
 
 const T = '2026-10-27T10:00:00.000Z'
 const DAY = localDayKey(new Date(T))
@@ -255,5 +255,35 @@ describe('git worktrees', () => {
     const cache = new Map()
     expect(await worktreeAliases([join(wt, 'src'), join(root, 'nowhere')], cache)).toEqual({ [wt]: main })
     expect(cache.size).toBe(2)
+  })
+
+  it('confirms a worktree only when git links it both ways', async () => {
+    const main = join(root, 'profile', 'api')
+    const gitdir = join(main, '.git', 'worktrees', 'api-fix')
+    const wt = join(root, 'elsewhere', 'api-fix')
+    mkdirSync(gitdir, { recursive: true })
+    writeFileSync(join(gitdir, 'commondir'), '../..\n')
+    mkdirSync(join(wt, 'src'), { recursive: true })
+    writeFileSync(join(wt, '.git'), `gitdir: ${gitdir}\n`)
+    // No back-link yet: a .git file written by hand does not borrow the repository.
+    expect(await confirmedWorktreeOf(join(wt, 'src'))).toBeNull()
+    writeFileSync(join(gitdir, 'gitdir'), `${join(wt, '.git')}\n`)
+    expect(await confirmedWorktreeOf(join(wt, 'src'))).toEqual({ worktree: wt, main })
+    // A second folder pointing at the same entry is not the worktree git knows.
+    const forged = join(root, 'forged')
+    mkdirSync(forged)
+    writeFileSync(join(forged, '.git'), `gitdir: ${gitdir}\n`)
+    expect(await confirmedWorktreeOf(forged)).toBeNull()
+    expect(await confirmedWorktreeOf(join(main, 'src'))).toBeNull()
+    // An entry outside the repository's .git/worktrees that only names it in commondir.
+    const fake = join(root, 'fake-entry')
+    const borrower = join(root, 'borrower')
+    mkdirSync(fake)
+    mkdirSync(borrower)
+    writeFileSync(join(fake, 'commondir'), `${join(main, '.git')}\n`)
+    writeFileSync(join(fake, 'gitdir'), `${join(borrower, '.git')}\n`)
+    writeFileSync(join(borrower, '.git'), `gitdir: ${fake}\n`)
+    expect(await worktreeOf(borrower)).toEqual({ worktree: borrower, main })
+    expect(await confirmedWorktreeOf(borrower)).toBeNull()
   })
 })

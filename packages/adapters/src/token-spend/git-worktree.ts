@@ -4,7 +4,7 @@
  * `commondir` points at the main repository's `.git`. Used to count a worktree that lives outside
  * a profile's folders for its repository inside them. Never throws.
  */
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, realpath, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 export interface WorktreeLink {
@@ -32,6 +32,32 @@ export async function worktreeOf(path: string): Promise<WorktreeLink | null> {
     dir = parent
   }
   return null
+}
+
+/**
+ * Like `worktreeOf`, but only for a worktree git itself links both ways: the worktree's `.git` names
+ * its entry under the main repository, and that entry's `gitdir` file names this worktree's `.git`
+ * back. A `.git` file written by hand into some folder does not pass. Used where the answer grants
+ * access (the review endpoint), not only for counting.
+ */
+export async function confirmedWorktreeOf(path: string): Promise<WorktreeLink | null> {
+  const link = await worktreeOf(path)
+  if (!link) return null
+  const gitdir = await gitdirOf(link.worktree)
+  const back = gitdir ? (await readFile(resolve(gitdir, 'gitdir'), 'utf8').catch(() => '')).trim() : ''
+  if (!back || basename(back) !== '.git') return null
+  const real = (p: string) => realpath(p).catch(() => null)
+  // The entry must sit in the main repository's own `.git/worktrees`, not in a folder that only
+  // names that repository in its `commondir`.
+  const [named, own, entries, home] = await Promise.all([real(dirname(resolve(gitdir!, back))), real(link.worktree), real(resolve(link.main, '.git', 'worktrees')), real(dirname(gitdir!))])
+  return named !== null && named === own && entries !== null && entries === home ? link : null
+}
+
+async function gitdirOf(worktree: string): Promise<string | null> {
+  const text = await readFile(resolve(worktree, '.git'), 'utf8').catch(() => '')
+  const m = /^gitdir:\s*(.+?)\s*$/m.exec(text)
+  if (!m?.[1]) return null
+  return isAbsolute(m[1]) ? m[1] : resolve(worktree, m[1])
 }
 
 async function linkOf(worktree: string): Promise<WorktreeLink | null> {

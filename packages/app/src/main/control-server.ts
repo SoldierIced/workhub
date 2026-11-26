@@ -253,20 +253,55 @@ const localRealpath = async (p: string): Promise<string | null> => {
  * worktree and the folders of its profile), compared by real path so a symlink or `..` cannot
  * leave them; null when all are inside. A root that does not exist is skipped. `real` resolves on
  * the session's host (this computer's disk by default); POSIX paths are compared as POSIX paths
- * (a WSL host's, also when this computer is Windows).
+ * (a WSL host's, also when this computer is Windows). `mainOf`, when given, names the main
+ * repository of a linked git worktree: such a worktree outside the roots counts when its repository
+ * is inside them. Only the review endpoint of a local session passes it (`linkedMainOf`).
  */
-export async function reviewPathOutside(repos: readonly ReviewRequestRepo[], roots: readonly string[], real: (path: string) => Promise<string | null> = localRealpath): Promise<string | null> {
+export async function reviewPathOutside(
+  repos: readonly ReviewRequestRepo[],
+  roots: readonly string[],
+  real: (path: string) => Promise<string | null> = localRealpath,
+  mainOf?: (path: string) => Promise<string | null>
+): Promise<string | null> {
   const allowed = (await Promise.all(roots.map(real))).filter((r): r is string => r !== null)
-  for (const { path } of repos) {
-    const target = await real(path)
-    const inside = target !== null && allowed.some((root) => {
+  const within = (target: string | null) =>
+    target !== null &&
+    allowed.some((root) => {
       const paths = root.startsWith('/') && target.startsWith('/') ? posix : { relative, isAbsolute }
       const rel = paths.relative(root, target)
       return rel === '' || (!rel.startsWith('..') && !paths.isAbsolute(rel))
     })
-    if (!inside) return path
+  for (const { path } of repos) {
+    const target = await real(path)
+    if (within(target)) continue
+    const main = target !== null && mainOf ? await mainOf(target) : null
+    if (main === null || !within(await real(main))) return path
   }
   return null
+}
+
+/** Whether `folder` is `path` or one of its parents. */
+const isAtOrAbove = (folder: string, path: string) => {
+  const rel = relative(folder, path)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/**
+ * The main repository of the linked worktree `path` is in, as `confirm` reads it from git's files
+ * (`confirmedWorktreeOf`), by real path; null when there is none, or when the worktree or its
+ * repository is at or above the home folder (a repository kept in home would open all of it).
+ */
+export async function linkedMainOf(
+  path: string,
+  home: string,
+  confirm: (path: string) => Promise<{ worktree: string; main: string } | null>,
+  real: (path: string) => Promise<string | null> = localRealpath
+): Promise<string | null> {
+  const target = await real(path)
+  const link = target === null ? null : await confirm(target)
+  if (!link) return null
+  const realHome = (await real(home)) ?? home
+  return isAtOrAbove(link.worktree, realHome) || isAtOrAbove(link.main, realHome) ? null : link.main
 }
 
 const isDirectory = (path: string) => {

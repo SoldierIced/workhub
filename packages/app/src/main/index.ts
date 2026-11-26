@@ -102,7 +102,7 @@ import { OwnerStarts } from './owner-starts'
 import { resolveChoice, SessionManager, ticketPrefixes } from './session-manager'
 import { registerLinksIpc } from './links'
 import { LocalReviewService, registerLocalReviewIpc } from './local-review'
-import { CONTROL_ENV_KEYS, controlEnv, controlSocketPath, newControlToken, reviewPathOutside, serveControl, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
+import { CONTROL_ENV_KEYS, controlEnv, controlSocketPath, linkedMainOf, newControlToken, reviewPathOutside, serveControl, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ControlDeps, type ControlEndpoint } from './control-server'
 import { createAnalyticsControl } from './analytics-control'
 import { ControlTokens } from './control-auth'
 import { kiroUsageProbeEnabled } from './kiro-usage-probe'
@@ -124,7 +124,7 @@ import { registerFileViewerIpc } from './file-viewer'
 import { SlackWatcherService } from './slack-watcher'
 import { registerTicketIpc } from './tickets'
 import { TicketService } from './tickets-service'
-import type { SpendSources, WorktreeLink } from '@workhub/adapters/token-spend'
+import { confirmedWorktreeOf, type SpendSources, type WorktreeLink } from '@workhub/adapters/token-spend'
 import { ingestsTranscripts, spendSources, TokenSpendService, turnOwners, turnProjects } from './token-spend'
 import { AnalyticsRecorder } from './analytics-recorder'
 import { registerAnalyticsIpc, REPORT_BUDGET_MS } from './analytics-ipc'
@@ -1807,9 +1807,14 @@ void app.whenReady().then(async () => {
       // compared on its host (where `~` in the profile's folders is that host's home).
       const profile = (await configuration.current()).profiles.find((p) => p.id === v.profileId)
       const folders = profile ? (elsewhere(host.id) && host.home ? profileFolderPaths({ folders: profile.folders }, host.home) : profileFolderPaths(profile, homedir())) : []
-      const roots = [v.cwd, ...folders.map((f) => f.path)]
-      const outside = await reviewPathOutside(repos, roots, host.realpath)
-      if (outside) return { ok: false, status: 400, error: `not inside this session's folder, worktree or profile folders: ${outside}` }
+      const local = !elsewhere(host.id)
+      // A linked worktree of an allowed repository (`git worktree add /tmp/x`) counts too, read on this
+      // computer only; a session running in a linked worktree may review its repository's other worktrees.
+      const mainOf = local ? (path: string) => linkedMainOf(path, homedir(), confirmedWorktreeOf) : undefined
+      const sessionMain = mainOf ? await mainOf(v.cwd) : null
+      const roots = [v.cwd, ...folders.map((f) => f.path), ...(sessionMain ? [sessionMain] : [])]
+      const outside = await reviewPathOutside(repos, roots, host.realpath, mainOf)
+      if (outside) return { ok: false, status: 400, error: `not inside this session's folder, worktree or profile folders, nor a git worktree of a repository there: ${outside}` }
       localReview.request(sessionId, repos)
       openLocalReviewWindow(sessionId, true)
       return { ok: true }

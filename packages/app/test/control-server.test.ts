@@ -1,11 +1,12 @@
-import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { confirmedWorktreeOf } from '@workhub/adapters/token-spend'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ControlAuth } from '../src/main/control-auth'
-import { controlEnv, controlSocketPath, NO_CONTROL_ENV, newControlToken, parseReviewBody, privateSocketDir, probeSocket, reviewPathOutside, serveControl, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
+import { controlEnv, controlSocketPath, NO_CONTROL_ENV, linkedMainOf, newControlToken, parseReviewBody, privateSocketDir, probeSocket, reviewPathOutside, serveControl, startControlServer, startLoopbackControlServer, usesLoopbackControl, type ReviewRequestRepo } from '../src/main/control-server'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -286,6 +287,54 @@ describe('reviewPathOutside on a host', () => {
     expect(await reviewPathOutside([{ path: '/home/ana/acme/api' }, { path: '/home/ana/acme' }], roots, real)).toBeNull()
     expect(await reviewPathOutside([{ path: '/home/ana/link' }], roots, real)).toBe('/home/ana/link')
     expect(await reviewPathOutside([{ path: '/home/ana/missing' }], roots, real)).toBe('/home/ana/missing')
+  })
+})
+
+describe('reviewPathOutside with linked worktrees', () => {
+  it("accepts a folder outside the roots only when mainOf names a repository inside them", async () => {
+    const real = async (p: string) => p
+    const roots = ['/home/ana/acme']
+    const mainOf = async (p: string) => ({ '/tmp/api-fix': '/home/ana/acme/api', '/tmp/other-fix': '/srv/other' })[p] ?? null
+    expect(await reviewPathOutside([{ path: '/tmp/api-fix' }], roots, real, mainOf)).toBeNull()
+    expect(await reviewPathOutside([{ path: '/tmp/other-fix' }], roots, real, mainOf)).toBe('/tmp/other-fix')
+    expect(await reviewPathOutside([{ path: '/tmp/plain' }], roots, real, mainOf)).toBe('/tmp/plain')
+    // Without mainOf (a WSL session, the folder check of a proposal) nothing changes.
+    expect(await reviewPathOutside([{ path: '/tmp/api-fix' }], roots, real)).toBe('/tmp/api-fix')
+  })
+})
+
+describe('linkedMainOf', () => {
+  const real = async (p: string) => ({ '/home/ana': '/var/home/ana' })[p] ?? p
+  const links: Record<string, { worktree: string; main: string }> = {
+    '/tmp/api-fix': { worktree: '/tmp/api-fix', main: '/var/home/ana/acme/api' },
+    '/var/home/ana': { worktree: '/var/home/ana', main: '/var/home/ana/acme/api' },
+    '/tmp/dots': { worktree: '/tmp/dots', main: '/var/home/ana' }
+  }
+  const confirm = async (p: string) => links[p] ?? null
+  it("names a worktree's repository, never for a worktree or repository at or above the real home", async () => {
+    expect(await linkedMainOf('/tmp/api-fix', '/home/ana', confirm, real)).toBe('/var/home/ana/acme/api')
+    expect(await linkedMainOf('/var/home/ana', '/home/ana', confirm, real)).toBeNull()
+    expect(await linkedMainOf('/tmp/dots', '/home/ana', confirm, real)).toBeNull()
+    expect(await linkedMainOf('/tmp/plain', '/home/ana', confirm, real)).toBeNull()
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('linkedMainOf with git', () => {
+  it('reads worktrees made by git, with absolute and relative links', async () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'wh-lwt-')))
+    dirs.push(base)
+    const main = join(base, 'profile', 'api')
+    mkdirSync(main, { recursive: true })
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: main, stdio: 'ignore' })
+    git('init', '-q')
+    git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init')
+    git('worktree', 'add', '-q', join(base, 'out', 'abs'))
+    git('-c', 'worktree.useRelativePaths=true', 'worktree', 'add', '-q', join(base, 'out', 'rel'))
+    const home = join(base, 'home')
+    mkdirSync(home)
+    expect(await linkedMainOf(join(base, 'out', 'abs'), home, confirmedWorktreeOf)).toBe(main)
+    expect(await linkedMainOf(join(base, 'out', 'rel'), home, confirmedWorktreeOf)).toBe(main)
+    expect(await linkedMainOf(main, home, confirmedWorktreeOf)).toBeNull()
   })
 })
 
