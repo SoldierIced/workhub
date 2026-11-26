@@ -17,6 +17,14 @@ export function keyProviders(status: TicketsStatus | undefined): TicketKeyProvid
  * Settings: no tracker on the profile (`connect`), a connection missing its site, email or token
  * (`complete`), or a provider Workhub cannot read (`unsupported`). Null when it reads (or the status is not known yet).
  */
+/**
+ * Width of a list's key column in `ch` (keys are monospaced): the longest key, so no key is cut and
+ * the titles still line up. At least 8, the old fixed width.
+ */
+export function keyColumnChars(tickets: readonly { key: string }[]): number {
+  return tickets.reduce((max, t) => Math.max(max, t.key.length), 8)
+}
+
 export type TrackerHint = 'connect' | 'complete' | 'unsupported'
 
 export function trackerHint(status: Pick<TicketsStatus, 'state'> | undefined): TrackerHint | null {

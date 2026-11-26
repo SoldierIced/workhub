@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { keyProviders, relativeTime, sessionRefs, slugify, splitLinks, uniqueConnectionId } from '../src/renderer/lib/tickets'
+import { keyColumnChars, keyProviders, relativeTime, sessionRefs, slugify, splitLinks, uniqueConnectionId } from '../src/renderer/lib/tickets'
 
 describe('splitLinks', () => {
   it('splits text around http links and keeps trailing punctuation out of the link', () => {
@@ -46,5 +46,15 @@ describe('keyProviders and sessionRefs', () => {
   it('turns sessions into link facts', () => {
     const s = { view: { id: 's1', label: 'Fix ABC-1', cwd: '/work/app', state: 'ready' }, monitor: { ticketKeys: ['ABC-1'] }, items: [], output: [] }
     expect(sessionRefs([s as never])).toEqual([{ id: 's1', title: 'Fix ABC-1', cwd: '/work/app', ticketKeys: ['ABC-1'], state: 'ready' }])
+  })
+})
+
+describe('keyColumnChars', () => {
+  it('fits the longest key so none is cut', () => {
+    expect(keyColumnChars([{ key: 'ACME-1' }, { key: 'PAYMENTS-3456' }, { key: 'OPS-31' }])).toBe(13)
+  })
+  it('keeps the minimum for short keys and empty lists', () => {
+    expect(keyColumnChars([{ key: 'OPS-1' }])).toBe(8)
+    expect(keyColumnChars([])).toBe(8)
   })
 })

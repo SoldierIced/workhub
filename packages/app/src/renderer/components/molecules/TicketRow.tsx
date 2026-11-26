@@ -16,17 +16,21 @@ export interface TicketRowProps {
   onStartSession?: () => void
   /** Shows who has the ticket (the team backlog), or "Unassigned". */
   showAssignee?: boolean
+  /** Width of the key column in characters, shared by the rows of one list (see `keyColumnChars`). */
+  keyChars?: number
   className?: string
 }
 
 /** One ticket in a list: key, title, links to PRs and sessions, status. Clicking opens the ticket window. */
-export function TicketRow({ ticket, sessionCount = 0, onOpen, onOpenExternal, onStartSession, showAssignee, className }: TicketRowProps) {
+export function TicketRow({ ticket, sessionCount = 0, onOpen, onOpenExternal, onStartSession, showAssignee, keyChars, className }: TicketRowProps) {
   const { t, tn } = useI18n()
   const prs = ticket.pullRequestUrls?.length ?? 0
   return (
     <div className={cn('flex items-center gap-2 rounded-md px-1 transition-colors duration-150 hover:bg-surface-hover', className)}>
       <button type="button" onClick={onOpen} aria-label={t('tickets.openTicket', { key: ticket.key })} className="flex min-w-0 flex-1 items-center gap-3 py-1.5 pl-1.5 text-left text-base">
-        <span className="w-24 shrink-0 truncate font-mono text-sm font-medium text-accent">{ticket.key}</span>
+        <span className="min-w-24 shrink-0 whitespace-nowrap font-mono text-sm font-medium text-accent" style={keyChars ? { width: `${keyChars}ch` } : undefined}>
+          {ticket.key}
+        </span>
         <span className="min-w-0 flex-1 truncate">{ticket.title}</span>
       </button>
       {prs > 0 && (
