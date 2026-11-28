@@ -15,11 +15,12 @@ One page per area of Workhub 2. Names in **bold** are labels you see in the app 
 11. [Plan](plan.md)
 12. [Automations](automations.md)
 13. [Live boards](live-boards.md)
-14. [History](history.md)
-15. [Usage and budgets](usage.md) (and Usage and reports)
-16. [Remote access](remote-access.md)
-17. [Settings](settings.md)
-18. [Keyboard shortcuts](keyboard-shortcuts.md)
+14. [Cooking](cooking.md)
+15. [History](history.md)
+16. [Usage and budgets](usage.md) (and Usage and reports)
+17. [Remote access](remote-access.md)
+18. [Settings](settings.md)
+19. [Keyboard shortcuts](keyboard-shortcuts.md)
 
 Back to the [documentation index](../README.md). Problems: [Troubleshooting](../troubleshooting.md).
 

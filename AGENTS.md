@@ -68,6 +68,9 @@ npm run demo         # dev build with synthetic data in .demo-data/ (add -- --re
   `skills/workhub-sessions` (other sessions of the profile, proposals and messages the user approves,
   notifications, `packages/app/src/main/session-control.ts`), and
   `skills/workhub-review` (the user's review of the session's changes, `POST /v1/sessions/<id>/review`). Keep a skill in step with the endpoint it describes.
+- `skills/workhub-cooking` teaches no endpoint: it is a way of working (the cooking method) that sends its
+  job as a live board. The chat command `/cooking` (`packages/app/src/renderer/lib/chatCommands.ts`) starts it;
+  its measured results are in `docs/cooking-benchmarks.md`, which describe the skill as it was measured.
 - Live boards: the chat's board panel, `packages/app/src/renderer/screens/boards/ChatBoards.tsx` (module
   `boards`, no route of its own); the format and its limits are `packages/core/src/boards/` (`BOARD_LIMITS`, `parseBoard`).
 - Settings screen: `packages/app/src/renderer/screens/SettingsScreen.tsx`, shown in its own window

@@ -239,6 +239,10 @@ On a narrow window the bar folds level by level (the switch and **Board** to ico
   runs it there; go back to App (⌘⌥1) when you are done. Workhub only types commands the session
   reports as terminal-only, never other text. The menu also shows a command's aliases (`/stats` for
   `/usage`), and typing an alias finds it.
+- **Cooking**: `/cooking <request>` in the chat hands the request to the agent with the cooking
+  method (recorded decisions, independent readers, a live board): see [Cooking](cooking.md). It
+  shows in the `/` menu after the agent's own commands, so a short prefix such as `/c` still picks
+  the agent's command. It is not offered in a reviewer session.
 - **Close**: the close button on the row, `/exit` in the chat (in App mode, for every agent;
   anything typed after it is ignored), or ⌘/Ctrl+Shift+W. A session that is working asks first
   (**Stop and close**). A session in a worktree Workhub created offers to keep or remove the

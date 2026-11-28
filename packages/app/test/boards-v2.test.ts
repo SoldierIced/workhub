@@ -201,6 +201,17 @@ describe('the examples tools read', () => {
   })
 })
 
+describe('the examples of the workhub-cooking skill', () => {
+  it('every JSON example is a valid board, and there is at least one', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { parseBoard } = await import('@workhub/core')
+    const text = readFileSync(new URL('../../../skills/workhub-cooking/SKILL.md', import.meta.url), 'utf8')
+    const examples = [...text.matchAll(/```json\r?\n([\s\S]*?)```/g)].map((m) => JSON.parse(m[1]!) as unknown)
+    expect(examples.length).toBeGreaterThan(0)
+    for (const doc of examples) expect(parseBoard(doc)).toMatchObject({ ok: true })
+  })
+})
+
 describe('a filter that leaves a block empty', () => {
   it('says the agent has nothing there instead of "nothing yet"', async () => {
     const { createElement } = await import('react')

@@ -19,7 +19,7 @@ import { acceptsInput, restoreComposer } from '../../lib/prompt-queue'
 import { isEditable, shouldFocusComposer } from '../../lib/composer-focus'
 import { interruptSession, onRecoveredPrompts, removeQueuedPrompt, submitPrompt, useQueuedPrompts } from '../../promptQueue'
 import { markPermission, openChatImage, pushItem, pushNotice, type ChatItem, type SessionData } from '../../store'
-import { runWorkhubCommand, sessionSlashCommands } from '../../lib/chatCommands'
+import { rewriteWorkhubPrompt, runWorkhubCommand, sessionSlashCommands } from '../../lib/chatCommands'
 import { requestSessionClose } from '../../lib/closeSession'
 import { SlashCommandMenu, slashOptionId } from './SlashCommandMenu'
 import { FileMentionMenu, mentionOptionId } from './FileMentionMenu'
@@ -676,10 +676,16 @@ export function ChatPane({ data, active = false }: { data: SessionData; active?:
   }
 
   const send = async (override = false) => {
-    const value = text.trim()
+    let value = text.trim()
     if ((!value && images.length === 0) || !open) return
+    // `/cooking <request>` is rewritten here, with or without images, and then takes the normal path
+    // below (usage gate, failover, queue). Without a request, or without the skill, nothing is sent.
+    const rewritten = rewriteWorkhubPrompt(v, value, (kind, message) => (kind === 'error' ? pushItem(v.id, 'error', message) : pushNotice(v.id, message, value)), t)
+    if (rewritten?.kind === 'handled') return
+    if (rewritten) value = rewritten.text
     // Workhub's own commands (`/rename`) run here and never reach the agent; any other `/text` goes as typed.
     if (
+      !rewritten &&
       images.length === 0 &&
       runWorkhubCommand(
         v,

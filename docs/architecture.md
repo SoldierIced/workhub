@@ -220,7 +220,7 @@ never breaks the session.
   /v1/milestones/:id`. With the profile's `agentMilestones: ask` (the default) they answer 202 with
   `pending: true` and wait as proposals on the Milestones tab; with `allow` they answer 200 with
   `applied: true`. Changes go through the same services as the UI, which push change events to open windows. Agents learn
-  them from the skills in `skills/` (`workhub-flow-map`, `workhub-board`, `workhub-plan`, `workhub-automations`, `workhub-analytics`, `workhub-sessions`, `workhub-review`).
+  them from the skills in `skills/` (`workhub-flow-map`, `workhub-board`, `workhub-plan`, `workhub-automations`, `workhub-analytics`, `workhub-sessions`, `workhub-review`). `workhub-cooking` is a skill of another kind: a way of working, started by the chat command `/cooking`, that uses `POST /v1/boards` for its board.
 - Automations and History for agents (`automation-control.ts`): `GET /v1/automations`, `POST
   /v1/automations` and `PATCH /v1/automations/:id` save through the same service as the
   Automations screen, but always leave the automation off (`enabled: true` is refused), so an agent

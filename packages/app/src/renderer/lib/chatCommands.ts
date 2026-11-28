@@ -3,7 +3,7 @@ import type { SessionView } from '@shared/api'
 import type { MessageKey, Params } from '../i18n/translate'
 
 type Translate = (key: MessageKey, params?: Params) => string
-type CommandView = Pick<SessionView, 'id' | 'agentId' | 'adapter' | 'commands' | 'models' | 'modelControl'> & Partial<Pick<SessionView, 'modes'>>
+type CommandView = Pick<SessionView, 'id' | 'agentId' | 'adapter' | 'commands' | 'models' | 'modelControl'> & Partial<Pick<SessionView, 'modes' | 'readOnly'>>
 
 /**
  * `/model` is Workhub's for agents it switches models on over ACP, so the header's picker follows.
@@ -36,6 +36,8 @@ export function workhubCommands(v: CommandView, t: Translate): SlashCommandInfo[
   if (ownsRemoteControl(v)) out.push({ name: 'remote-control', group: 'workhub', description: t('slash.remoteControl.description') })
   if (ownsModel(v)) out.push({ name: 'model', group: 'workhub', description: t('slash.model.description'), argumentHint: t('slash.model.hint') })
   // Claude Code's own /exit belongs to its terminal UI (the chat goes through the SDK), so Workhub closes the session.
+  // `/cooking` hands the request to the workhub-cooking skill; a reviewer session is read-only and never starts that work.
+  if (!v.readOnly) out.push({ name: 'cooking', group: 'workhub', afterAgent: true, description: t('slash.cooking.description'), argumentHint: t('slash.cooking.hint') })
   out.push({ name: 'exit', group: 'workhub', description: t('slash.exit.description') })
   return out
 }
@@ -138,4 +140,47 @@ export function runWorkhubCommand(v: CommandView, text: string, actions: Workhub
     return true
   }
   return false
+}
+
+/** The skill `/cooking` asks for. */
+export const COOKING_SKILL = 'workhub-cooking'
+
+/**
+ * What `/cooking <request>` sends: the request first (the session's name comes from the first line), then the
+ * instruction. A request that starts with `/` gets a label in front, so the agent does not take it for one of its
+ * own commands (`/cooking /clear does not reset the filters`).
+ */
+export function cookingPrompt(request: string): string {
+  const first = request.startsWith('/') ? `Request: ${request}` : request
+  return `${first}\n\nUse the ${COOKING_SKILL} skill for this request. If that skill is not installed, say so and stop.`
+}
+
+/** True when the session reported skills and `workhub-cooking` is not among them (unknown: false). */
+function cookingMissing(v: CommandView): boolean {
+  const skills = (v.commands ?? []).filter((c) => c.group === 'skill')
+  if (skills.length === 0) return false
+  return !skills.some((c) => {
+    const name = c.name.toLowerCase()
+    return name === COOKING_SKILL || name.endsWith(`:${COOKING_SKILL}`)
+  })
+}
+
+/**
+ * `/cooking <request>` rewrites the prompt: `send` carries the text the normal send path then runs
+ * (usage gate, account failover, queue). `handled` means nothing is sent and the notice is reported.
+ * Null: not `/cooking` (or a reviewer session, where it is not Workhub's command).
+ */
+export function rewriteWorkhubPrompt(v: CommandView, text: string, report: (kind: 'done' | 'error', text: string) => void, t: Translate): { kind: 'send'; text: string } | { kind: 'handled' } | null {
+  if (v.readOnly) return null
+  const command = parseSlashCommand(text)
+  if (!command || command.name.toLowerCase() !== 'cooking') return null
+  if (!command.args) {
+    report('error', t('slash.cooking.usage'))
+    return { kind: 'handled' }
+  }
+  if (cookingMissing(v)) {
+    report('error', t('slash.cooking.notInstalled'))
+    return { kind: 'handled' }
+  }
+  return { kind: 'send', text: cookingPrompt(command.args) }
 }
