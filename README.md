@@ -193,7 +193,9 @@ bundle without quitting).
 Sessions reach Workhub's local control endpoint through Workhub's MCP server, which every session
 gets (Settings → Agents → Workhub tools), and through the `skills/workhub-plan`,
 `skills/workhub-flow-map`, `skills/workhub-board`, `skills/workhub-automations`, `skills/workhub-analytics`, `skills/workhub-sessions` and `skills/workhub-review` skills, which teach when and how to use
-it. **Install** in that same section copies the skills into each Claude Code folder and into the
+it. One more skill, `skills/workhub-cooking`, is a way of working rather than an endpoint: type `/cooking` in a
+chat to have a change done with recorded decisions and independent readers
+([Cooking](docs/user-guide/cooking.md)). **Install** in that same section copies the skills into each Claude Code folder and into the
 skills folder of Codex, OpenCode, Gemini CLI and Kiro; turning on a screen with a skill asks which
 agents get it. You can also copy or symlink them into `~/.claude/skills/` or a project's `.claude/skills/`. See
 [Plan](docs/user-guide/plan.md#the-workhub-plan-skill).
