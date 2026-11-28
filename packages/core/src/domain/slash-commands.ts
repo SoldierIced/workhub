@@ -17,6 +17,8 @@ export interface SlashCommandInfo {
   /** The command only works in the agent's terminal UI: the chat opens the Terminal view and types it there. */
   terminal?: boolean
   group: SlashCommandGroup
+  /** Listed after the agent's own commands (before its skills), so Enter on a short prefix picks the agent's command. */
+  afterAgent?: boolean
 }
 
 /** The groups in menu order. */
@@ -45,11 +47,13 @@ export function slashQuery(draft: string): string | null {
 export function filterSlashCommands(commands: readonly SlashCommandInfo[], query: string): SlashCommandInfo[] {
   const q = query.toLowerCase()
   const rank = (c: SlashCommandInfo) => (c.name.toLowerCase().startsWith(q) ? 0 : 1)
+  // A Workhub command marked `afterAgent` sorts between the agent's commands and its skills.
+  const place = (c: SlashCommandInfo) => (c.afterAgent ? SLASH_COMMAND_GROUPS.indexOf('agent') + 0.5 : SLASH_COMMAND_GROUPS.indexOf(c.group))
   return commands
     .filter((c) => !q || c.name.toLowerCase().includes(q) || c.aliases?.some((a) => a.toLowerCase().includes(q)))
     .sort(
       (a, b) =>
-        SLASH_COMMAND_GROUPS.indexOf(a.group) - SLASH_COMMAND_GROUPS.indexOf(b.group) ||
+        place(a) - place(b) ||
         rank(a) - rank(b) ||
         a.name.length - b.name.length ||
         a.name.localeCompare(b.name)

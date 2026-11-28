@@ -11,8 +11,9 @@ import {
   type SessionHistorySource,
   type StartSessionRequest
 } from '@workhub/core'
+import { filterSlashCommands } from '@workhub/core'
 import { SessionManager } from '../src/main/session-manager'
-import { runWorkhubCommand, sessionSlashCommands, workhubCommands } from '../src/renderer/lib/chatCommands'
+import { cookingPrompt, rewriteWorkhubPrompt, runWorkhubCommand, sessionSlashCommands, workhubCommands } from '../src/renderer/lib/chatCommands'
 import { sessionNameInfo } from '../src/renderer/lib/sessionGroups'
 import { translate, type MessageKey, type Params } from '../src/renderer/i18n/translate'
 import { SlashCommandMenu } from '../src/renderer/screens/sessions/SlashCommandMenu'
@@ -64,13 +65,13 @@ describe('the composer\'s commands', () => {
     expect(before.map((c) => c.name)).toContain('compact')
     const after = sessionSlashCommands(view({ commands: [{ name: 'deploy-docs', group: 'skill' }, { name: 'rename', group: 'agent' }] }), t)
     // The agent's own /rename is hidden by Workhub's.
-    expect(after.map((c) => `${c.group}:${c.name}`)).toEqual(['workhub:rename', 'workhub:exit', 'skill:deploy-docs'])
+    expect(after.map((c) => `${c.group}:${c.name}`)).toEqual(['workhub:rename', 'workhub:cooking', 'workhub:exit', 'skill:deploy-docs'])
   })
 
   it('owns /model only for agents whose model it switches (not Claude, which runs its own)', () => {
     const models = [{ id: 'acme-model-1', name: 'Acme 1' }, { id: 'acme-model-2', name: 'Acme 2' }]
-    expect(workhubCommands(view({ modelControl: true, models }), t).map((c) => c.name)).toEqual(['rename', 'exit'])
-    expect(workhubCommands(view({ agentId: 'kiro', adapter: 'acp', modelControl: true, models }), t).map((c) => c.name)).toEqual(['rename', 'model', 'exit'])
+    expect(workhubCommands(view({ modelControl: true, models }), t).map((c) => c.name)).toEqual(['rename', 'cooking', 'exit'])
+    expect(workhubCommands(view({ agentId: 'kiro', adapter: 'acp', modelControl: true, models }), t).map((c) => c.name)).toEqual(['rename', 'model', 'cooking', 'exit'])
   })
 })
 
@@ -111,9 +112,9 @@ describe('runWorkhubCommand', () => {
 
 describe('/login', () => {
   it('is Workhub\'s for Claude in the chat when the session has a console, and not for other agents', () => {
-    expect(workhubCommands(view({ modes: ['app', 'console', 'shell'] }), t).map((c) => c.name)).toEqual(['rename', 'login', 'remote-control', 'exit'])
-    expect(workhubCommands(view({ modes: ['app'] }), t).map((c) => c.name)).toEqual(['rename', 'exit'])
-    expect(workhubCommands(view({ agentId: 'kiro', adapter: 'acp', modes: ['app', 'console'] }), t).map((c) => c.name)).toEqual(['rename', 'exit'])
+    expect(workhubCommands(view({ modes: ['app', 'console', 'shell'] }), t).map((c) => c.name)).toEqual(['rename', 'login', 'remote-control', 'cooking', 'exit'])
+    expect(workhubCommands(view({ modes: ['app'] }), t).map((c) => c.name)).toEqual(['rename', 'cooking', 'exit'])
+    expect(workhubCommands(view({ agentId: 'kiro', adapter: 'acp', modes: ['app', 'console'] }), t).map((c) => c.name)).toEqual(['rename', 'cooking', 'exit'])
     expect(runWorkhubCommand(view({ agentId: 'kiro', adapter: 'acp', modes: ['app', 'console'] }), '/login', actions(), t)).toBe(false)
   })
 
@@ -337,5 +338,85 @@ describe('session names and commands', () => {
     expect(changed.at(-1)?.commands).toEqual([{ name: 'compact', group: 'agent' }])
     emit({ sessionId: v.id, type: 'monitor', snapshot: { title: '  Fix the login form ' } })
     expect(changed.at(-1)?.agentTitle).toBe('Fix the login form')
+  })
+})
+
+describe('/cooking', () => {
+  const NOTE = 'Use the workhub-cooking skill for this request. If that skill is not installed, say so and stop.'
+  const es = (key: MessageKey, params?: Params) => translate('es', key, params)
+  const rewrite = (v: SessionView, text: string, tr = t) => {
+    const log: string[] = []
+    return { log, out: rewriteWorkhubPrompt(v, text, (kind, msg) => log.push(`${kind}: ${msg}`), tr) }
+  }
+  const withSkills = (names: string[]) => view({ commands: [{ name: 'compact', group: 'agent' }, ...names.map((name) => ({ name, group: 'skill' as const }))] })
+
+  it('rewrites the request, first, then a blank line and the instruction', () => {
+    expect(rewrite(view(), '/cooking add a retry to the uploader').out).toEqual({ kind: 'send', text: `add a retry to the uploader\n\n${NOTE}` })
+    expect(cookingPrompt('x')).toBe(`x\n\n${NOTE}`)
+  })
+
+  it('keeps a multi-line request as typed and trims the spaces around it', () => {
+    expect(rewrite(view(), '/cooking    first line\n  second line  \n\nthird').out).toEqual({ kind: 'send', text: `first line\n  second line  \n\nthird\n\n${NOTE}` })
+    expect(rewrite(view(), '  /cooking   padded request  ').out).toEqual({ kind: 'send', text: `padded request\n\n${NOTE}` })
+    // The request is data: a command at its start runs neither in Workhub nor in the agent, which takes any
+    // text that starts with "/" for one of its own commands.
+    expect(rewrite(view(), '/cooking /rename x').out).toEqual({ kind: 'send', text: `Request: /rename x\n\n${NOTE}` })
+    expect(rewrite(view(), '/cooking /clear does not reset the filters').out).toEqual({ kind: 'send', text: `Request: /clear does not reset the filters\n\n${NOTE}` })
+    expect(rewrite(view(), '/cooking fix the /clear command').out).toEqual({ kind: 'send', text: `fix the /clear command\n\n${NOTE}` })
+  })
+
+  it('does not run on its own: runWorkhubCommand leaves it to the send path', () => {
+    expect(runWorkhubCommand(view(), '/cooking do it', actions(), t)).toBe(false)
+  })
+
+  it('shows its usage, in both languages, when the request is empty', () => {
+    const a = rewrite(view(), '/cooking')
+    expect(a.out).toEqual({ kind: 'handled' })
+    expect(a.log).toEqual(['error: Usage: /cooking <request>'])
+    const b = rewrite(view(), '/cooking   ', es)
+    expect(b.out).toEqual({ kind: 'handled' })
+    expect(b.log).toEqual(['error: Uso: /cooking <pedido>'])
+  })
+
+  it('says where to install the skill when the session reported skills without it, in both languages', () => {
+    const a = rewrite(withSkills(['deploy-docs']), '/cooking x')
+    expect(a.out).toEqual({ kind: 'handled' })
+    expect(a.log).toEqual(['error: The workhub-cooking skill is not installed for this agent. Install it in Settings → Agents → Workhub tools for agents, then start a new session.'])
+    expect(rewrite(withSkills(['deploy-docs']), '/cooking x', es).log[0]).toContain('Ajustes → Agentes → Herramientas de Workhub para agentes')
+  })
+
+  it('sends when the skill is there, or the list or its skills are not known', () => {
+    for (const v of [withSkills(['workhub-cooking']), withSkills(['Workhub-Cooking']), withSkills(['acme-plugin:workhub-cooking']), view(), view({ commands: [] }), view({ commands: [{ name: 'compact', group: 'agent' }] })]) {
+      expect(rewrite(v, '/cooking x').out).toEqual({ kind: 'send', text: `x\n\n${NOTE}` })
+    }
+  })
+
+  it('is neither offered nor run in a reviewer session', () => {
+    const reviewer = view({ readOnly: true })
+    expect(workhubCommands(reviewer, t).map((c) => c.name)).not.toContain('cooking')
+    expect(sessionSlashCommands(reviewer, t).map((c) => c.name)).not.toContain('cooking')
+    expect(rewrite({ ...reviewer, commands: [] } as SessionView, '/cooking x')).toEqual({ log: [], out: null })
+  })
+
+  it('is listed after the agent\'s commands, so Enter on a prefix picks the agent\'s', () => {
+    const v = view({ commands: [{ name: 'clear', group: 'agent' }, { name: 'compact', group: 'agent' }, { name: 'context', group: 'agent' }, { name: 'cost', group: 'agent' }, { name: 'commit', group: 'skill' }] })
+    const menu = (q: string) => filterSlashCommands(sessionSlashCommands(v, t), q).map((c) => c.name)
+    expect(menu('c').slice(0, 4).sort()).toEqual(['clear', 'compact', 'context', 'cost'])
+    expect(menu('c')[4]).toBe('cooking')
+    expect(menu('co').slice(0, 3).sort()).toEqual(['compact', 'context', 'cost'])
+    expect(menu('co')[3]).toBe('cooking')
+    expect(menu('cl')[0]).toBe('clear')
+    expect(menu('coo')[0]).toBe('cooking')
+    expect(menu('cooking')).toEqual(['cooking'])
+    // Workhub's other commands keep their place.
+    expect(menu('').slice(0, 3)).toEqual(['exit', 'rename', 'cost'])
+    expect(menu('').indexOf('cooking')).toBeGreaterThan(menu('').indexOf('cost'))
+  })
+
+  it('shadows an agent\'s or a user\'s own command of the same name', () => {
+    const v = view({ commands: [{ name: 'cooking', group: 'agent', description: 'agent one' }, { name: 'Cooking', group: 'skill', description: 'user one' }] })
+    const found = sessionSlashCommands(v, t).filter((c) => c.name.toLowerCase() === 'cooking')
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatchObject({ group: 'workhub', description: 'Start a request with the workhub-cooking skill' })
   })
 })

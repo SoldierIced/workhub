@@ -107,3 +107,16 @@ describe('terminal commands and aliases', () => {
     expect(claudeConsoleCommand('/../etc', reported)).toBeNull()
   })
 })
+
+describe('afterAgent', () => {
+  it('sorts a Workhub command after the agent\'s commands and before its skills', () => {
+    const list: SlashCommandInfo[] = [
+      { name: 'cooking', group: 'workhub', afterAgent: true },
+      { name: 'commit', group: 'skill' },
+      { name: 'rename', group: 'workhub' },
+      { name: 'compact', group: 'agent' }
+    ]
+    expect(filterSlashCommands(list, 'co').map((c) => c.name)).toEqual(['compact', 'cooking', 'commit'])
+    expect(filterSlashCommands(list, '').map((c) => c.name)).toEqual(['rename', 'compact', 'cooking', 'commit'])
+  })
+})
